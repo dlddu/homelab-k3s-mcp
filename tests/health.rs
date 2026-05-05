@@ -5,7 +5,7 @@ use tower::ServiceExt;
 
 #[tokio::test]
 async fn root_returns_service_name() {
-    let response = homelab_k3s_mcp::app()
+    let response = homelab_k3s_mcp::app(None)
         .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
         .await
         .unwrap();
@@ -17,7 +17,7 @@ async fn root_returns_service_name() {
 
 #[tokio::test]
 async fn healthz_returns_ok_json() {
-    let response = homelab_k3s_mcp::app()
+    let response = homelab_k3s_mcp::app(None)
         .oneshot(
             Request::builder()
                 .uri("/healthz")
@@ -36,7 +36,7 @@ async fn healthz_returns_ok_json() {
 
 #[tokio::test]
 async fn readyz_returns_ready_json() {
-    let response = homelab_k3s_mcp::app()
+    let response = homelab_k3s_mcp::app(None)
         .oneshot(
             Request::builder()
                 .uri("/readyz")
@@ -54,7 +54,7 @@ async fn readyz_returns_ready_json() {
 
 #[tokio::test]
 async fn unknown_route_returns_404() {
-    let response = homelab_k3s_mcp::app()
+    let response = homelab_k3s_mcp::app(None)
         .oneshot(
             Request::builder()
                 .uri("/does-not-exist")

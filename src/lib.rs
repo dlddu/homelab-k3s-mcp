@@ -1,6 +1,13 @@
-use axum::{routing::get, Json, Router};
+use std::sync::Arc;
+
+use axum::{middleware, routing::get, Json, Router};
 use serde::Serialize;
 use tower_http::trace::TraceLayer;
+
+pub mod auth;
+pub mod mcp;
+
+pub use auth::AuthConfig;
 
 #[derive(Debug, Serialize)]
 pub struct Health {
@@ -8,11 +15,31 @@ pub struct Health {
     pub version: &'static str,
 }
 
-pub fn app() -> Router {
-    Router::new()
+pub fn app(auth: Option<AuthConfig>) -> Router {
+    let public = Router::new()
         .route("/", get(root))
         .route("/healthz", get(healthz))
-        .route("/readyz", get(readyz))
+        .route("/readyz", get(readyz));
+
+    let (well_known, protected) = match auth {
+        Some(config) => {
+            let state = Arc::new(config);
+            let metadata = Router::new()
+                .route(
+                    "/.well-known/oauth-protected-resource",
+                    get(auth::protected_resource_metadata),
+                )
+                .with_state(state.clone());
+            let mcp = mcp::router()
+                .route_layer(middleware::from_fn_with_state(state, auth::require_bearer));
+            (metadata, mcp)
+        }
+        None => (Router::new(), mcp::router()),
+    };
+
+    public
+        .merge(well_known)
+        .merge(protected)
         .layer(TraceLayer::new_for_http())
 }
 

@@ -9,7 +9,7 @@ async fn spawn_server() -> SocketAddr {
     let addr = listener.local_addr().expect("local addr");
 
     tokio::spawn(async move {
-        axum::serve(listener, homelab_k3s_mcp::app())
+        axum::serve(listener, homelab_k3s_mcp::app(None))
             .await
             .expect("server error");
     });

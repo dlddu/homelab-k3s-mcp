@@ -49,6 +49,12 @@ spec:
               value: 0.0.0.0:3000
             - name: RUST_LOG
               value: info
+            # OAuth bearer-token validation. Token issuance happens on an
+            # external authorization server. To enable: remove MCP_AUTH_DISABLED
+            # and set MCP_OAUTH_ISSUER, MCP_OAUTH_AUDIENCE, and
+            # MCP_OAUTH_HS256_SECRET (e.g. from a Secret).
+            - name: MCP_AUTH_DISABLED
+              value: "1"
           startupProbe:
             httpGet:
               path: /healthz
