@@ -1,4 +1,6 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::{
     extract::{Request, State},
@@ -6,15 +8,18 @@ use axum::{
     middleware::Next,
     response::{IntoResponse, Json, Response},
 };
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
+use tokio::sync::RwLock;
 
 #[derive(Clone)]
 pub struct AuthConfig {
     pub issuer: String,
     pub audience: String,
     pub resource: String,
-    decoding_key: Arc<DecodingKey>,
+    jwks_uri: String,
+    keys: Arc<RwLock<HashMap<String, DecodingKey>>>,
+    http: reqwest::Client,
 }
 
 impl std::fmt::Debug for AuthConfig {
@@ -23,13 +28,31 @@ impl std::fmt::Debug for AuthConfig {
             .field("issuer", &self.issuer)
             .field("audience", &self.audience)
             .field("resource", &self.resource)
-            .field("decoding_key", &"<redacted>")
+            .field("jwks_uri", &self.jwks_uri)
             .finish()
     }
 }
 
+#[derive(Debug, Deserialize)]
+struct ProviderMetadata {
+    jwks_uri: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct Jwks {
+    keys: Vec<Jwk>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Jwk {
+    kid: String,
+    kty: String,
+    n: Option<String>,
+    e: Option<String>,
+}
+
 impl AuthConfig {
-    pub fn from_env() -> Result<Option<Self>, String> {
+    pub async fn from_env() -> Result<Option<Self>, String> {
         if matches!(
             std::env::var("MCP_AUTH_DISABLED").as_deref(),
             Ok("1" | "true")
@@ -41,28 +64,107 @@ impl AuthConfig {
             .map_err(|_| "MCP_OAUTH_ISSUER is required when auth is enabled".to_string())?;
         let audience = std::env::var("MCP_OAUTH_AUDIENCE")
             .map_err(|_| "MCP_OAUTH_AUDIENCE is required when auth is enabled".to_string())?;
-        let secret = std::env::var("MCP_OAUTH_HS256_SECRET")
-            .map_err(|_| "MCP_OAUTH_HS256_SECRET is required when auth is enabled".to_string())?;
         let resource = std::env::var("MCP_OAUTH_RESOURCE").unwrap_or_else(|_| audience.clone());
 
-        Ok(Some(Self {
+        let http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .build()
+            .map_err(|e| format!("build http client: {e}"))?;
+
+        let metadata_url = format!(
+            "{}/.well-known/openid-configuration",
+            issuer.trim_end_matches('/')
+        );
+        let metadata: ProviderMetadata = http
+            .get(&metadata_url)
+            .send()
+            .await
+            .map_err(|e| format!("fetch {metadata_url}: {e}"))?
+            .error_for_status()
+            .map_err(|e| format!("openid-configuration: {e}"))?
+            .json()
+            .await
+            .map_err(|e| format!("parse openid-configuration: {e}"))?;
+
+        let config = Self {
             issuer,
             audience,
             resource,
-            decoding_key: Arc::new(DecodingKey::from_secret(secret.as_bytes())),
-        }))
+            jwks_uri: metadata.jwks_uri,
+            keys: Arc::new(RwLock::new(HashMap::new())),
+            http,
+        };
+        config.refresh_keys().await?;
+
+        Ok(Some(config))
+    }
+
+    async fn refresh_keys(&self) -> Result<(), String> {
+        let jwks: Jwks = self
+            .http
+            .get(&self.jwks_uri)
+            .send()
+            .await
+            .map_err(|e| format!("fetch {}: {e}", self.jwks_uri))?
+            .error_for_status()
+            .map_err(|e| format!("jwks: {e}"))?
+            .json()
+            .await
+            .map_err(|e| format!("parse jwks: {e}"))?;
+
+        let mut new_keys = HashMap::new();
+        for jwk in jwks.keys {
+            if jwk.kty != "RSA" {
+                continue;
+            }
+            let (Some(n), Some(e)) = (jwk.n.as_deref(), jwk.e.as_deref()) else {
+                continue;
+            };
+            match DecodingKey::from_rsa_components(n, e) {
+                Ok(key) => {
+                    new_keys.insert(jwk.kid, key);
+                }
+                Err(err) => tracing::warn!(error = %err, "invalid jwk; skipping"),
+            }
+        }
+
+        if new_keys.is_empty() {
+            return Err("jwks contains no usable RSA keys".to_string());
+        }
+
+        *self.keys.write().await = new_keys;
+        Ok(())
+    }
+
+    async fn key_for_kid(&self, kid: &str) -> Option<DecodingKey> {
+        if let Some(k) = self.keys.read().await.get(kid).cloned() {
+            return Some(k);
+        }
+        if let Err(err) = self.refresh_keys().await {
+            tracing::warn!(error = %err, "jwks refresh failed");
+            return None;
+        }
+        self.keys.read().await.get(kid).cloned()
     }
 
     fn validation(&self) -> Validation {
-        let mut v = Validation::new(Algorithm::HS256);
+        let mut v = Validation::new(Algorithm::RS256);
         v.set_audience(&[&self.audience]);
         v.set_issuer(&[&self.issuer]);
         v.validate_exp = true;
         v
     }
 
-    fn verify(&self, token: &str) -> Result<Claims, jsonwebtoken::errors::Error> {
-        decode::<Claims>(token, &self.decoding_key, &self.validation()).map(|data| data.claims)
+    async fn verify(&self, token: &str) -> Result<Claims, &'static str> {
+        let header = decode_header(token).map_err(|_| "invalid_token")?;
+        let kid = header.kid.ok_or("invalid_token")?;
+        let key = self.key_for_kid(&kid).await.ok_or("invalid_token")?;
+        decode::<Claims>(token, &key, &self.validation())
+            .map(|d| d.claims)
+            .map_err(|err| {
+                tracing::debug!(error = %err, "token decode failed");
+                "invalid_token"
+            })
     }
 }
 
@@ -101,15 +203,12 @@ pub async fn require_bearer(
         Err(err) => return unauthorized(&config, err).into_response(),
     };
 
-    match config.verify(&token) {
+    match config.verify(&token).await {
         Ok(claims) => {
             req.extensions_mut().insert(claims);
             next.run(req).await
         }
-        Err(err) => {
-            tracing::debug!(error = %err, "rejecting token");
-            unauthorized(&config, "invalid_token").into_response()
-        }
+        Err(err) => unauthorized(&config, err).into_response(),
     }
 }
 

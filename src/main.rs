@@ -19,7 +19,9 @@ async fn main() {
         .parse()
         .expect("invalid LISTEN_ADDR");
 
-    let auth = homelab_k3s_mcp::AuthConfig::from_env().expect("invalid auth config");
+    let auth = homelab_k3s_mcp::AuthConfig::from_env()
+        .await
+        .expect("invalid auth config");
     if auth.is_none() {
         tracing::warn!("MCP_AUTH_DISABLED is set: serving /mcp without authentication");
     }
