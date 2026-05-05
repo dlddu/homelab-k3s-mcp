@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp
+    app.kubernetes.io/part-of: homelab
