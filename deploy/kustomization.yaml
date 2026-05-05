@@ -8,7 +8,6 @@ resources:
   - serviceaccount.yaml
   - deployment.yaml
   - service.yaml
-  - ingress.yaml
 
 images:
   - name: ghcr.io/dlddu/homelab-k3s-mcp
