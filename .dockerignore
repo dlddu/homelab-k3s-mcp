@@ -1,0 +1,11 @@
+target/
+.git/
+.github/
+tests/
+*.md
+.gitignore
+.dockerignore
+.vscode/
+.idea/
+.env
+.env.local
