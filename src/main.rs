@@ -19,11 +19,18 @@ async fn main() {
         .parse()
         .expect("invalid LISTEN_ADDR");
 
+    let auth = homelab_k3s_mcp::AuthConfig::from_env()
+        .await
+        .expect("invalid auth config");
+    if auth.is_none() {
+        tracing::warn!("MCP_AUTH_DISABLED is set: serving /mcp without authentication");
+    }
+
     let listener = TcpListener::bind(addr).await.expect("bind listener");
     let local = listener.local_addr().expect("local addr");
     tracing::info!(%local, "homelab-k3s-mcp listening");
 
-    axum::serve(listener, homelab_k3s_mcp::app())
+    axum::serve(listener, homelab_k3s_mcp::app(auth))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server error");
