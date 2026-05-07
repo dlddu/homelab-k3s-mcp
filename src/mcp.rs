@@ -4,7 +4,11 @@ use axum::{extract::State, response::Json, routing::post, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::k8s::{K8sError, K8sService, WorkloadKind};
+use crate::k8s::{ExecOutcome, K8sError, K8sService, WorkloadKind};
+
+const DEAR_BABY_DEFAULT_SELECTOR: &str = "app=dear-baby";
+const DEAR_BABY_DEFAULT_CONTAINER: &str = "backend";
+const DEAR_BABY_RESET_BIN: &str = "/reset-onboarding";
 
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const SERVER_NAME: &str = env!("CARGO_PKG_NAME");
@@ -180,6 +184,45 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     "idempotentHint": false,
                     "openWorldHint": false,
                 },
+            },
+            {
+                "name": "dear_baby_reset_onboarding",
+                "description": "Reset dear-baby onboarding for the user with the given email by \
+                                exec'ing the bundled /reset-onboarding CLI inside a running \
+                                dear-baby backend pod. Clears onboarded_at, due_date, voice \
+                                coachmark dismissal, first_record_at, and ai_preview. Records \
+                                themselves are preserved.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "namespace": {
+                            "type": "string",
+                            "description": "Namespace where the dear-baby backend is deployed."
+                        },
+                        "email": {
+                            "type": "string",
+                            "description": "Email of the user whose onboarding should be reset."
+                        },
+                        "selector": {
+                            "type": "string",
+                            "description": "Label selector for the backend pod. Defaults to \
+                                            'app=dear-baby'."
+                        },
+                        "container": {
+                            "type": "string",
+                            "description": "Container name inside the pod. Defaults to 'backend'."
+                        }
+                    },
+                    "required": ["namespace", "email"],
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "Reset dear-baby Onboarding",
+                    "readOnlyHint": false,
+                    "destructiveHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false,
+                },
             }
         ]
     }))
@@ -199,6 +242,7 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
         })),
         "workload_list" => workload_list_tool(k8s, &args).await,
         "workload_restart" => workload_restart_tool(k8s, &args).await,
+        "dear_baby_reset_onboarding" => dear_baby_reset_onboarding_tool(k8s, &args).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
 }
@@ -258,6 +302,61 @@ async fn workload_restart_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (
         }))),
         Err(err) => Ok(tool_error(err)),
     }
+}
+
+async fn dear_baby_reset_onboarding_tool(
+    k8s: &SharedK8s,
+    args: &Value,
+) -> Result<Value, (i32, String)> {
+    let obj = args
+        .as_object()
+        .ok_or((-32602, "arguments must be an object".to_string()))?;
+
+    let namespace =
+        optional_string(obj, "namespace").ok_or((-32602, "namespace is required".to_string()))?;
+    let email = optional_string(obj, "email").ok_or((-32602, "email is required".to_string()))?;
+    let selector =
+        optional_string(obj, "selector").unwrap_or_else(|| DEAR_BABY_DEFAULT_SELECTOR.to_string());
+    let container = optional_string(obj, "container")
+        .unwrap_or_else(|| DEAR_BABY_DEFAULT_CONTAINER.to_string());
+
+    let command = vec![DEAR_BABY_RESET_BIN.to_string(), email.clone()];
+
+    match k8s
+        .exec_in_pod(&namespace, &selector, Some(&container), &command)
+        .await
+    {
+        Ok(outcome) => Ok(reset_outcome_json(
+            namespace, email, selector, container, outcome,
+        )),
+        Err(err) => Ok(tool_error(err)),
+    }
+}
+
+fn reset_outcome_json(
+    namespace: String,
+    email: String,
+    selector: String,
+    container: String,
+    outcome: ExecOutcome,
+) -> Value {
+    let payload = json!({
+        "namespace": namespace,
+        "email": email,
+        "selector": selector,
+        "container": container,
+        "pod": outcome.pod,
+        "exitCode": outcome.exit_code,
+        "stdout": outcome.stdout,
+        "stderr": outcome.stderr,
+        "success": outcome.success,
+    });
+    let text = serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": payload,
+        "isError": !outcome.success,
+    })
 }
 
 fn success_json(payload: Value) -> Value {

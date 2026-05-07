@@ -17,6 +17,21 @@ rules:
       - list
       - watch
       - patch
+  # dear_baby_reset_onboarding execs the bundled /reset-onboarding CLI
+  # inside a running backend pod. List is needed to resolve the label
+  # selector to a pod name; pods/exec is the subresource the apiserver
+  # gates the WebSocket exec stream on.
+  - apiGroups: [""]
+    resources:
+      - pods
+    verbs:
+      - get
+      - list
+  - apiGroups: [""]
+    resources:
+      - pods/exec
+    verbs:
+      - create
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

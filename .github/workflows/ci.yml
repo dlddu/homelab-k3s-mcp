@@ -109,6 +109,7 @@ jobs:
           grep -q '"name":"ping"' /tmp/tools.json
           grep -q '"name":"workload_list"' /tmp/tools.json
           grep -q '"name":"workload_restart"' /tmp/tools.json
+          grep -q '"name":"dear_baby_reset_onboarding"' /tmp/tools.json
 
       - name: Validate workload tool against fixture
         run: |
