@@ -156,12 +156,11 @@ impl KubeService {
                 }
             }
         });
-        api.patch(
-            name,
-            &PatchParams::apply(FIELD_MANAGER).force(),
-            &Patch::Apply(patch),
-        )
-        .await?;
+        let params = PatchParams {
+            field_manager: Some(FIELD_MANAGER.into()),
+            ..Default::default()
+        };
+        api.patch(name, &params, &Patch::Strategic(patch)).await?;
         Ok(now)
     }
 }

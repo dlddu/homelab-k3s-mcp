@@ -78,8 +78,14 @@ jobs:
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
+      - name: Apply workload test fixture
+        run: kubectl apply -f tests/k8s/kind/test-deployment.yaml
+
       - name: Wait for rollout
         run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
+
+      - name: Wait for fixture rollout
+        run: kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
 
       - name: Smoke test deployed service
         run: |
@@ -101,6 +107,73 @@ jobs:
             -H 'content-type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | tee /tmp/tools.json
           grep -q '"name":"ping"' /tmp/tools.json
+          grep -q '"name":"workload"' /tmp/tools.json
+
+      - name: Validate workload tool against fixture
+        run: |
+          kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8081:80 >/tmp/pf-workload.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8081/healthz > /dev/null; then break; fi
+            sleep 1
+          done
+
+          echo "--- workload list (namespace=workload-test) ---"
+          curl -fsS -X POST http://127.0.0.1:8081/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"workload","arguments":{"action":"list","kind":"Deployment","namespace":"workload-test"}}}' \
+            | tee /tmp/workload-list.json
+          python3 -c "
+          import json, sys
+          body = json.load(open('/tmp/workload-list.json'))
+          assert body['result']['isError'] is False, body
+          payload = body['result']['structuredContent']
+          assert payload['kind'] == 'Deployment', payload
+          assert payload['namespace'] == 'workload-test', payload
+          names = [item['name'] for item in payload['items']]
+          assert 'workload-fixture' in names, names
+          print('list ok:', names)
+          "
+
+          echo "--- workload list (all namespaces) ---"
+          curl -fsS -X POST http://127.0.0.1:8081/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"workload","arguments":{"action":"list","kind":"Deployment"}}}' \
+            | tee /tmp/workload-list-all.json
+          python3 -c "
+          import json
+          body = json.load(open('/tmp/workload-list-all.json'))
+          assert body['result']['isError'] is False, body
+          items = body['result']['structuredContent']['items']
+          pairs = {(i['namespace'], i['name']) for i in items}
+          assert ('workload-test', 'workload-fixture') in pairs, pairs
+          assert ('homelab-k3s-mcp', 'homelab-k3s-mcp') in pairs, pairs
+          print('list-all ok:', len(items), 'items')
+          "
+
+          echo "--- workload rollout_restart ---"
+          curl -fsS -X POST http://127.0.0.1:8081/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"workload","arguments":{"action":"rollout_restart","kind":"Deployment","namespace":"workload-test","name":"workload-fixture"}}}' \
+            | tee /tmp/workload-restart.json
+          python3 -c "
+          import json
+          body = json.load(open('/tmp/workload-restart.json'))
+          assert body['result']['isError'] is False, body
+          payload = body['result']['structuredContent']
+          assert payload['action'] == 'rollout_restart', payload
+          assert payload['name'] == 'workload-fixture', payload
+          assert payload['restartedAt'], payload
+          print('rollout_restart ok at', payload['restartedAt'])
+          "
+
+          # Verify the patch actually landed on the resource.
+          ANNOTATION=$(kubectl -n workload-test get deploy/workload-fixture \
+            -o jsonpath='{.spec.template.metadata.annotations.kubectl\.kubernetes\.io/restartedAt}')
+          echo "restartedAt annotation: ${ANNOTATION}"
+          test -n "${ANNOTATION}"
+          kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
 
       - name: Dump cluster diagnostics on failure
         if: failure()
@@ -108,6 +181,8 @@ jobs:
           kubectl -n homelab-k3s-mcp get all -o wide || true
           kubectl -n homelab-k3s-mcp describe deploy/homelab-k3s-mcp || true
           kubectl -n homelab-k3s-mcp logs deploy/homelab-k3s-mcp --tail=200 || true
+          kubectl -n workload-test get all -o wide || true
+          kubectl -n workload-test describe deploy/workload-fixture || true
 
   docker:
     name: docker build & push
