@@ -115,6 +115,12 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     "properties": {},
                     "additionalProperties": false,
                 },
+                "annotations": {
+                    "title": "Ping",
+                    "readOnlyHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false,
+                },
             },
             {
                 "name": "workload_list",
@@ -135,6 +141,12 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     },
                     "required": ["kind"],
                     "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "List Workloads",
+                    "readOnlyHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false,
                 },
             },
             {
@@ -160,6 +172,13 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     },
                     "required": ["kind", "namespace", "name"],
                     "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "Restart Workload",
+                    "readOnlyHint": false,
+                    "destructiveHint": true,
+                    "idempotentHint": false,
+                    "openWorldHint": false,
                 },
             }
         ]

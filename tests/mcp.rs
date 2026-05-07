@@ -99,6 +99,46 @@ async fn tools_list_includes_workload_tools() {
     assert!(names.contains(&"workload_restart"));
 }
 
+fn find_tool<'a>(tools: &'a [Value], name: &str) -> &'a Value {
+    tools
+        .iter()
+        .find(|t| t["name"].as_str() == Some(name))
+        .unwrap_or_else(|| panic!("tool {name} not found"))
+}
+
+#[tokio::test]
+async fn tools_list_advertises_annotations() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({"jsonrpc": "2.0", "id": 6, "method": "tools/list"}),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+
+    let ping = find_tool(tools, "ping");
+    assert_eq!(ping["annotations"]["title"], "Ping");
+    assert_eq!(ping["annotations"]["readOnlyHint"], true);
+    assert_eq!(ping["annotations"]["idempotentHint"], true);
+    assert_eq!(ping["annotations"]["openWorldHint"], false);
+
+    let list = find_tool(tools, "workload_list");
+    assert_eq!(list["annotations"]["title"], "List Workloads");
+    assert_eq!(list["annotations"]["readOnlyHint"], true);
+    assert_eq!(list["annotations"]["idempotentHint"], true);
+    assert_eq!(list["annotations"]["openWorldHint"], false);
+
+    let restart = find_tool(tools, "workload_restart");
+    assert_eq!(restart["annotations"]["title"], "Restart Workload");
+    assert_eq!(restart["annotations"]["readOnlyHint"], false);
+    assert_eq!(restart["annotations"]["destructiveHint"], true);
+    assert_eq!(restart["annotations"]["idempotentHint"], false);
+    assert_eq!(restart["annotations"]["openWorldHint"], false);
+}
+
 #[tokio::test]
 async fn ping_tool_returns_pong() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s())
