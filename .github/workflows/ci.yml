@@ -79,7 +79,9 @@ jobs:
         run: kubectl apply -k tests/k8s/kind
 
       - name: Wait for rollout
-        run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
+        run: |
+          kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
+          kubectl -n homelab-k3s-mcp rollout status deploy/mcp-smoke-target --timeout=120s
 
       - name: Smoke test deployed service
         run: |
@@ -101,6 +103,29 @@ jobs:
             -H 'content-type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | tee /tmp/tools.json
           grep -q '"name":"ping"' /tmp/tools.json
+
+          # Verify the in-cluster kube client is usable: list deployments
+          # in the test namespace and confirm the smoke-target shows up.
+          curl -fsS -X POST http://127.0.0.1:8080/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"workload","arguments":{"action":"list","kind":"Deployment","namespace":"homelab-k3s-mcp"}}}' \
+            | tee /tmp/workload-list.json
+          grep -q '"isError":false' /tmp/workload-list.json
+          grep -q '"name":"mcp-smoke-target"' /tmp/workload-list.json
+
+          # Verify write access (apply patch) works against the smoke-target.
+          curl -fsS -X POST http://127.0.0.1:8080/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"workload","arguments":{"action":"rollout_restart","kind":"Deployment","namespace":"homelab-k3s-mcp","name":"mcp-smoke-target"}}}' \
+            | tee /tmp/workload-restart.json
+          grep -q '"isError":false' /tmp/workload-restart.json
+          grep -q '"action":"rollout_restart"' /tmp/workload-restart.json
+
+          # Confirm the restart annotation was actually applied to the pod template.
+          kubectl -n homelab-k3s-mcp get deploy/mcp-smoke-target \
+            -o jsonpath='{.spec.template.metadata.annotations.kubectl\.kubernetes\.io/restartedAt}' \
+            | tee /tmp/restartedAt.txt
+          test -s /tmp/restartedAt.txt
 
       - name: Dump cluster diagnostics on failure
         if: failure()

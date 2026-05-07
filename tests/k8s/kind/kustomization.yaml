@@ -5,6 +5,7 @@ namespace: homelab-k3s-mcp
 
 resources:
   - ../../../k8s
+  - test-workload.yaml
 
 images:
   - name: ghcr.io/dlddu/homelab-k3s-mcp
