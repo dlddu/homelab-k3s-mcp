@@ -77,7 +77,7 @@ async fn initialize_returns_server_info() {
 }
 
 #[tokio::test]
-async fn tools_list_includes_workload_tool() {
+async fn tools_list_includes_workload_tools() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s())
         .oneshot(json_request(
             "/mcp",
@@ -93,9 +93,10 @@ async fn tools_list_includes_workload_tool() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    assert_eq!(tools.len(), 2);
+    assert_eq!(tools.len(), 3);
     assert!(names.contains(&"ping"));
-    assert!(names.contains(&"workload"));
+    assert!(names.contains(&"workload_list"));
+    assert!(names.contains(&"workload_restart"));
 }
 
 #[tokio::test]
@@ -169,9 +170,8 @@ async fn workload_list_dispatches_to_service() {
                 "id": 10,
                 "method": "tools/call",
                 "params": {
-                    "name": "workload",
+                    "name": "workload_list",
                     "arguments": {
-                        "action": "list",
                         "kind": "Deployment",
                         "namespace": "default"
                     }
@@ -207,8 +207,8 @@ async fn workload_list_without_namespace_lists_all() {
                 "id": 11,
                 "method": "tools/call",
                 "params": {
-                    "name": "workload",
-                    "arguments": { "action": "list", "kind": "StatefulSet" }
+                    "name": "workload_list",
+                    "arguments": { "kind": "StatefulSet" }
                 }
             }),
         ))
@@ -236,9 +236,8 @@ async fn workload_rollout_restart_dispatches_to_service() {
                 "id": 20,
                 "method": "tools/call",
                 "params": {
-                    "name": "workload",
+                    "name": "workload_restart",
                     "arguments": {
-                        "action": "rollout_restart",
                         "kind": "DaemonSet",
                         "namespace": "kube-system",
                         "name": "kindnet"
@@ -265,7 +264,7 @@ async fn workload_rollout_restart_dispatches_to_service() {
 }
 
 #[tokio::test]
-async fn workload_rollout_restart_requires_namespace_and_name() {
+async fn workload_restart_requires_namespace_and_name() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s())
         .oneshot(json_request(
             "/mcp",
@@ -274,9 +273,8 @@ async fn workload_rollout_restart_requires_namespace_and_name() {
                 "id": 30,
                 "method": "tools/call",
                 "params": {
-                    "name": "workload",
+                    "name": "workload_restart",
                     "arguments": {
-                        "action": "rollout_restart",
                         "kind": "Deployment",
                         "namespace": "default"
                     }
@@ -300,30 +298,8 @@ async fn workload_rejects_unknown_kind() {
                 "id": 31,
                 "method": "tools/call",
                 "params": {
-                    "name": "workload",
-                    "arguments": { "action": "list", "kind": "Pod" }
-                }
-            }),
-        ))
-        .await
-        .unwrap();
-
-    let body = body_json(response).await;
-    assert_eq!(body["error"]["code"], -32602);
-}
-
-#[tokio::test]
-async fn workload_rejects_unknown_action() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 32,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload",
-                    "arguments": { "action": "delete", "kind": "Deployment" }
+                    "name": "workload_list",
+                    "arguments": { "kind": "Pod" }
                 }
             }),
         ))
@@ -344,8 +320,8 @@ async fn unavailable_k8s_returns_tool_error() {
                 "id": 40,
                 "method": "tools/call",
                 "params": {
-                    "name": "workload",
-                    "arguments": { "action": "list", "kind": "Deployment" }
+                    "name": "workload_list",
+                    "arguments": { "kind": "Deployment" }
                 }
             }),
         ))

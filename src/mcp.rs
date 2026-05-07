@@ -117,18 +117,12 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 },
             },
             {
-                "name": "workload",
-                "description": "Manage Kubernetes workloads (Deployment, StatefulSet, DaemonSet). \
-                                Set action='list' to list workloads (namespace optional; omitted = all namespaces). \
-                                Set action='rollout_restart' to trigger a rolling restart (namespace and name required).",
+                "name": "workload_list",
+                "description": "List Kubernetes workloads (Deployment, StatefulSet, DaemonSet). \
+                                Namespace is optional; omit it to list across all namespaces.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "action": {
-                            "type": "string",
-                            "enum": ["list", "rollout_restart"],
-                            "description": "Operation to perform."
-                        },
                         "kind": {
                             "type": "string",
                             "enum": ["Deployment", "StatefulSet", "DaemonSet"],
@@ -136,14 +130,35 @@ fn tools_list() -> Result<Value, (i32, String)> {
                         },
                         "namespace": {
                             "type": "string",
-                            "description": "Namespace. Optional for 'list', required for 'rollout_restart'."
+                            "description": "Namespace. Optional; omitted = all namespaces."
+                        }
+                    },
+                    "required": ["kind"],
+                    "additionalProperties": false,
+                },
+            },
+            {
+                "name": "workload_restart",
+                "description": "Trigger a rolling restart of a Kubernetes workload \
+                                (Deployment, StatefulSet, DaemonSet).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
+                            "description": "Workload kind."
+                        },
+                        "namespace": {
+                            "type": "string",
+                            "description": "Namespace of the workload."
                         },
                         "name": {
                             "type": "string",
-                            "description": "Workload name. Required for 'rollout_restart'."
+                            "description": "Workload name."
                         }
                     },
-                    "required": ["action", "kind"],
+                    "required": ["kind", "namespace", "name"],
                     "additionalProperties": false,
                 },
             }
@@ -163,70 +178,66 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
             "content": [{ "type": "text", "text": "pong" }],
             "isError": false,
         })),
-        "workload" => workload_tool(k8s, &args).await,
+        "workload_list" => workload_list_tool(k8s, &args).await,
+        "workload_restart" => workload_restart_tool(k8s, &args).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
 }
 
-async fn workload_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
-    let obj = args
-        .as_object()
-        .ok_or((-32602, "arguments must be an object".to_string()))?;
-
-    let action = obj
-        .get("action")
-        .and_then(Value::as_str)
-        .ok_or((-32602, "action is required".to_string()))?;
+fn parse_kind(obj: &serde_json::Map<String, Value>) -> Result<WorkloadKind, (i32, String)> {
     let kind_str = obj
         .get("kind")
         .and_then(Value::as_str)
         .ok_or((-32602, "kind is required".to_string()))?;
-    let kind = WorkloadKind::parse(kind_str).ok_or((
+    WorkloadKind::parse(kind_str).ok_or((
         -32602,
         format!("unknown kind: {kind_str} (expected Deployment, StatefulSet, or DaemonSet)"),
-    ))?;
-    let namespace = obj
-        .get("namespace")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned);
-    let workload_name = obj
-        .get("name")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .map(str::to_owned);
+    ))
+}
 
-    match action {
-        "list" => match k8s.list_workloads(kind, namespace.as_deref()).await {
-            Ok(items) => Ok(success_json(json!({
-                "kind": kind.as_str(),
-                "namespace": namespace,
-                "items": items,
-            }))),
-            Err(err) => Ok(tool_error(err)),
-        },
-        "rollout_restart" => {
-            let ns = namespace.ok_or((
-                -32602,
-                "namespace is required for rollout_restart".to_string(),
-            ))?;
-            let target = workload_name
-                .ok_or((-32602, "name is required for rollout_restart".to_string()))?;
-            match k8s.rollout_restart(kind, &ns, &target).await {
-                Ok(restarted_at) => Ok(success_json(json!({
-                    "action": "rollout_restart",
-                    "kind": kind.as_str(),
-                    "namespace": ns,
-                    "name": target,
-                    "restartedAt": restarted_at,
-                }))),
-                Err(err) => Ok(tool_error(err)),
-            }
-        }
-        other => Err((
-            -32602,
-            format!("unknown action: {other} (expected 'list' or 'rollout_restart')"),
-        )),
+fn optional_string(obj: &serde_json::Map<String, Value>, key: &str) -> Option<String> {
+    obj.get(key)
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}
+
+async fn workload_list_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
+    let obj = args
+        .as_object()
+        .ok_or((-32602, "arguments must be an object".to_string()))?;
+
+    let kind = parse_kind(obj)?;
+    let namespace = optional_string(obj, "namespace");
+
+    match k8s.list_workloads(kind, namespace.as_deref()).await {
+        Ok(items) => Ok(success_json(json!({
+            "kind": kind.as_str(),
+            "namespace": namespace,
+            "items": items,
+        }))),
+        Err(err) => Ok(tool_error(err)),
+    }
+}
+
+async fn workload_restart_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
+    let obj = args
+        .as_object()
+        .ok_or((-32602, "arguments must be an object".to_string()))?;
+
+    let kind = parse_kind(obj)?;
+    let namespace =
+        optional_string(obj, "namespace").ok_or((-32602, "namespace is required".to_string()))?;
+    let name = optional_string(obj, "name").ok_or((-32602, "name is required".to_string()))?;
+
+    match k8s.rollout_restart(kind, &namespace, &name).await {
+        Ok(restarted_at) => Ok(success_json(json!({
+            "kind": kind.as_str(),
+            "namespace": namespace,
+            "name": name,
+            "restartedAt": restarted_at,
+        }))),
+        Err(err) => Ok(tool_error(err)),
     }
 }
 
