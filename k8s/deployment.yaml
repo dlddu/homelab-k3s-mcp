@@ -27,7 +27,7 @@ spec:
         app.kubernetes.io/part-of: homelab
     spec:
       serviceAccountName: homelab-k3s-mcp
-      automountServiceAccountToken: false
+      automountServiceAccountToken: true
       nodeSelector:
         kubernetes.io/arch: arm64
       securityContext:

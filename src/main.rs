@@ -1,6 +1,8 @@
 use std::io::IsTerminal;
 use std::net::SocketAddr;
+use std::sync::Arc;
 
+use homelab_k3s_mcp::{K8sService, KubeService, UnavailableK8s};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
@@ -26,11 +28,27 @@ async fn main() {
         tracing::warn!("MCP_AUTH_DISABLED is set: serving /mcp without authentication");
     }
 
+    let k8s: Arc<dyn K8sService> = if matches!(
+        std::env::var("MCP_K8S_DISABLED").as_deref(),
+        Ok("1" | "true")
+    ) {
+        tracing::warn!("MCP_K8S_DISABLED is set: kubernetes tools will return errors");
+        Arc::new(UnavailableK8s::new("kubernetes integration is disabled"))
+    } else {
+        match KubeService::try_new().await {
+            Ok(svc) => Arc::new(svc),
+            Err(err) => {
+                tracing::error!(%err, "failed to initialize kubernetes client; tools will return errors");
+                Arc::new(UnavailableK8s::new(err.to_string()))
+            }
+        }
+    };
+
     let listener = TcpListener::bind(addr).await.expect("bind listener");
     let local = listener.local_addr().expect("local addr");
     tracing::info!(%local, "homelab-k3s-mcp listening");
 
-    axum::serve(listener, homelab_k3s_mcp::app(auth))
+    axum::serve(listener, homelab_k3s_mcp::app(auth, k8s))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server error");

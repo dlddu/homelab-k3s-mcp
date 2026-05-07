@@ -6,6 +6,7 @@ namespace: homelab-k3s-mcp
 resources:
   - namespace.yaml
   - serviceaccount.yaml
+  - rbac.yaml
   - deployment.yaml
   - service.yaml
 
