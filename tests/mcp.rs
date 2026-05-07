@@ -3,129 +3,41 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use homelab_k3s_mcp::k8s::{
-    DaemonSetSummary, DeploymentSummary, K8sError, K8sService, StatefulSetSummary,
-};
+use homelab_k3s_mcp::k8s::{K8sError, K8sService, WorkloadKind};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
 #[derive(Default)]
 struct FakeK8s {
-    pub deployments: Vec<DeploymentSummary>,
-    pub statefulsets: Vec<StatefulSetSummary>,
-    pub daemonsets: Vec<DaemonSetSummary>,
-    pub last_list_namespace: Mutex<Option<String>>,
-    pub restarts: Mutex<Vec<(String, String, String)>>,
+    pub items: Mutex<Vec<Value>>,
+    pub last_list: Mutex<Option<(WorkloadKind, Option<String>)>>,
+    pub restarts: Mutex<Vec<(WorkloadKind, String, String)>>,
 }
 
 #[async_trait]
 impl K8sService for FakeK8s {
-    async fn list_deployments(
+    async fn list_workloads(
         &self,
+        kind: WorkloadKind,
         namespace: Option<&str>,
-    ) -> Result<Vec<DeploymentSummary>, K8sError> {
-        *self.last_list_namespace.lock().unwrap() = namespace.map(str::to_owned);
-        Ok(clone_deployments(&self.deployments))
+    ) -> Result<Vec<Value>, K8sError> {
+        *self.last_list.lock().unwrap() = Some((kind, namespace.map(str::to_owned)));
+        Ok(self.items.lock().unwrap().clone())
     }
 
-    async fn list_statefulsets(
+    async fn rollout_restart(
         &self,
-        namespace: Option<&str>,
-    ) -> Result<Vec<StatefulSetSummary>, K8sError> {
-        *self.last_list_namespace.lock().unwrap() = namespace.map(str::to_owned);
-        Ok(clone_statefulsets(&self.statefulsets))
-    }
-
-    async fn list_daemonsets(
-        &self,
-        namespace: Option<&str>,
-    ) -> Result<Vec<DaemonSetSummary>, K8sError> {
-        *self.last_list_namespace.lock().unwrap() = namespace.map(str::to_owned);
-        Ok(clone_daemonsets(&self.daemonsets))
-    }
-
-    async fn rollout_restart_deployment(
-        &self,
+        kind: WorkloadKind,
         namespace: &str,
         name: &str,
     ) -> Result<String, K8sError> {
         self.restarts
             .lock()
             .unwrap()
-            .push(("Deployment".into(), namespace.into(), name.into()));
+            .push((kind, namespace.into(), name.into()));
         Ok("2026-05-07T00:00:00Z".into())
     }
-
-    async fn rollout_restart_statefulset(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<String, K8sError> {
-        self.restarts
-            .lock()
-            .unwrap()
-            .push(("StatefulSet".into(), namespace.into(), name.into()));
-        Ok("2026-05-07T00:00:00Z".into())
-    }
-
-    async fn rollout_restart_daemonset(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<String, K8sError> {
-        self.restarts
-            .lock()
-            .unwrap()
-            .push(("DaemonSet".into(), namespace.into(), name.into()));
-        Ok("2026-05-07T00:00:00Z".into())
-    }
-}
-
-fn clone_deployments(items: &[DeploymentSummary]) -> Vec<DeploymentSummary> {
-    items
-        .iter()
-        .map(|d| DeploymentSummary {
-            name: d.name.clone(),
-            namespace: d.namespace.clone(),
-            replicas: d.replicas,
-            ready_replicas: d.ready_replicas,
-            updated_replicas: d.updated_replicas,
-            available_replicas: d.available_replicas,
-            creation_timestamp: d.creation_timestamp.clone(),
-        })
-        .collect()
-}
-
-fn clone_statefulsets(items: &[StatefulSetSummary]) -> Vec<StatefulSetSummary> {
-    items
-        .iter()
-        .map(|s| StatefulSetSummary {
-            name: s.name.clone(),
-            namespace: s.namespace.clone(),
-            replicas: s.replicas,
-            ready_replicas: s.ready_replicas,
-            updated_replicas: s.updated_replicas,
-            current_replicas: s.current_replicas,
-            creation_timestamp: s.creation_timestamp.clone(),
-        })
-        .collect()
-}
-
-fn clone_daemonsets(items: &[DaemonSetSummary]) -> Vec<DaemonSetSummary> {
-    items
-        .iter()
-        .map(|d| DaemonSetSummary {
-            name: d.name.clone(),
-            namespace: d.namespace.clone(),
-            desired_number_scheduled: d.desired_number_scheduled,
-            current_number_scheduled: d.current_number_scheduled,
-            number_ready: d.number_ready,
-            number_available: d.number_available,
-            updated_number_scheduled: d.updated_number_scheduled,
-            creation_timestamp: d.creation_timestamp.clone(),
-        })
-        .collect()
 }
 
 fn unavailable_k8s() -> Arc<dyn K8sService> {
@@ -165,7 +77,7 @@ async fn initialize_returns_server_info() {
 }
 
 #[tokio::test]
-async fn tools_list_includes_workload_tools() {
+async fn tools_list_includes_workload_tool() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s())
         .oneshot(json_request(
             "/mcp",
@@ -181,17 +93,9 @@ async fn tools_list_includes_workload_tools() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    for expected in [
-        "ping",
-        "list_deployments",
-        "list_statefulsets",
-        "list_daemonsets",
-        "rollout_restart_deployment",
-        "rollout_restart_statefulset",
-        "rollout_restart_daemonset",
-    ] {
-        assert!(names.contains(&expected), "missing tool: {expected}");
-    }
+    assert_eq!(tools.len(), 2);
+    assert!(names.contains(&"ping"));
+    assert!(names.contains(&"workload"));
 }
 
 #[tokio::test]
@@ -248,19 +152,13 @@ async fn unknown_tool_returns_jsonrpc_error() {
 }
 
 #[tokio::test]
-async fn list_deployments_returns_summaries_from_service() {
-    let fake = Arc::new(FakeK8s {
-        deployments: vec![DeploymentSummary {
-            name: "api".into(),
-            namespace: "default".into(),
-            replicas: 3,
-            ready_replicas: 3,
-            updated_replicas: 3,
-            available_replicas: 3,
-            creation_timestamp: Some("2026-05-01T00:00:00Z".into()),
-        }],
-        ..Default::default()
-    });
+async fn workload_list_dispatches_to_service() {
+    let fake = Arc::new(FakeK8s::default());
+    *fake.items.lock().unwrap() = vec![json!({
+        "name": "api",
+        "namespace": "default",
+        "replicas": 3,
+    })];
     let app = homelab_k3s_mcp::app(None, fake.clone());
 
     let response = app
@@ -271,8 +169,12 @@ async fn list_deployments_returns_summaries_from_service() {
                 "id": 10,
                 "method": "tools/call",
                 "params": {
-                    "name": "list_deployments",
-                    "arguments": {"namespace": "default"}
+                    "name": "workload",
+                    "arguments": {
+                        "action": "list",
+                        "kind": "Deployment",
+                        "namespace": "default"
+                    }
                 }
             }),
         ))
@@ -281,19 +183,19 @@ async fn list_deployments_returns_summaries_from_service() {
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], false);
-    let items = &body["result"]["structuredContent"]["items"];
-    assert_eq!(items[0]["name"], "api");
-    assert_eq!(items[0]["namespace"], "default");
-    assert_eq!(items[0]["replicas"], 3);
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["kind"], "Deployment");
+    assert_eq!(payload["namespace"], "default");
+    assert_eq!(payload["items"][0]["name"], "api");
 
-    assert_eq!(
-        fake.last_list_namespace.lock().unwrap().as_deref(),
-        Some("default")
-    );
+    let last = fake.last_list.lock().unwrap();
+    let (kind, ns) = last.as_ref().unwrap();
+    assert_eq!(*kind, WorkloadKind::Deployment);
+    assert_eq!(ns.as_deref(), Some("default"));
 }
 
 #[tokio::test]
-async fn list_deployments_without_namespace_lists_all() {
+async fn workload_list_without_namespace_lists_all() {
     let fake = Arc::new(FakeK8s::default());
     let app = homelab_k3s_mcp::app(None, fake.clone());
 
@@ -304,7 +206,10 @@ async fn list_deployments_without_namespace_lists_all() {
                 "jsonrpc": "2.0",
                 "id": 11,
                 "method": "tools/call",
-                "params": {"name": "list_deployments", "arguments": {}}
+                "params": {
+                    "name": "workload",
+                    "arguments": { "action": "list", "kind": "StatefulSet" }
+                }
             }),
         ))
         .await
@@ -312,11 +217,14 @@ async fn list_deployments_without_namespace_lists_all() {
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], false);
-    assert!(fake.last_list_namespace.lock().unwrap().is_none());
+    let last = fake.last_list.lock().unwrap();
+    let (kind, ns) = last.as_ref().unwrap();
+    assert_eq!(*kind, WorkloadKind::StatefulSet);
+    assert!(ns.is_none());
 }
 
 #[tokio::test]
-async fn rollout_restart_deployment_calls_service() {
+async fn workload_rollout_restart_dispatches_to_service() {
     let fake = Arc::new(FakeK8s::default());
     let app = homelab_k3s_mcp::app(None, fake.clone());
 
@@ -328,8 +236,13 @@ async fn rollout_restart_deployment_calls_service() {
                 "id": 20,
                 "method": "tools/call",
                 "params": {
-                    "name": "rollout_restart_deployment",
-                    "arguments": {"namespace": "kube-system", "name": "coredns"}
+                    "name": "workload",
+                    "arguments": {
+                        "action": "rollout_restart",
+                        "kind": "DaemonSet",
+                        "namespace": "kube-system",
+                        "name": "kindnet"
+                    }
                 }
             }),
         ))
@@ -338,72 +251,21 @@ async fn rollout_restart_deployment_calls_service() {
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], false);
-    assert_eq!(body["result"]["structuredContent"]["kind"], "Deployment");
-    assert_eq!(body["result"]["structuredContent"]["name"], "coredns");
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["kind"], "DaemonSet");
+    assert_eq!(payload["namespace"], "kube-system");
+    assert_eq!(payload["name"], "kindnet");
+    assert!(payload["restartedAt"].is_string());
 
     let restarts = fake.restarts.lock().unwrap();
     assert_eq!(restarts.len(), 1);
-    assert_eq!(restarts[0].0, "Deployment");
+    assert_eq!(restarts[0].0, WorkloadKind::DaemonSet);
     assert_eq!(restarts[0].1, "kube-system");
-    assert_eq!(restarts[0].2, "coredns");
+    assert_eq!(restarts[0].2, "kindnet");
 }
 
 #[tokio::test]
-async fn rollout_restart_statefulset_calls_service() {
-    let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone());
-
-    let response = app
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 21,
-                "method": "tools/call",
-                "params": {
-                    "name": "rollout_restart_statefulset",
-                    "arguments": {"namespace": "data", "name": "postgres"}
-                }
-            }),
-        ))
-        .await
-        .unwrap();
-
-    let body = body_json(response).await;
-    assert_eq!(body["result"]["isError"], false);
-    let restarts = fake.restarts.lock().unwrap();
-    assert_eq!(restarts[0].0, "StatefulSet");
-}
-
-#[tokio::test]
-async fn rollout_restart_daemonset_calls_service() {
-    let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone());
-
-    let response = app
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 22,
-                "method": "tools/call",
-                "params": {
-                    "name": "rollout_restart_daemonset",
-                    "arguments": {"namespace": "kube-system", "name": "kindnet"}
-                }
-            }),
-        ))
-        .await
-        .unwrap();
-
-    let body = body_json(response).await;
-    assert_eq!(body["result"]["isError"], false);
-    let restarts = fake.restarts.lock().unwrap();
-    assert_eq!(restarts[0].0, "DaemonSet");
-}
-
-#[tokio::test]
-async fn rollout_restart_requires_namespace_and_name() {
+async fn workload_rollout_restart_requires_namespace_and_name() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s())
         .oneshot(json_request(
             "/mcp",
@@ -412,8 +274,56 @@ async fn rollout_restart_requires_namespace_and_name() {
                 "id": 30,
                 "method": "tools/call",
                 "params": {
-                    "name": "rollout_restart_deployment",
-                    "arguments": {"namespace": "default"}
+                    "name": "workload",
+                    "arguments": {
+                        "action": "rollout_restart",
+                        "kind": "Deployment",
+                        "namespace": "default"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn workload_rejects_unknown_kind() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 31,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload",
+                    "arguments": { "action": "list", "kind": "Pod" }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn workload_rejects_unknown_action() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 32,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload",
+                    "arguments": { "action": "delete", "kind": "Deployment" }
                 }
             }),
         ))
@@ -431,9 +341,12 @@ async fn unavailable_k8s_returns_tool_error() {
             "/mcp",
             json!({
                 "jsonrpc": "2.0",
-                "id": 31,
+                "id": 40,
                 "method": "tools/call",
-                "params": {"name": "list_deployments", "arguments": {}}
+                "params": {
+                    "name": "workload",
+                    "arguments": { "action": "list", "kind": "Deployment" }
+                }
             }),
         ))
         .await

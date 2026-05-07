@@ -4,7 +4,7 @@ use axum::{extract::State, response::Json, routing::post, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::k8s::{K8sError, K8sService};
+use crate::k8s::{K8sError, K8sService, WorkloadKind};
 
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const SERVER_NAME: &str = env!("CARGO_PKG_NAME");
@@ -105,26 +105,6 @@ fn initialize() -> Result<Value, (i32, String)> {
 }
 
 fn tools_list() -> Result<Value, (i32, String)> {
-    let optional_namespace = json!({
-        "type": "object",
-        "properties": {
-            "namespace": {
-                "type": "string",
-                "description": "Optional namespace. If omitted, lists across all namespaces."
-            }
-        },
-        "additionalProperties": false,
-    });
-    let restart_args = json!({
-        "type": "object",
-        "properties": {
-            "namespace": { "type": "string", "description": "Namespace of the workload." },
-            "name": { "type": "string", "description": "Name of the workload." }
-        },
-        "required": ["namespace", "name"],
-        "additionalProperties": false,
-    });
-
     Ok(json!({
         "tools": [
             {
@@ -137,34 +117,35 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 },
             },
             {
-                "name": "list_deployments",
-                "description": "List Deployments (apps/v1) in the cluster, optionally filtered by namespace.",
-                "inputSchema": optional_namespace,
-            },
-            {
-                "name": "list_statefulsets",
-                "description": "List StatefulSets (apps/v1) in the cluster, optionally filtered by namespace.",
-                "inputSchema": optional_namespace,
-            },
-            {
-                "name": "list_daemonsets",
-                "description": "List DaemonSets (apps/v1) in the cluster, optionally filtered by namespace.",
-                "inputSchema": optional_namespace,
-            },
-            {
-                "name": "rollout_restart_deployment",
-                "description": "Trigger a rolling restart of a Deployment by patching spec.template.metadata.annotations.",
-                "inputSchema": restart_args,
-            },
-            {
-                "name": "rollout_restart_statefulset",
-                "description": "Trigger a rolling restart of a StatefulSet by patching spec.template.metadata.annotations.",
-                "inputSchema": restart_args,
-            },
-            {
-                "name": "rollout_restart_daemonset",
-                "description": "Trigger a rolling restart of a DaemonSet by patching spec.template.metadata.annotations.",
-                "inputSchema": restart_args,
+                "name": "workload",
+                "description": "Manage Kubernetes workloads (Deployment, StatefulSet, DaemonSet). \
+                                Set action='list' to list workloads (namespace optional; omitted = all namespaces). \
+                                Set action='rollout_restart' to trigger a rolling restart (namespace and name required).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "action": {
+                            "type": "string",
+                            "enum": ["list", "rollout_restart"],
+                            "description": "Operation to perform."
+                        },
+                        "kind": {
+                            "type": "string",
+                            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
+                            "description": "Workload kind."
+                        },
+                        "namespace": {
+                            "type": "string",
+                            "description": "Namespace. Optional for 'list', required for 'rollout_restart'."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Workload name. Required for 'rollout_restart'."
+                        }
+                    },
+                    "required": ["action", "kind"],
+                    "additionalProperties": false,
+                },
             }
         ]
     }))
@@ -182,118 +163,75 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
             "content": [{ "type": "text", "text": "pong" }],
             "isError": false,
         })),
-        "list_deployments" => {
-            let namespace = optional_namespace_arg(&args)?;
-            match k8s.list_deployments(namespace.as_deref()).await {
-                Ok(items) => Ok(success_json(json!({ "items": items }))),
-                Err(err) => Ok(tool_error(err)),
-            }
-        }
-        "list_statefulsets" => {
-            let namespace = optional_namespace_arg(&args)?;
-            match k8s.list_statefulsets(namespace.as_deref()).await {
-                Ok(items) => Ok(success_json(json!({ "items": items }))),
-                Err(err) => Ok(tool_error(err)),
-            }
-        }
-        "list_daemonsets" => {
-            let namespace = optional_namespace_arg(&args)?;
-            match k8s.list_daemonsets(namespace.as_deref()).await {
-                Ok(items) => Ok(success_json(json!({ "items": items }))),
-                Err(err) => Ok(tool_error(err)),
-            }
-        }
-        "rollout_restart_deployment" => {
-            let (namespace, target) = restart_args(&args)?;
-            match k8s.rollout_restart_deployment(&namespace, &target).await {
-                Ok(restarted_at) => Ok(restart_success(
-                    "Deployment",
-                    &namespace,
-                    &target,
-                    &restarted_at,
-                )),
-                Err(err) => Ok(tool_error(err)),
-            }
-        }
-        "rollout_restart_statefulset" => {
-            let (namespace, target) = restart_args(&args)?;
-            match k8s.rollout_restart_statefulset(&namespace, &target).await {
-                Ok(restarted_at) => Ok(restart_success(
-                    "StatefulSet",
-                    &namespace,
-                    &target,
-                    &restarted_at,
-                )),
-                Err(err) => Ok(tool_error(err)),
-            }
-        }
-        "rollout_restart_daemonset" => {
-            let (namespace, target) = restart_args(&args)?;
-            match k8s.rollout_restart_daemonset(&namespace, &target).await {
-                Ok(restarted_at) => Ok(restart_success(
-                    "DaemonSet",
-                    &namespace,
-                    &target,
-                    &restarted_at,
-                )),
-                Err(err) => Ok(tool_error(err)),
-            }
-        }
+        "workload" => workload_tool(k8s, &args).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
 }
 
-fn optional_namespace_arg(args: &Value) -> Result<Option<String>, (i32, String)> {
-    if args.is_null() {
-        return Ok(None);
-    }
+async fn workload_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
     let obj = args
         .as_object()
         .ok_or((-32602, "arguments must be an object".to_string()))?;
-    match obj.get("namespace") {
-        None | Some(Value::Null) => Ok(None),
-        Some(Value::String(s)) if s.is_empty() => Ok(None),
-        Some(Value::String(s)) => Ok(Some(s.clone())),
-        Some(_) => Err((-32602, "namespace must be a string".to_string())),
-    }
-}
 
-fn restart_args(args: &Value) -> Result<(String, String), (i32, String)> {
-    let obj = args
-        .as_object()
-        .ok_or((-32602, "arguments must be an object".to_string()))?;
+    let action = obj
+        .get("action")
+        .and_then(Value::as_str)
+        .ok_or((-32602, "action is required".to_string()))?;
+    let kind_str = obj
+        .get("kind")
+        .and_then(Value::as_str)
+        .ok_or((-32602, "kind is required".to_string()))?;
+    let kind = WorkloadKind::parse(kind_str).ok_or((
+        -32602,
+        format!("unknown kind: {kind_str} (expected Deployment, StatefulSet, or DaemonSet)"),
+    ))?;
     let namespace = obj
         .get("namespace")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or((-32602, "namespace is required".to_string()))?
-        .to_string();
-    let name = obj
+        .map(str::to_owned);
+    let workload_name = obj
         .get("name")
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
-        .ok_or((-32602, "name is required".to_string()))?
-        .to_string();
-    Ok((namespace, name))
+        .map(str::to_owned);
+
+    match action {
+        "list" => match k8s.list_workloads(kind, namespace.as_deref()).await {
+            Ok(items) => Ok(success_json(json!({
+                "kind": kind.as_str(),
+                "namespace": namespace,
+                "items": items,
+            }))),
+            Err(err) => Ok(tool_error(err)),
+        },
+        "rollout_restart" => {
+            let ns = namespace.ok_or((
+                -32602,
+                "namespace is required for rollout_restart".to_string(),
+            ))?;
+            let target = workload_name
+                .ok_or((-32602, "name is required for rollout_restart".to_string()))?;
+            match k8s.rollout_restart(kind, &ns, &target).await {
+                Ok(restarted_at) => Ok(success_json(json!({
+                    "action": "rollout_restart",
+                    "kind": kind.as_str(),
+                    "namespace": ns,
+                    "name": target,
+                    "restartedAt": restarted_at,
+                }))),
+                Err(err) => Ok(tool_error(err)),
+            }
+        }
+        other => Err((
+            -32602,
+            format!("unknown action: {other} (expected 'list' or 'rollout_restart')"),
+        )),
+    }
 }
 
 fn success_json(payload: Value) -> Value {
     let text = serde_json::to_string_pretty(&payload).unwrap_or_else(|_| payload.to_string());
-    json!({
-        "content": [{ "type": "text", "text": text }],
-        "structuredContent": payload,
-        "isError": false,
-    })
-}
-
-fn restart_success(kind: &str, namespace: &str, name: &str, restarted_at: &str) -> Value {
-    let payload = json!({
-        "kind": kind,
-        "namespace": namespace,
-        "name": name,
-        "restartedAt": restarted_at,
-    });
-    let text = format!("rollout restart triggered for {kind} {namespace}/{name} at {restarted_at}");
     json!({
         "content": [{ "type": "text", "text": text }],
         "structuredContent": payload,

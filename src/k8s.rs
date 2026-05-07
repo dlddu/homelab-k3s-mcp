@@ -6,10 +6,36 @@ use k8s_openapi::NamespaceResourceScope;
 use kube::api::{Api, ListParams, Patch, PatchParams};
 use kube::{Client, Resource};
 use serde::Serialize;
-use serde_json::json;
+use serde_json::{json, Value};
 
 const RESTART_ANNOTATION: &str = "kubectl.kubernetes.io/restartedAt";
 const FIELD_MANAGER: &str = "homelab-k3s-mcp";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WorkloadKind {
+    Deployment,
+    StatefulSet,
+    DaemonSet,
+}
+
+impl WorkloadKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            WorkloadKind::Deployment => "Deployment",
+            WorkloadKind::StatefulSet => "StatefulSet",
+            WorkloadKind::DaemonSet => "DaemonSet",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        match s {
+            "Deployment" | "deployment" | "deploy" => Some(WorkloadKind::Deployment),
+            "StatefulSet" | "statefulset" | "sts" => Some(WorkloadKind::StatefulSet),
+            "DaemonSet" | "daemonset" | "ds" => Some(WorkloadKind::DaemonSet),
+            _ => None,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum K8sError {
@@ -34,71 +60,17 @@ impl From<kube::Error> for K8sError {
     }
 }
 
-#[derive(Debug, Serialize)]
-pub struct DeploymentSummary {
-    pub name: String,
-    pub namespace: String,
-    pub replicas: i32,
-    pub ready_replicas: i32,
-    pub updated_replicas: i32,
-    pub available_replicas: i32,
-    pub creation_timestamp: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct StatefulSetSummary {
-    pub name: String,
-    pub namespace: String,
-    pub replicas: i32,
-    pub ready_replicas: i32,
-    pub updated_replicas: i32,
-    pub current_replicas: i32,
-    pub creation_timestamp: Option<String>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct DaemonSetSummary {
-    pub name: String,
-    pub namespace: String,
-    pub desired_number_scheduled: i32,
-    pub current_number_scheduled: i32,
-    pub number_ready: i32,
-    pub number_available: i32,
-    pub updated_number_scheduled: i32,
-    pub creation_timestamp: Option<String>,
-}
-
 #[async_trait]
 pub trait K8sService: Send + Sync {
-    async fn list_deployments(
+    async fn list_workloads(
         &self,
+        kind: WorkloadKind,
         namespace: Option<&str>,
-    ) -> Result<Vec<DeploymentSummary>, K8sError>;
+    ) -> Result<Vec<Value>, K8sError>;
 
-    async fn list_statefulsets(
+    async fn rollout_restart(
         &self,
-        namespace: Option<&str>,
-    ) -> Result<Vec<StatefulSetSummary>, K8sError>;
-
-    async fn list_daemonsets(
-        &self,
-        namespace: Option<&str>,
-    ) -> Result<Vec<DaemonSetSummary>, K8sError>;
-
-    async fn rollout_restart_deployment(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<String, K8sError>;
-
-    async fn rollout_restart_statefulset(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<String, K8sError>;
-
-    async fn rollout_restart_daemonset(
-        &self,
+        kind: WorkloadKind,
         namespace: &str,
         name: &str,
     ) -> Result<String, K8sError>;
@@ -124,45 +96,17 @@ impl Default for UnavailableK8s {
 
 #[async_trait]
 impl K8sService for UnavailableK8s {
-    async fn list_deployments(
+    async fn list_workloads(
         &self,
+        _kind: WorkloadKind,
         _namespace: Option<&str>,
-    ) -> Result<Vec<DeploymentSummary>, K8sError> {
+    ) -> Result<Vec<Value>, K8sError> {
         Err(K8sError::Unavailable(self.reason.clone()))
     }
 
-    async fn list_statefulsets(
+    async fn rollout_restart(
         &self,
-        _namespace: Option<&str>,
-    ) -> Result<Vec<StatefulSetSummary>, K8sError> {
-        Err(K8sError::Unavailable(self.reason.clone()))
-    }
-
-    async fn list_daemonsets(
-        &self,
-        _namespace: Option<&str>,
-    ) -> Result<Vec<DaemonSetSummary>, K8sError> {
-        Err(K8sError::Unavailable(self.reason.clone()))
-    }
-
-    async fn rollout_restart_deployment(
-        &self,
-        _namespace: &str,
-        _name: &str,
-    ) -> Result<String, K8sError> {
-        Err(K8sError::Unavailable(self.reason.clone()))
-    }
-
-    async fn rollout_restart_statefulset(
-        &self,
-        _namespace: &str,
-        _name: &str,
-    ) -> Result<String, K8sError> {
-        Err(K8sError::Unavailable(self.reason.clone()))
-    }
-
-    async fn rollout_restart_daemonset(
-        &self,
+        _kind: WorkloadKind,
         _namespace: &str,
         _name: &str,
     ) -> Result<String, K8sError> {
@@ -193,7 +137,7 @@ impl KubeService {
         }
     }
 
-    async fn rollout_restart<K>(&self, namespace: &str, name: &str) -> Result<String, K8sError>
+    async fn restart<K>(&self, namespace: &str, name: &str) -> Result<String, K8sError>
     where
         K: Resource<Scope = NamespaceResourceScope>
             + Clone
@@ -222,118 +166,145 @@ impl KubeService {
     }
 }
 
-fn creation_timestamp<K>(obj: &K) -> Option<String>
-where
-    K: Resource,
-{
+#[derive(Debug, Serialize)]
+struct DeploymentSummary {
+    name: String,
+    namespace: String,
+    replicas: i32,
+    ready_replicas: i32,
+    updated_replicas: i32,
+    available_replicas: i32,
+    creation_timestamp: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct StatefulSetSummary {
+    name: String,
+    namespace: String,
+    replicas: i32,
+    ready_replicas: i32,
+    updated_replicas: i32,
+    current_replicas: i32,
+    creation_timestamp: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct DaemonSetSummary {
+    name: String,
+    namespace: String,
+    desired_number_scheduled: i32,
+    current_number_scheduled: i32,
+    number_ready: i32,
+    number_available: i32,
+    updated_number_scheduled: i32,
+    creation_timestamp: Option<String>,
+}
+
+fn creation_timestamp<K: Resource>(obj: &K) -> Option<String> {
     obj.meta()
         .creation_timestamp
         .as_ref()
         .map(|t| t.0.to_string())
 }
 
+fn to_value<T: Serialize>(value: T) -> Value {
+    serde_json::to_value(value).unwrap_or(Value::Null)
+}
+
 #[async_trait]
 impl K8sService for KubeService {
-    async fn list_deployments(
+    async fn list_workloads(
         &self,
+        kind: WorkloadKind,
         namespace: Option<&str>,
-    ) -> Result<Vec<DeploymentSummary>, K8sError> {
-        let api: Api<Deployment> = self.api(namespace);
-        let list = api.list(&ListParams::default()).await?;
-        Ok(list
-            .items
-            .iter()
-            .map(|d| {
-                let status = d.status.as_ref();
-                DeploymentSummary {
-                    name: d.meta().name.clone().unwrap_or_default(),
-                    namespace: d.meta().namespace.clone().unwrap_or_default(),
-                    replicas: d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0),
-                    ready_replicas: status.and_then(|s| s.ready_replicas).unwrap_or(0),
-                    updated_replicas: status.and_then(|s| s.updated_replicas).unwrap_or(0),
-                    available_replicas: status.and_then(|s| s.available_replicas).unwrap_or(0),
-                    creation_timestamp: creation_timestamp(d),
-                }
-            })
-            .collect())
+    ) -> Result<Vec<Value>, K8sError> {
+        match kind {
+            WorkloadKind::Deployment => {
+                let api: Api<Deployment> = self.api(namespace);
+                let list = api.list(&ListParams::default()).await?;
+                Ok(list
+                    .items
+                    .iter()
+                    .map(|d| {
+                        let status = d.status.as_ref();
+                        to_value(DeploymentSummary {
+                            name: d.meta().name.clone().unwrap_or_default(),
+                            namespace: d.meta().namespace.clone().unwrap_or_default(),
+                            replicas: d.spec.as_ref().and_then(|s| s.replicas).unwrap_or(0),
+                            ready_replicas: status.and_then(|s| s.ready_replicas).unwrap_or(0),
+                            updated_replicas: status.and_then(|s| s.updated_replicas).unwrap_or(0),
+                            available_replicas: status
+                                .and_then(|s| s.available_replicas)
+                                .unwrap_or(0),
+                            creation_timestamp: creation_timestamp(d),
+                        })
+                    })
+                    .collect())
+            }
+            WorkloadKind::StatefulSet => {
+                let api: Api<StatefulSet> = self.api(namespace);
+                let list = api.list(&ListParams::default()).await?;
+                Ok(list
+                    .items
+                    .iter()
+                    .map(|s| {
+                        let status = s.status.as_ref();
+                        to_value(StatefulSetSummary {
+                            name: s.meta().name.clone().unwrap_or_default(),
+                            namespace: s.meta().namespace.clone().unwrap_or_default(),
+                            replicas: s.spec.as_ref().and_then(|sp| sp.replicas).unwrap_or(0),
+                            ready_replicas: status.and_then(|st| st.ready_replicas).unwrap_or(0),
+                            updated_replicas: status
+                                .and_then(|st| st.updated_replicas)
+                                .unwrap_or(0),
+                            current_replicas: status
+                                .and_then(|st| st.current_replicas)
+                                .unwrap_or(0),
+                            creation_timestamp: creation_timestamp(s),
+                        })
+                    })
+                    .collect())
+            }
+            WorkloadKind::DaemonSet => {
+                let api: Api<DaemonSet> = self.api(namespace);
+                let list = api.list(&ListParams::default()).await?;
+                Ok(list
+                    .items
+                    .iter()
+                    .map(|d| {
+                        let status = d.status.as_ref();
+                        to_value(DaemonSetSummary {
+                            name: d.meta().name.clone().unwrap_or_default(),
+                            namespace: d.meta().namespace.clone().unwrap_or_default(),
+                            desired_number_scheduled: status
+                                .map(|s| s.desired_number_scheduled)
+                                .unwrap_or(0),
+                            current_number_scheduled: status
+                                .map(|s| s.current_number_scheduled)
+                                .unwrap_or(0),
+                            number_ready: status.map(|s| s.number_ready).unwrap_or(0),
+                            number_available: status.and_then(|s| s.number_available).unwrap_or(0),
+                            updated_number_scheduled: status
+                                .and_then(|s| s.updated_number_scheduled)
+                                .unwrap_or(0),
+                            creation_timestamp: creation_timestamp(d),
+                        })
+                    })
+                    .collect())
+            }
+        }
     }
 
-    async fn list_statefulsets(
+    async fn rollout_restart(
         &self,
-        namespace: Option<&str>,
-    ) -> Result<Vec<StatefulSetSummary>, K8sError> {
-        let api: Api<StatefulSet> = self.api(namespace);
-        let list = api.list(&ListParams::default()).await?;
-        Ok(list
-            .items
-            .iter()
-            .map(|s| {
-                let status = s.status.as_ref();
-                StatefulSetSummary {
-                    name: s.meta().name.clone().unwrap_or_default(),
-                    namespace: s.meta().namespace.clone().unwrap_or_default(),
-                    replicas: s.spec.as_ref().and_then(|sp| sp.replicas).unwrap_or(0),
-                    ready_replicas: status.and_then(|st| st.ready_replicas).unwrap_or(0),
-                    updated_replicas: status.and_then(|st| st.updated_replicas).unwrap_or(0),
-                    current_replicas: status.and_then(|st| st.current_replicas).unwrap_or(0),
-                    creation_timestamp: creation_timestamp(s),
-                }
-            })
-            .collect())
-    }
-
-    async fn list_daemonsets(
-        &self,
-        namespace: Option<&str>,
-    ) -> Result<Vec<DaemonSetSummary>, K8sError> {
-        let api: Api<DaemonSet> = self.api(namespace);
-        let list = api.list(&ListParams::default()).await?;
-        Ok(list
-            .items
-            .iter()
-            .map(|d| {
-                let status = d.status.as_ref();
-                DaemonSetSummary {
-                    name: d.meta().name.clone().unwrap_or_default(),
-                    namespace: d.meta().namespace.clone().unwrap_or_default(),
-                    desired_number_scheduled: status
-                        .map(|s| s.desired_number_scheduled)
-                        .unwrap_or(0),
-                    current_number_scheduled: status
-                        .map(|s| s.current_number_scheduled)
-                        .unwrap_or(0),
-                    number_ready: status.map(|s| s.number_ready).unwrap_or(0),
-                    number_available: status.and_then(|s| s.number_available).unwrap_or(0),
-                    updated_number_scheduled: status
-                        .and_then(|s| s.updated_number_scheduled)
-                        .unwrap_or(0),
-                    creation_timestamp: creation_timestamp(d),
-                }
-            })
-            .collect())
-    }
-
-    async fn rollout_restart_deployment(
-        &self,
+        kind: WorkloadKind,
         namespace: &str,
         name: &str,
     ) -> Result<String, K8sError> {
-        self.rollout_restart::<Deployment>(namespace, name).await
-    }
-
-    async fn rollout_restart_statefulset(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<String, K8sError> {
-        self.rollout_restart::<StatefulSet>(namespace, name).await
-    }
-
-    async fn rollout_restart_daemonset(
-        &self,
-        namespace: &str,
-        name: &str,
-    ) -> Result<String, K8sError> {
-        self.rollout_restart::<DaemonSet>(namespace, name).await
+        match kind {
+            WorkloadKind::Deployment => self.restart::<Deployment>(namespace, name).await,
+            WorkloadKind::StatefulSet => self.restart::<StatefulSet>(namespace, name).await,
+            WorkloadKind::DaemonSet => self.restart::<DaemonSet>(namespace, name).await,
+        }
     }
 }
