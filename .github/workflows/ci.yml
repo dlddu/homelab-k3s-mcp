@@ -107,7 +107,8 @@ jobs:
             -H 'content-type: application/json' \
             -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | tee /tmp/tools.json
           grep -q '"name":"ping"' /tmp/tools.json
-          grep -q '"name":"workload"' /tmp/tools.json
+          grep -q '"name":"workload_list"' /tmp/tools.json
+          grep -q '"name":"workload_restart"' /tmp/tools.json
 
       - name: Validate workload tool against fixture
         run: |
@@ -122,7 +123,7 @@ jobs:
           echo "--- workload list (namespace=workload-test) ---"
           curl -fsS -X POST http://127.0.0.1:8081/mcp \
             -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"workload","arguments":{"action":"list","kind":"Deployment","namespace":"workload-test"}}}' \
+            -d '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"workload_list","arguments":{"kind":"Deployment","namespace":"workload-test"}}}' \
             | tee /tmp/workload-list.json
           python3 -c "
           import json, sys
@@ -139,7 +140,7 @@ jobs:
           echo "--- workload list (all namespaces) ---"
           curl -fsS -X POST http://127.0.0.1:8081/mcp \
             -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"workload","arguments":{"action":"list","kind":"Deployment"}}}' \
+            -d '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"workload_list","arguments":{"kind":"Deployment"}}}' \
             | tee /tmp/workload-list-all.json
           python3 -c "
           import json
@@ -152,20 +153,19 @@ jobs:
           print('list-all ok:', len(items), 'items')
           "
 
-          echo "--- workload rollout_restart ---"
+          echo "--- workload_restart ---"
           curl -fsS -X POST http://127.0.0.1:8081/mcp \
             -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"workload","arguments":{"action":"rollout_restart","kind":"Deployment","namespace":"workload-test","name":"workload-fixture"}}}' \
+            -d '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"workload_restart","arguments":{"kind":"Deployment","namespace":"workload-test","name":"workload-fixture"}}}' \
             | tee /tmp/workload-restart.json
           python3 -c "
           import json
           body = json.load(open('/tmp/workload-restart.json'))
           assert body['result']['isError'] is False, body
           payload = body['result']['structuredContent']
-          assert payload['action'] == 'rollout_restart', payload
           assert payload['name'] == 'workload-fixture', payload
           assert payload['restartedAt'], payload
-          print('rollout_restart ok at', payload['restartedAt'])
+          print('workload_restart ok at', payload['restartedAt'])
           "
 
           # Verify the patch actually landed on the resource.
