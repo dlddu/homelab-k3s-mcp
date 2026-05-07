@@ -1,0 +1,62 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dear-baby-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# Stand-in for the real dear-baby backend pod. busybox is enough because
+# the dear_baby_reset_onboarding tool just exec's /reset-onboarding <email>;
+# the container's startup command writes a stub script at that path that
+# mimics the real CLI's success / not-found exit codes so the kind smoke
+# check can drive both the happy path and the failure path through the
+# Kubernetes pods/exec stream.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dear-baby-fixture
+  namespace: dear-baby-test
+  labels:
+    app.kubernetes.io/name: dear-baby-fixture
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dear-baby
+  template:
+    metadata:
+      labels:
+        app: dear-baby
+    spec:
+      containers:
+        - name: backend
+          image: busybox:1.36
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cat > /reset-onboarding <<'STUB'
+              #!/bin/sh
+              set -eu
+              EMAIL="${1:-}"
+              if [ -z "$EMAIL" ]; then
+                echo "usage: reset-onboarding <email>" >&2
+                exit 2
+              fi
+              case "$EMAIL" in
+                missing@*)
+                  echo "no user found with email \"$EMAIL\"" >&2
+                  exit 1
+                  ;;
+              esac
+              echo "reset onboarding for $EMAIL"
+              STUB
+              chmod +x /reset-onboarding
+              exec sleep infinity
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
