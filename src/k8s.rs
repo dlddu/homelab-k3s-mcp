@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
 use k8s_openapi::NamespaceResourceScope;
 use kube::api::{Api, ListParams, Patch, PatchParams};
-use kube::{Client, Resource};
+use kube::config::KubeConfigOptions;
+use kube::{Client, Config, Resource};
 use serde::Serialize;
 use serde_json::{json, Value};
 
@@ -120,10 +121,42 @@ pub struct KubeService {
 
 impl KubeService {
     pub async fn try_new() -> Result<Self, K8sError> {
-        let client = Client::try_default()
-            .await
-            .map_err(|e| K8sError::Unavailable(format!("init kube client: {e}")))?;
+        let config = Self::load_config().await?;
+        let client = Client::try_from(config)
+            .map_err(|e| K8sError::Unavailable(format!("build kube client: {e}")))?;
         Ok(Self { client })
+    }
+
+    async fn load_config() -> Result<Config, K8sError> {
+        match Config::incluster() {
+            Ok(config) => {
+                tracing::info!(
+                    cluster_url = %config.cluster_url,
+                    namespace = %config.default_namespace,
+                    "loaded in-cluster kube config",
+                );
+                Ok(config)
+            }
+            Err(in_cluster_err) => {
+                tracing::debug!(
+                    error = %in_cluster_err,
+                    "in-cluster kube config not available; falling back to kubeconfig",
+                );
+                match Config::from_kubeconfig(&KubeConfigOptions::default()).await {
+                    Ok(config) => {
+                        tracing::info!(
+                            cluster_url = %config.cluster_url,
+                            namespace = %config.default_namespace,
+                            "loaded kube config from kubeconfig",
+                        );
+                        Ok(config)
+                    }
+                    Err(kubeconfig_err) => Err(K8sError::Unavailable(format!(
+                        "init kube client: in-cluster: ({in_cluster_err}); kubeconfig: ({kubeconfig_err})"
+                    ))),
+                }
+            }
+        }
     }
 
     fn api<K>(&self, namespace: Option<&str>) -> Api<K>
