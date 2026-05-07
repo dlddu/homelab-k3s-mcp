@@ -1,0 +1,35 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workload-fixture
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: workload-fixture
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workload-fixture
+  template:
+    metadata:
+      labels:
+        app: workload-fixture
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 50m
+              memory: 16Mi
