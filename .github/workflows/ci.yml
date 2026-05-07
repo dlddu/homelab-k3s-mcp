@@ -81,11 +81,17 @@ jobs:
       - name: Apply workload test fixture
         run: kubectl apply -f tests/k8s/kind/test-deployment.yaml
 
+      - name: Apply dear-baby exec fixture
+        run: kubectl apply -f tests/k8s/kind/dear-baby-fixture.yaml
+
       - name: Wait for rollout
         run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
 
       - name: Wait for fixture rollout
         run: kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
+
+      - name: Wait for dear-baby fixture rollout
+        run: kubectl -n dear-baby-test rollout status deploy/dear-baby-fixture --timeout=120s
 
       - name: Smoke test deployed service
         run: |
@@ -109,6 +115,7 @@ jobs:
           grep -q '"name":"ping"' /tmp/tools.json
           grep -q '"name":"workload_list"' /tmp/tools.json
           grep -q '"name":"workload_restart"' /tmp/tools.json
+          grep -q '"name":"dear_baby_reset_onboarding"' /tmp/tools.json
 
       - name: Validate workload tool against fixture
         run: |
@@ -175,6 +182,67 @@ jobs:
           test -n "${ANNOTATION}"
           kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
 
+      - name: Validate dear_baby_reset_onboarding tool against fixture
+        run: |
+          kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8082:80 >/tmp/pf-reset.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8082/healthz > /dev/null; then break; fi
+            sleep 1
+          done
+
+          echo "--- dear_baby_reset_onboarding (success path) ---"
+          curl -fsS -X POST http://127.0.0.1:8082/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"dear_baby_reset_onboarding","arguments":{"namespace":"dear-baby-test","email":"user@example.com"}}}' \
+            | tee /tmp/reset-ok.json
+          python3 -c "
+          import json
+          body = json.load(open('/tmp/reset-ok.json'))
+          assert body['result']['isError'] is False, body
+          payload = body['result']['structuredContent']
+          assert payload['namespace'] == 'dear-baby-test', payload
+          assert payload['email'] == 'user@example.com', payload
+          assert payload['selector'] == 'app=dear-baby', payload
+          assert payload['container'] == 'backend', payload
+          assert payload['exitCode'] == 0, payload
+          assert payload['success'] is True, payload
+          assert payload['pod'].startswith('dear-baby-fixture-'), payload
+          assert 'reset onboarding for user@example.com' in payload['stdout'], payload
+          print('reset ok against pod', payload['pod'])
+          "
+
+          echo "--- dear_baby_reset_onboarding (failure path) ---"
+          curl -fsS -X POST http://127.0.0.1:8082/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"dear_baby_reset_onboarding","arguments":{"namespace":"dear-baby-test","email":"missing@example.com"}}}' \
+            | tee /tmp/reset-missing.json
+          python3 -c "
+          import json
+          body = json.load(open('/tmp/reset-missing.json'))
+          assert body['result']['isError'] is True, body
+          payload = body['result']['structuredContent']
+          assert payload['exitCode'] == 1, payload
+          assert payload['success'] is False, payload
+          assert 'no user found' in payload['stderr'], payload
+          print('reset failure path ok')
+          "
+
+          echo "--- dear_baby_reset_onboarding (no Running pod) ---"
+          curl -fsS -X POST http://127.0.0.1:8082/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"dear_baby_reset_onboarding","arguments":{"namespace":"dear-baby-test","email":"user@example.com","selector":"app=does-not-exist"}}}' \
+            | tee /tmp/reset-nopod.json
+          python3 -c "
+          import json
+          body = json.load(open('/tmp/reset-nopod.json'))
+          assert body['result']['isError'] is True, body
+          text = body['result']['content'][0]['text']
+          assert 'no Running pod matched' in text, text
+          print('reset no-pod path ok')
+          "
+
       - name: Dump cluster diagnostics on failure
         if: failure()
         run: |
@@ -183,6 +251,9 @@ jobs:
           kubectl -n homelab-k3s-mcp logs deploy/homelab-k3s-mcp --tail=200 || true
           kubectl -n workload-test get all -o wide || true
           kubectl -n workload-test describe deploy/workload-fixture || true
+          kubectl -n dear-baby-test get all -o wide || true
+          kubectl -n dear-baby-test describe deploy/dear-baby-fixture || true
+          kubectl -n dear-baby-test logs deploy/dear-baby-fixture --tail=200 || true
 
   docker:
     name: docker build & push

@@ -3,16 +3,26 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use homelab_k3s_mcp::k8s::{K8sError, K8sService, WorkloadKind};
+use homelab_k3s_mcp::k8s::{ExecOutcome, K8sError, K8sService, WorkloadKind};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
+
+#[derive(Clone, Debug)]
+struct ExecCall {
+    pub namespace: String,
+    pub selector: String,
+    pub container: Option<String>,
+    pub command: Vec<String>,
+}
 
 #[derive(Default)]
 struct FakeK8s {
     pub items: Mutex<Vec<Value>>,
     pub last_list: Mutex<Option<(WorkloadKind, Option<String>)>>,
     pub restarts: Mutex<Vec<(WorkloadKind, String, String)>>,
+    pub exec_calls: Mutex<Vec<ExecCall>>,
+    pub exec_response: Mutex<Option<Result<ExecOutcome, K8sError>>>,
 }
 
 #[async_trait]
@@ -37,6 +47,32 @@ impl K8sService for FakeK8s {
             .unwrap()
             .push((kind, namespace.into(), name.into()));
         Ok("2026-05-07T00:00:00Z".into())
+    }
+
+    async fn exec_in_pod(
+        &self,
+        namespace: &str,
+        label_selector: &str,
+        container: Option<&str>,
+        command: &[String],
+    ) -> Result<ExecOutcome, K8sError> {
+        self.exec_calls.lock().unwrap().push(ExecCall {
+            namespace: namespace.into(),
+            selector: label_selector.into(),
+            container: container.map(str::to_owned),
+            command: command.to_vec(),
+        });
+        match self.exec_response.lock().unwrap().take() {
+            Some(Ok(outcome)) => Ok(outcome),
+            Some(Err(err)) => Err(err),
+            None => Ok(ExecOutcome {
+                pod: "dear-baby-abcd".into(),
+                stdout: String::new(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                success: true,
+            }),
+        }
     }
 }
 
@@ -93,10 +129,11 @@ async fn tools_list_includes_workload_tools() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    assert_eq!(tools.len(), 3);
+    assert_eq!(tools.len(), 4);
     assert!(names.contains(&"ping"));
     assert!(names.contains(&"workload_list"));
     assert!(names.contains(&"workload_restart"));
+    assert!(names.contains(&"dear_baby_reset_onboarding"));
 }
 
 fn find_tool<'a>(tools: &'a [Value], name: &str) -> &'a Value {
@@ -374,4 +411,192 @@ async fn unavailable_k8s_returns_tool_error() {
         .as_str()
         .unwrap_or("")
         .contains("kubernetes"));
+}
+
+#[tokio::test]
+async fn tools_list_advertises_dear_baby_reset_onboarding() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({"jsonrpc": "2.0", "id": 50, "method": "tools/list"}),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+
+    let reset = find_tool(tools, "dear_baby_reset_onboarding");
+    let required = reset["inputSchema"]["required"]
+        .as_array()
+        .expect("required array");
+    let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+    assert!(names.contains(&"namespace"));
+    assert!(names.contains(&"email"));
+
+    assert_eq!(reset["annotations"]["title"], "Reset dear-baby Onboarding");
+    assert_eq!(reset["annotations"]["destructiveHint"], true);
+    assert_eq!(reset["annotations"]["idempotentHint"], true);
+}
+
+#[tokio::test]
+async fn dear_baby_reset_onboarding_dispatches_exec_with_defaults() {
+    let fake = Arc::new(FakeK8s::default());
+    *fake.exec_response.lock().unwrap() = Some(Ok(ExecOutcome {
+        pod: "dear-baby-7d9c9f6b8b-xyz".into(),
+        stdout: "reset onboarding for user@example.com\n".into(),
+        stderr: String::new(),
+        exit_code: Some(0),
+        success: true,
+    }));
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 60,
+                "method": "tools/call",
+                "params": {
+                    "name": "dear_baby_reset_onboarding",
+                    "arguments": {
+                        "namespace": "dear-baby",
+                        "email": "user@example.com"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["namespace"], "dear-baby");
+    assert_eq!(payload["email"], "user@example.com");
+    assert_eq!(payload["selector"], "app=dear-baby");
+    assert_eq!(payload["container"], "backend");
+    assert_eq!(payload["pod"], "dear-baby-7d9c9f6b8b-xyz");
+    assert_eq!(payload["exitCode"], 0);
+    assert_eq!(payload["success"], true);
+    assert!(payload["stdout"]
+        .as_str()
+        .unwrap_or("")
+        .contains("reset onboarding"));
+
+    let calls = fake.exec_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    let call = &calls[0];
+    assert_eq!(call.namespace, "dear-baby");
+    assert_eq!(call.selector, "app=dear-baby");
+    assert_eq!(call.container.as_deref(), Some("backend"));
+    assert_eq!(
+        call.command,
+        vec![
+            "/reset-onboarding".to_string(),
+            "user@example.com".to_string()
+        ]
+    );
+}
+
+#[tokio::test]
+async fn dear_baby_reset_onboarding_honours_overrides() {
+    let fake = Arc::new(FakeK8s::default());
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 61,
+                "method": "tools/call",
+                "params": {
+                    "name": "dear_baby_reset_onboarding",
+                    "arguments": {
+                        "namespace": "staging",
+                        "email": "qa@example.com",
+                        "selector": "app=dear-baby,track=canary",
+                        "container": "api"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+
+    let calls = fake.exec_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    let call = &calls[0];
+    assert_eq!(call.namespace, "staging");
+    assert_eq!(call.selector, "app=dear-baby,track=canary");
+    assert_eq!(call.container.as_deref(), Some("api"));
+}
+
+#[tokio::test]
+async fn dear_baby_reset_onboarding_reports_non_zero_exit() {
+    let fake = Arc::new(FakeK8s::default());
+    *fake.exec_response.lock().unwrap() = Some(Ok(ExecOutcome {
+        pod: "dear-baby-1".into(),
+        stdout: String::new(),
+        stderr: "no user found with email \"missing@example.com\"\n".into(),
+        exit_code: Some(1),
+        success: false,
+    }));
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 62,
+                "method": "tools/call",
+                "params": {
+                    "name": "dear_baby_reset_onboarding",
+                    "arguments": {
+                        "namespace": "dear-baby",
+                        "email": "missing@example.com"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], true);
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["success"], false);
+    assert_eq!(payload["exitCode"], 1);
+    assert!(payload["stderr"]
+        .as_str()
+        .unwrap_or("")
+        .contains("no user found"));
+}
+
+#[tokio::test]
+async fn dear_baby_reset_onboarding_requires_namespace_and_email() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 63,
+                "method": "tools/call",
+                "params": {
+                    "name": "dear_baby_reset_onboarding",
+                    "arguments": { "email": "user@example.com" }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
 }
