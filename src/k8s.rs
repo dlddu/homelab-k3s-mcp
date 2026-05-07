@@ -75,16 +75,39 @@ pub trait K8sService: Send + Sync {
         namespace: &str,
         name: &str,
     ) -> Result<String, K8sError>;
+
+    /// Whether the k8s integration came up cleanly. A `false` value means
+    /// the kube client could not be initialized and the workload tools
+    /// would error; readiness probes should fail in that case so a broken
+    /// pod is not silently kept in service.
+    fn is_healthy(&self) -> bool {
+        true
+    }
 }
 
 pub struct UnavailableK8s {
     reason: String,
+    healthy: bool,
 }
 
 impl UnavailableK8s {
+    /// Construct a stub for the case where k8s integration was not
+    /// attempted (e.g. tests, `MCP_K8S_DISABLED=1`). The server stays
+    /// healthy from a readiness perspective.
     pub fn new(reason: impl Into<String>) -> Self {
         Self {
             reason: reason.into(),
+            healthy: true,
+        }
+    }
+
+    /// Construct a stub for the case where the kube client failed to
+    /// initialize. The server is considered unhealthy: workload tools
+    /// will error and readiness probes should fail.
+    pub fn init_failed(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            healthy: false,
         }
     }
 }
@@ -112,6 +135,10 @@ impl K8sService for UnavailableK8s {
         _name: &str,
     ) -> Result<String, K8sError> {
         Err(K8sError::Unavailable(self.reason.clone()))
+    }
+
+    fn is_healthy(&self) -> bool {
+        self.healthy
     }
 }
 

@@ -38,8 +38,8 @@ async fn main() {
         match KubeService::try_new().await {
             Ok(svc) => Arc::new(svc),
             Err(err) => {
-                tracing::error!(%err, "failed to initialize kubernetes client; tools will return errors");
-                Arc::new(UnavailableK8s::new(err.to_string()))
+                tracing::error!(%err, "failed to initialize kubernetes client; readiness probe will fail");
+                Arc::new(UnavailableK8s::init_failed(err.to_string()))
             }
         }
     };
