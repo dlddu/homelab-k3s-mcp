@@ -46,25 +46,68 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+
       - name: cargo build --tests
         run: cargo build --tests --verbose
       - name: cargo test --tests
         run: cargo test --tests --verbose -- --nocapture
-      - name: smoke test binary
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: homelab-k3s-mcp:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: homelab-k3s-mcp
+          wait: 120s
+
+      - name: Load image into kind
+        run: kind load docker-image homelab-k3s-mcp:ci --name homelab-k3s-mcp
+
+      - name: Deploy via kustomize (kind overlay)
+        run: kubectl apply -k deploy/overlays/kind
+
+      - name: Wait for rollout
+        run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
+
+      - name: Smoke test deployed service
         run: |
-          cargo build --release
-          LISTEN_ADDR=127.0.0.1:3000 MCP_AUTH_DISABLED=1 ./target/release/homelab-k3s-mcp &
-          SERVER_PID=$!
-          trap "kill $SERVER_PID" EXIT
+          kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8080:80 >/tmp/pf.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
           for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:3000/healthz > /dev/null; then
-              echo "server is up"
+            if curl -fsS http://127.0.0.1:8080/healthz > /dev/null; then
+              echo "service is up"
               break
             fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:3000/healthz | tee /tmp/healthz.json
+          curl -fsS http://127.0.0.1:8080/healthz | tee /tmp/healthz.json
           grep -q '"status":"ok"' /tmp/healthz.json
+          curl -fsS http://127.0.0.1:8080/readyz | tee /tmp/readyz.json
+          grep -q '"status":"ready"' /tmp/readyz.json
+          curl -fsS -X POST http://127.0.0.1:8080/mcp \
+            -H 'content-type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | tee /tmp/tools.json
+          grep -q '"name":"ping"' /tmp/tools.json
+
+      - name: Dump cluster diagnostics on failure
+        if: failure()
+        run: |
+          kubectl -n homelab-k3s-mcp get all -o wide || true
+          kubectl -n homelab-k3s-mcp describe deploy/homelab-k3s-mcp || true
+          kubectl -n homelab-k3s-mcp logs deploy/homelab-k3s-mcp --tail=200 || true
 
   docker:
     name: docker build & push

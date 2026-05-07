@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: homelab-k3s-mcp
+
+resources:
+  - ../../
+
+images:
+  - name: ghcr.io/dlddu/homelab-k3s-mcp
+    newName: homelab-k3s-mcp
+    newTag: ci
+
+configMapGenerator:
+  - name: homelab-k3s-mcp-oauth
+    literals:
+      - MCP_AUTH_DISABLED=1
+    options:
+      disableNameSuffixHash: true
