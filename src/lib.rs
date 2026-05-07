@@ -5,9 +5,11 @@ use serde::Serialize;
 use tower_http::trace::TraceLayer;
 
 pub mod auth;
+pub mod k8s;
 pub mod mcp;
 
 pub use auth::AuthConfig;
+pub use k8s::{K8sService, KubeService, UnavailableK8s};
 
 #[derive(Debug, Serialize)]
 pub struct Health {
@@ -15,7 +17,7 @@ pub struct Health {
     pub version: &'static str,
 }
 
-pub fn app(auth: Option<AuthConfig>) -> Router {
+pub fn app(auth: Option<AuthConfig>, k8s: Arc<dyn K8sService>) -> Router {
     let public = Router::new()
         .route("/", get(root))
         .route("/healthz", get(healthz))
@@ -30,11 +32,11 @@ pub fn app(auth: Option<AuthConfig>) -> Router {
                     get(auth::protected_resource_metadata),
                 )
                 .with_state(state.clone());
-            let mcp = mcp::router()
+            let mcp = mcp::router(k8s)
                 .route_layer(middleware::from_fn_with_state(state, auth::require_bearer));
             (metadata, mcp)
         }
-        None => (Router::new(), mcp::router()),
+        None => (Router::new(), mcp::router(k8s)),
     };
 
     public

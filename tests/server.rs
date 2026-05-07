@@ -1,4 +1,5 @@
 use std::net::{Ipv4Addr, SocketAddr};
+use std::sync::Arc;
 
 use tokio::net::TcpListener;
 
@@ -8,8 +9,11 @@ async fn spawn_server() -> SocketAddr {
         .expect("bind ephemeral port");
     let addr = listener.local_addr().expect("local addr");
 
+    let k8s: Arc<dyn homelab_k3s_mcp::K8sService> =
+        Arc::new(homelab_k3s_mcp::UnavailableK8s::default());
+
     tokio::spawn(async move {
-        axum::serve(listener, homelab_k3s_mcp::app(None))
+        axum::serve(listener, homelab_k3s_mcp::app(None, k8s))
             .await
             .expect("server error");
     });
