@@ -226,8 +226,8 @@ async fn workload_restart_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (
         .ok_or((-32602, "arguments must be an object".to_string()))?;
 
     let kind = parse_kind(obj)?;
-    let namespace = optional_string(obj, "namespace")
-        .ok_or((-32602, "namespace is required".to_string()))?;
+    let namespace =
+        optional_string(obj, "namespace").ok_or((-32602, "namespace is required".to_string()))?;
     let name = optional_string(obj, "name").ok_or((-32602, "name is required".to_string()))?;
 
     match k8s.rollout_restart(kind, &namespace, &name).await {
