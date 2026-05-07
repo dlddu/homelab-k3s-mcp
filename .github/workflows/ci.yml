@@ -76,7 +76,7 @@ jobs:
         run: kind load docker-image homelab-k3s-mcp:ci --name homelab-k3s-mcp
 
       - name: Deploy via kustomize (kind overlay)
-        run: kubectl apply -k deploy/overlays/kind
+        run: kubectl apply -k tests/k8s/kind
 
       - name: Wait for rollout
         run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s

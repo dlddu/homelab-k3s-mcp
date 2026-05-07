@@ -4,7 +4,7 @@ kind: Kustomization
 namespace: homelab-k3s-mcp
 
 resources:
-  - ../../
+  - ../../../k8s
 
 images:
   - name: ghcr.io/dlddu/homelab-k3s-mcp
