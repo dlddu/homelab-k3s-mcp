@@ -36,6 +36,12 @@ rules:
     verbs:
       - get
       - create
+  # workload_logs streams container logs from a pod backing a workload.
+  - apiGroups: [""]
+    resources:
+      - pods/log
+    verbs:
+      - get
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
