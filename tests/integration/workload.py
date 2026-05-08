@@ -55,11 +55,11 @@ async def run() -> None:
             "workload_list",
             {"kind": "Deployment", "namespace": NAMESPACE},
         )
-        assert not result.isError, result
+        assert result.isError is False, result
         payload = result.structuredContent
-        assert payload["kind"] == "Deployment", payload
-        assert payload["namespace"] == NAMESPACE, payload
-        names = [item["name"] for item in payload["items"]]
+        items = payload.pop("items")
+        assert payload == {"kind": "Deployment", "namespace": NAMESPACE}, payload
+        names = [item["name"] for item in items]
         assert WORKLOAD in names, names
         print("list ok:", names)
 
@@ -68,8 +68,10 @@ async def run() -> None:
             "workload_list",
             {"kind": "Deployment"},
         )
-        assert not result.isError, result
-        items = result.structuredContent["items"]
+        assert result.isError is False, result
+        payload = result.structuredContent
+        items = payload.pop("items")
+        assert payload == {"kind": "Deployment", "namespace": None}, payload
         pairs = {(i["namespace"], i["name"]) for i in items}
         assert (NAMESPACE, WORKLOAD) in pairs, pairs
         assert ("homelab-k3s-mcp", "homelab-k3s-mcp") in pairs, pairs
@@ -80,11 +82,16 @@ async def run() -> None:
             "workload_restart",
             {"kind": "Deployment", "namespace": NAMESPACE, "name": WORKLOAD},
         )
-        assert not result.isError, result
+        assert result.isError is False, result
         payload = result.structuredContent
-        assert payload["name"] == WORKLOAD, payload
-        assert payload["restartedAt"], payload
-        print("workload_restart ok at", payload["restartedAt"])
+        restarted_at = payload.pop("restartedAt")
+        assert restarted_at, "restartedAt should be a non-empty timestamp"
+        assert payload == {
+            "kind": "Deployment",
+            "namespace": NAMESPACE,
+            "name": WORKLOAD,
+        }, payload
+        print("workload_restart ok at", restarted_at)
 
         annotation = kubectl_jsonpath(RESTART_ANNOTATION_PATH)
         print("restartedAt annotation:", annotation)
@@ -101,10 +108,13 @@ async def run() -> None:
                 "replicas": 3,
             },
         )
-        assert not result.isError, result
-        payload = result.structuredContent
-        assert payload["name"] == WORKLOAD, payload
-        assert payload["replicas"] == 3, payload
+        assert result.isError is False, result
+        assert result.structuredContent == {
+            "kind": "Deployment",
+            "namespace": NAMESPACE,
+            "name": WORKLOAD,
+            "replicas": 3,
+        }, result.structuredContent
         print("workload_scale up ok")
 
         replicas = kubectl_jsonpath("{.spec.replicas}")
@@ -122,8 +132,13 @@ async def run() -> None:
                 "replicas": 1,
             },
         )
-        assert not result.isError, result
-        assert result.structuredContent["replicas"] == 1, result
+        assert result.isError is False, result
+        assert result.structuredContent == {
+            "kind": "Deployment",
+            "namespace": NAMESPACE,
+            "name": WORKLOAD,
+            "replicas": 1,
+        }, result.structuredContent
         print("workload_scale down ok")
 
         replicas = kubectl_jsonpath("{.spec.replicas}")

@@ -19,28 +19,43 @@ async def run() -> None:
             "dear_baby_reset_onboarding",
             {"namespace": NAMESPACE, "email": "user@example.com"},
         )
-        assert not result.isError, result
+        assert result.isError is False, result
         payload = result.structuredContent
-        assert payload["namespace"] == NAMESPACE, payload
-        assert payload["email"] == "user@example.com", payload
-        assert payload["selector"] == "app=dear-baby", payload
-        assert payload["container"] == "backend", payload
-        assert payload["exitCode"] == 0, payload
-        assert payload["success"] is True, payload
-        assert payload["pod"].startswith("dear-baby-fixture-"), payload
-        assert "reset onboarding for user@example.com" in payload["stdout"], payload
-        print("reset ok against pod", payload["pod"])
+        pod = payload.pop("pod")
+        stdout = payload.pop("stdout")
+        assert pod.startswith("dear-baby-fixture-"), pod
+        assert "reset onboarding for user@example.com" in stdout, stdout
+        assert payload == {
+            "namespace": NAMESPACE,
+            "email": "user@example.com",
+            "selector": "app=dear-baby",
+            "container": "backend",
+            "exitCode": 0,
+            "stderr": "",
+            "success": True,
+        }, payload
+        print("reset ok against pod", pod)
 
         print("--- dear_baby_reset_onboarding (failure path) ---")
         result = await session.call_tool(
             "dear_baby_reset_onboarding",
             {"namespace": NAMESPACE, "email": "missing@example.com"},
         )
-        assert result.isError, result
+        assert result.isError is True, result
         payload = result.structuredContent
-        assert payload["exitCode"] == 1, payload
-        assert payload["success"] is False, payload
-        assert "no user found" in payload["stderr"], payload
+        pod = payload.pop("pod")
+        stderr = payload.pop("stderr")
+        assert pod.startswith("dear-baby-fixture-"), pod
+        assert "no user found" in stderr, stderr
+        assert payload == {
+            "namespace": NAMESPACE,
+            "email": "missing@example.com",
+            "selector": "app=dear-baby",
+            "container": "backend",
+            "exitCode": 1,
+            "stdout": "",
+            "success": False,
+        }, payload
         print("reset failure path ok")
 
         print("--- dear_baby_reset_onboarding (no Running pod) ---")
