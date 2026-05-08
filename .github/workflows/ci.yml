@@ -52,6 +52,14 @@ jobs:
       - name: cargo test --tests
         run: cargo test --tests --verbose -- --nocapture
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python integration test deps
+        run: pip install -r tests/integration/requirements.txt
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -98,204 +106,21 @@ jobs:
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8080:80 >/tmp/pf.log 2>&1 &
           PF_PID=$!
           trap "kill $PF_PID" EXIT
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8080/healthz > /dev/null; then
-              echo "service is up"
-              break
-            fi
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:8080/healthz | tee /tmp/healthz.json
-          grep -q '"status":"ok"' /tmp/healthz.json
-          curl -fsS http://127.0.0.1:8080/readyz | tee /tmp/readyz.json
-          grep -q '"status":"ready"' /tmp/readyz.json
-          curl -fsS -X POST http://127.0.0.1:8080/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | tee /tmp/tools.json
-          grep -q '"name":"ping"' /tmp/tools.json
-          grep -q '"name":"workload_list"' /tmp/tools.json
-          grep -q '"name":"workload_restart"' /tmp/tools.json
-          grep -q '"name":"workload_scale"' /tmp/tools.json
-          grep -q '"name":"dear_baby_reset_onboarding"' /tmp/tools.json
+          python tests/integration/smoke.py http://127.0.0.1:8080
 
       - name: Validate workload tool against fixture
         run: |
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8081:80 >/tmp/pf-workload.log 2>&1 &
           PF_PID=$!
           trap "kill $PF_PID" EXIT
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8081/healthz > /dev/null; then break; fi
-            sleep 1
-          done
-
-          echo "--- workload list (namespace=workload-test) ---"
-          curl -fsS -X POST http://127.0.0.1:8081/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"workload_list","arguments":{"kind":"Deployment","namespace":"workload-test"}}}' \
-            | tee /tmp/workload-list.json
-          python3 -c "
-          import json, sys
-          body = json.load(open('/tmp/workload-list.json'))
-          assert body['result']['isError'] is False, body
-          payload = body['result']['structuredContent']
-          assert payload['kind'] == 'Deployment', payload
-          assert payload['namespace'] == 'workload-test', payload
-          names = [item['name'] for item in payload['items']]
-          assert 'workload-fixture' in names, names
-          print('list ok:', names)
-          "
-
-          echo "--- workload list (all namespaces) ---"
-          curl -fsS -X POST http://127.0.0.1:8081/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"workload_list","arguments":{"kind":"Deployment"}}}' \
-            | tee /tmp/workload-list-all.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/workload-list-all.json'))
-          assert body['result']['isError'] is False, body
-          items = body['result']['structuredContent']['items']
-          pairs = {(i['namespace'], i['name']) for i in items}
-          assert ('workload-test', 'workload-fixture') in pairs, pairs
-          assert ('homelab-k3s-mcp', 'homelab-k3s-mcp') in pairs, pairs
-          print('list-all ok:', len(items), 'items')
-          "
-
-          echo "--- workload_restart ---"
-          curl -fsS -X POST http://127.0.0.1:8081/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"workload_restart","arguments":{"kind":"Deployment","namespace":"workload-test","name":"workload-fixture"}}}' \
-            | tee /tmp/workload-restart.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/workload-restart.json'))
-          assert body['result']['isError'] is False, body
-          payload = body['result']['structuredContent']
-          assert payload['name'] == 'workload-fixture', payload
-          assert payload['restartedAt'], payload
-          print('workload_restart ok at', payload['restartedAt'])
-          "
-
-          # Verify the patch actually landed on the resource.
-          ANNOTATION=$(kubectl -n workload-test get deploy/workload-fixture \
-            -o jsonpath='{.spec.template.metadata.annotations.kubectl\.kubernetes\.io/restartedAt}')
-          echo "restartedAt annotation: ${ANNOTATION}"
-          test -n "${ANNOTATION}"
-          kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
-
-          echo "--- workload_scale (scale up to 3) ---"
-          curl -fsS -X POST http://127.0.0.1:8081/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":13,"method":"tools/call","params":{"name":"workload_scale","arguments":{"kind":"Deployment","namespace":"workload-test","name":"workload-fixture","replicas":3}}}' \
-            | tee /tmp/workload-scale-up.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/workload-scale-up.json'))
-          assert body['result']['isError'] is False, body
-          payload = body['result']['structuredContent']
-          assert payload['name'] == 'workload-fixture', payload
-          assert payload['replicas'] == 3, payload
-          print('workload_scale up ok')
-          "
-
-          # Verify spec.replicas actually landed on the resource.
-          REPLICAS=$(kubectl -n workload-test get deploy/workload-fixture -o jsonpath='{.spec.replicas}')
-          echo "spec.replicas after scale up: ${REPLICAS}"
-          test "${REPLICAS}" = "3"
-          kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
-
-          echo "--- workload_scale (scale back to 1) ---"
-          curl -fsS -X POST http://127.0.0.1:8081/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":14,"method":"tools/call","params":{"name":"workload_scale","arguments":{"kind":"Deployment","namespace":"workload-test","name":"workload-fixture","replicas":1}}}' \
-            | tee /tmp/workload-scale-down.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/workload-scale-down.json'))
-          assert body['result']['isError'] is False, body
-          assert body['result']['structuredContent']['replicas'] == 1, body
-          print('workload_scale down ok')
-          "
-
-          REPLICAS=$(kubectl -n workload-test get deploy/workload-fixture -o jsonpath='{.spec.replicas}')
-          echo "spec.replicas after scale down: ${REPLICAS}"
-          test "${REPLICAS}" = "1"
-          kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
-
-          echo "--- workload_scale (DaemonSet rejected) ---"
-          curl -fsS -X POST http://127.0.0.1:8081/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":15,"method":"tools/call","params":{"name":"workload_scale","arguments":{"kind":"DaemonSet","namespace":"workload-test","name":"workload-fixture","replicas":1}}}' \
-            | tee /tmp/workload-scale-ds.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/workload-scale-ds.json'))
-          assert body['result']['isError'] is True, body
-          text = body['result']['content'][0]['text']
-          assert 'DaemonSet does not have replicas' in text, text
-          print('workload_scale daemonset rejection ok')
-          "
+          python tests/integration/workload.py http://127.0.0.1:8081
 
       - name: Validate dear_baby_reset_onboarding tool against fixture
         run: |
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8082:80 >/tmp/pf-reset.log 2>&1 &
           PF_PID=$!
           trap "kill $PF_PID" EXIT
-          for i in $(seq 1 30); do
-            if curl -fsS http://127.0.0.1:8082/healthz > /dev/null; then break; fi
-            sleep 1
-          done
-
-          echo "--- dear_baby_reset_onboarding (success path) ---"
-          curl -fsS -X POST http://127.0.0.1:8082/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"dear_baby_reset_onboarding","arguments":{"namespace":"dear-baby-test","email":"user@example.com"}}}' \
-            | tee /tmp/reset-ok.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/reset-ok.json'))
-          assert body['result']['isError'] is False, body
-          payload = body['result']['structuredContent']
-          assert payload['namespace'] == 'dear-baby-test', payload
-          assert payload['email'] == 'user@example.com', payload
-          assert payload['selector'] == 'app=dear-baby', payload
-          assert payload['container'] == 'backend', payload
-          assert payload['exitCode'] == 0, payload
-          assert payload['success'] is True, payload
-          assert payload['pod'].startswith('dear-baby-fixture-'), payload
-          assert 'reset onboarding for user@example.com' in payload['stdout'], payload
-          print('reset ok against pod', payload['pod'])
-          "
-
-          echo "--- dear_baby_reset_onboarding (failure path) ---"
-          curl -fsS -X POST http://127.0.0.1:8082/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":21,"method":"tools/call","params":{"name":"dear_baby_reset_onboarding","arguments":{"namespace":"dear-baby-test","email":"missing@example.com"}}}' \
-            | tee /tmp/reset-missing.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/reset-missing.json'))
-          assert body['result']['isError'] is True, body
-          payload = body['result']['structuredContent']
-          assert payload['exitCode'] == 1, payload
-          assert payload['success'] is False, payload
-          assert 'no user found' in payload['stderr'], payload
-          print('reset failure path ok')
-          "
-
-          echo "--- dear_baby_reset_onboarding (no Running pod) ---"
-          curl -fsS -X POST http://127.0.0.1:8082/mcp \
-            -H 'content-type: application/json' \
-            -d '{"jsonrpc":"2.0","id":22,"method":"tools/call","params":{"name":"dear_baby_reset_onboarding","arguments":{"namespace":"dear-baby-test","email":"user@example.com","selector":"app=does-not-exist"}}}' \
-            | tee /tmp/reset-nopod.json
-          python3 -c "
-          import json
-          body = json.load(open('/tmp/reset-nopod.json'))
-          assert body['result']['isError'] is True, body
-          text = body['result']['content'][0]['text']
-          assert 'no Running pod matched' in text, text
-          print('reset no-pod path ok')
-          "
+          python tests/integration/dear_baby.py http://127.0.0.1:8082
 
       - name: Dump cluster diagnostics on failure
         if: failure()
