@@ -21,6 +21,8 @@ struct FakeK8s {
     pub items: Mutex<Vec<Value>>,
     pub last_list: Mutex<Option<(WorkloadKind, Option<String>)>>,
     pub restarts: Mutex<Vec<(WorkloadKind, String, String)>>,
+    pub scales: Mutex<Vec<(WorkloadKind, String, String, i32)>>,
+    pub scale_response: Mutex<Option<Result<i32, K8sError>>>,
     pub exec_calls: Mutex<Vec<ExecCall>>,
     pub exec_response: Mutex<Option<Result<ExecOutcome, K8sError>>>,
 }
@@ -47,6 +49,24 @@ impl K8sService for FakeK8s {
             .unwrap()
             .push((kind, namespace.into(), name.into()));
         Ok("2026-05-07T00:00:00Z".into())
+    }
+
+    async fn scale_workload(
+        &self,
+        kind: WorkloadKind,
+        namespace: &str,
+        name: &str,
+        replicas: i32,
+    ) -> Result<i32, K8sError> {
+        self.scales
+            .lock()
+            .unwrap()
+            .push((kind, namespace.into(), name.into(), replicas));
+        match self.scale_response.lock().unwrap().take() {
+            Some(Ok(applied)) => Ok(applied),
+            Some(Err(err)) => Err(err),
+            None => Ok(replicas),
+        }
     }
 
     async fn exec_in_pod(
@@ -129,10 +149,11 @@ async fn tools_list_includes_workload_tools() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    assert_eq!(tools.len(), 4);
+    assert_eq!(tools.len(), 5);
     assert!(names.contains(&"ping"));
     assert!(names.contains(&"workload_list"));
     assert!(names.contains(&"workload_restart"));
+    assert!(names.contains(&"workload_scale"));
     assert!(names.contains(&"dear_baby_reset_onboarding"));
 }
 
@@ -363,6 +384,160 @@ async fn workload_restart_requires_namespace_and_name() {
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn workload_scale_dispatches_to_service() {
+    let fake = Arc::new(FakeK8s::default());
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 70,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_scale",
+                    "arguments": {
+                        "kind": "Deployment",
+                        "namespace": "default",
+                        "name": "api",
+                        "replicas": 3
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["kind"], "Deployment");
+    assert_eq!(payload["namespace"], "default");
+    assert_eq!(payload["name"], "api");
+    assert_eq!(payload["replicas"], 3);
+
+    let scales = fake.scales.lock().unwrap();
+    assert_eq!(scales.len(), 1);
+    assert_eq!(scales[0].0, WorkloadKind::Deployment);
+    assert_eq!(scales[0].1, "default");
+    assert_eq!(scales[0].2, "api");
+    assert_eq!(scales[0].3, 3);
+}
+
+#[tokio::test]
+async fn workload_scale_supports_zero_replicas() {
+    let fake = Arc::new(FakeK8s::default());
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 71,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_scale",
+                    "arguments": {
+                        "kind": "StatefulSet",
+                        "namespace": "data",
+                        "name": "redis",
+                        "replicas": 0
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    assert_eq!(body["result"]["structuredContent"]["replicas"], 0);
+
+    let scales = fake.scales.lock().unwrap();
+    assert_eq!(scales[0].0, WorkloadKind::StatefulSet);
+    assert_eq!(scales[0].3, 0);
+}
+
+#[tokio::test]
+async fn workload_scale_rejects_negative_replicas() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 72,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_scale",
+                    "arguments": {
+                        "kind": "Deployment",
+                        "namespace": "default",
+                        "name": "api",
+                        "replicas": -1
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn workload_scale_requires_replicas() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 73,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_scale",
+                    "arguments": {
+                        "kind": "Deployment",
+                        "namespace": "default",
+                        "name": "api"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn tools_list_advertises_workload_scale_annotations() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({"jsonrpc": "2.0", "id": 74, "method": "tools/list"}),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    let scale = find_tool(tools, "workload_scale");
+    assert_eq!(scale["annotations"]["title"], "Scale Workload");
+    assert_eq!(scale["annotations"]["destructiveHint"], true);
+    assert_eq!(scale["annotations"]["idempotentHint"], true);
+
+    let kinds = scale["inputSchema"]["properties"]["kind"]["enum"]
+        .as_array()
+        .expect("kind enum");
+    let kind_names: Vec<&str> = kinds.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(kind_names, vec!["Deployment", "StatefulSet"]);
 }
 
 #[tokio::test]

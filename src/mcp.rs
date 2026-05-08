@@ -186,6 +186,44 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 },
             },
             {
+                "name": "workload_scale",
+                "description": "Scale a Kubernetes workload by setting spec.replicas. \
+                                Supports Deployment and StatefulSet. DaemonSets do not have \
+                                replicas and are rejected.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["Deployment", "StatefulSet"],
+                            "description": "Workload kind."
+                        },
+                        "namespace": {
+                            "type": "string",
+                            "description": "Namespace of the workload."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Workload name."
+                        },
+                        "replicas": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "description": "Desired replica count (>= 0)."
+                        }
+                    },
+                    "required": ["kind", "namespace", "name", "replicas"],
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "Scale Workload",
+                    "readOnlyHint": false,
+                    "destructiveHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false,
+                },
+            },
+            {
                 "name": "dear_baby_reset_onboarding",
                 "description": "Reset dear-baby onboarding for the user with the given email by \
                                 exec'ing the bundled /reset-onboarding CLI inside a running \
@@ -242,6 +280,7 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
         })),
         "workload_list" => workload_list_tool(k8s, &args).await,
         "workload_restart" => workload_restart_tool(k8s, &args).await,
+        "workload_scale" => workload_scale_tool(k8s, &args).await,
         "dear_baby_reset_onboarding" => dear_baby_reset_onboarding_tool(k8s, &args).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
@@ -299,6 +338,39 @@ async fn workload_restart_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (
             "namespace": namespace,
             "name": name,
             "restartedAt": restarted_at,
+        }))),
+        Err(err) => Ok(tool_error(err)),
+    }
+}
+
+async fn workload_scale_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
+    let obj = args
+        .as_object()
+        .ok_or((-32602, "arguments must be an object".to_string()))?;
+
+    let kind = parse_kind(obj)?;
+    let namespace =
+        optional_string(obj, "namespace").ok_or((-32602, "namespace is required".to_string()))?;
+    let name = optional_string(obj, "name").ok_or((-32602, "name is required".to_string()))?;
+    let replicas_value = obj
+        .get("replicas")
+        .ok_or((-32602, "replicas is required".to_string()))?;
+    let replicas = replicas_value
+        .as_i64()
+        .ok_or((-32602, "replicas must be an integer".to_string()))?;
+    if replicas < 0 {
+        return Err((-32602, "replicas must be >= 0".to_string()));
+    }
+    let replicas: i32 = replicas
+        .try_into()
+        .map_err(|_| (-32602, "replicas is too large".to_string()))?;
+
+    match k8s.scale_workload(kind, &namespace, &name, replicas).await {
+        Ok(applied) => Ok(success_json(json!({
+            "kind": kind.as_str(),
+            "namespace": namespace,
+            "name": name,
+            "replicas": applied,
         }))),
         Err(err) => Ok(tool_error(err)),
     }

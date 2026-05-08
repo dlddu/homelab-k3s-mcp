@@ -96,6 +96,14 @@ pub trait K8sService: Send + Sync {
         container: Option<&str>,
         command: &[String],
     ) -> Result<ExecOutcome, K8sError>;
+
+    async fn scale_workload(
+        &self,
+        kind: WorkloadKind,
+        namespace: &str,
+        name: &str,
+        replicas: i32,
+    ) -> Result<i32, K8sError>;
 }
 
 pub struct UnavailableK8s {
@@ -142,6 +150,16 @@ impl K8sService for UnavailableK8s {
         _container: Option<&str>,
         _command: &[String],
     ) -> Result<ExecOutcome, K8sError> {
+        Err(K8sError::Unavailable(self.reason.clone()))
+    }
+
+    async fn scale_workload(
+        &self,
+        _kind: WorkloadKind,
+        _namespace: &str,
+        _name: &str,
+        _replicas: i32,
+    ) -> Result<i32, K8sError> {
         Err(K8sError::Unavailable(self.reason.clone()))
     }
 }
@@ -194,6 +212,24 @@ impl KubeService {
         };
         api.patch(name, &params, &Patch::Strategic(patch)).await?;
         Ok(now)
+    }
+
+    async fn scale<K>(&self, namespace: &str, name: &str, replicas: i32) -> Result<i32, K8sError>
+    where
+        K: Resource<Scope = NamespaceResourceScope>
+            + Clone
+            + serde::de::DeserializeOwned
+            + std::fmt::Debug,
+        <K as Resource>::DynamicType: Default,
+    {
+        let api: Api<K> = Api::namespaced(self.client.clone(), namespace);
+        let patch = json!({ "spec": { "replicas": replicas } });
+        let params = PatchParams {
+            field_manager: Some(FIELD_MANAGER.into()),
+            ..Default::default()
+        };
+        api.patch(name, &params, &Patch::Strategic(patch)).await?;
+        Ok(replicas)
     }
 }
 
@@ -336,6 +372,22 @@ impl K8sService for KubeService {
             WorkloadKind::Deployment => self.restart::<Deployment>(namespace, name).await,
             WorkloadKind::StatefulSet => self.restart::<StatefulSet>(namespace, name).await,
             WorkloadKind::DaemonSet => self.restart::<DaemonSet>(namespace, name).await,
+        }
+    }
+
+    async fn scale_workload(
+        &self,
+        kind: WorkloadKind,
+        namespace: &str,
+        name: &str,
+        replicas: i32,
+    ) -> Result<i32, K8sError> {
+        match kind {
+            WorkloadKind::Deployment => self.scale::<Deployment>(namespace, name, replicas).await,
+            WorkloadKind::StatefulSet => self.scale::<StatefulSet>(namespace, name, replicas).await,
+            WorkloadKind::DaemonSet => Err(K8sError::Api(
+                "DaemonSet does not have replicas; cannot scale".to_string(),
+            )),
         }
     }
 
