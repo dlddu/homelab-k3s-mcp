@@ -11,6 +11,7 @@ EXPECTED_TOOLS = {
     "workload_list",
     "workload_restart",
     "workload_scale",
+    "workload_logs",
     "dear_baby_reset_onboarding",
 }
 
