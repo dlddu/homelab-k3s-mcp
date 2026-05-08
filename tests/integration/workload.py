@@ -1,9 +1,11 @@
-"""End-to-end checks for workload_list / workload_restart / workload_scale."""
+"""End-to-end checks for workload_list / workload_restart / workload_scale / workload_logs."""
 
 from __future__ import annotations
 
 import asyncio
 import subprocess
+
+from mcp.shared.exceptions import McpError
 
 from _helpers import base_url, open_session, wait_for_healthz
 
@@ -160,6 +162,86 @@ async def run() -> None:
         text = result.content[0].text
         assert "DaemonSet does not have replicas" in text, text
         print("workload_scale daemonset rejection ok")
+
+        # --- workload_logs ---
+        # The fixture runs the `pause` image, which emits no log output. We can
+        # still verify the full plumbing: selector resolution, pod lookup, the
+        # pods/log RBAC binding, option propagation, and the empty-output
+        # placeholder. Real log content is exercised in the Rust unit tests.
+        print("--- workload_logs (defaults, empty output) ---")
+        result = await session.call_tool(
+            "workload_logs",
+            {"kind": "Deployment", "namespace": NAMESPACE, "name": WORKLOAD},
+        )
+        assert result.isError is False, result
+        payload = result.structuredContent
+        pod_name = payload.pop("pod")
+        assert pod_name.startswith(f"{WORKLOAD}-"), pod_name
+        assert payload == {
+            "kind": "Deployment",
+            "namespace": NAMESPACE,
+            "name": WORKLOAD,
+            "container": None,
+            "tailLines": 200,
+            "previous": False,
+            "timestamps": False,
+            "sinceSeconds": None,
+            "logs": "",
+        }, payload
+        assert result.content[0].text == "(no log output)", result.content[0].text
+        print("workload_logs defaults ok, pod:", pod_name)
+
+        print("--- workload_logs (explicit options) ---")
+        result = await session.call_tool(
+            "workload_logs",
+            {
+                "kind": "Deployment",
+                "namespace": NAMESPACE,
+                "name": WORKLOAD,
+                "container": "pause",
+                "tail_lines": 10,
+                "timestamps": True,
+                "since_seconds": 60,
+            },
+        )
+        assert result.isError is False, result
+        payload = result.structuredContent
+        assert payload["container"] == "pause", payload
+        assert payload["tailLines"] == 10, payload
+        assert payload["timestamps"] is True, payload
+        assert payload["sinceSeconds"] == 60, payload
+        print("workload_logs options ok")
+
+        print("--- workload_logs (tail_lines over max rejected) ---")
+        # Argument validation errors come back as JSON-RPC errors, which the
+        # SDK surfaces as McpError exceptions rather than tool result objects.
+        try:
+            await session.call_tool(
+                "workload_logs",
+                {
+                    "kind": "Deployment",
+                    "namespace": NAMESPACE,
+                    "name": WORKLOAD,
+                    "tail_lines": 999_999,
+                },
+            )
+        except McpError as exc:
+            assert "tail_lines" in str(exc), exc
+            print("workload_logs tail_lines rejection ok")
+        else:
+            raise AssertionError("expected McpError for tail_lines over max")
+
+        print("--- workload_logs (missing workload returns tool error) ---")
+        result = await session.call_tool(
+            "workload_logs",
+            {
+                "kind": "Deployment",
+                "namespace": NAMESPACE,
+                "name": "does-not-exist",
+            },
+        )
+        assert result.isError, result
+        print("workload_logs missing-workload rejection ok")
 
 
 if __name__ == "__main__":

@@ -3,8 +3,9 @@ use std::fmt;
 use async_trait::async_trait;
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
 use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use k8s_openapi::NamespaceResourceScope;
-use kube::api::{Api, AttachParams, ListParams, Patch, PatchParams};
+use kube::api::{Api, AttachParams, ListParams, LogParams, Patch, PatchParams};
 use kube::{Client, Resource};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -71,6 +72,22 @@ pub struct ExecOutcome {
     pub success: bool,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct LogOptions {
+    pub container: Option<String>,
+    pub tail_lines: Option<i64>,
+    pub previous: bool,
+    pub timestamps: bool,
+    pub since_seconds: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct LogResult {
+    pub pod: String,
+    pub container: Option<String>,
+    pub logs: String,
+}
+
 #[async_trait]
 pub trait K8sService: Send + Sync {
     async fn list_workloads(
@@ -104,6 +121,18 @@ pub trait K8sService: Send + Sync {
         name: &str,
         replicas: i32,
     ) -> Result<i32, K8sError>;
+
+    /// Fetch container logs from a pod backing the given workload. Resolves
+    /// the workload's pod selector and pulls logs from the first Running pod
+    /// matching that selector (falling back to any matching pod if none is
+    /// Running, so `previous=true` still works after a crash loop).
+    async fn workload_logs(
+        &self,
+        kind: WorkloadKind,
+        namespace: &str,
+        name: &str,
+        options: &LogOptions,
+    ) -> Result<LogResult, K8sError>;
 }
 
 pub struct UnavailableK8s {
@@ -162,6 +191,16 @@ impl K8sService for UnavailableK8s {
     ) -> Result<i32, K8sError> {
         Err(K8sError::Unavailable(self.reason.clone()))
     }
+
+    async fn workload_logs(
+        &self,
+        _kind: WorkloadKind,
+        _namespace: &str,
+        _name: &str,
+        _options: &LogOptions,
+    ) -> Result<LogResult, K8sError> {
+        Err(K8sError::Unavailable(self.reason.clone()))
+    }
 }
 
 pub struct KubeService {
@@ -212,6 +251,37 @@ impl KubeService {
         };
         api.patch(name, &params, &Patch::Strategic(patch)).await?;
         Ok(now)
+    }
+
+    async fn workload_pod_selector(
+        &self,
+        kind: WorkloadKind,
+        namespace: &str,
+        name: &str,
+    ) -> Result<String, K8sError> {
+        let selector = match kind {
+            WorkloadKind::Deployment => {
+                let api: Api<Deployment> = Api::namespaced(self.client.clone(), namespace);
+                api.get(name).await?.spec.map(|s| s.selector)
+            }
+            WorkloadKind::StatefulSet => {
+                let api: Api<StatefulSet> = Api::namespaced(self.client.clone(), namespace);
+                api.get(name).await?.spec.map(|s| s.selector)
+            }
+            WorkloadKind::DaemonSet => {
+                let api: Api<DaemonSet> = Api::namespaced(self.client.clone(), namespace);
+                api.get(name).await?.spec.map(|s| s.selector)
+            }
+        };
+        selector
+            .as_ref()
+            .and_then(label_selector_to_string)
+            .ok_or_else(|| {
+                K8sError::Api(format!(
+                    "{} {namespace}/{name} has no usable spec.selector.matchLabels",
+                    kind.as_str()
+                ))
+            })
     }
 
     async fn scale<K>(&self, namespace: &str, name: &str, replicas: i32) -> Result<i32, K8sError>
@@ -265,6 +335,20 @@ struct DaemonSetSummary {
     number_available: i32,
     updated_number_scheduled: i32,
     creation_timestamp: Option<String>,
+}
+
+fn label_selector_to_string(selector: &LabelSelector) -> Option<String> {
+    let labels = selector.match_labels.as_ref()?;
+    if labels.is_empty() {
+        return None;
+    }
+    Some(
+        labels
+            .iter()
+            .map(|(k, v)| format!("{k}={v}"))
+            .collect::<Vec<_>>()
+            .join(","),
+    )
 }
 
 fn creation_timestamp<K: Resource>(obj: &K) -> Option<String> {
@@ -389,6 +473,53 @@ impl K8sService for KubeService {
                 "DaemonSet does not have replicas; cannot scale".to_string(),
             )),
         }
+    }
+
+    async fn workload_logs(
+        &self,
+        kind: WorkloadKind,
+        namespace: &str,
+        name: &str,
+        options: &LogOptions,
+    ) -> Result<LogResult, K8sError> {
+        let selector = self.workload_pod_selector(kind, namespace, name).await?;
+        let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
+        let lp = ListParams::default().labels(&selector);
+        let list = pods.list(&lp).await?;
+
+        // Prefer the first Running pod, but fall back to any matching pod so
+        // `previous=true` works against pods stuck in CrashLoopBackOff.
+        let pod = list
+            .items
+            .iter()
+            .find(|p| p.status.as_ref().and_then(|s| s.phase.as_deref()) == Some("Running"))
+            .or_else(|| list.items.first())
+            .cloned()
+            .ok_or_else(|| {
+                K8sError::Api(format!(
+                    "no pod matched selector {selector:?} for {} {namespace}/{name}",
+                    kind.as_str()
+                ))
+            })?;
+
+        let pod_name = pod.metadata.name.clone().unwrap_or_default();
+
+        let log_params = LogParams {
+            container: options.container.clone(),
+            tail_lines: options.tail_lines,
+            previous: options.previous,
+            timestamps: options.timestamps,
+            since_seconds: options.since_seconds,
+            ..LogParams::default()
+        };
+
+        let logs = pods.logs(&pod_name, &log_params).await?;
+
+        Ok(LogResult {
+            pod: pod_name,
+            container: options.container.clone(),
+            logs,
+        })
     }
 
     async fn exec_in_pod(

@@ -3,7 +3,9 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use homelab_k3s_mcp::k8s::{ExecOutcome, K8sError, K8sService, WorkloadKind};
+use homelab_k3s_mcp::k8s::{
+    ExecOutcome, K8sError, K8sService, LogOptions, LogResult, WorkloadKind,
+};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -16,6 +18,14 @@ struct ExecCall {
     pub command: Vec<String>,
 }
 
+#[derive(Clone, Debug)]
+struct LogCall {
+    pub kind: WorkloadKind,
+    pub namespace: String,
+    pub name: String,
+    pub options: LogOptions,
+}
+
 #[derive(Default)]
 struct FakeK8s {
     pub items: Mutex<Vec<Value>>,
@@ -25,6 +35,8 @@ struct FakeK8s {
     pub scale_response: Mutex<Option<Result<i32, K8sError>>>,
     pub exec_calls: Mutex<Vec<ExecCall>>,
     pub exec_response: Mutex<Option<Result<ExecOutcome, K8sError>>>,
+    pub log_calls: Mutex<Vec<LogCall>>,
+    pub log_response: Mutex<Option<Result<LogResult, K8sError>>>,
 }
 
 #[async_trait]
@@ -66,6 +78,30 @@ impl K8sService for FakeK8s {
             Some(Ok(applied)) => Ok(applied),
             Some(Err(err)) => Err(err),
             None => Ok(replicas),
+        }
+    }
+
+    async fn workload_logs(
+        &self,
+        kind: WorkloadKind,
+        namespace: &str,
+        name: &str,
+        options: &LogOptions,
+    ) -> Result<LogResult, K8sError> {
+        self.log_calls.lock().unwrap().push(LogCall {
+            kind,
+            namespace: namespace.into(),
+            name: name.into(),
+            options: options.clone(),
+        });
+        match self.log_response.lock().unwrap().take() {
+            Some(Ok(result)) => Ok(result),
+            Some(Err(err)) => Err(err),
+            None => Ok(LogResult {
+                pod: format!("{name}-pod-0"),
+                container: options.container.clone(),
+                logs: String::new(),
+            }),
         }
     }
 
@@ -149,11 +185,12 @@ async fn tools_list_includes_workload_tools() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    assert_eq!(tools.len(), 5);
+    assert_eq!(tools.len(), 6);
     assert!(names.contains(&"ping"));
     assert!(names.contains(&"workload_list"));
     assert!(names.contains(&"workload_restart"));
     assert!(names.contains(&"workload_scale"));
+    assert!(names.contains(&"workload_logs"));
     assert!(names.contains(&"dear_baby_reset_onboarding"));
 }
 
@@ -774,4 +811,230 @@ async fn dear_baby_reset_onboarding_requires_namespace_and_email() {
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn tools_list_advertises_workload_logs() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({"jsonrpc": "2.0", "id": 80, "method": "tools/list"}),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    let logs = find_tool(tools, "workload_logs");
+
+    assert_eq!(logs["annotations"]["title"], "View Workload Logs");
+    assert_eq!(logs["annotations"]["readOnlyHint"], true);
+    assert_eq!(logs["annotations"]["idempotentHint"], true);
+
+    let required = logs["inputSchema"]["required"]
+        .as_array()
+        .expect("required array");
+    let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(names, vec!["kind", "namespace", "name"]);
+
+    let kinds = logs["inputSchema"]["properties"]["kind"]["enum"]
+        .as_array()
+        .expect("kind enum");
+    let kind_names: Vec<&str> = kinds.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(kind_names, vec!["Deployment", "StatefulSet", "DaemonSet"]);
+
+    assert_eq!(
+        logs["inputSchema"]["properties"]["tail_lines"]["maximum"],
+        5000
+    );
+}
+
+#[tokio::test]
+async fn workload_logs_dispatches_with_defaults() {
+    let fake = Arc::new(FakeK8s::default());
+    *fake.log_response.lock().unwrap() = Some(Ok(LogResult {
+        pod: "api-7d9c9f6b8b-xyz".into(),
+        container: None,
+        logs: "line one\nline two\n".into(),
+    }));
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 81,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_logs",
+                    "arguments": {
+                        "kind": "Deployment",
+                        "namespace": "default",
+                        "name": "api"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["kind"], "Deployment");
+    assert_eq!(payload["namespace"], "default");
+    assert_eq!(payload["name"], "api");
+    assert_eq!(payload["pod"], "api-7d9c9f6b8b-xyz");
+    assert_eq!(payload["tailLines"], 200);
+    assert_eq!(payload["previous"], false);
+    assert_eq!(payload["timestamps"], false);
+    assert!(payload["sinceSeconds"].is_null());
+    assert_eq!(payload["logs"], "line one\nline two\n");
+    assert_eq!(body["result"]["content"][0]["text"], "line one\nline two\n");
+
+    let calls = fake.log_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    let call = &calls[0];
+    assert_eq!(call.kind, WorkloadKind::Deployment);
+    assert_eq!(call.namespace, "default");
+    assert_eq!(call.name, "api");
+    assert_eq!(call.options.tail_lines, Some(200));
+    assert!(call.options.container.is_none());
+    assert!(!call.options.previous);
+    assert!(!call.options.timestamps);
+    assert!(call.options.since_seconds.is_none());
+}
+
+#[tokio::test]
+async fn workload_logs_honours_overrides() {
+    let fake = Arc::new(FakeK8s::default());
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 82,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_logs",
+                    "arguments": {
+                        "kind": "StatefulSet",
+                        "namespace": "data",
+                        "name": "redis",
+                        "container": "redis",
+                        "tail_lines": 500,
+                        "previous": true,
+                        "timestamps": true,
+                        "since_seconds": 3600
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+
+    let calls = fake.log_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    let call = &calls[0];
+    assert_eq!(call.kind, WorkloadKind::StatefulSet);
+    assert_eq!(call.namespace, "data");
+    assert_eq!(call.name, "redis");
+    assert_eq!(call.options.container.as_deref(), Some("redis"));
+    assert_eq!(call.options.tail_lines, Some(500));
+    assert!(call.options.previous);
+    assert!(call.options.timestamps);
+    assert_eq!(call.options.since_seconds, Some(3600));
+}
+
+#[tokio::test]
+async fn workload_logs_rejects_tail_lines_over_max() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 83,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_logs",
+                    "arguments": {
+                        "kind": "Deployment",
+                        "namespace": "default",
+                        "name": "api",
+                        "tail_lines": 100000
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(msg.contains("tail_lines"), "{msg}");
+}
+
+#[tokio::test]
+async fn workload_logs_requires_namespace_and_name() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 84,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_logs",
+                    "arguments": { "kind": "Deployment" }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn workload_logs_renders_placeholder_for_empty_output() {
+    let fake = Arc::new(FakeK8s::default());
+    *fake.log_response.lock().unwrap() = Some(Ok(LogResult {
+        pod: "api-1".into(),
+        container: None,
+        logs: String::new(),
+    }));
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 85,
+                "method": "tools/call",
+                "params": {
+                    "name": "workload_logs",
+                    "arguments": {
+                        "kind": "Deployment",
+                        "namespace": "default",
+                        "name": "api"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    assert_eq!(body["result"]["content"][0]["text"], "(no log output)");
+    assert_eq!(body["result"]["structuredContent"]["logs"], "");
 }

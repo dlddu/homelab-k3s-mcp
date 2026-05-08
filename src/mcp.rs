@@ -4,7 +4,10 @@ use axum::{extract::State, response::Json, routing::post, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::k8s::{ExecOutcome, K8sError, K8sService, WorkloadKind};
+use crate::k8s::{ExecOutcome, K8sError, K8sService, LogOptions, LogResult, WorkloadKind};
+
+const LOGS_DEFAULT_TAIL_LINES: i64 = 200;
+const LOGS_MAX_TAIL_LINES: i64 = 5000;
 
 const DEAR_BABY_DEFAULT_SELECTOR: &str = "app=dear-baby";
 const DEAR_BABY_DEFAULT_CONTAINER: &str = "backend";
@@ -224,6 +227,68 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 },
             },
             {
+                "name": "workload_logs",
+                "description": "Fetch container logs from a Kubernetes workload \
+                                (Deployment, StatefulSet, DaemonSet). Resolves the \
+                                workload's pod selector and returns logs from the \
+                                first Running pod (or any matching pod when none is \
+                                Running, so previous=true works after a crash loop).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "kind": {
+                            "type": "string",
+                            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
+                            "description": "Workload kind."
+                        },
+                        "namespace": {
+                            "type": "string",
+                            "description": "Namespace of the workload."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Workload name."
+                        },
+                        "container": {
+                            "type": "string",
+                            "description": "Container name. Required when the pod has \
+                                            more than one container."
+                        },
+                        "tail_lines": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": LOGS_MAX_TAIL_LINES,
+                            "description": "Number of trailing log lines to return. \
+                                            Defaults to 200; capped at 5000."
+                        },
+                        "previous": {
+                            "type": "boolean",
+                            "description": "Return logs from a previously terminated \
+                                            container instance. Defaults to false."
+                        },
+                        "timestamps": {
+                            "type": "boolean",
+                            "description": "Prefix each log line with an RFC3339 \
+                                            timestamp. Defaults to false."
+                        },
+                        "since_seconds": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "description": "Only return logs newer than this many \
+                                            seconds. Optional."
+                        }
+                    },
+                    "required": ["kind", "namespace", "name"],
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "View Workload Logs",
+                    "readOnlyHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false,
+                },
+            },
+            {
                 "name": "dear_baby_reset_onboarding",
                 "description": "Reset dear-baby onboarding for the user with the given email by \
                                 exec'ing the bundled /reset-onboarding CLI inside a running \
@@ -281,6 +346,7 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
         "workload_list" => workload_list_tool(k8s, &args).await,
         "workload_restart" => workload_restart_tool(k8s, &args).await,
         "workload_scale" => workload_scale_tool(k8s, &args).await,
+        "workload_logs" => workload_logs_tool(k8s, &args).await,
         "dear_baby_reset_onboarding" => dear_baby_reset_onboarding_tool(k8s, &args).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
@@ -374,6 +440,109 @@ async fn workload_scale_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i3
         }))),
         Err(err) => Ok(tool_error(err)),
     }
+}
+
+async fn workload_logs_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
+    let obj = args
+        .as_object()
+        .ok_or((-32602, "arguments must be an object".to_string()))?;
+
+    let kind = parse_kind(obj)?;
+    let namespace =
+        optional_string(obj, "namespace").ok_or((-32602, "namespace is required".to_string()))?;
+    let name = optional_string(obj, "name").ok_or((-32602, "name is required".to_string()))?;
+
+    let container = optional_string(obj, "container");
+    let previous = obj
+        .get("previous")
+        .map(|v| {
+            v.as_bool()
+                .ok_or((-32602, "previous must be a boolean".to_string()))
+        })
+        .transpose()?
+        .unwrap_or(false);
+    let timestamps = obj
+        .get("timestamps")
+        .map(|v| {
+            v.as_bool()
+                .ok_or((-32602, "timestamps must be a boolean".to_string()))
+        })
+        .transpose()?
+        .unwrap_or(false);
+    let tail_lines = match obj.get("tail_lines") {
+        Some(v) => {
+            let n = v
+                .as_i64()
+                .ok_or((-32602, "tail_lines must be an integer".to_string()))?;
+            if n < 1 {
+                return Err((-32602, "tail_lines must be >= 1".to_string()));
+            }
+            if n > LOGS_MAX_TAIL_LINES {
+                return Err((
+                    -32602,
+                    format!("tail_lines must be <= {LOGS_MAX_TAIL_LINES}"),
+                ));
+            }
+            Some(n)
+        }
+        None => Some(LOGS_DEFAULT_TAIL_LINES),
+    };
+    let since_seconds = match obj.get("since_seconds") {
+        Some(v) => {
+            let n = v
+                .as_i64()
+                .ok_or((-32602, "since_seconds must be an integer".to_string()))?;
+            if n < 1 {
+                return Err((-32602, "since_seconds must be >= 1".to_string()));
+            }
+            Some(n)
+        }
+        None => None,
+    };
+
+    let options = LogOptions {
+        container: container.clone(),
+        tail_lines,
+        previous,
+        timestamps,
+        since_seconds,
+    };
+
+    match k8s.workload_logs(kind, &namespace, &name, &options).await {
+        Ok(result) => Ok(logs_outcome_json(kind, namespace, name, options, result)),
+        Err(err) => Ok(tool_error(err)),
+    }
+}
+
+fn logs_outcome_json(
+    kind: WorkloadKind,
+    namespace: String,
+    name: String,
+    options: LogOptions,
+    result: LogResult,
+) -> Value {
+    let payload = json!({
+        "kind": kind.as_str(),
+        "namespace": namespace,
+        "name": name,
+        "pod": result.pod,
+        "container": result.container,
+        "tailLines": options.tail_lines,
+        "previous": options.previous,
+        "timestamps": options.timestamps,
+        "sinceSeconds": options.since_seconds,
+        "logs": result.logs,
+    });
+    let text = if result.logs.is_empty() {
+        "(no log output)".to_string()
+    } else {
+        result.logs.clone()
+    };
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": payload,
+        "isError": false,
+    })
 }
 
 async fn dear_baby_reset_onboarding_tool(
