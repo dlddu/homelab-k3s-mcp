@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::k8s::{
-    ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodDescription, WorkloadKind,
+    ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodDescription, PodTarget,
+    WorkloadKind,
 };
 
 const LOGS_DEFAULT_TAIL_LINES: i64 = 200;
@@ -296,7 +297,10 @@ fn tools_list() -> Result<Value, (i32, String)> {
                                 metadata, container statuses (state, reason, restart count, \
                                 exit code), conditions, and recent events. Events are \
                                 best-effort and may be empty if the apiserver does not \
-                                expose them to this service account.",
+                                expose them to this service account. \
+                                Provide exactly one of: 'name' (exact pod name), 'selector' \
+                                (label selector; first Running pod wins), or 'workload_kind' \
+                                + 'workload_name' (resolves the workload's pod selector).",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -306,10 +310,27 @@ fn tools_list() -> Result<Value, (i32, String)> {
                         },
                         "name": {
                             "type": "string",
-                            "description": "Pod name."
+                            "description": "Exact pod name. Mutually exclusive with 'selector' \
+                                            and 'workload_kind'+'workload_name'."
+                        },
+                        "selector": {
+                            "type": "string",
+                            "description": "Label selector (e.g. 'app=api'). Resolves to the \
+                                            first Running pod matching the selector, falling \
+                                            back to any matching pod when none is Running."
+                        },
+                        "workload_kind": {
+                            "type": "string",
+                            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
+                            "description": "Workload kind to resolve a pod from. Requires \
+                                            'workload_name'."
+                        },
+                        "workload_name": {
+                            "type": "string",
+                            "description": "Workload name. Requires 'workload_kind'."
                         }
                     },
-                    "required": ["namespace", "name"],
+                    "required": ["namespace"],
                     "additionalProperties": false,
                 },
                 "annotations": {
@@ -584,12 +605,65 @@ async fn pod_describe_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32,
 
     let namespace =
         optional_string(obj, "namespace").ok_or((-32602, "namespace is required".to_string()))?;
-    let name = optional_string(obj, "name").ok_or((-32602, "name is required".to_string()))?;
+    let target = parse_pod_target(obj)?;
 
-    match k8s.describe_pod(&namespace, &name).await {
+    match k8s.describe_pod(&namespace, &target).await {
         Ok(description) => Ok(pod_describe_outcome_json(description)),
         Err(err) => Ok(tool_error(err)),
     }
+}
+
+fn parse_pod_target(
+    obj: &serde_json::Map<String, Value>,
+) -> Result<PodTarget, (i32, String)> {
+    let name = optional_string(obj, "name");
+    let selector = optional_string(obj, "selector");
+    let workload_kind = optional_string(obj, "workload_kind");
+    let workload_name = optional_string(obj, "workload_name");
+
+    let workload_provided = workload_kind.is_some() || workload_name.is_some();
+    let modes = [name.is_some(), selector.is_some(), workload_provided]
+        .into_iter()
+        .filter(|b| *b)
+        .count();
+
+    if modes == 0 {
+        return Err((
+            -32602,
+            "one of 'name', 'selector', or 'workload_kind'+'workload_name' is required"
+                .to_string(),
+        ));
+    }
+    if modes > 1 {
+        return Err((
+            -32602,
+            "'name', 'selector', and 'workload_kind'+'workload_name' are mutually exclusive"
+                .to_string(),
+        ));
+    }
+
+    if let Some(n) = name {
+        return Ok(PodTarget::Name(n));
+    }
+    if let Some(s) = selector {
+        return Ok(PodTarget::Selector(s));
+    }
+
+    let kind_str = workload_kind.ok_or((
+        -32602,
+        "workload_kind is required when workload_name is provided".to_string(),
+    ))?;
+    let wname = workload_name.ok_or((
+        -32602,
+        "workload_name is required when workload_kind is provided".to_string(),
+    ))?;
+    let kind = WorkloadKind::parse(&kind_str).ok_or((
+        -32602,
+        format!(
+            "unknown workload_kind: {kind_str} (expected Deployment, StatefulSet, or DaemonSet)"
+        ),
+    ))?;
+    Ok(PodTarget::Workload { kind, name: wname })
 }
 
 fn pod_describe_outcome_json(description: PodDescription) -> Value {

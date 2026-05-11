@@ -5,7 +5,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use homelab_k3s_mcp::k8s::{
     ContainerInfo, ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodConditionInfo,
-    PodDescription, PodEventInfo, WorkloadKind,
+    PodDescription, PodEventInfo, PodTarget, WorkloadKind,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -30,7 +30,7 @@ struct LogCall {
 #[derive(Clone, Debug)]
 struct DescribeCall {
     pub namespace: String,
-    pub name: String,
+    pub target: PodTarget,
 }
 
 #[derive(Default)]
@@ -117,17 +117,22 @@ impl K8sService for FakeK8s {
     async fn describe_pod(
         &self,
         namespace: &str,
-        name: &str,
+        target: &PodTarget,
     ) -> Result<PodDescription, K8sError> {
+        let inferred_name = match target {
+            PodTarget::Name(n) => n.clone(),
+            PodTarget::Selector(s) => format!("pod-for-{s}"),
+            PodTarget::Workload { kind, name } => format!("{}-{name}-0", kind.as_str()),
+        };
         self.describe_calls.lock().unwrap().push(DescribeCall {
             namespace: namespace.into(),
-            name: name.into(),
+            target: target.clone(),
         });
         match self.describe_response.lock().unwrap().take() {
             Some(Ok(d)) => Ok(d),
             Some(Err(err)) => Err(err),
             None => Ok(PodDescription {
-                name: name.into(),
+                name: inferred_name,
                 namespace: namespace.into(),
                 node: None,
                 phase: None,
@@ -1109,7 +1114,23 @@ async fn tools_list_advertises_pod_describe() {
         .as_array()
         .expect("required array");
     let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
-    assert_eq!(names, vec!["namespace", "name"]);
+    assert_eq!(names, vec!["namespace"]);
+
+    let props = describe["inputSchema"]["properties"]
+        .as_object()
+        .expect("properties object");
+    for key in ["name", "selector", "workload_kind", "workload_name"] {
+        assert!(props.contains_key(key), "missing property {key}");
+    }
+    let workload_kinds = props["workload_kind"]["enum"]
+        .as_array()
+        .expect("workload_kind enum");
+    let workload_kind_names: Vec<&str> =
+        workload_kinds.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(
+        workload_kind_names,
+        vec!["Deployment", "StatefulSet", "DaemonSet"]
+    );
 }
 
 #[tokio::test]
@@ -1216,7 +1237,136 @@ async fn pod_describe_dispatches_and_renders_structured_payload() {
     let calls = fake.describe_calls.lock().unwrap();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].namespace, "default");
-    assert_eq!(calls[0].name, "api-7d9c9f6b8b-xyz");
+    assert_eq!(
+        calls[0].target,
+        PodTarget::Name("api-7d9c9f6b8b-xyz".to_string())
+    );
+}
+
+#[tokio::test]
+async fn pod_describe_accepts_label_selector_target() {
+    let fake = Arc::new(FakeK8s::default());
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 95,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": {
+                        "namespace": "default",
+                        "selector": "app=api"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+
+    let calls = fake.describe_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].namespace, "default");
+    assert_eq!(calls[0].target, PodTarget::Selector("app=api".to_string()));
+}
+
+#[tokio::test]
+async fn pod_describe_accepts_workload_target() {
+    let fake = Arc::new(FakeK8s::default());
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 96,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": {
+                        "namespace": "default",
+                        "workload_kind": "Deployment",
+                        "workload_name": "api"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+
+    let calls = fake.describe_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].namespace, "default");
+    assert_eq!(
+        calls[0].target,
+        PodTarget::Workload {
+            kind: WorkloadKind::Deployment,
+            name: "api".to_string()
+        }
+    );
+}
+
+#[tokio::test]
+async fn pod_describe_rejects_mutually_exclusive_targets() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 97,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": {
+                        "namespace": "default",
+                        "name": "api-0",
+                        "selector": "app=api"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(msg.contains("mutually exclusive"), "{msg}");
+}
+
+#[tokio::test]
+async fn pod_describe_rejects_partial_workload_target() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 98,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": {
+                        "namespace": "default",
+                        "workload_kind": "Deployment"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
 }
 
 #[tokio::test]
@@ -1250,7 +1400,7 @@ async fn pod_describe_renders_no_events_placeholder() {
 }
 
 #[tokio::test]
-async fn pod_describe_requires_namespace_and_name() {
+async fn pod_describe_requires_a_target() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s())
         .oneshot(json_request(
             "/mcp",
@@ -1269,6 +1419,9 @@ async fn pod_describe_requires_namespace_and_name() {
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
+    let msg = body["error"]["message"].as_str().unwrap_or("");
+    assert!(msg.contains("name"), "{msg}");
+    assert!(msg.contains("selector"), "{msg}");
 }
 
 #[tokio::test]

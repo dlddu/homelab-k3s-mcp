@@ -153,6 +153,22 @@ pub struct PodDescription {
     pub events: Vec<PodEventInfo>,
 }
 
+/// How `describe_pod` finds the pod to describe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PodTarget {
+    /// Exact pod name within the namespace.
+    Name(String),
+    /// Label selector; resolves to the first Running pod (or any matching
+    /// pod when none is Running).
+    Selector(String),
+    /// Workload kind + name; resolves the workload's pod selector and
+    /// picks the first Running pod (or any matching pod when none is Running).
+    Workload {
+        kind: WorkloadKind,
+        name: String,
+    },
+}
+
 #[async_trait]
 pub trait K8sService: Send + Sync {
     async fn list_workloads(
@@ -200,11 +216,13 @@ pub trait K8sService: Send + Sync {
     ) -> Result<LogResult, K8sError>;
 
     /// Produce a `kubectl describe pod`-style snapshot for a single pod:
-    /// metadata, container statuses, conditions, and recent events.
+    /// metadata, container statuses, conditions, and recent events. The
+    /// pod is resolved from `target` (exact name, label selector, or a
+    /// backing workload).
     async fn describe_pod(
         &self,
         namespace: &str,
-        name: &str,
+        target: &PodTarget,
     ) -> Result<PodDescription, K8sError>;
 }
 
@@ -278,7 +296,7 @@ impl K8sService for UnavailableK8s {
     async fn describe_pod(
         &self,
         _namespace: &str,
-        _name: &str,
+        _target: &PodTarget,
     ) -> Result<PodDescription, K8sError> {
         Err(K8sError::Unavailable(self.reason.clone()))
     }
@@ -361,6 +379,22 @@ impl KubeService {
                 K8sError::Api(format!(
                     "{} {namespace}/{name} has no usable spec.selector.matchLabels",
                     kind.as_str()
+                ))
+            })
+    }
+
+    async fn first_pod_matching(&self, namespace: &str, selector: &str) -> Result<Pod, K8sError> {
+        let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
+        let lp = ListParams::default().labels(selector);
+        let list = pods.list(&lp).await?;
+        list.items
+            .iter()
+            .find(|p| p.status.as_ref().and_then(|s| s.phase.as_deref()) == Some("Running"))
+            .or_else(|| list.items.first())
+            .cloned()
+            .ok_or_else(|| {
+                K8sError::Api(format!(
+                    "no pod matched selector {selector:?} in namespace {namespace:?}"
                 ))
             })
     }
@@ -606,13 +640,24 @@ impl K8sService for KubeService {
     async fn describe_pod(
         &self,
         namespace: &str,
-        name: &str,
+        target: &PodTarget,
     ) -> Result<PodDescription, K8sError> {
-        let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
-        let pod = pods.get(name).await?;
+        let pod = match target {
+            PodTarget::Name(name) => {
+                let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
+                pods.get(name).await?
+            }
+            PodTarget::Selector(selector) => self.first_pod_matching(namespace, selector).await?,
+            PodTarget::Workload { kind, name } => {
+                let selector = self.workload_pod_selector(*kind, namespace, name).await?;
+                self.first_pod_matching(namespace, &selector).await?
+            }
+        };
 
+        let pod_name = pod.metadata.name.clone().unwrap_or_default();
         let events_api: Api<Event> = Api::namespaced(self.client.clone(), namespace);
-        let field_selector = format!("involvedObject.name={name},involvedObject.namespace={namespace}");
+        let field_selector =
+            format!("involvedObject.name={pod_name},involvedObject.namespace={namespace}");
         let lp = ListParams::default().fields(&field_selector);
         let events = match events_api.list(&lp).await {
             Ok(list) => list.items,
