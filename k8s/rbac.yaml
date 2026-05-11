@@ -42,6 +42,15 @@ rules:
       - pods/log
     verbs:
       - get
+  # pod_describe surfaces events alongside the pod snapshot. Listing events
+  # in the pod's namespace is best-effort; describing still works without
+  # this rule but with an empty events array.
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs:
+      - get
+      - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

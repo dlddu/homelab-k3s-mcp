@@ -4,7 +4,8 @@ use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use homelab_k3s_mcp::k8s::{
-    ExecOutcome, K8sError, K8sService, LogOptions, LogResult, WorkloadKind,
+    ContainerInfo, ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodConditionInfo,
+    PodDescription, PodEventInfo, WorkloadKind,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -26,6 +27,12 @@ struct LogCall {
     pub options: LogOptions,
 }
 
+#[derive(Clone, Debug)]
+struct DescribeCall {
+    pub namespace: String,
+    pub name: String,
+}
+
 #[derive(Default)]
 struct FakeK8s {
     pub items: Mutex<Vec<Value>>,
@@ -37,6 +44,8 @@ struct FakeK8s {
     pub exec_response: Mutex<Option<Result<ExecOutcome, K8sError>>>,
     pub log_calls: Mutex<Vec<LogCall>>,
     pub log_response: Mutex<Option<Result<LogResult, K8sError>>>,
+    pub describe_calls: Mutex<Vec<DescribeCall>>,
+    pub describe_response: Mutex<Option<Result<PodDescription, K8sError>>>,
 }
 
 #[async_trait]
@@ -101,6 +110,43 @@ impl K8sService for FakeK8s {
                 pod: format!("{name}-pod-0"),
                 container: options.container.clone(),
                 logs: String::new(),
+            }),
+        }
+    }
+
+    async fn describe_pod(
+        &self,
+        namespace: &str,
+        name: &str,
+    ) -> Result<PodDescription, K8sError> {
+        self.describe_calls.lock().unwrap().push(DescribeCall {
+            namespace: namespace.into(),
+            name: name.into(),
+        });
+        match self.describe_response.lock().unwrap().take() {
+            Some(Ok(d)) => Ok(d),
+            Some(Err(err)) => Err(err),
+            None => Ok(PodDescription {
+                name: name.into(),
+                namespace: namespace.into(),
+                node: None,
+                phase: None,
+                pod_ip: None,
+                host_ip: None,
+                service_account: None,
+                priority: None,
+                priority_class_name: None,
+                qos_class: None,
+                start_time: None,
+                creation_timestamp: None,
+                labels: Default::default(),
+                annotations: Default::default(),
+                node_selector: Default::default(),
+                owner_references: Vec::new(),
+                conditions: Vec::new(),
+                init_containers: Vec::new(),
+                containers: Vec::new(),
+                events: Vec::new(),
             }),
         }
     }
@@ -185,12 +231,13 @@ async fn tools_list_includes_workload_tools() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    assert_eq!(tools.len(), 6);
+    assert_eq!(tools.len(), 7);
     assert!(names.contains(&"ping"));
     assert!(names.contains(&"workload_list"));
     assert!(names.contains(&"workload_restart"));
     assert!(names.contains(&"workload_scale"));
     assert!(names.contains(&"workload_logs"));
+    assert!(names.contains(&"pod_describe"));
     assert!(names.contains(&"dear_baby_reset_onboarding"));
 }
 
@@ -1037,4 +1084,221 @@ async fn workload_logs_renders_placeholder_for_empty_output() {
     assert_eq!(body["result"]["isError"], false);
     assert_eq!(body["result"]["content"][0]["text"], "(no log output)");
     assert_eq!(body["result"]["structuredContent"]["logs"], "");
+}
+
+#[tokio::test]
+async fn tools_list_advertises_pod_describe() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({"jsonrpc": "2.0", "id": 90, "method": "tools/list"}),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    let describe = find_tool(tools, "pod_describe");
+
+    assert_eq!(describe["annotations"]["title"], "Describe Pod");
+    assert_eq!(describe["annotations"]["readOnlyHint"], true);
+    assert_eq!(describe["annotations"]["idempotentHint"], true);
+    assert_eq!(describe["annotations"]["openWorldHint"], false);
+
+    let required = describe["inputSchema"]["required"]
+        .as_array()
+        .expect("required array");
+    let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+    assert_eq!(names, vec!["namespace", "name"]);
+}
+
+#[tokio::test]
+async fn pod_describe_dispatches_and_renders_structured_payload() {
+    let fake = Arc::new(FakeK8s::default());
+    let mut labels = std::collections::BTreeMap::new();
+    labels.insert("app".to_string(), "api".to_string());
+    *fake.describe_response.lock().unwrap() = Some(Ok(PodDescription {
+        name: "api-7d9c9f6b8b-xyz".into(),
+        namespace: "default".into(),
+        node: Some("k3s-node-1".into()),
+        phase: Some("Running".into()),
+        pod_ip: Some("10.0.0.42".into()),
+        host_ip: Some("192.168.1.10".into()),
+        service_account: Some("default".into()),
+        priority: Some(0),
+        priority_class_name: None,
+        qos_class: Some("BestEffort".into()),
+        start_time: Some("2026-05-10T12:00:00Z".into()),
+        creation_timestamp: Some("2026-05-10T11:59:50Z".into()),
+        labels,
+        annotations: Default::default(),
+        node_selector: Default::default(),
+        owner_references: Vec::new(),
+        conditions: vec![PodConditionInfo {
+            kind: "Ready".into(),
+            status: "True".into(),
+            reason: None,
+            message: None,
+            last_transition_time: None,
+        }],
+        init_containers: Vec::new(),
+        containers: vec![ContainerInfo {
+            name: "api".into(),
+            image: "ghcr.io/example/api:1.2.3".into(),
+            ready: true,
+            started: Some(true),
+            restart_count: 2,
+            state: Some("running".into()),
+            started_at: Some("2026-05-10T12:00:01Z".into()),
+            last_state: Some("terminated".into()),
+            last_reason: Some("Error".into()),
+            last_exit_code: Some(137),
+            ..ContainerInfo::default()
+        }],
+        events: vec![PodEventInfo {
+            kind: "Warning".into(),
+            reason: "BackOff".into(),
+            message: "Back-off restarting failed container".into(),
+            count: 5,
+            first_timestamp: Some("2026-05-10T11:00:00Z".into()),
+            last_timestamp: Some("2026-05-10T11:55:00Z".into()),
+            source: Some("kubelet".into()),
+        }],
+    }));
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 91,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": {
+                        "namespace": "default",
+                        "name": "api-7d9c9f6b8b-xyz"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["name"], "api-7d9c9f6b8b-xyz");
+    assert_eq!(payload["namespace"], "default");
+    assert_eq!(payload["node"], "k3s-node-1");
+    assert_eq!(payload["phase"], "Running");
+    assert_eq!(payload["pod_ip"], "10.0.0.42");
+    assert_eq!(payload["containers"][0]["name"], "api");
+    assert_eq!(payload["containers"][0]["image"], "ghcr.io/example/api:1.2.3");
+    assert_eq!(payload["containers"][0]["state"], "running");
+    assert_eq!(payload["containers"][0]["restart_count"], 2);
+    assert_eq!(payload["containers"][0]["last_state"], "terminated");
+    assert_eq!(payload["containers"][0]["last_exit_code"], 137);
+    assert_eq!(payload["conditions"][0]["type"], "Ready");
+    assert_eq!(payload["conditions"][0]["status"], "True");
+    assert_eq!(payload["events"][0]["type"], "Warning");
+    assert_eq!(payload["events"][0]["reason"], "BackOff");
+    assert_eq!(payload["events"][0]["count"], 5);
+
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(text.contains("Name:         api-7d9c9f6b8b-xyz"), "{text}");
+    assert!(text.contains("Namespace:    default"), "{text}");
+    assert!(text.contains("Node:         k3s-node-1"), "{text}");
+    assert!(text.contains("ghcr.io/example/api:1.2.3"), "{text}");
+    assert!(text.contains("BackOff"), "{text}");
+
+    let calls = fake.describe_calls.lock().unwrap();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].namespace, "default");
+    assert_eq!(calls[0].name, "api-7d9c9f6b8b-xyz");
+}
+
+#[tokio::test]
+async fn pod_describe_renders_no_events_placeholder() {
+    let fake = Arc::new(FakeK8s::default());
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 92,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": {
+                        "namespace": "default",
+                        "name": "api-0"
+                    }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    let text = body["result"]["content"][0]["text"].as_str().unwrap_or("");
+    assert!(text.contains("Events:       <none>"), "{text}");
+}
+
+#[tokio::test]
+async fn pod_describe_requires_namespace_and_name() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 93,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": { "namespace": "default" }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn pod_describe_surfaces_k8s_error_as_tool_error() {
+    let fake = Arc::new(FakeK8s::default());
+    *fake.describe_response.lock().unwrap() = Some(Err(K8sError::Api(
+        "pods \"missing\" not found".to_string(),
+    )));
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 94,
+                "method": "tools/call",
+                "params": {
+                    "name": "pod_describe",
+                    "arguments": { "namespace": "default", "name": "missing" }
+                }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], true);
+    assert!(body["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .contains("not found"));
 }
