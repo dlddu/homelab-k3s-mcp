@@ -3,7 +3,7 @@ use std::fmt;
 
 use async_trait::async_trait;
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
-use k8s_openapi::api::core::v1::{Event, Pod};
+use k8s_openapi::api::core::v1::{Event, Namespace, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use k8s_openapi::NamespaceResourceScope;
 use kube::api::{Api, AttachParams, ListParams, LogParams, Patch, PatchParams};
@@ -168,6 +168,8 @@ pub enum PodTarget {
 
 #[async_trait]
 pub trait K8sService: Send + Sync {
+    async fn list_namespaces(&self) -> Result<Vec<Value>, K8sError>;
+
     async fn list_workloads(
         &self,
         kind: WorkloadKind,
@@ -243,6 +245,10 @@ impl Default for UnavailableK8s {
 
 #[async_trait]
 impl K8sService for UnavailableK8s {
+    async fn list_namespaces(&self) -> Result<Vec<Value>, K8sError> {
+        Err(K8sError::Unavailable(self.reason.clone()))
+    }
+
     async fn list_workloads(
         &self,
         _kind: WorkloadKind,
@@ -416,6 +422,13 @@ impl KubeService {
 }
 
 #[derive(Debug, Serialize)]
+struct NamespaceSummary {
+    name: String,
+    phase: Option<String>,
+    creation_timestamp: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
 struct DeploymentSummary {
     name: String,
     namespace: String,
@@ -476,6 +489,22 @@ fn to_value<T: Serialize>(value: T) -> Value {
 
 #[async_trait]
 impl K8sService for KubeService {
+    async fn list_namespaces(&self) -> Result<Vec<Value>, K8sError> {
+        let api: Api<Namespace> = Api::all(self.client.clone());
+        let list = api.list(&ListParams::default()).await?;
+        Ok(list
+            .items
+            .iter()
+            .map(|n| {
+                to_value(NamespaceSummary {
+                    name: n.meta().name.clone().unwrap_or_default(),
+                    phase: n.status.as_ref().and_then(|s| s.phase.clone()),
+                    creation_timestamp: creation_timestamp(n),
+                })
+            })
+            .collect())
+    }
+
     async fn list_workloads(
         &self,
         kind: WorkloadKind,

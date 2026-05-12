@@ -8,6 +8,7 @@ from _helpers import base_url, get_json, open_session, wait_for_healthz
 
 EXPECTED_TOOLS = {
     "ping",
+    "namespace_list",
     "workload_list",
     "workload_restart",
     "workload_scale",

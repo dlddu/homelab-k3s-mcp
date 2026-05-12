@@ -133,6 +133,22 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 },
             },
             {
+                "name": "namespace_list",
+                "description": "List all Kubernetes namespaces with their phase \
+                                (Active, Terminating) and creation timestamp.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "List Namespaces",
+                    "readOnlyHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false,
+                },
+            },
+            {
                 "name": "workload_list",
                 "description": "List Kubernetes workloads (Deployment, StatefulSet, DaemonSet). \
                                 Namespace is optional; omit it to list across all namespaces.",
@@ -395,6 +411,7 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
             "content": [{ "type": "text", "text": "pong" }],
             "isError": false,
         })),
+        "namespace_list" => namespace_list_tool(k8s).await,
         "workload_list" => workload_list_tool(k8s, &args).await,
         "workload_restart" => workload_restart_tool(k8s, &args).await,
         "workload_scale" => workload_scale_tool(k8s, &args).await,
@@ -421,6 +438,13 @@ fn optional_string(obj: &serde_json::Map<String, Value>, key: &str) -> Option<St
         .and_then(Value::as_str)
         .filter(|s| !s.is_empty())
         .map(str::to_owned)
+}
+
+async fn namespace_list_tool(k8s: &SharedK8s) -> Result<Value, (i32, String)> {
+    match k8s.list_namespaces().await {
+        Ok(items) => Ok(success_json(json!({ "items": items }))),
+        Err(err) => Ok(tool_error(err)),
+    }
 }
 
 async fn workload_list_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
