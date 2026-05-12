@@ -4,7 +4,10 @@ use axum::{extract::State, response::Json, routing::post, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
-use crate::k8s::{ExecOutcome, K8sError, K8sService, LogOptions, LogResult, WorkloadKind};
+use crate::k8s::{
+    ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodDescription, PodTarget,
+    WorkloadKind,
+};
 
 const LOGS_DEFAULT_TAIL_LINES: i64 = 200;
 const LOGS_MAX_TAIL_LINES: i64 = 5000;
@@ -289,6 +292,55 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 },
             },
             {
+                "name": "pod_describe",
+                "description": "Return a kubectl-describe-style snapshot of a single pod: \
+                                metadata, container statuses (state, reason, restart count, \
+                                exit code), conditions, and recent events. Events are \
+                                best-effort and may be empty if the apiserver does not \
+                                expose them to this service account. \
+                                Provide exactly one of: 'name' (exact pod name), 'selector' \
+                                (label selector; first Running pod wins), or 'workload_kind' \
+                                + 'workload_name' (resolves the workload's pod selector).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "namespace": {
+                            "type": "string",
+                            "description": "Namespace of the pod."
+                        },
+                        "name": {
+                            "type": "string",
+                            "description": "Exact pod name. Mutually exclusive with 'selector' \
+                                            and 'workload_kind'+'workload_name'."
+                        },
+                        "selector": {
+                            "type": "string",
+                            "description": "Label selector (e.g. 'app=api'). Resolves to the \
+                                            first Running pod matching the selector, falling \
+                                            back to any matching pod when none is Running."
+                        },
+                        "workload_kind": {
+                            "type": "string",
+                            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
+                            "description": "Workload kind to resolve a pod from. Requires \
+                                            'workload_name'."
+                        },
+                        "workload_name": {
+                            "type": "string",
+                            "description": "Workload name. Requires 'workload_kind'."
+                        }
+                    },
+                    "required": ["namespace"],
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "Describe Pod",
+                    "readOnlyHint": true,
+                    "idempotentHint": true,
+                    "openWorldHint": false,
+                },
+            },
+            {
                 "name": "dear_baby_reset_onboarding",
                 "description": "Reset dear-baby onboarding for the user with the given email by \
                                 exec'ing the bundled /reset-onboarding CLI inside a running \
@@ -347,6 +399,7 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
         "workload_restart" => workload_restart_tool(k8s, &args).await,
         "workload_scale" => workload_scale_tool(k8s, &args).await,
         "workload_logs" => workload_logs_tool(k8s, &args).await,
+        "pod_describe" => pod_describe_tool(k8s, &args).await,
         "dear_baby_reset_onboarding" => dear_baby_reset_onboarding_tool(k8s, &args).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
@@ -543,6 +596,194 @@ fn logs_outcome_json(
         "structuredContent": payload,
         "isError": false,
     })
+}
+
+async fn pod_describe_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
+    let obj = args
+        .as_object()
+        .ok_or((-32602, "arguments must be an object".to_string()))?;
+
+    let namespace =
+        optional_string(obj, "namespace").ok_or((-32602, "namespace is required".to_string()))?;
+    let target = parse_pod_target(obj)?;
+
+    match k8s.describe_pod(&namespace, &target).await {
+        Ok(description) => Ok(pod_describe_outcome_json(description)),
+        Err(err) => Ok(tool_error(err)),
+    }
+}
+
+fn parse_pod_target(obj: &serde_json::Map<String, Value>) -> Result<PodTarget, (i32, String)> {
+    let name = optional_string(obj, "name");
+    let selector = optional_string(obj, "selector");
+    let workload_kind = optional_string(obj, "workload_kind");
+    let workload_name = optional_string(obj, "workload_name");
+
+    let workload_provided = workload_kind.is_some() || workload_name.is_some();
+    let modes = [name.is_some(), selector.is_some(), workload_provided]
+        .into_iter()
+        .filter(|b| *b)
+        .count();
+
+    if modes == 0 {
+        return Err((
+            -32602,
+            "one of 'name', 'selector', or 'workload_kind'+'workload_name' is required".to_string(),
+        ));
+    }
+    if modes > 1 {
+        return Err((
+            -32602,
+            "'name', 'selector', and 'workload_kind'+'workload_name' are mutually exclusive"
+                .to_string(),
+        ));
+    }
+
+    if let Some(n) = name {
+        return Ok(PodTarget::Name(n));
+    }
+    if let Some(s) = selector {
+        return Ok(PodTarget::Selector(s));
+    }
+
+    let kind_str = workload_kind.ok_or((
+        -32602,
+        "workload_kind is required when workload_name is provided".to_string(),
+    ))?;
+    let wname = workload_name.ok_or((
+        -32602,
+        "workload_name is required when workload_kind is provided".to_string(),
+    ))?;
+    let kind = WorkloadKind::parse(&kind_str).ok_or((
+        -32602,
+        format!(
+            "unknown workload_kind: {kind_str} (expected Deployment, StatefulSet, or DaemonSet)"
+        ),
+    ))?;
+    Ok(PodTarget::Workload { kind, name: wname })
+}
+
+fn pod_describe_outcome_json(description: PodDescription) -> Value {
+    let text = render_pod_describe_text(&description);
+    let structured = serde_json::to_value(&description).unwrap_or(Value::Null);
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": structured,
+        "isError": false,
+    })
+}
+
+fn render_pod_describe_text(d: &PodDescription) -> String {
+    use std::fmt::Write as _;
+
+    let mut s = String::new();
+    let _ = writeln!(s, "Name:         {}", d.name);
+    let _ = writeln!(s, "Namespace:    {}", d.namespace);
+    if let Some(node) = &d.node {
+        let _ = writeln!(s, "Node:         {node}");
+    }
+    if let Some(t) = &d.start_time {
+        let _ = writeln!(s, "Start Time:   {t}");
+    }
+    if !d.labels.is_empty() {
+        let _ = writeln!(s, "Labels:");
+        for (k, v) in &d.labels {
+            let _ = writeln!(s, "  {k}={v}");
+        }
+    }
+    if !d.annotations.is_empty() {
+        let _ = writeln!(s, "Annotations:");
+        for (k, v) in &d.annotations {
+            let _ = writeln!(s, "  {k}={v}");
+        }
+    }
+    let _ = writeln!(
+        s,
+        "Status:       {}",
+        d.phase.as_deref().unwrap_or("<unknown>")
+    );
+    if let Some(ip) = &d.pod_ip {
+        let _ = writeln!(s, "IP:           {ip}");
+    }
+    if let Some(ip) = &d.host_ip {
+        let _ = writeln!(s, "Host IP:      {ip}");
+    }
+    if let Some(qos) = &d.qos_class {
+        let _ = writeln!(s, "QoS Class:    {qos}");
+    }
+    if let Some(sa) = &d.service_account {
+        let _ = writeln!(s, "Service Account: {sa}");
+    }
+
+    if !d.init_containers.is_empty() {
+        let _ = writeln!(s, "Init Containers:");
+        for c in &d.init_containers {
+            write_container(&mut s, c);
+        }
+    }
+    if !d.containers.is_empty() {
+        let _ = writeln!(s, "Containers:");
+        for c in &d.containers {
+            write_container(&mut s, c);
+        }
+    }
+
+    if !d.conditions.is_empty() {
+        let _ = writeln!(s, "Conditions:");
+        let _ = writeln!(s, "  Type              Status");
+        for c in &d.conditions {
+            let _ = writeln!(s, "  {:<17} {}", c.kind, c.status);
+        }
+    }
+
+    if d.events.is_empty() {
+        let _ = writeln!(s, "Events:       <none>");
+    } else {
+        let _ = writeln!(s, "Events:");
+        for e in &d.events {
+            let when = e
+                .last_timestamp
+                .as_deref()
+                .or(e.first_timestamp.as_deref())
+                .unwrap_or("<unknown>");
+            let _ = writeln!(
+                s,
+                "  {} {} ({}x): {} - {}",
+                when, e.kind, e.count, e.reason, e.message
+            );
+        }
+    }
+
+    s
+}
+
+fn write_container(s: &mut String, c: &crate::k8s::ContainerInfo) {
+    use std::fmt::Write as _;
+    let _ = writeln!(s, "  {}:", c.name);
+    let _ = writeln!(s, "    Image:         {}", c.image);
+    if let Some(state) = &c.state {
+        let _ = writeln!(s, "    State:         {state}");
+    }
+    if let Some(reason) = &c.reason {
+        let _ = writeln!(s, "      Reason:      {reason}");
+    }
+    if let Some(message) = &c.message {
+        let _ = writeln!(s, "      Message:     {message}");
+    }
+    if let Some(exit) = c.exit_code {
+        let _ = writeln!(s, "      Exit Code:   {exit}");
+    }
+    let _ = writeln!(s, "    Ready:         {}", c.ready);
+    let _ = writeln!(s, "    Restart Count: {}", c.restart_count);
+    if let Some(last) = &c.last_state {
+        let _ = writeln!(s, "    Last State:    {last}");
+        if let Some(r) = &c.last_reason {
+            let _ = writeln!(s, "      Reason:      {r}");
+        }
+        if let Some(code) = c.last_exit_code {
+            let _ = writeln!(s, "      Exit Code:   {code}");
+        }
+    }
 }
 
 async fn dear_baby_reset_onboarding_tool(

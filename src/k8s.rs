@@ -1,8 +1,9 @@
+use std::collections::BTreeMap;
 use std::fmt;
 
 use async_trait::async_trait;
 use k8s_openapi::api::apps::v1::{DaemonSet, Deployment, StatefulSet};
-use k8s_openapi::api::core::v1::Pod;
+use k8s_openapi::api::core::v1::{Event, Pod};
 use k8s_openapi::apimachinery::pkg::apis::meta::v1::LabelSelector;
 use k8s_openapi::NamespaceResourceScope;
 use kube::api::{Api, AttachParams, ListParams, LogParams, Patch, PatchParams};
@@ -88,6 +89,83 @@ pub struct LogResult {
     pub logs: String,
 }
 
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct ContainerInfo {
+    pub name: String,
+    pub image: String,
+    pub ready: bool,
+    pub started: Option<bool>,
+    pub restart_count: i32,
+    pub state: Option<String>,
+    pub reason: Option<String>,
+    pub message: Option<String>,
+    pub started_at: Option<String>,
+    pub finished_at: Option<String>,
+    pub exit_code: Option<i32>,
+    pub last_state: Option<String>,
+    pub last_reason: Option<String>,
+    pub last_exit_code: Option<i32>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PodConditionInfo {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub status: String,
+    pub reason: Option<String>,
+    pub message: Option<String>,
+    pub last_transition_time: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct PodEventInfo {
+    #[serde(rename = "type")]
+    pub kind: String,
+    pub reason: String,
+    pub message: String,
+    pub count: i32,
+    pub first_timestamp: Option<String>,
+    pub last_timestamp: Option<String>,
+    pub source: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct PodDescription {
+    pub name: String,
+    pub namespace: String,
+    pub node: Option<String>,
+    pub phase: Option<String>,
+    pub pod_ip: Option<String>,
+    pub host_ip: Option<String>,
+    pub service_account: Option<String>,
+    pub priority: Option<i32>,
+    pub priority_class_name: Option<String>,
+    pub qos_class: Option<String>,
+    pub start_time: Option<String>,
+    pub creation_timestamp: Option<String>,
+    pub labels: BTreeMap<String, String>,
+    pub annotations: BTreeMap<String, String>,
+    pub node_selector: BTreeMap<String, String>,
+    pub owner_references: Vec<Value>,
+    pub conditions: Vec<PodConditionInfo>,
+    pub init_containers: Vec<ContainerInfo>,
+    pub containers: Vec<ContainerInfo>,
+    pub events: Vec<PodEventInfo>,
+}
+
+/// How `describe_pod` finds the pod to describe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PodTarget {
+    /// Exact pod name within the namespace.
+    Name(String),
+    /// Label selector; resolves to the first Running pod (or any matching
+    /// pod when none is Running).
+    Selector(String),
+    /// Workload kind + name; resolves the workload's pod selector and
+    /// picks the first Running pod (or any matching pod when none is Running).
+    Workload { kind: WorkloadKind, name: String },
+}
+
 #[async_trait]
 pub trait K8sService: Send + Sync {
     async fn list_workloads(
@@ -133,6 +211,16 @@ pub trait K8sService: Send + Sync {
         name: &str,
         options: &LogOptions,
     ) -> Result<LogResult, K8sError>;
+
+    /// Produce a `kubectl describe pod`-style snapshot for a single pod:
+    /// metadata, container statuses, conditions, and recent events. The
+    /// pod is resolved from `target` (exact name, label selector, or a
+    /// backing workload).
+    async fn describe_pod(
+        &self,
+        namespace: &str,
+        target: &PodTarget,
+    ) -> Result<PodDescription, K8sError>;
 }
 
 pub struct UnavailableK8s {
@@ -199,6 +287,14 @@ impl K8sService for UnavailableK8s {
         _name: &str,
         _options: &LogOptions,
     ) -> Result<LogResult, K8sError> {
+        Err(K8sError::Unavailable(self.reason.clone()))
+    }
+
+    async fn describe_pod(
+        &self,
+        _namespace: &str,
+        _target: &PodTarget,
+    ) -> Result<PodDescription, K8sError> {
         Err(K8sError::Unavailable(self.reason.clone()))
     }
 }
@@ -280,6 +376,22 @@ impl KubeService {
                 K8sError::Api(format!(
                     "{} {namespace}/{name} has no usable spec.selector.matchLabels",
                     kind.as_str()
+                ))
+            })
+    }
+
+    async fn first_pod_matching(&self, namespace: &str, selector: &str) -> Result<Pod, K8sError> {
+        let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
+        let lp = ListParams::default().labels(selector);
+        let list = pods.list(&lp).await?;
+        list.items
+            .iter()
+            .find(|p| p.status.as_ref().and_then(|s| s.phase.as_deref()) == Some("Running"))
+            .or_else(|| list.items.first())
+            .cloned()
+            .ok_or_else(|| {
+                K8sError::Api(format!(
+                    "no pod matched selector {selector:?} in namespace {namespace:?}"
                 ))
             })
     }
@@ -522,6 +634,38 @@ impl K8sService for KubeService {
         })
     }
 
+    async fn describe_pod(
+        &self,
+        namespace: &str,
+        target: &PodTarget,
+    ) -> Result<PodDescription, K8sError> {
+        let pod = match target {
+            PodTarget::Name(name) => {
+                let pods: Api<Pod> = Api::namespaced(self.client.clone(), namespace);
+                pods.get(name).await?
+            }
+            PodTarget::Selector(selector) => self.first_pod_matching(namespace, selector).await?,
+            PodTarget::Workload { kind, name } => {
+                let selector = self.workload_pod_selector(*kind, namespace, name).await?;
+                self.first_pod_matching(namespace, &selector).await?
+            }
+        };
+
+        let pod_name = pod.metadata.name.clone().unwrap_or_default();
+        let events_api: Api<Event> = Api::namespaced(self.client.clone(), namespace);
+        let field_selector =
+            format!("involvedObject.name={pod_name},involvedObject.namespace={namespace}");
+        let lp = ListParams::default().fields(&field_selector);
+        let events = match events_api.list(&lp).await {
+            Ok(list) => list.items,
+            // Events are best-effort. If listing fails (e.g. RBAC), we still
+            // want the rest of the description to come through.
+            Err(_) => Vec::new(),
+        };
+
+        Ok(build_pod_description(&pod, &events))
+    }
+
     async fn exec_in_pod(
         &self,
         namespace: &str,
@@ -586,6 +730,168 @@ impl K8sService for KubeService {
             success: exit_code == Some(0),
         })
     }
+}
+
+fn build_pod_description(pod: &Pod, events: &[Event]) -> PodDescription {
+    let meta = &pod.metadata;
+    let spec = pod.spec.as_ref();
+    let status = pod.status.as_ref();
+
+    let containers_spec: BTreeMap<String, String> = spec
+        .map(|s| {
+            s.containers
+                .iter()
+                .map(|c| (c.name.clone(), c.image.clone().unwrap_or_default()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let init_containers_spec: BTreeMap<String, String> = spec
+        .and_then(|s| s.init_containers.as_ref())
+        .map(|cs| {
+            cs.iter()
+                .map(|c| (c.name.clone(), c.image.clone().unwrap_or_default()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let container_statuses = status
+        .and_then(|s| s.container_statuses.as_ref())
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+    let init_container_statuses = status
+        .and_then(|s| s.init_container_statuses.as_ref())
+        .map(|v| v.as_slice())
+        .unwrap_or(&[]);
+
+    let containers = build_container_infos(container_statuses, &containers_spec);
+    let init_containers = build_container_infos(init_container_statuses, &init_containers_spec);
+
+    let conditions = status
+        .and_then(|s| s.conditions.as_ref())
+        .map(|cs| {
+            cs.iter()
+                .map(|c| PodConditionInfo {
+                    kind: c.type_.clone(),
+                    status: c.status.clone(),
+                    reason: c.reason.clone(),
+                    message: c.message.clone(),
+                    last_transition_time: c.last_transition_time.as_ref().map(|t| t.0.to_string()),
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut event_infos: Vec<PodEventInfo> = events
+        .iter()
+        .map(|e| PodEventInfo {
+            kind: e.type_.clone().unwrap_or_default(),
+            reason: e.reason.clone().unwrap_or_default(),
+            message: e.message.clone().unwrap_or_default(),
+            count: e.count.unwrap_or(1),
+            first_timestamp: e.first_timestamp.as_ref().map(|t| t.0.to_string()),
+            last_timestamp: e.last_timestamp.as_ref().map(|t| t.0.to_string()),
+            source: e.source.as_ref().and_then(|s| s.component.clone()),
+        })
+        .collect();
+    event_infos.sort_by(|a, b| a.last_timestamp.cmp(&b.last_timestamp));
+
+    let owner_references = meta
+        .owner_references
+        .as_ref()
+        .map(|refs| {
+            refs.iter()
+                .map(|r| {
+                    json!({
+                        "apiVersion": r.api_version,
+                        "kind": r.kind,
+                        "name": r.name,
+                        "uid": r.uid,
+                        "controller": r.controller,
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    PodDescription {
+        name: meta.name.clone().unwrap_or_default(),
+        namespace: meta.namespace.clone().unwrap_or_default(),
+        node: spec.and_then(|s| s.node_name.clone()),
+        phase: status.and_then(|s| s.phase.clone()),
+        pod_ip: status.and_then(|s| s.pod_ip.clone()),
+        host_ip: status.and_then(|s| s.host_ip.clone()),
+        service_account: spec.and_then(|s| s.service_account_name.clone()),
+        priority: spec.and_then(|s| s.priority),
+        priority_class_name: spec.and_then(|s| s.priority_class_name.clone()),
+        qos_class: status.and_then(|s| s.qos_class.clone()),
+        start_time: status
+            .and_then(|s| s.start_time.as_ref())
+            .map(|t| t.0.to_string()),
+        creation_timestamp: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
+        labels: meta.labels.clone().unwrap_or_default(),
+        annotations: meta.annotations.clone().unwrap_or_default(),
+        node_selector: spec
+            .and_then(|s| s.node_selector.clone())
+            .unwrap_or_default(),
+        owner_references,
+        conditions,
+        init_containers,
+        containers,
+        events: event_infos,
+    }
+}
+
+fn build_container_infos(
+    statuses: &[k8s_openapi::api::core::v1::ContainerStatus],
+    spec_images: &BTreeMap<String, String>,
+) -> Vec<ContainerInfo> {
+    statuses
+        .iter()
+        .map(|cs| {
+            let mut info = ContainerInfo {
+                name: cs.name.clone(),
+                image: if cs.image.is_empty() {
+                    spec_images.get(&cs.name).cloned().unwrap_or_default()
+                } else {
+                    cs.image.clone()
+                },
+                ready: cs.ready,
+                started: cs.started,
+                restart_count: cs.restart_count,
+                ..ContainerInfo::default()
+            };
+            if let Some(state) = cs.state.as_ref() {
+                if let Some(running) = state.running.as_ref() {
+                    info.state = Some("running".into());
+                    info.started_at = running.started_at.as_ref().map(|t| t.0.to_string());
+                } else if let Some(waiting) = state.waiting.as_ref() {
+                    info.state = Some("waiting".into());
+                    info.reason = waiting.reason.clone();
+                    info.message = waiting.message.clone();
+                } else if let Some(terminated) = state.terminated.as_ref() {
+                    info.state = Some("terminated".into());
+                    info.reason = terminated.reason.clone();
+                    info.message = terminated.message.clone();
+                    info.exit_code = Some(terminated.exit_code);
+                    info.started_at = terminated.started_at.as_ref().map(|t| t.0.to_string());
+                    info.finished_at = terminated.finished_at.as_ref().map(|t| t.0.to_string());
+                }
+            }
+            if let Some(last) = cs.last_state.as_ref() {
+                if last.running.is_some() {
+                    info.last_state = Some("running".into());
+                } else if let Some(waiting) = last.waiting.as_ref() {
+                    info.last_state = Some("waiting".into());
+                    info.last_reason = waiting.reason.clone();
+                } else if let Some(terminated) = last.terminated.as_ref() {
+                    info.last_state = Some("terminated".into());
+                    info.last_reason = terminated.reason.clone();
+                    info.last_exit_code = Some(terminated.exit_code);
+                }
+            }
+            info
+        })
+        .collect()
 }
 
 // The Kubernetes apiserver reports a non-zero exec exit by setting
