@@ -1125,8 +1125,7 @@ async fn tools_list_advertises_pod_describe() {
     let workload_kinds = props["workload_kind"]["enum"]
         .as_array()
         .expect("workload_kind enum");
-    let workload_kind_names: Vec<&str> =
-        workload_kinds.iter().filter_map(|v| v.as_str()).collect();
+    let workload_kind_names: Vec<&str> = workload_kinds.iter().filter_map(|v| v.as_str()).collect();
     assert_eq!(
         workload_kind_names,
         vec!["Deployment", "StatefulSet", "DaemonSet"]
@@ -1216,7 +1215,10 @@ async fn pod_describe_dispatches_and_renders_structured_payload() {
     assert_eq!(payload["phase"], "Running");
     assert_eq!(payload["pod_ip"], "10.0.0.42");
     assert_eq!(payload["containers"][0]["name"], "api");
-    assert_eq!(payload["containers"][0]["image"], "ghcr.io/example/api:1.2.3");
+    assert_eq!(
+        payload["containers"][0]["image"],
+        "ghcr.io/example/api:1.2.3"
+    );
     assert_eq!(payload["containers"][0]["state"], "running");
     assert_eq!(payload["containers"][0]["restart_count"], 2);
     assert_eq!(payload["containers"][0]["last_state"], "terminated");
@@ -1427,9 +1429,8 @@ async fn pod_describe_requires_a_target() {
 #[tokio::test]
 async fn pod_describe_surfaces_k8s_error_as_tool_error() {
     let fake = Arc::new(FakeK8s::default());
-    *fake.describe_response.lock().unwrap() = Some(Err(K8sError::Api(
-        "pods \"missing\" not found".to_string(),
-    )));
+    *fake.describe_response.lock().unwrap() =
+        Some(Err(K8sError::Api("pods \"missing\" not found".to_string())));
     let app = homelab_k3s_mcp::app(None, fake.clone());
 
     let response = app

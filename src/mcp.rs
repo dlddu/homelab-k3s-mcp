@@ -613,9 +613,7 @@ async fn pod_describe_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32,
     }
 }
 
-fn parse_pod_target(
-    obj: &serde_json::Map<String, Value>,
-) -> Result<PodTarget, (i32, String)> {
+fn parse_pod_target(obj: &serde_json::Map<String, Value>) -> Result<PodTarget, (i32, String)> {
     let name = optional_string(obj, "name");
     let selector = optional_string(obj, "selector");
     let workload_kind = optional_string(obj, "workload_kind");
@@ -630,8 +628,7 @@ fn parse_pod_target(
     if modes == 0 {
         return Err((
             -32602,
-            "one of 'name', 'selector', or 'workload_kind'+'workload_name' is required"
-                .to_string(),
+            "one of 'name', 'selector', or 'workload_kind'+'workload_name' is required".to_string(),
         ));
     }
     if modes > 1 {

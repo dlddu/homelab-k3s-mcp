@@ -163,10 +163,7 @@ pub enum PodTarget {
     Selector(String),
     /// Workload kind + name; resolves the workload's pod selector and
     /// picks the first Running pod (or any matching pod when none is Running).
-    Workload {
-        kind: WorkloadKind,
-        name: String,
-    },
+    Workload { kind: WorkloadKind, name: String },
 }
 
 #[async_trait]
@@ -833,7 +830,9 @@ fn build_pod_description(pod: &Pod, events: &[Event]) -> PodDescription {
         creation_timestamp: meta.creation_timestamp.as_ref().map(|t| t.0.to_string()),
         labels: meta.labels.clone().unwrap_or_default(),
         annotations: meta.annotations.clone().unwrap_or_default(),
-        node_selector: spec.and_then(|s| s.node_selector.clone()).unwrap_or_default(),
+        node_selector: spec
+            .and_then(|s| s.node_selector.clone())
+            .unwrap_or_default(),
         owner_references,
         conditions,
         init_containers,
