@@ -24,6 +24,13 @@ rules:
   # the exec stream with GET, so RBAC must allow the `get` verb on
   # pods/exec — `create` alone (the kubectl-style POST verb) is not
   # enough and trips a 403 on the WebSocket upgrade.
+  # namespace_list enumerates namespaces in the cluster.
+  - apiGroups: [""]
+    resources:
+      - namespaces
+    verbs:
+      - get
+      - list
   - apiGroups: [""]
     resources:
       - pods

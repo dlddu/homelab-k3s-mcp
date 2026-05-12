@@ -52,6 +52,18 @@ async def run() -> None:
     wait_for_healthz(url)
 
     async with open_session(url) as session:
+        print("--- namespace_list ---")
+        result = await session.call_tool("namespace_list", {})
+        assert result.isError is False, result
+        payload = result.structuredContent
+        items = payload["items"]
+        names = [item["name"] for item in items]
+        assert NAMESPACE in names, names
+        assert "kube-system" in names, names
+        active = next(item for item in items if item["name"] == NAMESPACE)
+        assert active["phase"] == "Active", active
+        print("namespace_list ok:", len(items), "namespaces")
+
         print("--- workload_list (namespace=workload-test) ---")
         result = await session.call_tool(
             "workload_list",

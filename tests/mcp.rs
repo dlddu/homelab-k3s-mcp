@@ -36,6 +36,8 @@ struct DescribeCall {
 #[derive(Default)]
 struct FakeK8s {
     pub items: Mutex<Vec<Value>>,
+    pub namespaces: Mutex<Vec<Value>>,
+    pub namespace_calls: Mutex<u32>,
     pub last_list: Mutex<Option<(WorkloadKind, Option<String>)>>,
     pub restarts: Mutex<Vec<(WorkloadKind, String, String)>>,
     pub scales: Mutex<Vec<(WorkloadKind, String, String, i32)>>,
@@ -50,6 +52,11 @@ struct FakeK8s {
 
 #[async_trait]
 impl K8sService for FakeK8s {
+    async fn list_namespaces(&self) -> Result<Vec<Value>, K8sError> {
+        *self.namespace_calls.lock().unwrap() += 1;
+        Ok(self.namespaces.lock().unwrap().clone())
+    }
+
     async fn list_workloads(
         &self,
         kind: WorkloadKind,
@@ -236,8 +243,9 @@ async fn tools_list_includes_workload_tools() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    assert_eq!(tools.len(), 7);
+    assert_eq!(tools.len(), 8);
     assert!(names.contains(&"ping"));
+    assert!(names.contains(&"namespace_list"));
     assert!(names.contains(&"workload_list"));
     assert!(names.contains(&"workload_restart"));
     assert!(names.contains(&"workload_scale"));
@@ -408,6 +416,96 @@ async fn workload_list_without_namespace_lists_all() {
     let (kind, ns) = last.as_ref().unwrap();
     assert_eq!(*kind, WorkloadKind::StatefulSet);
     assert!(ns.is_none());
+}
+
+#[tokio::test]
+async fn tools_list_advertises_namespace_list() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({"jsonrpc": "2.0", "id": 12, "method": "tools/list"}),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    let namespace = find_tool(tools, "namespace_list");
+
+    assert_eq!(namespace["annotations"]["title"], "List Namespaces");
+    assert_eq!(namespace["annotations"]["readOnlyHint"], true);
+    assert_eq!(namespace["annotations"]["idempotentHint"], true);
+    assert_eq!(namespace["annotations"]["openWorldHint"], false);
+
+    let required = namespace["inputSchema"]["required"].as_array();
+    assert!(required.is_none() || required.unwrap().is_empty());
+    let props = namespace["inputSchema"]["properties"]
+        .as_object()
+        .expect("properties object");
+    assert!(props.is_empty());
+}
+
+#[tokio::test]
+async fn namespace_list_dispatches_to_service() {
+    let fake = Arc::new(FakeK8s::default());
+    *fake.namespaces.lock().unwrap() = vec![
+        json!({
+            "name": "default",
+            "phase": "Active",
+            "creation_timestamp": "2026-05-01T00:00:00Z",
+        }),
+        json!({
+            "name": "kube-system",
+            "phase": "Active",
+            "creation_timestamp": "2026-05-01T00:00:00Z",
+        }),
+    ];
+    let app = homelab_k3s_mcp::app(None, fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 13,
+                "method": "tools/call",
+                "params": { "name": "namespace_list", "arguments": {} }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    let payload = &body["result"]["structuredContent"];
+    let items = payload["items"].as_array().expect("items array");
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0]["name"], "default");
+    assert_eq!(items[1]["name"], "kube-system");
+    assert_eq!(*fake.namespace_calls.lock().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn namespace_list_surfaces_unavailable_as_tool_error() {
+    let response = homelab_k3s_mcp::app(None, unavailable_k8s())
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 14,
+                "method": "tools/call",
+                "params": { "name": "namespace_list", "arguments": {} }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], true);
+    assert!(body["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .contains("kubernetes"));
 }
 
 #[tokio::test]
