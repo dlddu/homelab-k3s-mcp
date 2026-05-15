@@ -17,6 +17,8 @@ configMapGenerator:
       - MCP_AUTH_DISABLED=1
     options:
       disableNameSuffixHash: true
+
+secretGenerator:
   - name: homelab-k3s-mcp-github-app
     literals:
       - GITHUB_APP_CLIENT_ID=Iv1.testclientid12345

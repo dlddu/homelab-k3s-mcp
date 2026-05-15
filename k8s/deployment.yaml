@@ -57,7 +57,7 @@ spec:
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth
-            - configMapRef:
+            - secretRef:
                 name: homelab-k3s-mcp-github-app
           startupProbe:
             httpGet:
