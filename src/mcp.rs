@@ -4,6 +4,7 @@ use axum::{extract::State, response::Json, routing::post, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::github::{GitHubAppService, GitHubError, InstallationToken};
 use crate::k8s::{
     ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodDescription, PodTarget,
     WorkloadKind,
@@ -21,9 +22,16 @@ pub const SERVER_NAME: &str = env!("CARGO_PKG_NAME");
 pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub type SharedK8s = Arc<dyn K8sService>;
+pub type SharedGitHub = Arc<dyn GitHubAppService>;
 
-pub fn router<S: Clone + Send + Sync + 'static>(k8s: SharedK8s) -> Router<S> {
-    Router::new().route("/mcp", post(handle)).with_state(k8s)
+#[derive(Clone)]
+pub struct McpState {
+    pub k8s: SharedK8s,
+    pub github: SharedGitHub,
+}
+
+pub fn router<S: Clone + Send + Sync + 'static>(state: McpState) -> Router<S> {
+    Router::new().route("/mcp", post(handle)).with_state(state)
 }
 
 #[derive(Debug, Deserialize)]
@@ -83,7 +91,7 @@ impl JsonRpcResponse {
 }
 
 pub async fn handle(
-    State(k8s): State<SharedK8s>,
+    State(state): State<McpState>,
     Json(req): Json<JsonRpcRequest>,
 ) -> Json<JsonRpcResponse> {
     let id = req.id.clone().unwrap_or(Value::Null);
@@ -95,7 +103,7 @@ pub async fn handle(
     let response = match req.method.as_str() {
         "initialize" => initialize(),
         "tools/list" => tools_list(),
-        "tools/call" => tools_call(&k8s, &req.params).await,
+        "tools/call" => tools_call(&state, &req.params).await,
         "ping" => Ok(json!({})),
         other => Err((-32601, format!("method not found: {other}"))),
     };
@@ -394,12 +402,51 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     "idempotentHint": true,
                     "openWorldHint": false,
                 },
+            },
+            {
+                "name": "github_app_installation_token",
+                "description": "Mint a short-lived GitHub App installation access token (valid ~1 hour). \
+                                Optionally scope the token to a subset of installed repositories \
+                                and/or a subset of the App's permissions. Requires GITHUB_APP_ID and \
+                                GITHUB_APP_PRIVATE_KEY (or GITHUB_APP_PRIVATE_KEY_PATH) on the server.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "installation_id": {
+                            "type": "integer",
+                            "description": "GitHub App installation ID (numeric)."
+                        },
+                        "repositories": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Optional list of repository names (without owner) to \
+                                            restrict the token to. Each repo must be installed for \
+                                            the App. Omit to grant access to all installed repos."
+                        },
+                        "permissions": {
+                            "type": "object",
+                            "description": "Optional map of permission name to access level (e.g. \
+                                            { \"contents\": \"read\", \"pull_requests\": \"write\" }). \
+                                            Must be a subset of the App's installed permissions.",
+                            "additionalProperties": { "type": "string" }
+                        }
+                    },
+                    "required": ["installation_id"],
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "GitHub App Installation Token",
+                    "readOnlyHint": false,
+                    "destructiveHint": false,
+                    "idempotentHint": false,
+                    "openWorldHint": true,
+                },
             }
         ]
     }))
 }
 
-async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, String)> {
+async fn tools_call(state: &McpState, params: &Value) -> Result<Value, (i32, String)> {
     let name = params
         .get("name")
         .and_then(Value::as_str)
@@ -411,13 +458,16 @@ async fn tools_call(k8s: &SharedK8s, params: &Value) -> Result<Value, (i32, Stri
             "content": [{ "type": "text", "text": "pong" }],
             "isError": false,
         })),
-        "namespace_list" => namespace_list_tool(k8s).await,
-        "workload_list" => workload_list_tool(k8s, &args).await,
-        "workload_restart" => workload_restart_tool(k8s, &args).await,
-        "workload_scale" => workload_scale_tool(k8s, &args).await,
-        "workload_logs" => workload_logs_tool(k8s, &args).await,
-        "pod_describe" => pod_describe_tool(k8s, &args).await,
-        "dear_baby_reset_onboarding" => dear_baby_reset_onboarding_tool(k8s, &args).await,
+        "namespace_list" => namespace_list_tool(&state.k8s).await,
+        "workload_list" => workload_list_tool(&state.k8s, &args).await,
+        "workload_restart" => workload_restart_tool(&state.k8s, &args).await,
+        "workload_scale" => workload_scale_tool(&state.k8s, &args).await,
+        "workload_logs" => workload_logs_tool(&state.k8s, &args).await,
+        "pod_describe" => pod_describe_tool(&state.k8s, &args).await,
+        "dear_baby_reset_onboarding" => dear_baby_reset_onboarding_tool(&state.k8s, &args).await,
+        "github_app_installation_token" => {
+            github_app_installation_token_tool(&state.github, &args).await
+        }
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
 }
@@ -875,6 +925,81 @@ fn success_json(payload: Value) -> Value {
 }
 
 fn tool_error(err: K8sError) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": err.to_string() }],
+        "isError": true,
+    })
+}
+
+async fn github_app_installation_token_tool(
+    github: &SharedGitHub,
+    args: &Value,
+) -> Result<Value, (i32, String)> {
+    let obj = args
+        .as_object()
+        .ok_or((-32602, "arguments must be an object".to_string()))?;
+
+    let installation_id = obj.get("installation_id").and_then(Value::as_i64).ok_or((
+        -32602,
+        "installation_id is required and must be an integer".to_string(),
+    ))?;
+
+    let repositories = match obj.get("repositories") {
+        None | Some(Value::Null) => None,
+        Some(Value::Array(items)) => {
+            let mut out = Vec::with_capacity(items.len());
+            for item in items {
+                let s = item.as_str().ok_or((
+                    -32602,
+                    "repositories must be an array of strings".to_string(),
+                ))?;
+                out.push(s.to_string());
+            }
+            Some(out)
+        }
+        _ => {
+            return Err((
+                -32602,
+                "repositories must be an array of strings".to_string(),
+            ))
+        }
+    };
+
+    let permissions = match obj.get("permissions") {
+        None | Some(Value::Null) => None,
+        Some(v @ Value::Object(_)) => Some(v.clone()),
+        _ => return Err((-32602, "permissions must be an object".to_string())),
+    };
+
+    match github
+        .create_installation_token(installation_id, repositories, permissions)
+        .await
+    {
+        Ok(token) => Ok(installation_token_json(installation_id, token)),
+        Err(err) => Ok(github_tool_error(err)),
+    }
+}
+
+fn installation_token_json(installation_id: i64, token: InstallationToken) -> Value {
+    let payload = json!({
+        "installation_id": installation_id,
+        "token": token.token,
+        "expires_at": token.expires_at,
+        "permissions": token.permissions,
+        "repository_selection": token.repository_selection,
+    });
+    let text = format!(
+        "GitHub App installation token issued (installation_id={}, expires_at={}).",
+        installation_id, payload["expires_at"]
+    );
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": payload,
+        "isError": false,
+    })
+}
+
+fn github_tool_error(err: GitHubError) -> Value {
     json!({
         "content": [{ "type": "text", "text": err.to_string() }],
         "isError": true,

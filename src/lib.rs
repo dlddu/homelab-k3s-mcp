@@ -5,11 +5,14 @@ use serde::Serialize;
 use tower_http::trace::TraceLayer;
 
 pub mod auth;
+pub mod github;
 pub mod k8s;
 pub mod mcp;
 
 pub use auth::AuthConfig;
+pub use github::{GitHubAppClient, GitHubAppService, UnavailableGitHubApp};
 pub use k8s::{K8sService, KubeService, UnavailableK8s};
+pub use mcp::McpState;
 
 #[derive(Debug, Serialize)]
 pub struct Health {
@@ -17,7 +20,13 @@ pub struct Health {
     pub version: &'static str,
 }
 
-pub fn app(auth: Option<AuthConfig>, k8s: Arc<dyn K8sService>) -> Router {
+pub fn app(
+    auth: Option<AuthConfig>,
+    k8s: Arc<dyn K8sService>,
+    github: Arc<dyn GitHubAppService>,
+) -> Router {
+    let state = McpState { k8s, github };
+
     let public = Router::new()
         .route("/", get(root))
         .route("/healthz", get(healthz))
@@ -25,18 +34,20 @@ pub fn app(auth: Option<AuthConfig>, k8s: Arc<dyn K8sService>) -> Router {
 
     let (well_known, protected) = match auth {
         Some(config) => {
-            let state = Arc::new(config);
+            let auth_state = Arc::new(config);
             let metadata = Router::new()
                 .route(
                     "/.well-known/oauth-protected-resource",
                     get(auth::protected_resource_metadata),
                 )
-                .with_state(state.clone());
-            let mcp = mcp::router(k8s)
-                .route_layer(middleware::from_fn_with_state(state, auth::require_bearer));
+                .with_state(auth_state.clone());
+            let mcp = mcp::router(state).route_layer(middleware::from_fn_with_state(
+                auth_state,
+                auth::require_bearer,
+            ));
             (metadata, mcp)
         }
-        None => (Router::new(), mcp::router(k8s)),
+        None => (Router::new(), mcp::router(state)),
     };
 
     public

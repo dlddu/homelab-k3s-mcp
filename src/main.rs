@@ -2,7 +2,10 @@ use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use homelab_k3s_mcp::{K8sService, KubeService, UnavailableK8s};
+use homelab_k3s_mcp::{
+    GitHubAppClient, GitHubAppService, K8sService, KubeService, UnavailableGitHubApp,
+    UnavailableK8s,
+};
 use tokio::net::TcpListener;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
@@ -44,11 +47,28 @@ async fn main() {
         }
     };
 
+    let github: Arc<dyn GitHubAppService> = match GitHubAppClient::from_env() {
+        Ok(Some(client)) => {
+            tracing::info!("github app credentials loaded");
+            Arc::new(client)
+        }
+        Ok(None) => {
+            tracing::warn!(
+                "GITHUB_APP_ID not set: github_app_installation_token tool will return errors"
+            );
+            Arc::new(UnavailableGitHubApp::default())
+        }
+        Err(err) => {
+            tracing::error!(%err, "failed to initialize github app client; tool will return errors");
+            Arc::new(UnavailableGitHubApp::new(err))
+        }
+    };
+
     let listener = TcpListener::bind(addr).await.expect("bind listener");
     let local = listener.local_addr().expect("local addr");
     tracing::info!(%local, "homelab-k3s-mcp listening");
 
-    axum::serve(listener, homelab_k3s_mcp::app(auth, k8s))
+    axum::serve(listener, homelab_k3s_mcp::app(auth, k8s, github))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server error");
