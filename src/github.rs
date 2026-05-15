@@ -42,7 +42,6 @@ pub struct InstallationToken {
 pub trait GitHubAppService: Send + Sync {
     async fn create_installation_token(
         &self,
-        installation_id: i64,
         repositories: Option<Vec<String>>,
         permissions: Option<Value>,
     ) -> Result<InstallationToken, GitHubError>;
@@ -70,7 +69,6 @@ impl Default for UnavailableGitHubApp {
 impl GitHubAppService for UnavailableGitHubApp {
     async fn create_installation_token(
         &self,
-        _installation_id: i64,
         _repositories: Option<Vec<String>>,
         _permissions: Option<Value>,
     ) -> Result<InstallationToken, GitHubError> {
@@ -87,6 +85,7 @@ struct AppClaims<'a> {
 
 pub struct GitHubAppClient {
     app_id: String,
+    installation_id: i64,
     encoding_key: EncodingKey,
     api_base: String,
     user_agent: String,
@@ -99,6 +98,15 @@ impl GitHubAppClient {
             Ok(v) if !v.is_empty() => v,
             _ => return Ok(None),
         };
+
+        let installation_id = std::env::var("GITHUB_APP_INSTALLATION_ID")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                "GITHUB_APP_INSTALLATION_ID is required when GITHUB_APP_ID is set".to_string()
+            })?
+            .parse::<i64>()
+            .map_err(|e| format!("parse GITHUB_APP_INSTALLATION_ID: {e}"))?;
 
         let pem = match (
             std::env::var("GITHUB_APP_PRIVATE_KEY"),
@@ -132,6 +140,7 @@ impl GitHubAppClient {
 
         Ok(Some(Self {
             app_id,
+            installation_id,
             encoding_key,
             api_base: api_base.trim_end_matches('/').to_string(),
             user_agent,
@@ -155,14 +164,13 @@ impl GitHubAppClient {
 impl GitHubAppService for GitHubAppClient {
     async fn create_installation_token(
         &self,
-        installation_id: i64,
         repositories: Option<Vec<String>>,
         permissions: Option<Value>,
     ) -> Result<InstallationToken, GitHubError> {
         let jwt = self.app_jwt()?;
         let url = format!(
             "{}/app/installations/{}/access_tokens",
-            self.api_base, installation_id
+            self.api_base, self.installation_id
         );
 
         let mut body = serde_json::Map::new();

@@ -201,7 +201,6 @@ fn unavailable_github() -> Arc<dyn GitHubAppService> {
 
 #[derive(Clone, Debug)]
 struct InstallationTokenCall {
-    pub installation_id: i64,
     pub repositories: Option<Vec<String>>,
     pub permissions: Option<Value>,
 }
@@ -216,12 +215,10 @@ struct FakeGitHub {
 impl GitHubAppService for FakeGitHub {
     async fn create_installation_token(
         &self,
-        installation_id: i64,
         repositories: Option<Vec<String>>,
         permissions: Option<Value>,
     ) -> Result<InstallationToken, GitHubError> {
         self.calls.lock().unwrap().push(InstallationTokenCall {
-            installation_id,
             repositories: repositories.clone(),
             permissions: permissions.clone(),
         });
@@ -1614,11 +1611,20 @@ async fn tools_list_advertises_github_app_installation_token() {
     let tools = body["result"]["tools"].as_array().expect("tools array");
 
     let token = find_tool(tools, "github_app_installation_token");
-    let required = token["inputSchema"]["required"]
-        .as_array()
-        .expect("required array");
-    let names: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
-    assert_eq!(names, vec!["installation_id"]);
+    assert!(
+        token["inputSchema"]["required"].is_null()
+            || token["inputSchema"]["required"]
+                .as_array()
+                .map(|a| a.is_empty())
+                .unwrap_or(false),
+        "tool should not require any input fields"
+    );
+    let props = token["inputSchema"]["properties"]
+        .as_object()
+        .expect("properties");
+    assert!(!props.contains_key("installation_id"));
+    assert!(props.contains_key("repositories"));
+    assert!(props.contains_key("permissions"));
 
     assert_eq!(
         token["annotations"]["title"],
@@ -1650,7 +1656,7 @@ async fn github_app_installation_token_dispatches_with_defaults() {
                 "method": "tools/call",
                 "params": {
                     "name": "github_app_installation_token",
-                    "arguments": { "installation_id": 12345 }
+                    "arguments": {}
                 }
             }),
         ))
@@ -1660,7 +1666,7 @@ async fn github_app_installation_token_dispatches_with_defaults() {
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], false);
     let payload = &body["result"]["structuredContent"];
-    assert_eq!(payload["installation_id"], 12345);
+    assert!(payload["installation_id"].is_null());
     assert_eq!(payload["token"], "ghs_short_lived");
     assert_eq!(payload["expires_at"], "2026-05-07T01:00:00Z");
     assert_eq!(payload["repository_selection"], "all");
@@ -1669,7 +1675,6 @@ async fn github_app_installation_token_dispatches_with_defaults() {
     let calls = fake.calls.lock().unwrap();
     assert_eq!(calls.len(), 1);
     let call = &calls[0];
-    assert_eq!(call.installation_id, 12345);
     assert!(call.repositories.is_none());
     assert!(call.permissions.is_none());
 }
@@ -1689,7 +1694,6 @@ async fn github_app_installation_token_passes_through_scope() {
                 "params": {
                     "name": "github_app_installation_token",
                     "arguments": {
-                        "installation_id": 999,
                         "repositories": ["homelab-k3s-mcp", "infra"],
                         "permissions": { "contents": "read", "pull_requests": "write" }
                     }
@@ -1705,7 +1709,6 @@ async fn github_app_installation_token_passes_through_scope() {
     let calls = fake.calls.lock().unwrap();
     assert_eq!(calls.len(), 1);
     let call = &calls[0];
-    assert_eq!(call.installation_id, 999);
     assert_eq!(
         call.repositories.as_deref(),
         Some(&["homelab-k3s-mcp".to_string(), "infra".to_string()][..])
@@ -1716,25 +1719,26 @@ async fn github_app_installation_token_passes_through_scope() {
 }
 
 #[tokio::test]
-async fn github_app_installation_token_requires_installation_id() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
+async fn github_app_installation_token_dispatches_without_arguments_field() {
+    let fake = Arc::new(FakeGitHub::default());
+    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), fake.clone());
+
+    let response = app
         .oneshot(json_request(
             "/mcp",
             json!({
                 "jsonrpc": "2.0",
                 "id": 73,
                 "method": "tools/call",
-                "params": {
-                    "name": "github_app_installation_token",
-                    "arguments": {}
-                }
+                "params": { "name": "github_app_installation_token" }
             }),
         ))
         .await
         .unwrap();
 
     let body = body_json(response).await;
-    assert_eq!(body["error"]["code"], -32602);
+    assert_eq!(body["result"]["isError"], false);
+    assert_eq!(fake.calls.lock().unwrap().len(), 1);
 }
 
 #[tokio::test]
@@ -1748,7 +1752,7 @@ async fn github_app_installation_token_unavailable_returns_tool_error() {
                 "method": "tools/call",
                 "params": {
                     "name": "github_app_installation_token",
-                    "arguments": { "installation_id": 1 }
+                    "arguments": {}
                 }
             }),
         ))
@@ -1774,10 +1778,7 @@ async fn github_app_installation_token_rejects_non_array_repositories() {
                 "method": "tools/call",
                 "params": {
                     "name": "github_app_installation_token",
-                    "arguments": {
-                        "installation_id": 1,
-                        "repositories": "not-a-list"
-                    }
+                    "arguments": { "repositories": "not-a-list" }
                 }
             }),
         ))

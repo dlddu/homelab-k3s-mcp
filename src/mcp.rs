@@ -405,17 +405,14 @@ fn tools_list() -> Result<Value, (i32, String)> {
             },
             {
                 "name": "github_app_installation_token",
-                "description": "Mint a short-lived GitHub App installation access token (valid ~1 hour). \
-                                Optionally scope the token to a subset of installed repositories \
-                                and/or a subset of the App's permissions. Requires GITHUB_APP_ID and \
-                                GITHUB_APP_PRIVATE_KEY (or GITHUB_APP_PRIVATE_KEY_PATH) on the server.",
+                "description": "Mint a short-lived GitHub App installation access token (valid ~1 hour) \
+                                for the installation configured on the server. Optionally scope the \
+                                token to a subset of installed repositories and/or a subset of the \
+                                App's permissions. Requires GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, \
+                                and GITHUB_APP_PRIVATE_KEY (or GITHUB_APP_PRIVATE_KEY_PATH) on the server.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "installation_id": {
-                            "type": "integer",
-                            "description": "GitHub App installation ID (numeric)."
-                        },
                         "repositories": {
                             "type": "array",
                             "items": { "type": "string" },
@@ -431,7 +428,6 @@ fn tools_list() -> Result<Value, (i32, String)> {
                             "additionalProperties": { "type": "string" }
                         }
                     },
-                    "required": ["installation_id"],
                     "additionalProperties": false,
                 },
                 "annotations": {
@@ -935,16 +931,13 @@ async fn github_app_installation_token_tool(
     github: &SharedGitHub,
     args: &Value,
 ) -> Result<Value, (i32, String)> {
-    let obj = args
-        .as_object()
-        .ok_or((-32602, "arguments must be an object".to_string()))?;
+    let obj = match args {
+        Value::Null => None,
+        Value::Object(map) => Some(map),
+        _ => return Err((-32602, "arguments must be an object".to_string())),
+    };
 
-    let installation_id = obj.get("installation_id").and_then(Value::as_i64).ok_or((
-        -32602,
-        "installation_id is required and must be an integer".to_string(),
-    ))?;
-
-    let repositories = match obj.get("repositories") {
+    let repositories = match obj.and_then(|o| o.get("repositories")) {
         None | Some(Value::Null) => None,
         Some(Value::Array(items)) => {
             let mut out = Vec::with_capacity(items.len());
@@ -965,32 +958,31 @@ async fn github_app_installation_token_tool(
         }
     };
 
-    let permissions = match obj.get("permissions") {
+    let permissions = match obj.and_then(|o| o.get("permissions")) {
         None | Some(Value::Null) => None,
         Some(v @ Value::Object(_)) => Some(v.clone()),
         _ => return Err((-32602, "permissions must be an object".to_string())),
     };
 
     match github
-        .create_installation_token(installation_id, repositories, permissions)
+        .create_installation_token(repositories, permissions)
         .await
     {
-        Ok(token) => Ok(installation_token_json(installation_id, token)),
+        Ok(token) => Ok(installation_token_json(token)),
         Err(err) => Ok(github_tool_error(err)),
     }
 }
 
-fn installation_token_json(installation_id: i64, token: InstallationToken) -> Value {
+fn installation_token_json(token: InstallationToken) -> Value {
     let payload = json!({
-        "installation_id": installation_id,
         "token": token.token,
         "expires_at": token.expires_at,
         "permissions": token.permissions,
         "repository_selection": token.repository_selection,
     });
     let text = format!(
-        "GitHub App installation token issued (installation_id={}, expires_at={}).",
-        installation_id, payload["expires_at"]
+        "GitHub App installation token issued (expires_at={}).",
+        payload["expires_at"]
     );
     json!({
         "content": [{ "type": "text", "text": text }],
