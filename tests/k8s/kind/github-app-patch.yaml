@@ -1,0 +1,31 @@
+# Strategic merge patch that wires the kind-deployed mcp server to the
+# in-cluster github-mock and to a Secret containing a test RSA private key.
+# The Secret (github-app-test-key) must be created out-of-band by CI before
+# this kustomization is applied; the deployment will wait for the volume
+# mount otherwise.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp
+spec:
+  template:
+    spec:
+      containers:
+        - name: server
+          env:
+            - name: GITHUB_APP_ID
+              value: "12345"
+            - name: GITHUB_APP_INSTALLATION_ID
+              value: "67890"
+            - name: GITHUB_APP_PRIVATE_KEY_PATH
+              value: /etc/github-app/private-key.pem
+            - name: GITHUB_API_BASE_URL
+              value: http://github-mock.github-mock.svc.cluster.local
+          volumeMounts:
+            - name: github-app-key
+              mountPath: /etc/github-app
+              readOnly: true
+      volumes:
+        - name: github-app-key
+          secret:
+            secretName: github-app-test-key

@@ -17,3 +17,6 @@ configMapGenerator:
       - MCP_AUTH_DISABLED=1
     options:
       disableNameSuffixHash: true
+
+patches:
+  - path: github-app-patch.yaml
