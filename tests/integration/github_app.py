@@ -11,6 +11,15 @@ from _helpers import base_url, open_session, wait_for_healthz
 EXPECTED_INSTALLATION_ID = "67890"
 
 
+def parse_env_resource(result) -> tuple[str, str]:
+    """Extract (env_text, mime_type) from a tool result's embedded resource."""
+    assert result.content, result
+    block = result.content[0]
+    assert block.type == "resource", block
+    resource = block.resource
+    return resource.text, resource.mimeType
+
+
 async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
@@ -19,12 +28,14 @@ async def run() -> None:
         print("--- github_app_installation_token (defaults) ---")
         result = await session.call_tool("github_app_installation_token", {})
         assert result.isError is False, result
-        payload = result.structuredContent
-        assert payload["token"] == f"ghs_mock_{EXPECTED_INSTALLATION_ID}", payload
-        assert payload["expires_at"] == "2099-01-01T00:00:00Z", payload
-        assert payload["repository_selection"] == "all", payload
-        assert "contents" in payload["permissions"], payload
-        print("defaults ok ->", payload["token"])
+        assert result.structuredContent is None, result.structuredContent
+        env_text, mime = parse_env_resource(result)
+        assert mime == "text/plain", mime
+        assert f"GITHUB_TOKEN=ghs_mock_{EXPECTED_INSTALLATION_ID}" in env_text, env_text
+        assert "# Expires at: 2099-01-01T00:00:00Z" in env_text, env_text
+        assert "# Repository selection: all" in env_text, env_text
+        assert "contents=" in env_text, env_text
+        print("defaults ok ->", env_text.splitlines()[-1])
 
         print("--- github_app_installation_token (with scope) ---")
         result = await session.call_tool(
@@ -35,10 +46,10 @@ async def run() -> None:
             },
         )
         assert result.isError is False, result
-        payload = result.structuredContent
-        assert payload["token"] == f"ghs_mock_{EXPECTED_INSTALLATION_ID}", payload
-        assert payload["repository_selection"] == "selected", payload
-        assert payload["permissions"] == {"contents": "read"}, payload
+        env_text, _ = parse_env_resource(result)
+        assert f"GITHUB_TOKEN=ghs_mock_{EXPECTED_INSTALLATION_ID}" in env_text, env_text
+        assert "# Repository selection: selected" in env_text, env_text
+        assert "# Permissions: contents=read" in env_text, env_text
         print("scoped ok")
 
 
