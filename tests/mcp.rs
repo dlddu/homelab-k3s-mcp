@@ -1665,12 +1665,24 @@ async fn github_app_installation_token_dispatches_with_defaults() {
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], false);
-    let payload = &body["result"]["structuredContent"];
-    assert!(payload["installation_id"].is_null());
-    assert_eq!(payload["token"], "ghs_short_lived");
-    assert_eq!(payload["expires_at"], "2026-05-07T01:00:00Z");
-    assert_eq!(payload["repository_selection"], "all");
-    assert_eq!(payload["permissions"]["contents"], "read");
+    assert!(body["result"]["structuredContent"].is_null());
+
+    let resource = &body["result"]["content"][0];
+    assert_eq!(resource["type"], "resource");
+    assert_eq!(resource["resource"]["mimeType"], "text/plain");
+    let uri = resource["resource"]["uri"]
+        .as_str()
+        .expect("resource uri")
+        .to_string();
+    assert!(uri.ends_with(".env"), "uri should look like an env file: {uri}");
+    let text = resource["resource"]["text"]
+        .as_str()
+        .expect("resource text");
+    assert!(text.contains("GITHUB_TOKEN=ghs_short_lived"));
+    assert!(text.contains("# Expires at: 2026-05-07T01:00:00Z"));
+    assert!(text.contains("# Repository selection: all"));
+    assert!(text.contains("contents=read"));
+    assert!(text.contains("metadata=read"));
 
     let calls = fake.calls.lock().unwrap();
     assert_eq!(calls.len(), 1);
