@@ -292,7 +292,7 @@ async fn tools_list_includes_workload_tools() {
     assert!(names.contains(&"workload_scale"));
     assert!(names.contains(&"workload_logs"));
     assert!(names.contains(&"pod_describe"));
-    assert!(names.contains(&"dear_baby_reset_onboarding"));
+    assert!(names.contains(&"dear_baby_reset_user"));
     assert!(names.contains(&"github_app_installation_token"));
 }
 
@@ -818,7 +818,7 @@ async fn unavailable_k8s_returns_tool_error() {
 }
 
 #[tokio::test]
-async fn tools_list_advertises_dear_baby_reset_onboarding() {
+async fn tools_list_advertises_dear_baby_reset_user() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
         .oneshot(json_request(
             "/mcp",
@@ -830,7 +830,7 @@ async fn tools_list_advertises_dear_baby_reset_onboarding() {
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
 
-    let reset = find_tool(tools, "dear_baby_reset_onboarding");
+    let reset = find_tool(tools, "dear_baby_reset_user");
     let required = reset["inputSchema"]["required"]
         .as_array()
         .expect("required array");
@@ -838,17 +838,17 @@ async fn tools_list_advertises_dear_baby_reset_onboarding() {
     assert!(names.contains(&"namespace"));
     assert!(names.contains(&"email"));
 
-    assert_eq!(reset["annotations"]["title"], "Reset dear-baby Onboarding");
+    assert_eq!(reset["annotations"]["title"], "Reset dear-baby User");
     assert_eq!(reset["annotations"]["destructiveHint"], true);
     assert_eq!(reset["annotations"]["idempotentHint"], true);
 }
 
 #[tokio::test]
-async fn dear_baby_reset_onboarding_dispatches_exec_with_defaults() {
+async fn dear_baby_reset_user_dispatches_exec_with_defaults() {
     let fake = Arc::new(FakeK8s::default());
     *fake.exec_response.lock().unwrap() = Some(Ok(ExecOutcome {
         pod: "dear-baby-7d9c9f6b8b-xyz".into(),
-        stdout: "reset onboarding for user@example.com\n".into(),
+        stdout: "reset user for user@example.com\n".into(),
         stderr: String::new(),
         exit_code: Some(0),
         success: true,
@@ -863,7 +863,7 @@ async fn dear_baby_reset_onboarding_dispatches_exec_with_defaults() {
                 "id": 60,
                 "method": "tools/call",
                 "params": {
-                    "name": "dear_baby_reset_onboarding",
+                    "name": "dear_baby_reset_user",
                     "arguments": {
                         "namespace": "dear-baby",
                         "email": "user@example.com"
@@ -887,7 +887,7 @@ async fn dear_baby_reset_onboarding_dispatches_exec_with_defaults() {
     assert!(payload["stdout"]
         .as_str()
         .unwrap_or("")
-        .contains("reset onboarding"));
+        .contains("reset user"));
 
     let calls = fake.exec_calls.lock().unwrap();
     assert_eq!(calls.len(), 1);
@@ -897,15 +897,12 @@ async fn dear_baby_reset_onboarding_dispatches_exec_with_defaults() {
     assert_eq!(call.container.as_deref(), Some("backend"));
     assert_eq!(
         call.command,
-        vec![
-            "/reset-onboarding".to_string(),
-            "user@example.com".to_string()
-        ]
+        vec!["/reset-user".to_string(), "user@example.com".to_string()]
     );
 }
 
 #[tokio::test]
-async fn dear_baby_reset_onboarding_honours_overrides() {
+async fn dear_baby_reset_user_honours_overrides() {
     let fake = Arc::new(FakeK8s::default());
     let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
 
@@ -917,7 +914,7 @@ async fn dear_baby_reset_onboarding_honours_overrides() {
                 "id": 61,
                 "method": "tools/call",
                 "params": {
-                    "name": "dear_baby_reset_onboarding",
+                    "name": "dear_baby_reset_user",
                     "arguments": {
                         "namespace": "staging",
                         "email": "qa@example.com",
@@ -942,7 +939,7 @@ async fn dear_baby_reset_onboarding_honours_overrides() {
 }
 
 #[tokio::test]
-async fn dear_baby_reset_onboarding_reports_non_zero_exit() {
+async fn dear_baby_reset_user_reports_non_zero_exit() {
     let fake = Arc::new(FakeK8s::default());
     *fake.exec_response.lock().unwrap() = Some(Ok(ExecOutcome {
         pod: "dear-baby-1".into(),
@@ -961,7 +958,7 @@ async fn dear_baby_reset_onboarding_reports_non_zero_exit() {
                 "id": 62,
                 "method": "tools/call",
                 "params": {
-                    "name": "dear_baby_reset_onboarding",
+                    "name": "dear_baby_reset_user",
                     "arguments": {
                         "namespace": "dear-baby",
                         "email": "missing@example.com"
@@ -984,7 +981,7 @@ async fn dear_baby_reset_onboarding_reports_non_zero_exit() {
 }
 
 #[tokio::test]
-async fn dear_baby_reset_onboarding_requires_namespace_and_email() {
+async fn dear_baby_reset_user_requires_namespace_and_email() {
     let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
         .oneshot(json_request(
             "/mcp",
@@ -993,7 +990,7 @@ async fn dear_baby_reset_onboarding_requires_namespace_and_email() {
                 "id": 63,
                 "method": "tools/call",
                 "params": {
-                    "name": "dear_baby_reset_onboarding",
+                    "name": "dear_baby_reset_user",
                     "arguments": { "email": "user@example.com" }
                 }
             }),

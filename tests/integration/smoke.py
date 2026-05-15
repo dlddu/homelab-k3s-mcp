@@ -14,7 +14,7 @@ EXPECTED_TOOLS = {
     "workload_scale",
     "workload_logs",
     "pod_describe",
-    "dear_baby_reset_onboarding",
+    "dear_baby_reset_user",
 }
 
 

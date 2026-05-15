@@ -17,7 +17,7 @@ rules:
       - list
       - watch
       - patch
-  # dear_baby_reset_onboarding execs the bundled /reset-onboarding CLI
+  # dear_baby_reset_user execs the bundled /reset-user CLI
   # inside a running backend pod. List is needed to resolve the label
   # selector to a pod name; pods/exec is the subresource the apiserver
   # gates the WebSocket exec stream on. kube-rs (3.x, ws feature) opens

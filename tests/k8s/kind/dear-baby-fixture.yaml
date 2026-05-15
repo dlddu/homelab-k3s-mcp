@@ -6,7 +6,7 @@ metadata:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
 # Stand-in for the real dear-baby backend pod. busybox is enough because
-# the dear_baby_reset_onboarding tool just exec's /reset-onboarding <email>;
+# the dear_baby_reset_user tool just exec's /reset-user <email>;
 # the container's startup command writes a stub script at that path that
 # mimics the real CLI's success / not-found exit codes so the kind smoke
 # check can drive both the happy path and the failure path through the
@@ -35,12 +35,12 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              cat > /reset-onboarding <<'STUB'
+              cat > /reset-user <<'STUB'
               #!/bin/sh
               set -eu
               EMAIL="${1:-}"
               if [ -z "$EMAIL" ]; then
-                echo "usage: reset-onboarding <email>" >&2
+                echo "usage: reset-user <email>" >&2
                 exit 2
               fi
               case "$EMAIL" in
@@ -49,9 +49,9 @@ spec:
                   exit 1
                   ;;
               esac
-              echo "reset onboarding for $EMAIL"
+              echo "reset user for $EMAIL"
               STUB
-              chmod +x /reset-onboarding
+              chmod +x /reset-user
               exec sleep infinity
           resources:
             requests:

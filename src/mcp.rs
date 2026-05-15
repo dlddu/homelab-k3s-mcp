@@ -15,7 +15,7 @@ const LOGS_MAX_TAIL_LINES: i64 = 5000;
 
 const DEAR_BABY_DEFAULT_SELECTOR: &str = "app=dear-baby";
 const DEAR_BABY_DEFAULT_CONTAINER: &str = "backend";
-const DEAR_BABY_RESET_BIN: &str = "/reset-onboarding";
+const DEAR_BABY_RESET_BIN: &str = "/reset-user";
 
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 pub const SERVER_NAME: &str = env!("CARGO_PKG_NAME");
@@ -365,9 +365,9 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 },
             },
             {
-                "name": "dear_baby_reset_onboarding",
+                "name": "dear_baby_reset_user",
                 "description": "Reset dear-baby onboarding for the user with the given email by \
-                                exec'ing the bundled /reset-onboarding CLI inside a running \
+                                exec'ing the bundled /reset-user CLI inside a running \
                                 dear-baby backend pod. Clears onboarded_at, due_date, voice \
                                 coachmark dismissal, first_record_at, and ai_preview. Records \
                                 themselves are preserved.",
@@ -396,7 +396,7 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     "additionalProperties": false,
                 },
                 "annotations": {
-                    "title": "Reset dear-baby Onboarding",
+                    "title": "Reset dear-baby User",
                     "readOnlyHint": false,
                     "destructiveHint": true,
                     "idempotentHint": true,
@@ -462,7 +462,7 @@ async fn tools_call(state: &McpState, params: &Value) -> Result<Value, (i32, Str
         "workload_scale" => workload_scale_tool(&state.k8s, &args).await,
         "workload_logs" => workload_logs_tool(&state.k8s, &args).await,
         "pod_describe" => pod_describe_tool(&state.k8s, &args).await,
-        "dear_baby_reset_onboarding" => dear_baby_reset_onboarding_tool(&state.k8s, &args).await,
+        "dear_baby_reset_user" => dear_baby_reset_user_tool(&state.k8s, &args).await,
         "github_app_installation_token" => {
             github_app_installation_token_tool(&state.github, &args).await
         }
@@ -858,10 +858,7 @@ fn write_container(s: &mut String, c: &crate::k8s::ContainerInfo) {
     }
 }
 
-async fn dear_baby_reset_onboarding_tool(
-    k8s: &SharedK8s,
-    args: &Value,
-) -> Result<Value, (i32, String)> {
+async fn dear_baby_reset_user_tool(k8s: &SharedK8s, args: &Value) -> Result<Value, (i32, String)> {
     let obj = args
         .as_object()
         .ok_or((-32602, "arguments must be an object".to_string()))?;
