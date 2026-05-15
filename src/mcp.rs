@@ -409,7 +409,7 @@ fn tools_list() -> Result<Value, (i32, String)> {
                                 for the installation configured on the server. Optionally scope the \
                                 token to a subset of installed repositories and/or a subset of the \
                                 App's permissions. Requires GITHUB_APP_ID, GITHUB_APP_INSTALLATION_ID, \
-                                and GITHUB_APP_PRIVATE_KEY (or GITHUB_APP_PRIVATE_KEY_PATH) on the server.",
+                                and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {

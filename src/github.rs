@@ -108,20 +108,12 @@ impl GitHubAppClient {
             .parse::<i64>()
             .map_err(|e| format!("parse GITHUB_APP_INSTALLATION_ID: {e}"))?;
 
-        let pem = match (
-            std::env::var("GITHUB_APP_PRIVATE_KEY"),
-            std::env::var("GITHUB_APP_PRIVATE_KEY_PATH"),
-        ) {
-            (Ok(v), _) if !v.is_empty() => v,
-            (_, Ok(path)) if !path.is_empty() => std::fs::read_to_string(&path)
-                .map_err(|e| format!("read GITHUB_APP_PRIVATE_KEY_PATH ({path}): {e}"))?,
-            _ => {
-                return Err(
-                    "GITHUB_APP_PRIVATE_KEY or GITHUB_APP_PRIVATE_KEY_PATH is required when GITHUB_APP_ID is set"
-                        .to_string(),
-                );
-            }
-        };
+        let pem = std::env::var("GITHUB_APP_PRIVATE_KEY")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                "GITHUB_APP_PRIVATE_KEY is required when GITHUB_APP_ID is set".to_string()
+            })?;
 
         let encoding_key = EncodingKey::from_rsa_pem(pem.as_bytes())
             .map_err(|e| format!("parse github app private key: {e}"))?;
