@@ -1,0 +1,158 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: github-mock
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# Stand-in for api.github.com's installation-token endpoint. The Rust
+# server signs an App JWT and posts to /app/installations/<id>/access_tokens;
+# this mock returns a deterministic GitHub-shaped response so the kind
+# smoke check can drive the full client path end-to-end without touching
+# the real GitHub API.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: github-mock-script
+  namespace: github-mock
+data:
+  server.py: |
+    import json
+    import re
+    import sys
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    INSTALLATION_TOKEN_RE = re.compile(
+        r"^/app/installations/(?P<id>\d+)/access_tokens$"
+    )
+
+    DEFAULT_PERMISSIONS = {"contents": "read", "metadata": "read"}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            sys.stdout.write("github-mock " + (fmt % args) + "\n")
+            sys.stdout.flush()
+
+        def do_GET(self):
+            if self.path == "/healthz":
+                self._json(200, {"status": "ok"})
+                return
+            self._json(404, {"message": "Not Found"})
+
+        def do_POST(self):
+            match = INSTALLATION_TOKEN_RE.match(self.path)
+            if not match:
+                self._json(404, {"message": "Not Found"})
+                return
+
+            auth = self.headers.get("Authorization", "")
+            if not auth.startswith("Bearer "):
+                self._json(401, {"message": "Requires authentication"})
+                return
+
+            if self.headers.get("X-GitHub-Api-Version") != "2022-11-28":
+                self._json(400, {"message": "Missing X-GitHub-Api-Version"})
+                return
+
+            if not (self.headers.get("Accept") or "").startswith(
+                "application/vnd.github"
+            ):
+                self._json(400, {"message": "Missing Accept header"})
+                return
+
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw = self.rfile.read(length).decode() if length else ""
+            try:
+                payload = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                self._json(400, {"message": "Invalid JSON"})
+                return
+
+            repositories = payload.get("repositories")
+            permissions = payload.get("permissions") or DEFAULT_PERMISSIONS
+
+            self._json(
+                201,
+                {
+                    "token": f"ghs_mock_{match.group('id')}",
+                    "expires_at": "2099-01-01T00:00:00Z",
+                    "permissions": permissions,
+                    "repository_selection": "selected" if repositories else "all",
+                },
+            )
+
+        def _json(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    if __name__ == "__main__":
+        ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: github-mock
+  namespace: github-mock
+  labels:
+    app.kubernetes.io/name: github-mock
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: github-mock
+  template:
+    metadata:
+      labels:
+        app: github-mock
+    spec:
+      containers:
+        - name: server
+          image: python:3.12-alpine
+          command: ["python", "/scripts/server.py"]
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: script
+          configMap:
+            name: github-mock-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: github-mock
+  namespace: github-mock
+spec:
+  selector:
+    app: github-mock
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

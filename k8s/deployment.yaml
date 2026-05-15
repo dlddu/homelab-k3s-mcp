@@ -52,6 +52,8 @@ spec:
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth
+            - secretRef:
+                name: homelab-k3s-mcp-github-app
           startupProbe:
             httpGet:
               path: /healthz

@@ -83,6 +83,22 @@ jobs:
       - name: Load image into kind
         run: kind load docker-image homelab-k3s-mcp:ci --name homelab-k3s-mcp
 
+      - name: Deploy github-mock fixture
+        run: kubectl apply -f tests/k8s/kind/github-mock.yaml
+
+      - name: Create homelab-k3s-mcp namespace
+        run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
+
+      - name: Create test GitHub App secret
+        run: |
+          openssl genrsa -out /tmp/github-app-test-key.pem 2048
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-github-app \
+            --from-literal=GITHUB_APP_CLIENT_ID=Iv1.testclientid12345 \
+            --from-literal=GITHUB_APP_INSTALLATION_ID=67890 \
+            --from-literal=GITHUB_API_BASE_URL=http://github-mock.github-mock.svc.cluster.local \
+            --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
@@ -91,6 +107,9 @@ jobs:
 
       - name: Apply dear-baby exec fixture
         run: kubectl apply -f tests/k8s/kind/dear-baby-fixture.yaml
+
+      - name: Wait for github-mock rollout
+        run: kubectl -n github-mock rollout status deploy/github-mock --timeout=180s
 
       - name: Wait for rollout
         run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
@@ -122,6 +141,13 @@ jobs:
           trap "kill $PF_PID" EXIT
           python tests/integration/dear_baby.py http://127.0.0.1:8082
 
+      - name: Validate github_app_installation_token tool against mock
+        run: |
+          kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8083:80 >/tmp/pf-gh.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          python tests/integration/github_app.py http://127.0.0.1:8083
+
       - name: Dump cluster diagnostics on failure
         if: failure()
         run: |
@@ -133,6 +159,9 @@ jobs:
           kubectl -n dear-baby-test get all -o wide || true
           kubectl -n dear-baby-test describe deploy/dear-baby-fixture || true
           kubectl -n dear-baby-test logs deploy/dear-baby-fixture --tail=200 || true
+          kubectl -n github-mock get all -o wide || true
+          kubectl -n github-mock describe deploy/github-mock || true
+          kubectl -n github-mock logs deploy/github-mock --tail=200 || true
 
   docker:
     name: docker build & push
