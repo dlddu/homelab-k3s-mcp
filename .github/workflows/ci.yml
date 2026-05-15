@@ -134,7 +134,7 @@ jobs:
           trap "kill $PF_PID" EXIT
           python tests/integration/workload.py http://127.0.0.1:8081
 
-      - name: Validate dear_baby_reset_onboarding tool against fixture
+      - name: Validate dear_baby_reset_user tool against fixture
         run: |
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8082:80 >/tmp/pf-reset.log 2>&1 &
           PF_PID=$!

@@ -1,4 +1,4 @@
-"""End-to-end checks for the dear_baby_reset_onboarding tool."""
+"""End-to-end checks for the dear_baby_reset_user tool."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ async def run() -> None:
     wait_for_healthz(url)
 
     async with open_session(url) as session:
-        print("--- dear_baby_reset_onboarding (success path) ---")
+        print("--- dear_baby_reset_user (success path) ---")
         result = await session.call_tool(
-            "dear_baby_reset_onboarding",
+            "dear_baby_reset_user",
             {"namespace": NAMESPACE, "email": "user@example.com"},
         )
         assert result.isError is False, result
@@ -24,7 +24,7 @@ async def run() -> None:
         pod = payload.pop("pod")
         stdout = payload.pop("stdout")
         assert pod.startswith("dear-baby-fixture-"), pod
-        assert "reset onboarding for user@example.com" in stdout, stdout
+        assert "reset user for user@example.com" in stdout, stdout
         assert payload == {
             "namespace": NAMESPACE,
             "email": "user@example.com",
@@ -36,9 +36,9 @@ async def run() -> None:
         }, payload
         print("reset ok against pod", pod)
 
-        print("--- dear_baby_reset_onboarding (failure path) ---")
+        print("--- dear_baby_reset_user (failure path) ---")
         result = await session.call_tool(
-            "dear_baby_reset_onboarding",
+            "dear_baby_reset_user",
             {"namespace": NAMESPACE, "email": "missing@example.com"},
         )
         assert result.isError is True, result
@@ -58,9 +58,9 @@ async def run() -> None:
         }, payload
         print("reset failure path ok")
 
-        print("--- dear_baby_reset_onboarding (no Running pod) ---")
+        print("--- dear_baby_reset_user (no Running pod) ---")
         result = await session.call_tool(
-            "dear_baby_reset_onboarding",
+            "dear_baby_reset_user",
             {
                 "namespace": NAMESPACE,
                 "email": "user@example.com",
