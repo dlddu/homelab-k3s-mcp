@@ -49,11 +49,6 @@ spec:
               value: 0.0.0.0:3000
             - name: RUST_LOG
               value: info
-            - name: GITHUB_APP_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: homelab-k3s-mcp-github-app-key
-                  key: private-key.pem
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth

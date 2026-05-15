@@ -89,11 +89,14 @@ jobs:
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Generate test GitHub App private key
+      - name: Create test GitHub App secret
         run: |
           openssl genrsa -out /tmp/github-app-test-key.pem 2048
-          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-github-app-key \
-            --from-file=private-key.pem=/tmp/github-app-test-key.pem \
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-github-app \
+            --from-literal=GITHUB_APP_CLIENT_ID=Iv1.testclientid12345 \
+            --from-literal=GITHUB_APP_INSTALLATION_ID=67890 \
+            --from-literal=GITHUB_API_BASE_URL=http://github-mock.github-mock.svc.cluster.local \
+            --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)
