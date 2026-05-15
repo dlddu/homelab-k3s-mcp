@@ -1674,7 +1674,10 @@ async fn github_app_installation_token_dispatches_with_defaults() {
         .as_str()
         .expect("resource uri")
         .to_string();
-    assert!(uri.ends_with(".env"), "uri should look like an env file: {uri}");
+    assert!(
+        uri.ends_with(".env"),
+        "uri should look like an env file: {uri}"
+    );
     let text = resource["resource"]["text"]
         .as_str()
         .expect("resource text");
