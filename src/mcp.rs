@@ -408,9 +408,10 @@ fn tools_list() -> Result<Value, (i32, String)> {
                 "description": "Mint a short-lived GitHub App installation access token (valid ~1 hour) \
                                 for the installation configured on the server. Optionally scope the \
                                 token to a subset of installed repositories and/or a subset of the \
-                                App's permissions. Requires GITHUB_APP_CLIENT_ID, \
-                                GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) \
-                                on the server.",
+                                App's permissions. Returns the token as a text/plain `.env` file \
+                                (GITHUB_TOKEN=...) with expiry and scope as comments. Requires \
+                                GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and \
+                                GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
                 "inputSchema": {
                     "type": "object",
                     "properties": {
@@ -975,21 +976,39 @@ async fn github_app_installation_token_tool(
 }
 
 fn installation_token_json(token: InstallationToken) -> Value {
-    let payload = json!({
-        "token": token.token,
-        "expires_at": token.expires_at,
-        "permissions": token.permissions,
-        "repository_selection": token.repository_selection,
-    });
-    let text = format!(
-        "GitHub App installation token issued (expires_at={}).",
-        payload["expires_at"]
-    );
+    let env_text = installation_token_env(&token);
     json!({
-        "content": [{ "type": "text", "text": text }],
-        "structuredContent": payload,
+        "content": [{
+            "type": "resource",
+            "resource": {
+                "uri": "file:///github-token.env",
+                "mimeType": "text/plain",
+                "text": env_text,
+            }
+        }],
         "isError": false,
     })
+}
+
+fn installation_token_env(token: &InstallationToken) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("# Expires at: {}\n", token.expires_at));
+    if let Some(selection) = &token.repository_selection {
+        out.push_str(&format!("# Repository selection: {selection}\n"));
+    }
+    if let Some(perms) = token.permissions.as_ref().and_then(Value::as_object) {
+        if !perms.is_empty() {
+            let mut entries: Vec<(&String, &Value)> = perms.iter().collect();
+            entries.sort_by(|a, b| a.0.cmp(b.0));
+            let rendered: Vec<String> = entries
+                .iter()
+                .map(|(k, v)| format!("{}={}", k, v.as_str().unwrap_or_default()))
+                .collect();
+            out.push_str(&format!("# Permissions: {}\n", rendered.join(", ")));
+        }
+    }
+    out.push_str(&format!("GITHUB_TOKEN={}\n", token.token));
+    out
 }
 
 fn github_tool_error(err: GitHubError) -> Value {
