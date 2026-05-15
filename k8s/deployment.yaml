@@ -49,9 +49,17 @@ spec:
               value: 0.0.0.0:3000
             - name: RUST_LOG
               value: info
+            - name: GITHUB_APP_PRIVATE_KEY_PATH
+              value: /etc/github-app/private-key.pem
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth
+            - configMapRef:
+                name: homelab-k3s-mcp-github-app
+          volumeMounts:
+            - name: github-app-key
+              mountPath: /etc/github-app
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -85,3 +93,7 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: github-app-key
+          secret:
+            secretName: homelab-k3s-mcp-github-app-key

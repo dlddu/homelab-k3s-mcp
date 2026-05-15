@@ -92,7 +92,7 @@ jobs:
       - name: Generate test GitHub App private key
         run: |
           openssl genrsa -out /tmp/github-app-test-key.pem 2048
-          kubectl -n homelab-k3s-mcp create secret generic github-app-test-key \
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-github-app-key \
             --from-file=private-key.pem=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
 
