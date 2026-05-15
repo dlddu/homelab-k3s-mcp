@@ -219,8 +219,8 @@ const toolsListJSON = `{
       }
     },
     {
-      "name": "dear_baby_reset_onboarding",
-      "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-onboarding CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
+      "name": "dear_baby_reset_user",
+      "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-user CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -245,7 +245,7 @@ const toolsListJSON = `{
         "additionalProperties": false
       },
       "annotations": {
-        "title": "Reset dear-baby Onboarding",
+        "title": "Reset dear-baby User",
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": true,

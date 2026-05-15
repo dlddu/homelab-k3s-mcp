@@ -26,7 +26,7 @@ const (
 
 	dearBabyDefaultSelector  = "app=dear-baby"
 	dearBabyDefaultContainer = "backend"
-	dearBabyResetBin         = "/reset-onboarding"
+	dearBabyResetBin         = "/reset-user"
 )
 
 // Handler serves the MCP JSON-RPC endpoint.
@@ -155,8 +155,8 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		return h.workloadLogs(ctx, rawArgs)
 	case "pod_describe":
 		return h.podDescribe(ctx, rawArgs)
-	case "dear_baby_reset_onboarding":
-		return h.dearBabyResetOnboarding(ctx, rawArgs)
+	case "dear_baby_reset_user":
+		return h.dearBabyResetUser(ctx, rawArgs)
 	case "github_app_installation_token":
 		return h.githubAppInstallationToken(ctx, rawArgs)
 	case "aws_config_get":
@@ -452,7 +452,7 @@ func parsePodTarget(obj map[string]any) (k8s.PodTarget, *rpcErr) {
 	return k8s.PodTarget{Mode: k8s.TargetWorkload, Kind: kind, WorkloadName: *workloadName}, nil
 }
 
-func (h *Handler) dearBabyResetOnboarding(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+func (h *Handler) dearBabyResetUser(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
 		return nil, errf(-32602, "arguments must be an object")
