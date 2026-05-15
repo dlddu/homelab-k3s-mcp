@@ -54,7 +54,7 @@ async fn main() {
         }
         Ok(None) => {
             tracing::warn!(
-                "GITHUB_APP_ID not set: github_app_installation_token tool will return errors"
+                "GITHUB_APP_CLIENT_ID not set: github_app_installation_token tool will return errors"
             );
             Arc::new(UnavailableGitHubApp::default())
         }

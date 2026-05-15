@@ -84,7 +84,7 @@ struct AppClaims<'a> {
 }
 
 pub struct GitHubAppClient {
-    app_id: String,
+    client_id: String,
     installation_id: i64,
     encoding_key: EncodingKey,
     api_base: String,
@@ -94,7 +94,7 @@ pub struct GitHubAppClient {
 
 impl GitHubAppClient {
     pub fn from_env() -> Result<Option<Self>, String> {
-        let app_id = match std::env::var("GITHUB_APP_ID") {
+        let client_id = match std::env::var("GITHUB_APP_CLIENT_ID") {
             Ok(v) if !v.is_empty() => v,
             _ => return Ok(None),
         };
@@ -103,7 +103,8 @@ impl GitHubAppClient {
             .ok()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                "GITHUB_APP_INSTALLATION_ID is required when GITHUB_APP_ID is set".to_string()
+                "GITHUB_APP_INSTALLATION_ID is required when GITHUB_APP_CLIENT_ID is set"
+                    .to_string()
             })?
             .parse::<i64>()
             .map_err(|e| format!("parse GITHUB_APP_INSTALLATION_ID: {e}"))?;
@@ -112,7 +113,7 @@ impl GitHubAppClient {
             .ok()
             .filter(|s| !s.is_empty())
             .ok_or_else(|| {
-                "GITHUB_APP_PRIVATE_KEY is required when GITHUB_APP_ID is set".to_string()
+                "GITHUB_APP_PRIVATE_KEY is required when GITHUB_APP_CLIENT_ID is set".to_string()
             })?;
 
         let encoding_key = EncodingKey::from_rsa_pem(pem.as_bytes())
@@ -131,7 +132,7 @@ impl GitHubAppClient {
             .map_err(|e| format!("build http client: {e}"))?;
 
         Ok(Some(Self {
-            app_id,
+            client_id,
             installation_id,
             encoding_key,
             api_base: api_base.trim_end_matches('/').to_string(),
@@ -145,7 +146,7 @@ impl GitHubAppClient {
         let claims = AppClaims {
             iat: now - JWT_CLOCK_SKEW_SECS,
             exp: now + JWT_TTL_SECS,
-            iss: &self.app_id,
+            iss: &self.client_id,
         };
         encode(&Header::new(Algorithm::RS256), &claims, &self.encoding_key)
             .map_err(|e| GitHubError::Api(format!("sign app jwt: {e}")))
