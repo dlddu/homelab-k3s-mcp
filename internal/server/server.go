@@ -67,8 +67,19 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
+// silentPaths are health/readiness probe endpoints excluded from access logs
+// to avoid flooding them with kubelet probe traffic.
+var silentPaths = map[string]bool{
+	"/healthz": true,
+	"/readyz":  true,
+}
+
 func logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if silentPaths[r.URL.Path] {
+			next.ServeHTTP(w, r)
+			return
+		}
 		start := time.Now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(rec, r)
