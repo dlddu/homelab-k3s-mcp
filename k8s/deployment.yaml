@@ -54,7 +54,7 @@ spec:
                 name: homelab-k3s-mcp-oauth
             - secretRef:
                 name: homelab-k3s-mcp-github-app
-            - configMapRef:
+            - secretRef:
                 name: homelab-k3s-mcp-aws
                 optional: true
           startupProbe:
