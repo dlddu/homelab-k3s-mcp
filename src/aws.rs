@@ -1,4 +1,5 @@
 use std::fmt;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use aws_sdk_s3::error::DisplayErrorContext;
@@ -115,24 +116,46 @@ impl S3ConfigClient {
                 std::env::var("AWS_DEFAULT_REGION")
                     .ok()
                     .filter(|s| !s.is_empty())
-            });
+            })
+            .map(aws_config::Region::new);
 
-        // Build the HTTPS connector on rustls + ring, matching the rest of the
+        // Build the connector on rustls + ring, matching the rest of the
         // project (kube) and keeping aws-lc-rs (which needs cmake at build
-        // time) out of the dependency tree.
+        // time) out of the dependency tree. It serves both the plaintext-HTTP
+        // IMDS endpoint and HTTPS STS/S3.
         let http_client = aws_smithy_http_client::Builder::new()
             .tls_provider(aws_smithy_http_client::tls::Provider::Rustls(
                 aws_smithy_http_client::tls::rustls_provider::CryptoMode::Ring,
             ))
             .build_https();
 
-        let mut loader =
-            aws_config::defaults(aws_config::BehaviorVersion::latest()).http_client(http_client);
+        // Base credentials come from the node's EC2 instance profile over IMDS.
+        // A pod sits an extra network hop from the metadata service, so the
+        // SDK's default 1s IMDS timeouts are too tight; widen them and add
+        // attempts. (The instance's metadata hop limit must also be >= 2 --
+        // not something the client can work around.)
+        let provider_config = aws_config::provider_config::ProviderConfig::without_region()
+            .with_http_client(http_client.clone())
+            .with_region(region.clone());
+        let imds_client = aws_config::imds::Client::builder()
+            .configure(&provider_config)
+            .connect_timeout(Duration::from_secs(5))
+            .read_timeout(Duration::from_secs(5))
+            .max_attempts(5)
+            .build();
+        let base_credentials =
+            aws_config::default_provider::credentials::DefaultCredentialsChain::builder()
+                .configure(provider_config)
+                .imds_client(imds_client)
+                .build()
+                .await;
+
+        let mut loader = aws_config::defaults(aws_config::BehaviorVersion::latest())
+            .http_client(http_client)
+            .credentials_provider(base_credentials);
         if let Some(region) = region {
-            loader = loader.region(aws_config::Region::new(region));
+            loader = loader.region(region);
         }
-        // Base credentials resolve through the default chain, which on the
-        // homelab nodes lands on the EC2 instance profile (IMDS).
         let base = loader.load().await;
 
         let mut role = aws_config::sts::AssumeRoleProvider::builder(role_arn)
