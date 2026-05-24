@@ -54,6 +54,10 @@ spec:
                 name: homelab-k3s-mcp-oauth
             - secretRef:
                 name: homelab-k3s-mcp-github-app
+            # AWS_CONFIG_S3_BUCKET, AWS_CONFIG_S3_KEY, AWS_CONFIG_ROLE_ARN and
+            # the optional AWS_CONFIG_* overrides for the aws_config_get tool.
+            - secretRef:
+                name: homelab-k3s-mcp-aws-config
           startupProbe:
             httpGet:
               path: /healthz

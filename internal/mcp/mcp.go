@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
@@ -31,11 +32,12 @@ const (
 type Handler struct {
 	k8s    k8s.Service
 	github github.Service
+	aws    awsconfig.Service
 }
 
 // NewHandler builds an MCP handler backed by the given services.
-func NewHandler(k8sSvc k8s.Service, ghSvc github.Service) *Handler {
-	return &Handler{k8s: k8sSvc, github: ghSvc}
+func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service) *Handler {
+	return &Handler{k8s: k8sSvc, github: ghSvc, aws: awsSvc}
 }
 
 type rpcRequest struct {
@@ -155,6 +157,8 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		return h.dearBabyResetOnboarding(ctx, rawArgs)
 	case "github_app_installation_token":
 		return h.githubAppInstallationToken(ctx, rawArgs)
+	case "aws_config_get":
+		return h.awsConfigGet(ctx)
 	default:
 		return nil, errf(-32602, "unknown tool: %s", name)
 	}
@@ -565,6 +569,32 @@ func installationTokenEnv(token *github.InstallationToken) string {
 	}
 	fmt.Fprintf(&b, "GITHUB_TOKEN=%s\n", token.Token)
 	return b.String()
+}
+
+func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
+	obj, err := h.aws.GetConfig(ctx)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	payload := map[string]any{
+		"bucket":       obj.Bucket,
+		"key":          obj.Key,
+		"content":      obj.Content,
+		"contentType":  obj.ContentType,
+		"etag":         obj.ETag,
+		"lastModified": obj.LastModified,
+		"size":         obj.Size,
+	}
+	text := obj.Content
+	if text == "" {
+		text = "(empty object)"
+	}
+	return map[string]any{
+		"content":           []any{map[string]any{"type": "text", "text": text}},
+		"structuredContent": payload,
+		"isError":           false,
+	}, nil
 }
 
 // --- shared helpers ---
