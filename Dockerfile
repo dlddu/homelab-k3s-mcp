@@ -1,24 +1,23 @@
 # syntax=docker/dockerfile:1.7
 
-ARG RUST_VERSION=1
+ARG GO_VERSION=1.24
 ARG DEBIAN_CODENAME=bookworm
 
-FROM rust:${RUST_VERSION}-slim-${DEBIAN_CODENAME} AS builder
+FROM golang:${GO_VERSION}-${DEBIAN_CODENAME} AS builder
 WORKDIR /app
 
-RUN apt-get update \
- && apt-get install -y --no-install-recommends pkg-config \
- && rm -rf /var/lib/apt/lists/*
+ENV CGO_ENABLED=0 GOTOOLCHAIN=local
 
-COPY Cargo.toml Cargo.lock ./
-COPY src ./src
+COPY go.mod go.sum ./
+RUN go mod download
 
-RUN cargo build --release --locked --bin homelab-k3s-mcp \
- && strip target/release/homelab-k3s-mcp
+COPY . .
 
-FROM gcr.io/distroless/cc-debian12:nonroot AS runtime
+RUN go build -trimpath -ldflags="-s -w" -o /out/homelab-k3s-mcp .
 
-COPY --from=builder /app/target/release/homelab-k3s-mcp /usr/local/bin/homelab-k3s-mcp
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+
+COPY --from=builder /out/homelab-k3s-mcp /usr/local/bin/homelab-k3s-mcp
 
 ENV LISTEN_ADDR=0.0.0.0:3000
 EXPOSE 3000

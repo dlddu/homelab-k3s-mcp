@@ -179,7 +179,7 @@ async def run() -> None:
         # The fixture runs the `pause` image, which emits no log output. We can
         # still verify the full plumbing: selector resolution, pod lookup, the
         # pods/log RBAC binding, option propagation, and the empty-output
-        # placeholder. Real log content is exercised in the Rust unit tests.
+        # placeholder. Real log content is exercised in the Go unit tests.
         print("--- workload_logs (defaults, empty output) ---")
         result = await session.call_tool(
             "workload_logs",

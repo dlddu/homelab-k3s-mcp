@@ -1,6 +1,6 @@
 """Shared helpers for the homelab-k3s-mcp Python integration tests.
 
-The Rust server exposes an MCP-flavoured JSON-RPC endpoint at ``/mcp``, but it
+The server exposes an MCP-flavoured JSON-RPC endpoint at ``/mcp``, but it
 does not yet implement the full Streamable HTTP transport contract: in
 particular it answers JSON-RPC notifications (e.g. ``notifications/initialized``
 sent by ``ClientSession.initialize``) with a JSON-RPC error body and HTTP 200

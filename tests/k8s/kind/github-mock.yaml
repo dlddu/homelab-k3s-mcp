@@ -5,7 +5,7 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
-# Stand-in for api.github.com's installation-token endpoint. The Rust
+# Stand-in for api.github.com's installation-token endpoint. The
 # server signs an App JWT and posts to /app/installations/<id>/access_tokens;
 # this mock returns a deterministic GitHub-shaped response so the kind
 # smoke check can drive the full client path end-to-end without touching
