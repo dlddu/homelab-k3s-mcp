@@ -26,6 +26,9 @@ async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
 kube = { version = "3", default-features = false, features = ["client", "rustls-tls", "ring", "ws"] }
 k8s-openapi = { version = "0.27", features = ["v1_33"] }
+aws-config = { version = "1", default-features = false, features = ["rt-tokio", "behavior-version-latest"] }
+aws-sdk-s3 = { version = "1", default-features = false, features = ["rt-tokio", "behavior-version-latest"] }
+aws-smithy-http-client = { version = "1", default-features = false, features = ["default-client", "rustls-ring"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }

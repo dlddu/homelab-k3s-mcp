@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use homelab_k3s_mcp::{
-    GitHubAppClient, GitHubAppService, K8sService, KubeService, UnavailableGitHubApp,
-    UnavailableK8s,
+    AwsConfigService, GitHubAppClient, GitHubAppService, K8sService, KubeService, S3ConfigClient,
+    UnavailableAws, UnavailableGitHubApp, UnavailableK8s,
 };
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -64,11 +64,28 @@ async fn main() {
         }
     };
 
+    let aws: Arc<dyn AwsConfigService> = match S3ConfigClient::from_env().await {
+        Ok(Some(client)) => {
+            tracing::info!("aws config s3 client loaded");
+            Arc::new(client)
+        }
+        Ok(None) => {
+            tracing::warn!(
+                "AWS_CONFIG_S3_BUCKET not set: aws_config_fetch tool will return errors"
+            );
+            Arc::new(UnavailableAws::default())
+        }
+        Err(err) => {
+            tracing::error!(%err, "invalid aws config; aws_config_fetch tool will return errors");
+            Arc::new(UnavailableAws::new(err))
+        }
+    };
+
     let listener = TcpListener::bind(addr).await.expect("bind listener");
     let local = listener.local_addr().expect("local addr");
     tracing::info!(%local, "homelab-k3s-mcp listening");
 
-    axum::serve(listener, homelab_k3s_mcp::app(auth, k8s, github))
+    axum::serve(listener, homelab_k3s_mcp::app(auth, k8s, github, aws))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server error");

@@ -4,6 +4,7 @@ use axum::{extract::State, response::Json, routing::post, Router};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
+use crate::aws::{AwsConfigService, AwsError, ConfigObject};
 use crate::github::{GitHubAppService, GitHubError, InstallationToken};
 use crate::k8s::{
     ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodDescription, PodTarget,
@@ -23,11 +24,13 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub type SharedK8s = Arc<dyn K8sService>;
 pub type SharedGitHub = Arc<dyn GitHubAppService>;
+pub type SharedAws = Arc<dyn AwsConfigService>;
 
 #[derive(Clone)]
 pub struct McpState {
     pub k8s: SharedK8s,
     pub github: SharedGitHub,
+    pub aws: SharedAws,
 }
 
 pub fn router<S: Clone + Send + Sync + 'static>(state: McpState) -> Router<S> {
@@ -439,6 +442,29 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     "idempotentHint": false,
                     "openWorldHint": true,
                 },
+            },
+            {
+                "name": "aws_config_fetch",
+                "description": "Fetch the configured AWS config file from S3 and return its \
+                                contents as text. The bucket and key are fixed on the server \
+                                via AWS_CONFIG_S3_BUCKET and AWS_CONFIG_S3_KEY, so the tool \
+                                takes no arguments. Credentials are resolved by assuming \
+                                AWS_CONFIG_ASSUME_ROLE_ARN on top of the default credential \
+                                chain (the node's EC2 instance profile via IMDS). Requires \
+                                AWS_CONFIG_S3_BUCKET, AWS_CONFIG_S3_KEY, and \
+                                AWS_CONFIG_ASSUME_ROLE_ARN on the server.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "Fetch AWS Config from S3",
+                    "readOnlyHint": true,
+                    "destructiveHint": false,
+                    "idempotentHint": true,
+                    "openWorldHint": true,
+                },
             }
         ]
     }))
@@ -466,6 +492,7 @@ async fn tools_call(state: &McpState, params: &Value) -> Result<Value, (i32, Str
         "github_app_installation_token" => {
             github_app_installation_token_tool(&state.github, &args).await
         }
+        "aws_config_fetch" => aws_config_fetch_tool(&state.aws).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
 }
@@ -1012,6 +1039,34 @@ fn installation_token_env(token: &InstallationToken) -> String {
 }
 
 fn github_tool_error(err: GitHubError) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": err.to_string() }],
+        "isError": true,
+    })
+}
+
+async fn aws_config_fetch_tool(aws: &SharedAws) -> Result<Value, (i32, String)> {
+    match aws.fetch_config().await {
+        Ok(object) => Ok(config_object_json(object)),
+        Err(err) => Ok(aws_tool_error(err)),
+    }
+}
+
+fn config_object_json(object: ConfigObject) -> Value {
+    let text = if object.content.is_empty() {
+        "(empty object)".to_string()
+    } else {
+        object.content.clone()
+    };
+    let structured = serde_json::to_value(&object).unwrap_or(Value::Null);
+    json!({
+        "content": [{ "type": "text", "text": text }],
+        "structuredContent": structured,
+        "isError": false,
+    })
+}
+
+fn aws_tool_error(err: AwsError) -> Value {
     json!({
         "content": [{ "type": "text", "text": err.to_string() }],
         "isError": true,

@@ -15,6 +15,7 @@ EXPECTED_TOOLS = {
     "workload_logs",
     "pod_describe",
     "dear_baby_reset_onboarding",
+    "aws_config_fetch",
 }
 
 
