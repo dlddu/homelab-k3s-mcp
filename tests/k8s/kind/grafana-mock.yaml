@@ -1,0 +1,150 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grafana-mock
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# Stand-in for grafana.com's access-policy token endpoint. The server posts to
+# /v1/tokens?region=<region> with a Bearer management token and a body naming
+# the pre-created access policy; this mock returns a deterministic
+# Grafana-shaped response so the kind smoke check can drive the full client
+# path end-to-end without touching the real Grafana Cloud API.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-mock-script
+  namespace: grafana-mock
+data:
+  server.py: |
+    import json
+    import sys
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import urlparse, parse_qs
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            sys.stdout.write("grafana-mock " + (fmt % args) + "\n")
+            sys.stdout.flush()
+
+        def do_GET(self):
+            if urlparse(self.path).path == "/healthz":
+                self._json(200, {"status": "ok"})
+                return
+            self._json(404, {"message": "not found"})
+
+        def do_POST(self):
+            parsed = urlparse(self.path)
+            if parsed.path != "/v1/tokens":
+                self._json(404, {"message": "not found"})
+                return
+
+            region = parse_qs(parsed.query).get("region", [""])[0]
+            if not region:
+                self._json(400, {"message": "missing region query parameter"})
+                return
+
+            auth = self.headers.get("Authorization", "")
+            if not auth.startswith("Bearer "):
+                self._json(401, {"message": "unauthorized"})
+                return
+
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw = self.rfile.read(length).decode() if length else ""
+            try:
+                payload = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                self._json(400, {"message": "invalid JSON"})
+                return
+
+            access_policy_id = payload.get("accessPolicyId")
+            if not access_policy_id:
+                self._json(400, {"message": "missing accessPolicyId"})
+                return
+
+            self._json(
+                200,
+                {
+                    "accessPolicyId": access_policy_id,
+                    "name": payload.get("name"),
+                    "displayName": payload.get("displayName"),
+                    "expiresAt": "2099-01-01T00:00:00Z",
+                    "token": f"glc_mock_{access_policy_id}",
+                },
+            )
+
+        def _json(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    if __name__ == "__main__":
+        ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-mock
+  namespace: grafana-mock
+  labels:
+    app.kubernetes.io/name: grafana-mock
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-mock
+  template:
+    metadata:
+      labels:
+        app: grafana-mock
+    spec:
+      containers:
+        - name: server
+          image: python:3.12-alpine
+          command: ["python", "/scripts/server.py"]
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: script
+          configMap:
+            name: grafana-mock-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-mock
+  namespace: grafana-mock
+spec:
+  selector:
+    app: grafana-mock
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

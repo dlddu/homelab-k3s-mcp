@@ -15,6 +15,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
+	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 )
@@ -41,10 +42,11 @@ func main() {
 	k8sSvc := buildK8sService()
 	ghSvc := buildGitHubService()
 	awsSvc := buildAWSService(ctx)
+	grafanaSvc := buildGrafanaService()
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc),
+		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc),
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -115,5 +117,19 @@ func buildAWSService(ctx context.Context) awsconfig.Service {
 		return awsconfig.NewUnavailable("")
 	}
 	slog.Info("aws config integration loaded")
+	return client
+}
+
+func buildGrafanaService() grafana.Service {
+	client, err := grafana.FromEnv()
+	if err != nil {
+		slog.Error("failed to initialize grafana cloud client; tool will return errors", "error", err)
+		return grafana.NewUnavailable(err.Error())
+	}
+	if client == nil {
+		slog.Warn("GRAFANA_CLOUD_ACCESS_POLICY_TOKEN not set: grafana_cloud_token tool will return errors")
+		return grafana.NewUnavailable("")
+	}
+	slog.Info("grafana cloud integration loaded")
 	return client
 }

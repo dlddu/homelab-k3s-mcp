@@ -293,6 +293,22 @@ const toolsListJSON = `{
         "idempotentHint": true,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "grafana_cloud_token",
+      "description": "Mint a short-lived Grafana Cloud access token (valid ~1 hour) from a pre-created, read-only access policy (metrics:read, logs:read) configured on the server. Takes no arguments: the access policy, region, and management credentials are fixed on the server via GRAFANA_CLOUD_ACCESS_POLICY_ID, GRAFANA_CLOUD_REGION, and GRAFANA_CLOUD_ACCESS_POLICY_TOKEN. Returns the token as a text/plain .env file (GRAFANA_CLOUD_TOKEN=...) with expiry and access policy as comments.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Grafana Cloud Token",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     }
   ]
 }`

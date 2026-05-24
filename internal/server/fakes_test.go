@@ -6,6 +6,7 @@ import (
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
+	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -195,8 +196,29 @@ func (f *fakeAWS) GetConfig(context.Context) (*awsconfig.Object, error) {
 	}, nil
 }
 
-func unavailableK8s() k8s.Service       { return k8s.NewUnavailable("") }
-func unavailableGitHub() github.Service { return github.NewUnavailable("") }
-func unavailableAWS() awsconfig.Service { return awsconfig.NewUnavailable("") }
+type fakeGrafana struct {
+	mu       sync.Mutex
+	calls    int
+	response func() (*grafana.Token, error)
+}
+
+func (f *fakeGrafana) CreateShortLivedToken(context.Context) (*grafana.Token, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.response != nil {
+		return f.response()
+	}
+	return &grafana.Token{
+		Token:          "glc_fake",
+		ExpiresAt:      "2026-05-07T01:00:00Z",
+		AccessPolicyID: "ap-fake",
+	}, nil
+}
+
+func unavailableK8s() k8s.Service         { return k8s.NewUnavailable("") }
+func unavailableGitHub() github.Service   { return github.NewUnavailable("") }
+func unavailableAWS() awsconfig.Service   { return awsconfig.NewUnavailable("") }
+func unavailableGrafana() grafana.Service { return grafana.NewUnavailable("") }
 
 func int32Ptr(v int32) *int32 { return &v }

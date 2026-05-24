@@ -58,6 +58,13 @@ spec:
             # the optional AWS_CONFIG_* overrides for the aws_config_get tool.
             - secretRef:
                 name: homelab-k3s-mcp-aws-config
+            # GRAFANA_CLOUD_ACCESS_POLICY_TOKEN, GRAFANA_CLOUD_ACCESS_POLICY_ID
+            # and GRAFANA_CLOUD_REGION for the grafana_cloud_token tool. Marked
+            # optional so the pod still boots (the tool reports unavailable)
+            # before the secret is created.
+            - secretRef:
+                name: homelab-k3s-mcp-grafana-cloud
+                optional: true
           startupProbe:
             httpGet:
               path: /healthz

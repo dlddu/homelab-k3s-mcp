@@ -94,6 +94,9 @@ jobs:
       - name: Deploy github-mock fixture
         run: kubectl apply -f tests/k8s/kind/github-mock.yaml
 
+      - name: Deploy grafana-mock fixture
+        run: kubectl apply -f tests/k8s/kind/grafana-mock.yaml
+
       - name: Deploy MinIO fixture
         run: kubectl apply -f tests/k8s/kind/minio.yaml
 
@@ -122,6 +125,15 @@ jobs:
             --from-literal=AWS_SECRET_ACCESS_KEY=minioadmin \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create test Grafana Cloud secret
+        run: |
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-grafana-cloud \
+            --from-literal=GRAFANA_CLOUD_ACCESS_POLICY_TOKEN=glc_ci_management_token \
+            --from-literal=GRAFANA_CLOUD_ACCESS_POLICY_ID=ap-ci-readonly \
+            --from-literal=GRAFANA_CLOUD_REGION=prod-ci \
+            --from-literal=GRAFANA_API_BASE_URL=http://grafana-mock.grafana-mock.svc.cluster.local \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
@@ -133,6 +145,9 @@ jobs:
 
       - name: Wait for github-mock rollout
         run: kubectl -n github-mock rollout status deploy/github-mock --timeout=180s
+
+      - name: Wait for grafana-mock rollout
+        run: kubectl -n grafana-mock rollout status deploy/grafana-mock --timeout=180s
 
       - name: Wait for MinIO rollout
         run: kubectl -n minio rollout status deploy/minio --timeout=180s
@@ -177,6 +192,13 @@ jobs:
           trap "kill $PF_PID" EXIT
           python tests/integration/github_app.py http://127.0.0.1:8083
 
+      - name: Validate grafana_cloud_token tool against mock
+        run: |
+          kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8085:80 >/tmp/pf-grafana.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          python tests/integration/grafana_cloud.py http://127.0.0.1:8085
+
       - name: Validate aws_config_get tool against MinIO
         run: |
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8084:80 >/tmp/pf-aws.log 2>&1 &
@@ -198,6 +220,9 @@ jobs:
           kubectl -n github-mock get all -o wide || true
           kubectl -n github-mock describe deploy/github-mock || true
           kubectl -n github-mock logs deploy/github-mock --tail=200 || true
+          kubectl -n grafana-mock get all -o wide || true
+          kubectl -n grafana-mock describe deploy/grafana-mock || true
+          kubectl -n grafana-mock logs deploy/grafana-mock --tail=200 || true
           kubectl -n minio get all -o wide || true
           kubectl -n minio describe deploy/minio || true
           kubectl -n minio logs deploy/minio --tail=200 || true
