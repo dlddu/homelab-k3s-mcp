@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::github::{GitHubAppService, GitHubError, InstallationToken};
+use crate::grafana::{GrafanaCloudService, GrafanaCloudToken, GrafanaError};
 use crate::k8s::{
     ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodDescription, PodTarget,
     WorkloadKind,
@@ -23,11 +24,13 @@ pub const SERVER_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub type SharedK8s = Arc<dyn K8sService>;
 pub type SharedGitHub = Arc<dyn GitHubAppService>;
+pub type SharedGrafana = Arc<dyn GrafanaCloudService>;
 
 #[derive(Clone)]
 pub struct McpState {
     pub k8s: SharedK8s,
     pub github: SharedGitHub,
+    pub grafana: SharedGrafana,
 }
 
 pub fn router<S: Clone + Send + Sync + 'static>(state: McpState) -> Router<S> {
@@ -439,6 +442,29 @@ fn tools_list() -> Result<Value, (i32, String)> {
                     "idempotentHint": false,
                     "openWorldHint": true,
                 },
+            },
+            {
+                "name": "grafana_cloud_token",
+                "description": "Mint a short-lived Grafana Cloud access token (valid ~1 hour) with \
+                                the read-only scopes (e.g. metrics:read, logs:read) of the \
+                                pre-created Access Policy configured on the server. Takes no \
+                                arguments; scope and TTL are fixed server-side. Returns the token \
+                                as a text/plain `.env` file (GRAFANA_CLOUD_TOKEN=...) with expiry \
+                                and access policy as comments. Requires \
+                                GRAFANA_CLOUD_ACCESS_POLICY_TOKEN, GRAFANA_CLOUD_ACCESS_POLICY_ID, \
+                                and GRAFANA_CLOUD_REGION on the server.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {},
+                    "additionalProperties": false,
+                },
+                "annotations": {
+                    "title": "Grafana Cloud Token",
+                    "readOnlyHint": false,
+                    "destructiveHint": false,
+                    "idempotentHint": false,
+                    "openWorldHint": true,
+                },
             }
         ]
     }))
@@ -466,6 +492,7 @@ async fn tools_call(state: &McpState, params: &Value) -> Result<Value, (i32, Str
         "github_app_installation_token" => {
             github_app_installation_token_tool(&state.github, &args).await
         }
+        "grafana_cloud_token" => grafana_cloud_token_tool(&state.grafana).await,
         other => Err((-32602, format!("unknown tool: {other}"))),
     }
 }
@@ -1012,6 +1039,45 @@ fn installation_token_env(token: &InstallationToken) -> String {
 }
 
 fn github_tool_error(err: GitHubError) -> Value {
+    json!({
+        "content": [{ "type": "text", "text": err.to_string() }],
+        "isError": true,
+    })
+}
+
+async fn grafana_cloud_token_tool(grafana: &SharedGrafana) -> Result<Value, (i32, String)> {
+    match grafana.create_short_lived_token().await {
+        Ok(token) => Ok(grafana_token_json(token)),
+        Err(err) => Ok(grafana_tool_error(err)),
+    }
+}
+
+fn grafana_token_json(token: GrafanaCloudToken) -> Value {
+    let env_text = grafana_token_env(&token);
+    json!({
+        "content": [{
+            "type": "resource",
+            "resource": {
+                "uri": "file:///grafana-token.env",
+                "mimeType": "text/plain",
+                "text": env_text,
+            }
+        }],
+        "isError": false,
+    })
+}
+
+fn grafana_token_env(token: &GrafanaCloudToken) -> String {
+    let mut out = String::new();
+    out.push_str(&format!("# Expires at: {}\n", token.expires_at));
+    if !token.access_policy_id.is_empty() {
+        out.push_str(&format!("# Access policy: {}\n", token.access_policy_id));
+    }
+    out.push_str(&format!("GRAFANA_CLOUD_TOKEN={}\n", token.token));
+    out
+}
+
+fn grafana_tool_error(err: GrafanaError) -> Value {
     json!({
         "content": [{ "type": "text", "text": err.to_string() }],
         "isError": true,

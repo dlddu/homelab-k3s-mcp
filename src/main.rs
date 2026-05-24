@@ -3,8 +3,8 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use homelab_k3s_mcp::{
-    GitHubAppClient, GitHubAppService, K8sService, KubeService, UnavailableGitHubApp,
-    UnavailableK8s,
+    GitHubAppClient, GitHubAppService, GrafanaCloudClient, GrafanaCloudService, K8sService,
+    KubeService, UnavailableGitHubApp, UnavailableGrafanaCloud, UnavailableK8s,
 };
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -64,11 +64,28 @@ async fn main() {
         }
     };
 
+    let grafana: Arc<dyn GrafanaCloudService> = match GrafanaCloudClient::from_env() {
+        Ok(Some(client)) => {
+            tracing::info!("grafana cloud credentials loaded");
+            Arc::new(client)
+        }
+        Ok(None) => {
+            tracing::warn!(
+                "GRAFANA_CLOUD_ACCESS_POLICY_TOKEN not set: grafana_cloud_token tool will return errors"
+            );
+            Arc::new(UnavailableGrafanaCloud::default())
+        }
+        Err(err) => {
+            tracing::error!(%err, "failed to initialize grafana cloud client; tool will return errors");
+            Arc::new(UnavailableGrafanaCloud::new(err))
+        }
+    };
+
     let listener = TcpListener::bind(addr).await.expect("bind listener");
     let local = listener.local_addr().expect("local addr");
     tracing::info!(%local, "homelab-k3s-mcp listening");
 
-    axum::serve(listener, homelab_k3s_mcp::app(auth, k8s, github))
+    axum::serve(listener, homelab_k3s_mcp::app(auth, k8s, github, grafana))
         .with_graceful_shutdown(shutdown_signal())
         .await
         .expect("server error");

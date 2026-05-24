@@ -54,6 +54,9 @@ spec:
                 name: homelab-k3s-mcp-oauth
             - secretRef:
                 name: homelab-k3s-mcp-github-app
+            - secretRef:
+                name: homelab-k3s-mcp-grafana-cloud
+                optional: true
           startupProbe:
             httpGet:
               path: /healthz

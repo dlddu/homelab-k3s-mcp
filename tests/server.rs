@@ -13,9 +13,11 @@ async fn spawn_server() -> SocketAddr {
         Arc::new(homelab_k3s_mcp::UnavailableK8s::default());
     let github: Arc<dyn homelab_k3s_mcp::GitHubAppService> =
         Arc::new(homelab_k3s_mcp::UnavailableGitHubApp::default());
+    let grafana: Arc<dyn homelab_k3s_mcp::GrafanaCloudService> =
+        Arc::new(homelab_k3s_mcp::UnavailableGrafanaCloud::default());
 
     tokio::spawn(async move {
-        axum::serve(listener, homelab_k3s_mcp::app(None, k8s, github))
+        axum::serve(listener, homelab_k3s_mcp::app(None, k8s, github, grafana))
             .await
             .expect("server error");
     });

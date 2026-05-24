@@ -6,11 +6,13 @@ use tower_http::trace::TraceLayer;
 
 pub mod auth;
 pub mod github;
+pub mod grafana;
 pub mod k8s;
 pub mod mcp;
 
 pub use auth::AuthConfig;
 pub use github::{GitHubAppClient, GitHubAppService, UnavailableGitHubApp};
+pub use grafana::{GrafanaCloudClient, GrafanaCloudService, UnavailableGrafanaCloud};
 pub use k8s::{K8sService, KubeService, UnavailableK8s};
 pub use mcp::McpState;
 
@@ -24,8 +26,13 @@ pub fn app(
     auth: Option<AuthConfig>,
     k8s: Arc<dyn K8sService>,
     github: Arc<dyn GitHubAppService>,
+    grafana: Arc<dyn GrafanaCloudService>,
 ) -> Router {
-    let state = McpState { k8s, github };
+    let state = McpState {
+        k8s,
+        github,
+        grafana,
+    };
 
     let public = Router::new()
         .route("/", get(root))
