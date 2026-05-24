@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: minio
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# Seed payload for the aws_config_get smoke check. The minio-seed Job uploads
+# this file to s3://ci-config-bucket/aws/config; tests/integration/aws_config.py
+# asserts the tool returns it verbatim.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: minio-seed
+  namespace: minio
+data:
+  config: |
+    [default]
+    region = ap-northeast-2
+    output = json
+---
+# S3-compatible object store standing in for AWS S3 + STS. The server assumes
+# AWS_CONFIG_ROLE_ARN against MinIO's STS endpoint and reads the seeded object
+# with the resulting credentials, exercising the full aws_config_get path
+# end-to-end without touching real AWS.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: minio
+  labels:
+    app.kubernetes.io/name: minio
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:latest
+          args: ["server", "/data"]
+          env:
+            - name: MINIO_ROOT_USER
+              value: minioadmin
+            - name: MINIO_ROOT_PASSWORD
+              value: minioadmin
+          ports:
+            - name: api
+              containerPort: 9000
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: api
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: api
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: minio
+spec:
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+---
+# Creates the bucket and uploads the seed object once MinIO is reachable.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-seed
+  namespace: minio
+spec:
+  backoffLimit: 5
+  template:
+    metadata:
+      labels:
+        app: minio-seed
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: seed
+          image: minio/mc:latest
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              ready=
+              for i in $(seq 1 60); do
+                if mc alias set local http://minio.minio.svc.cluster.local:9000 \
+                  "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD" >/dev/null 2>&1; then
+                  ready=1
+                  break
+                fi
+                echo "waiting for minio ($i)..."
+                sleep 2
+              done
+              if [ -z "$ready" ]; then
+                echo "minio did not become reachable" >&2
+                exit 1
+              fi
+              mc mb --ignore-existing local/ci-config-bucket
+              mc cp /seed/config local/ci-config-bucket/aws/config
+              mc stat local/ci-config-bucket/aws/config
+          env:
+            - name: MINIO_ROOT_USER
+              value: minioadmin
+            - name: MINIO_ROOT_PASSWORD
+              value: minioadmin
+          volumeMounts:
+            - name: seed
+              mountPath: /seed
+              readOnly: true
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: seed
+          configMap:
+            name: minio-seed

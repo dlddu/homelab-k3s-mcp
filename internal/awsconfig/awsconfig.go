@@ -100,6 +100,11 @@ type Client struct {
 // FromEnv builds a Client from the AWS_CONFIG_* environment variables. It
 // returns (nil, nil) when AWS_CONFIG_S3_BUCKET is unset, signalling that the
 // integration is simply not configured (as opposed to misconfigured).
+//
+// When AWS_CONFIG_S3_ENDPOINT is set, both the STS and S3 calls are routed to
+// that endpoint with path-style S3 addressing. This targets S3-compatible
+// servers such as MinIO (which co-locates the STS and S3 APIs on one port) and
+// is intended for smoke testing; production leaves it unset to use real AWS.
 func FromEnv(ctx context.Context) (*Client, error) {
 	bucket := os.Getenv("AWS_CONFIG_S3_BUCKET")
 	if bucket == "" {
@@ -130,8 +135,13 @@ func FromEnv(ctx context.Context) (*Client, error) {
 		sessionName = defaultRoleSessionName
 	}
 	externalID := os.Getenv("AWS_CONFIG_ROLE_EXTERNAL_ID")
+	endpoint := os.Getenv("AWS_CONFIG_S3_ENDPOINT")
 
-	stsClient := sts.NewFromConfig(baseCfg)
+	stsClient := sts.NewFromConfig(baseCfg, func(o *sts.Options) {
+		if endpoint != "" {
+			o.BaseEndpoint = aws.String(endpoint)
+		}
+	})
 	provider := stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(o *stscreds.AssumeRoleOptions) {
 		o.RoleSessionName = sessionName
 		if externalID != "" {
@@ -141,6 +151,10 @@ func FromEnv(ctx context.Context) (*Client, error) {
 
 	s3Client := s3.NewFromConfig(baseCfg, func(o *s3.Options) {
 		o.Credentials = aws.NewCredentialsCache(provider)
+		if endpoint != "" {
+			o.BaseEndpoint = aws.String(endpoint)
+			o.UsePathStyle = true
+		}
 	})
 
 	return &Client{s3: s3Client, bucket: bucket, key: key}, nil
