@@ -1,6 +1,6 @@
-/target
-**/*.rs.bk
-*.pdb
+/homelab-k3s-mcp
+*.test
+*.out
 .env
 .env.local
 .idea/
