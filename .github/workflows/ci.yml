@@ -107,6 +107,15 @@ jobs:
             --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create test AWS config secret
+        run: |
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-aws-config \
+            --from-literal=AWS_CONFIG_S3_BUCKET=ci-config-bucket \
+            --from-literal=AWS_CONFIG_S3_KEY=aws/config \
+            --from-literal=AWS_CONFIG_ROLE_ARN=arn:aws:iam::000000000000:role/ci-config-reader \
+            --from-literal=AWS_CONFIG_S3_REGION=us-east-1 \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
