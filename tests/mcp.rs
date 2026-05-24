@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
+use homelab_k3s_mcp::aws::{AwsConfigFile, AwsConfigService, AwsError};
 use homelab_k3s_mcp::github::{GitHubAppService, GitHubError, InstallationToken};
 use homelab_k3s_mcp::k8s::{
     ContainerInfo, ExecOutcome, K8sError, K8sService, LogOptions, LogResult, PodConditionInfo,
@@ -199,6 +200,33 @@ fn unavailable_github() -> Arc<dyn GitHubAppService> {
     Arc::new(homelab_k3s_mcp::UnavailableGitHubApp::default())
 }
 
+fn unavailable_aws() -> Arc<dyn AwsConfigService> {
+    Arc::new(homelab_k3s_mcp::UnavailableAwsConfig::default())
+}
+
+#[derive(Default)]
+struct FakeAws {
+    pub calls: Mutex<u32>,
+    pub response: Mutex<Option<Result<AwsConfigFile, AwsError>>>,
+}
+
+#[async_trait]
+impl AwsConfigService for FakeAws {
+    async fn get_config_file(&self) -> Result<AwsConfigFile, AwsError> {
+        *self.calls.lock().unwrap() += 1;
+        match self.response.lock().unwrap().take() {
+            Some(Ok(file)) => Ok(file),
+            Some(Err(err)) => Err(err),
+            None => Ok(AwsConfigFile {
+                bucket: "homelab-config".into(),
+                key: "aws/config".into(),
+                content_type: Some("text/plain".into()),
+                body: "[default]\nregion = ap-northeast-2\n".into(),
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct InstallationTokenCall {
     pub repositories: Option<Vec<String>>,
@@ -251,13 +279,18 @@ async fn body_json(response: axum::response::Response) -> Value {
 
 #[tokio::test]
 async fn initialize_returns_server_info() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize"}),
+    ))
+    .await
+    .unwrap();
 
     assert_eq!(response.status(), StatusCode::OK);
     let body = body_json(response).await;
@@ -269,13 +302,18 @@ async fn initialize_returns_server_info() {
 
 #[tokio::test]
 async fn tools_list_includes_workload_tools() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -284,7 +322,7 @@ async fn tools_list_includes_workload_tools() {
         .map(|t| t["name"].as_str().unwrap_or_default())
         .collect();
 
-    assert_eq!(tools.len(), 9);
+    assert_eq!(tools.len(), 10);
     assert!(names.contains(&"ping"));
     assert!(names.contains(&"namespace_list"));
     assert!(names.contains(&"workload_list"));
@@ -294,6 +332,7 @@ async fn tools_list_includes_workload_tools() {
     assert!(names.contains(&"pod_describe"));
     assert!(names.contains(&"dear_baby_reset_onboarding"));
     assert!(names.contains(&"github_app_installation_token"));
+    assert!(names.contains(&"aws_config_get"));
 }
 
 fn find_tool<'a>(tools: &'a [Value], name: &str) -> &'a Value {
@@ -305,13 +344,18 @@ fn find_tool<'a>(tools: &'a [Value], name: &str) -> &'a Value {
 
 #[tokio::test]
 async fn tools_list_advertises_annotations() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 6, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 6, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -338,18 +382,23 @@ async fn tools_list_advertises_annotations() {
 
 #[tokio::test]
 async fn ping_tool_returns_pong() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 3,
-                "method": "tools/call",
-                "params": {"name": "ping", "arguments": {}},
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {"name": "ping", "arguments": {}},
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["content"][0]["text"], "pong");
@@ -358,13 +407,18 @@ async fn ping_tool_returns_pong() {
 
 #[tokio::test]
 async fn unknown_method_returns_jsonrpc_error() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 4, "method": "does/not/exist"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 4, "method": "does/not/exist"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32601);
@@ -372,18 +426,23 @@ async fn unknown_method_returns_jsonrpc_error() {
 
 #[tokio::test]
 async fn unknown_tool_returns_jsonrpc_error() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 5,
-                "method": "tools/call",
-                "params": {"name": "nonexistent"},
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {"name": "nonexistent"},
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -397,7 +456,7 @@ async fn workload_list_dispatches_to_service() {
         "namespace": "default",
         "replicas": 3,
     })];
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -434,7 +493,7 @@ async fn workload_list_dispatches_to_service() {
 #[tokio::test]
 async fn workload_list_without_namespace_lists_all() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -462,13 +521,18 @@ async fn workload_list_without_namespace_lists_all() {
 
 #[tokio::test]
 async fn tools_list_advertises_namespace_list() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 12, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 12, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -502,7 +566,7 @@ async fn namespace_list_dispatches_to_service() {
             "creation_timestamp": "2026-05-01T00:00:00Z",
         }),
     ];
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -529,18 +593,23 @@ async fn namespace_list_dispatches_to_service() {
 
 #[tokio::test]
 async fn namespace_list_surfaces_unavailable_as_tool_error() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 14,
-                "method": "tools/call",
-                "params": { "name": "namespace_list", "arguments": {} }
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 14,
+            "method": "tools/call",
+            "params": { "name": "namespace_list", "arguments": {} }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], true);
@@ -553,7 +622,7 @@ async fn namespace_list_surfaces_unavailable_as_tool_error() {
 #[tokio::test]
 async fn workload_rollout_restart_dispatches_to_service() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -592,24 +661,29 @@ async fn workload_rollout_restart_dispatches_to_service() {
 
 #[tokio::test]
 async fn workload_restart_requires_namespace_and_name() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 30,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload_restart",
-                    "arguments": {
-                        "kind": "Deployment",
-                        "namespace": "default"
-                    }
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 30,
+            "method": "tools/call",
+            "params": {
+                "name": "workload_restart",
+                "arguments": {
+                    "kind": "Deployment",
+                    "namespace": "default"
                 }
-            }),
-        ))
-        .await
-        .unwrap();
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -618,7 +692,7 @@ async fn workload_restart_requires_namespace_and_name() {
 #[tokio::test]
 async fn workload_scale_dispatches_to_service() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -660,7 +734,7 @@ async fn workload_scale_dispatches_to_service() {
 #[tokio::test]
 async fn workload_scale_supports_zero_replicas() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -694,26 +768,31 @@ async fn workload_scale_supports_zero_replicas() {
 
 #[tokio::test]
 async fn workload_scale_rejects_negative_replicas() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 72,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload_scale",
-                    "arguments": {
-                        "kind": "Deployment",
-                        "namespace": "default",
-                        "name": "api",
-                        "replicas": -1
-                    }
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 72,
+            "method": "tools/call",
+            "params": {
+                "name": "workload_scale",
+                "arguments": {
+                    "kind": "Deployment",
+                    "namespace": "default",
+                    "name": "api",
+                    "replicas": -1
                 }
-            }),
-        ))
-        .await
-        .unwrap();
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -721,25 +800,30 @@ async fn workload_scale_rejects_negative_replicas() {
 
 #[tokio::test]
 async fn workload_scale_requires_replicas() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 73,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload_scale",
-                    "arguments": {
-                        "kind": "Deployment",
-                        "namespace": "default",
-                        "name": "api"
-                    }
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 73,
+            "method": "tools/call",
+            "params": {
+                "name": "workload_scale",
+                "arguments": {
+                    "kind": "Deployment",
+                    "namespace": "default",
+                    "name": "api"
                 }
-            }),
-        ))
-        .await
-        .unwrap();
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -747,13 +831,18 @@ async fn workload_scale_requires_replicas() {
 
 #[tokio::test]
 async fn tools_list_advertises_workload_scale_annotations() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 74, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 74, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -771,21 +860,26 @@ async fn tools_list_advertises_workload_scale_annotations() {
 
 #[tokio::test]
 async fn workload_rejects_unknown_kind() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 31,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload_list",
-                    "arguments": { "kind": "Pod" }
-                }
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": {
+                "name": "workload_list",
+                "arguments": { "kind": "Pod" }
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -793,21 +887,26 @@ async fn workload_rejects_unknown_kind() {
 
 #[tokio::test]
 async fn unavailable_k8s_returns_tool_error() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 40,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload_list",
-                    "arguments": { "kind": "Deployment" }
-                }
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 40,
+            "method": "tools/call",
+            "params": {
+                "name": "workload_list",
+                "arguments": { "kind": "Deployment" }
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], true);
@@ -819,13 +918,18 @@ async fn unavailable_k8s_returns_tool_error() {
 
 #[tokio::test]
 async fn tools_list_advertises_dear_baby_reset_onboarding() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 50, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 50, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -853,7 +957,7 @@ async fn dear_baby_reset_onboarding_dispatches_exec_with_defaults() {
         exit_code: Some(0),
         success: true,
     }));
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -907,7 +1011,7 @@ async fn dear_baby_reset_onboarding_dispatches_exec_with_defaults() {
 #[tokio::test]
 async fn dear_baby_reset_onboarding_honours_overrides() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -951,7 +1055,7 @@ async fn dear_baby_reset_onboarding_reports_non_zero_exit() {
         exit_code: Some(1),
         success: false,
     }));
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -985,21 +1089,26 @@ async fn dear_baby_reset_onboarding_reports_non_zero_exit() {
 
 #[tokio::test]
 async fn dear_baby_reset_onboarding_requires_namespace_and_email() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 63,
-                "method": "tools/call",
-                "params": {
-                    "name": "dear_baby_reset_onboarding",
-                    "arguments": { "email": "user@example.com" }
-                }
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 63,
+            "method": "tools/call",
+            "params": {
+                "name": "dear_baby_reset_onboarding",
+                "arguments": { "email": "user@example.com" }
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -1007,13 +1116,18 @@ async fn dear_baby_reset_onboarding_requires_namespace_and_email() {
 
 #[tokio::test]
 async fn tools_list_advertises_workload_logs() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 80, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 80, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -1049,7 +1163,7 @@ async fn workload_logs_dispatches_with_defaults() {
         container: None,
         logs: "line one\nline two\n".into(),
     }));
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1101,7 +1215,7 @@ async fn workload_logs_dispatches_with_defaults() {
 #[tokio::test]
 async fn workload_logs_honours_overrides() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1146,26 +1260,31 @@ async fn workload_logs_honours_overrides() {
 
 #[tokio::test]
 async fn workload_logs_rejects_tail_lines_over_max() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 83,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload_logs",
-                    "arguments": {
-                        "kind": "Deployment",
-                        "namespace": "default",
-                        "name": "api",
-                        "tail_lines": 100000
-                    }
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 83,
+            "method": "tools/call",
+            "params": {
+                "name": "workload_logs",
+                "arguments": {
+                    "kind": "Deployment",
+                    "namespace": "default",
+                    "name": "api",
+                    "tail_lines": 100000
                 }
-            }),
-        ))
-        .await
-        .unwrap();
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -1175,21 +1294,26 @@ async fn workload_logs_rejects_tail_lines_over_max() {
 
 #[tokio::test]
 async fn workload_logs_requires_namespace_and_name() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 84,
-                "method": "tools/call",
-                "params": {
-                    "name": "workload_logs",
-                    "arguments": { "kind": "Deployment" }
-                }
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 84,
+            "method": "tools/call",
+            "params": {
+                "name": "workload_logs",
+                "arguments": { "kind": "Deployment" }
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -1203,7 +1327,7 @@ async fn workload_logs_renders_placeholder_for_empty_output() {
         container: None,
         logs: String::new(),
     }));
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1233,13 +1357,18 @@ async fn workload_logs_renders_placeholder_for_empty_output() {
 
 #[tokio::test]
 async fn tools_list_advertises_pod_describe() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 90, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 90, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -1325,7 +1454,7 @@ async fn pod_describe_dispatches_and_renders_structured_payload() {
             source: Some("kubelet".into()),
         }],
     }));
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1388,7 +1517,7 @@ async fn pod_describe_dispatches_and_renders_structured_payload() {
 #[tokio::test]
 async fn pod_describe_accepts_label_selector_target() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1421,7 +1550,7 @@ async fn pod_describe_accepts_label_selector_target() {
 #[tokio::test]
 async fn pod_describe_accepts_workload_target() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1460,25 +1589,30 @@ async fn pod_describe_accepts_workload_target() {
 
 #[tokio::test]
 async fn pod_describe_rejects_mutually_exclusive_targets() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 97,
-                "method": "tools/call",
-                "params": {
-                    "name": "pod_describe",
-                    "arguments": {
-                        "namespace": "default",
-                        "name": "api-0",
-                        "selector": "app=api"
-                    }
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 97,
+            "method": "tools/call",
+            "params": {
+                "name": "pod_describe",
+                "arguments": {
+                    "namespace": "default",
+                    "name": "api-0",
+                    "selector": "app=api"
                 }
-            }),
-        ))
-        .await
-        .unwrap();
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -1488,24 +1622,29 @@ async fn pod_describe_rejects_mutually_exclusive_targets() {
 
 #[tokio::test]
 async fn pod_describe_rejects_partial_workload_target() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 98,
-                "method": "tools/call",
-                "params": {
-                    "name": "pod_describe",
-                    "arguments": {
-                        "namespace": "default",
-                        "workload_kind": "Deployment"
-                    }
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 98,
+            "method": "tools/call",
+            "params": {
+                "name": "pod_describe",
+                "arguments": {
+                    "namespace": "default",
+                    "workload_kind": "Deployment"
                 }
-            }),
-        ))
-        .await
-        .unwrap();
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -1514,7 +1653,7 @@ async fn pod_describe_rejects_partial_workload_target() {
 #[tokio::test]
 async fn pod_describe_renders_no_events_placeholder() {
     let fake = Arc::new(FakeK8s::default());
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1543,21 +1682,26 @@ async fn pod_describe_renders_no_events_placeholder() {
 
 #[tokio::test]
 async fn pod_describe_requires_a_target() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 93,
-                "method": "tools/call",
-                "params": {
-                    "name": "pod_describe",
-                    "arguments": { "namespace": "default" }
-                }
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 93,
+            "method": "tools/call",
+            "params": {
+                "name": "pod_describe",
+                "arguments": { "namespace": "default" }
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["error"]["code"], -32602);
@@ -1571,7 +1715,7 @@ async fn pod_describe_surfaces_k8s_error_as_tool_error() {
     let fake = Arc::new(FakeK8s::default());
     *fake.describe_response.lock().unwrap() =
         Some(Err(K8sError::Api("pods \"missing\" not found".to_string())));
-    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github());
+    let app = homelab_k3s_mcp::app(None, fake.clone(), unavailable_github(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1599,13 +1743,18 @@ async fn pod_describe_surfaces_k8s_error_as_tool_error() {
 
 #[tokio::test]
 async fn tools_list_advertises_github_app_installation_token() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({"jsonrpc": "2.0", "id": 70, "method": "tools/list"}),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 70, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     let tools = body["result"]["tools"].as_array().expect("tools array");
@@ -1645,7 +1794,7 @@ async fn github_app_installation_token_dispatches_with_defaults() {
         permissions: Some(json!({ "contents": "read", "metadata": "read" })),
         repository_selection: Some("all".into()),
     }));
-    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), fake.clone());
+    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), fake.clone(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1697,7 +1846,7 @@ async fn github_app_installation_token_dispatches_with_defaults() {
 #[tokio::test]
 async fn github_app_installation_token_passes_through_scope() {
     let fake = Arc::new(FakeGitHub::default());
-    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), fake.clone());
+    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), fake.clone(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1736,7 +1885,7 @@ async fn github_app_installation_token_passes_through_scope() {
 #[tokio::test]
 async fn github_app_installation_token_dispatches_without_arguments_field() {
     let fake = Arc::new(FakeGitHub::default());
-    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), fake.clone());
+    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), fake.clone(), unavailable_aws());
 
     let response = app
         .oneshot(json_request(
@@ -1758,21 +1907,26 @@ async fn github_app_installation_token_dispatches_without_arguments_field() {
 
 #[tokio::test]
 async fn github_app_installation_token_unavailable_returns_tool_error() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
-        .oneshot(json_request(
-            "/mcp",
-            json!({
-                "jsonrpc": "2.0",
-                "id": 74,
-                "method": "tools/call",
-                "params": {
-                    "name": "github_app_installation_token",
-                    "arguments": {}
-                }
-            }),
-        ))
-        .await
-        .unwrap();
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 74,
+            "method": "tools/call",
+            "params": {
+                "name": "github_app_installation_token",
+                "arguments": {}
+            }
+        }),
+    ))
+    .await
+    .unwrap();
 
     let body = body_json(response).await;
     assert_eq!(body["result"]["isError"], true);
@@ -1784,22 +1938,176 @@ async fn github_app_installation_token_unavailable_returns_tool_error() {
 
 #[tokio::test]
 async fn github_app_installation_token_rejects_non_array_repositories() {
-    let response = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github())
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 75,
+            "method": "tools/call",
+            "params": {
+                "name": "github_app_installation_token",
+                "arguments": { "repositories": "not-a-list" }
+            }
+        }),
+    ))
+    .await
+    .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["error"]["code"], -32602);
+}
+
+#[tokio::test]
+async fn tools_list_advertises_aws_config_get() {
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({"jsonrpc": "2.0", "id": 100, "method": "tools/list"}),
+    ))
+    .await
+    .unwrap();
+
+    let body = body_json(response).await;
+    let tools = body["result"]["tools"].as_array().expect("tools array");
+    let aws = find_tool(tools, "aws_config_get");
+
+    assert_eq!(aws["annotations"]["title"], "Get AWS Config File");
+    assert_eq!(aws["annotations"]["readOnlyHint"], true);
+    assert_eq!(aws["annotations"]["idempotentHint"], true);
+    assert_eq!(aws["annotations"]["openWorldHint"], true);
+
+    let required = aws["inputSchema"]["required"].as_array();
+    assert!(required.is_none() || required.unwrap().is_empty());
+    let props = aws["inputSchema"]["properties"]
+        .as_object()
+        .expect("properties object");
+    assert!(props.is_empty());
+}
+
+#[tokio::test]
+async fn aws_config_get_dispatches_to_service() {
+    let fake = Arc::new(FakeAws::default());
+    *fake.response.lock().unwrap() = Some(Ok(AwsConfigFile {
+        bucket: "homelab-config".into(),
+        key: "aws/config".into(),
+        content_type: Some("text/plain".into()),
+        body: "[default]\nregion = ap-northeast-2\noutput = json\n".into(),
+    }));
+    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github(), fake.clone());
+
+    let response = app
         .oneshot(json_request(
             "/mcp",
             json!({
                 "jsonrpc": "2.0",
-                "id": 75,
+                "id": 101,
                 "method": "tools/call",
-                "params": {
-                    "name": "github_app_installation_token",
-                    "arguments": { "repositories": "not-a-list" }
-                }
+                "params": { "name": "aws_config_get", "arguments": {} }
             }),
         ))
         .await
         .unwrap();
 
     let body = body_json(response).await;
-    assert_eq!(body["error"]["code"], -32602);
+    assert_eq!(body["result"]["isError"], false);
+    assert_eq!(
+        body["result"]["content"][0]["text"],
+        "[default]\nregion = ap-northeast-2\noutput = json\n"
+    );
+    let payload = &body["result"]["structuredContent"];
+    assert_eq!(payload["bucket"], "homelab-config");
+    assert_eq!(payload["key"], "aws/config");
+    assert_eq!(payload["contentType"], "text/plain");
+    assert_eq!(*fake.calls.lock().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn aws_config_get_dispatches_without_arguments_field() {
+    let fake = Arc::new(FakeAws::default());
+    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github(), fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 102,
+                "method": "tools/call",
+                "params": { "name": "aws_config_get" }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], false);
+    assert_eq!(*fake.calls.lock().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn aws_config_get_surfaces_error_as_tool_error() {
+    let fake = Arc::new(FakeAws::default());
+    *fake.response.lock().unwrap() = Some(Err(AwsError::Api(
+        "s3 get-object returned 403 Forbidden: AccessDenied".to_string(),
+    )));
+    let app = homelab_k3s_mcp::app(None, unavailable_k8s(), unavailable_github(), fake.clone());
+
+    let response = app
+        .oneshot(json_request(
+            "/mcp",
+            json!({
+                "jsonrpc": "2.0",
+                "id": 103,
+                "method": "tools/call",
+                "params": { "name": "aws_config_get", "arguments": {} }
+            }),
+        ))
+        .await
+        .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], true);
+    assert!(body["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .contains("aws api error"));
+}
+
+#[tokio::test]
+async fn aws_config_get_unavailable_returns_tool_error() {
+    let response = homelab_k3s_mcp::app(
+        None,
+        unavailable_k8s(),
+        unavailable_github(),
+        unavailable_aws(),
+    )
+    .oneshot(json_request(
+        "/mcp",
+        json!({
+            "jsonrpc": "2.0",
+            "id": 104,
+            "method": "tools/call",
+            "params": { "name": "aws_config_get", "arguments": {} }
+        }),
+    ))
+    .await
+    .unwrap();
+
+    let body = body_json(response).await;
+    assert_eq!(body["result"]["isError"], true);
+    assert!(body["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap_or("")
+        .contains("aws config"));
 }

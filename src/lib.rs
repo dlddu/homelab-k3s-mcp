@@ -5,11 +5,13 @@ use serde::Serialize;
 use tower_http::trace::TraceLayer;
 
 pub mod auth;
+pub mod aws;
 pub mod github;
 pub mod k8s;
 pub mod mcp;
 
 pub use auth::AuthConfig;
+pub use aws::{AwsConfigClient, AwsConfigService, UnavailableAwsConfig};
 pub use github::{GitHubAppClient, GitHubAppService, UnavailableGitHubApp};
 pub use k8s::{K8sService, KubeService, UnavailableK8s};
 pub use mcp::McpState;
@@ -24,8 +26,9 @@ pub fn app(
     auth: Option<AuthConfig>,
     k8s: Arc<dyn K8sService>,
     github: Arc<dyn GitHubAppService>,
+    aws: Arc<dyn AwsConfigService>,
 ) -> Router {
-    let state = McpState { k8s, github };
+    let state = McpState { k8s, github, aws };
 
     let public = Router::new()
         .route("/", get(root))
