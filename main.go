@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
+	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
@@ -39,10 +40,11 @@ func main() {
 
 	k8sSvc := buildK8sService()
 	ghSvc := buildGitHubService()
+	awsSvc := buildAWSService(ctx)
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: server.App(authCfg, k8sSvc, ghSvc),
+		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc),
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -99,5 +101,19 @@ func buildGitHubService() github.Service {
 		return github.NewUnavailable("")
 	}
 	slog.Info("github app credentials loaded")
+	return client
+}
+
+func buildAWSService(ctx context.Context) awsconfig.Service {
+	client, err := awsconfig.FromEnv(ctx)
+	if err != nil {
+		slog.Error("failed to initialize aws config client; tool will return errors", "error", err)
+		return awsconfig.NewUnavailable(err.Error())
+	}
+	if client == nil {
+		slog.Warn("AWS_CONFIG_S3_BUCKET not set: aws_config_get tool will return errors")
+		return awsconfig.NewUnavailable("")
+	}
+	slog.Info("aws config integration loaded")
 	return client
 }

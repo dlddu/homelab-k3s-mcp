@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
@@ -173,7 +174,29 @@ func (f *fakeGitHub) CreateInstallationToken(_ context.Context, repositories []s
 	}, nil
 }
 
+type fakeAWS struct {
+	mu       sync.Mutex
+	calls    int
+	response func() (*awsconfig.Object, error)
+}
+
+func (f *fakeAWS) GetConfig(context.Context) (*awsconfig.Object, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.calls++
+	if f.response != nil {
+		return f.response()
+	}
+	return &awsconfig.Object{
+		Bucket:  "homelab-config",
+		Key:     "aws/config",
+		Content: "[default]\nregion = ap-northeast-2\n",
+		Size:    32,
+	}, nil
+}
+
 func unavailableK8s() k8s.Service       { return k8s.NewUnavailable("") }
 func unavailableGitHub() github.Service { return github.NewUnavailable("") }
+func unavailableAWS() awsconfig.Service { return awsconfig.NewUnavailable("") }
 
 func int32Ptr(v int32) *int32 { return &v }

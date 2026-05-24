@@ -59,7 +59,7 @@ func at(t *testing.T, v any, path ...any) any {
 func TestRootReturnsServiceName(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	server.App(nil, unavailableK8s(), unavailableGitHub()).ServeHTTP(rec, req)
+	server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -73,7 +73,7 @@ func TestRootReturnsServiceName(t *testing.T) {
 func TestHealthzReturnsOK(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
-	server.App(nil, unavailableK8s(), unavailableGitHub()).ServeHTTP(rec, req)
+	server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -90,7 +90,7 @@ func TestHealthzReturnsOK(t *testing.T) {
 func TestReadyzReturnsReady(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/readyz", nil)
-	server.App(nil, unavailableK8s(), unavailableGitHub()).ServeHTTP(rec, req)
+	server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", rec.Code)
@@ -104,7 +104,7 @@ func TestReadyzReturnsReady(t *testing.T) {
 func TestUnknownRouteReturns404(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/does-not-exist", nil)
-	server.App(nil, unavailableK8s(), unavailableGitHub()).ServeHTTP(rec, req)
+	server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS()).ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", rec.Code)

@@ -278,6 +278,21 @@ const toolsListJSON = `{
         "idempotentHint": false,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "aws_config_get",
+      "description": "Fetch the AWS config file from the preconfigured S3 bucket and return its contents. The bucket and key are fixed on the server via AWS_CONFIG_S3_BUCKET and AWS_CONFIG_S3_KEY, so this tool takes no arguments. The server reads the object using credentials obtained by assuming AWS_CONFIG_ROLE_ARN via STS; the base credentials for that AssumeRole call come from the default AWS credential chain (the instance profile in production). Returns the object contents as text plus metadata (size, content type, ETag, last-modified).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Get AWS Config File",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     }
   ]
 }`
