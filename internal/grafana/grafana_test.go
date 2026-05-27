@@ -34,19 +34,27 @@ func TestCreateTokenPostsExpectedRequest(t *testing.T) {
 		readPolicyID: "policy-123",
 		region:       "prod-us-east-0",
 		apiBase:      srv.URL + "/api",
+		metricsURL:   "https://prometheus-prod-99.grafana.net/api/prom",
+		metricsUser:  "123456",
+		logsURL:      "https://logs-prod-99.grafana.net",
+		logsUser:     "654321",
 		userAgent:    "homelab-k3s-mcp/test",
 		http:         srv.Client(),
 	}
 
 	before := time.Now()
-	token, err := c.CreateToken(context.Background())
+	creds, err := c.CreateToken(context.Background())
 	after := time.Now()
 	if err != nil {
 		t.Fatalf("CreateToken: %v", err)
 	}
 
-	if token.Token != "glc_secret" {
-		t.Fatalf("token = %q, want glc_secret", token.Token)
+	if creds.Token != "glc_secret" {
+		t.Fatalf("token = %q, want glc_secret", creds.Token)
+	}
+	if creds.MetricsURL != "https://prometheus-prod-99.grafana.net/api/prom" || creds.MetricsUser != "123456" ||
+		creds.LogsURL != "https://logs-prod-99.grafana.net" || creds.LogsUser != "654321" {
+		t.Fatalf("credentials = %+v", creds)
 	}
 	if gotPath != "/api/v1/tokens" {
 		t.Fatalf("path = %q, want /api/v1/tokens", gotPath)
@@ -142,9 +150,30 @@ func TestFromEnvRequiresReadPolicyID(t *testing.T) {
 	}
 }
 
+// setQueryEnv sets the four metrics/logs query variables that FromEnv requires
+// once the integration is enabled.
+func setQueryEnv(t *testing.T) {
+	t.Helper()
+	t.Setenv("GRAFANA_METRICS_URL", "https://prometheus-prod-99.grafana.net/api/prom")
+	t.Setenv("GRAFANA_METRICS_USER", "123456")
+	t.Setenv("GRAFANA_LOGS_URL", "https://logs-prod-99.grafana.net")
+	t.Setenv("GRAFANA_LOGS_USER", "654321")
+}
+
+func TestFromEnvRequiresQueryConfig(t *testing.T) {
+	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
+	t.Setenv("GRAFANA_READ_POLICY_ID", "policy-123")
+	setQueryEnv(t)
+	t.Setenv("GRAFANA_LOGS_URL", "")
+	if _, err := FromEnv(); err == nil || !strings.Contains(err.Error(), "GRAFANA_LOGS_URL") {
+		t.Fatalf("missing logs url err = %v", err)
+	}
+}
+
 func TestFromEnvDefaultsAPIBase(t *testing.T) {
 	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
 	t.Setenv("GRAFANA_READ_POLICY_ID", "policy-123")
+	setQueryEnv(t)
 	t.Setenv("GRAFANA_API_URL", "")
 	client, err := FromEnv()
 	if err != nil {
@@ -158,6 +187,7 @@ func TestFromEnvDefaultsAPIBase(t *testing.T) {
 func TestFromEnvTrimsAPIBaseTrailingSlash(t *testing.T) {
 	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
 	t.Setenv("GRAFANA_READ_POLICY_ID", "policy-123")
+	setQueryEnv(t)
 	t.Setenv("GRAFANA_API_URL", "https://grafana.example.com/")
 	client, err := FromEnv()
 	if err != nil {

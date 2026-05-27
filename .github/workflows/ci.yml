@@ -132,6 +132,10 @@ jobs:
             --from-literal=GRAFANA_READ_POLICY_ID=ci-read-policy \
             --from-literal=GRAFANA_REGION=ci-region \
             --from-literal=GRAFANA_API_URL=http://grafana-mock.grafana-mock.svc.cluster.local/api \
+            --from-literal=GRAFANA_METRICS_URL=https://prometheus-prod-ci.grafana.net/api/prom \
+            --from-literal=GRAFANA_METRICS_USER=111111 \
+            --from-literal=GRAFANA_LOGS_URL=https://logs-prod-ci.grafana.net \
+            --from-literal=GRAFANA_LOGS_USER=222222 \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)

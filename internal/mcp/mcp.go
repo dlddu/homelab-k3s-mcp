@@ -602,14 +602,14 @@ func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
 }
 
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {
-	token, err := h.grafana.CreateToken(ctx)
+	creds, err := h.grafana.CreateToken(ctx)
 	if err != nil {
 		return toolError(err), nil
 	}
-	return grafanaTokenResult(token), nil
+	return grafanaTokenResult(creds), nil
 }
 
-func grafanaTokenResult(token *grafana.Token) any {
+func grafanaTokenResult(creds *grafana.Credentials) any {
 	return map[string]any{
 		"content": []any{
 			map[string]any{
@@ -617,7 +617,7 @@ func grafanaTokenResult(token *grafana.Token) any {
 				"resource": map[string]any{
 					"uri":      "file:///grafana-token.env",
 					"mimeType": "text/plain",
-					"text":     grafanaTokenEnv(token),
+					"text":     grafanaTokenEnv(creds),
 				},
 			},
 		},
@@ -625,13 +625,17 @@ func grafanaTokenResult(token *grafana.Token) any {
 	}
 }
 
-func grafanaTokenEnv(token *grafana.Token) string {
+func grafanaTokenEnv(creds *grafana.Credentials) string {
 	var b strings.Builder
-	if token.ExpiresAt != "" {
-		fmt.Fprintf(&b, "# Expires at: %s\n", token.ExpiresAt)
+	if creds.ExpiresAt != "" {
+		fmt.Fprintf(&b, "# token expires %s\n", creds.ExpiresAt)
 	}
-	fmt.Fprintf(&b, "# Scope: metrics:read, logs:read\n")
-	fmt.Fprintf(&b, "GRAFANA_TOKEN=%s\n", token.Token)
+	fmt.Fprintf(&b, "GRAFANA_METRICS_URL=%s\n", creds.MetricsURL)
+	fmt.Fprintf(&b, "GRAFANA_METRICS_USER=%s\n", creds.MetricsUser)
+	fmt.Fprintf(&b, "GRAFANA_LOGS_URL=%s\n", creds.LogsURL)
+	fmt.Fprintf(&b, "GRAFANA_LOGS_USER=%s\n", creds.LogsUser)
+	fmt.Fprintf(&b, "# GRAFANA_TOKEN is the shared Basic-auth password for both *_USER values above\n")
+	fmt.Fprintf(&b, "GRAFANA_TOKEN=%s\n", creds.Token)
 	return b.String()
 }
 

@@ -27,10 +27,16 @@ async def run() -> None:
         assert result.structuredContent is None, result.structuredContent
         env_text, mime = parse_env_resource(result)
         assert mime == "text/plain", mime
-        assert "GRAFANA_TOKEN=glc_mock_" in env_text, env_text
-        assert "# Expires at:" in env_text, env_text
-        assert "# Scope: metrics:read, logs:read" in env_text, env_text
-        print("ok ->", env_text.splitlines()[-1])
+        assert "# token expires" in env_text, env_text
+        for key in (
+            "GRAFANA_METRICS_URL=",
+            "GRAFANA_METRICS_USER=",
+            "GRAFANA_LOGS_URL=",
+            "GRAFANA_LOGS_USER=",
+            "GRAFANA_TOKEN=glc_mock_",
+        ):
+            assert key in env_text, f"missing {key!r} in:\n{env_text}"
+        print("ok ->", sorted(line.split("=", 1)[0] for line in env_text.splitlines() if "=" in line))
 
 
 if __name__ == "__main__":

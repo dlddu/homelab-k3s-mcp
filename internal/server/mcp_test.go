@@ -994,11 +994,14 @@ func TestToolsListAdvertisesGrafanaToken(t *testing.T) {
 }
 
 func TestGrafanaTokenDispatchesEnvResource(t *testing.T) {
-	fake := &fakeGrafana{response: func() (*grafana.Token, error) {
-		return &grafana.Token{
-			Token:     "glc_short_lived",
-			Name:      "homelab-k3s-mcp-1",
-			ExpiresAt: "2026-05-27T01:00:00Z",
+	fake := &fakeGrafana{response: func() (*grafana.Credentials, error) {
+		return &grafana.Credentials{
+			Token:       "glc_short_lived",
+			ExpiresAt:   "2026-05-27T01:00:00Z",
+			MetricsURL:  "https://prometheus-prod-99.grafana.net/api/prom",
+			MetricsUser: "123456",
+			LogsURL:     "https://logs-prod-99.grafana.net",
+			LogsUser:    "654321",
 		}, nil
 	}}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), fake)
@@ -1023,8 +1026,12 @@ func TestGrafanaTokenDispatchesEnvResource(t *testing.T) {
 	}
 	text := at(t, resource, "resource", "text").(string)
 	for _, want := range []string{
-		"GRAFANA_TOKEN=glc_short_lived", "# Expires at: 2026-05-27T01:00:00Z",
-		"# Scope: metrics:read, logs:read",
+		"# token expires 2026-05-27T01:00:00Z",
+		"GRAFANA_METRICS_URL=https://prometheus-prod-99.grafana.net/api/prom",
+		"GRAFANA_METRICS_USER=123456",
+		"GRAFANA_LOGS_URL=https://logs-prod-99.grafana.net",
+		"GRAFANA_LOGS_USER=654321",
+		"GRAFANA_TOKEN=glc_short_lived",
 	} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("text missing %q:\n%s", want, text)

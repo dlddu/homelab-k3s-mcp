@@ -199,20 +199,23 @@ func (f *fakeAWS) GetConfig(context.Context) (*awsconfig.Object, error) {
 type fakeGrafana struct {
 	mu       sync.Mutex
 	calls    int
-	response func() (*grafana.Token, error)
+	response func() (*grafana.Credentials, error)
 }
 
-func (f *fakeGrafana) CreateToken(context.Context) (*grafana.Token, error) {
+func (f *fakeGrafana) CreateToken(context.Context) (*grafana.Credentials, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.calls++
 	if f.response != nil {
 		return f.response()
 	}
-	return &grafana.Token{
-		Token:     "glc_fake",
-		Name:      "homelab-k3s-mcp-fake",
-		ExpiresAt: "2026-05-27T01:00:00Z",
+	return &grafana.Credentials{
+		Token:       "glc_fake",
+		ExpiresAt:   "2026-05-27T01:00:00Z",
+		MetricsURL:  "https://prometheus-fake.grafana.net/api/prom",
+		MetricsUser: "111111",
+		LogsURL:     "https://logs-fake.grafana.net",
+		LogsUser:    "222222",
 	}, nil
 }
 

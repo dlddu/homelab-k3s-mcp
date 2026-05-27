@@ -296,7 +296,7 @@ const toolsListJSON = `{
     },
     {
       "name": "grafana_token",
-      "description": "Mint a short-lived Grafana Cloud access token (valid 1 hour) scoped to metrics and log read access. The access policy and one-hour TTL are fixed on the server, so this tool takes no arguments. Returns the token as a text/plain .env file (GRAFANA_TOKEN=...) with expiry and scope as comments. Requires GRAFANA_ISSUER_TOKEN, GRAFANA_READ_POLICY_ID, and GRAFANA_REGION on the server.",
+      "description": "Mint a short-lived Grafana Cloud token (valid 1 hour) scoped to metrics and log read access, and return it with the static query endpoints and instance IDs needed to use it. The Grafana Cloud metrics (Mimir/Prometheus) and logs (Loki) endpoints use HTTP Basic auth where the password is this token and the username is the data source's numeric instance ID, so the token alone is not enough. The access policy and one-hour TTL are fixed on the server, so this tool takes no arguments. Returns a text/plain .env file with GRAFANA_METRICS_URL, GRAFANA_METRICS_USER, GRAFANA_LOGS_URL, GRAFANA_LOGS_USER and GRAFANA_TOKEN (the shared password). Requires GRAFANA_ISSUER_TOKEN, GRAFANA_READ_POLICY_ID, GRAFANA_REGION, GRAFANA_METRICS_URL, GRAFANA_METRICS_USER, GRAFANA_LOGS_URL and GRAFANA_LOGS_USER on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {},
