@@ -131,7 +131,7 @@ jobs:
             --from-literal=GRAFANA_ISSUER_TOKEN=glsa_mock_issuer \
             --from-literal=GRAFANA_READ_POLICY_ID=ci-read-policy \
             --from-literal=GRAFANA_REGION=ci-region \
-            --from-literal=GRAFANA_API_URL=http://grafana-mock.grafana-mock.svc.cluster.local \
+            --from-literal=GRAFANA_API_URL=http://grafana-mock.grafana-mock.svc.cluster.local/api \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)

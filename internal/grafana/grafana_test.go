@@ -33,7 +33,7 @@ func TestCreateTokenPostsExpectedRequest(t *testing.T) {
 		issuerToken:  "glsa_issuer",
 		readPolicyID: "policy-123",
 		region:       "prod-us-east-0",
-		apiBase:      srv.URL,
+		apiBase:      srv.URL + "/api",
 		userAgent:    "homelab-k3s-mcp/test",
 		http:         srv.Client(),
 	}

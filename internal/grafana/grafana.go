@@ -19,7 +19,10 @@ import (
 )
 
 const (
-	defaultAPIBase    = "https://www.grafana.com"
+	// defaultAPIBase is the Grafana Cloud API base, including the /api segment.
+	// The token path (/v1/tokens) is appended to it, so GRAFANA_API_URL must
+	// likewise point at the .../api base (not the bare host).
+	defaultAPIBase    = "https://www.grafana.com/api"
 	tokenTTL          = time.Hour
 	httpClientTimeout = 10 * time.Second
 )
@@ -139,7 +142,7 @@ func (c *Client) CreateToken(ctx context.Context) (*Token, error) {
 		return nil, apiError(fmt.Sprintf("encode request body: %v", err))
 	}
 
-	endpoint := c.apiBase + "/api/v1/tokens"
+	endpoint := c.apiBase + "/v1/tokens"
 	if c.region != "" {
 		endpoint += "?region=" + url.QueryEscape(c.region)
 	}
