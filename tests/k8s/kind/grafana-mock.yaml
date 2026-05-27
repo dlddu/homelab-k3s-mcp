@@ -20,6 +20,7 @@ data:
     import json
     import sys
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import urlsplit
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
@@ -33,7 +34,7 @@ data:
             self._json(404, {"message": "Not Found"})
 
         def do_POST(self):
-            if self.path != "/api/v1/tokens":
+            if urlsplit(self.path).path != "/api/v1/tokens":
                 self._json(404, {"message": "Not Found"})
                 return
 

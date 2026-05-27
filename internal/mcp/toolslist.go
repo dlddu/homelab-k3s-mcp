@@ -296,7 +296,7 @@ const toolsListJSON = `{
     },
     {
       "name": "grafana_token",
-      "description": "Mint a short-lived Grafana Cloud access token (valid 1 hour) scoped to metrics and log read access. The access policy and one-hour TTL are fixed on the server, so this tool takes no arguments. Returns the token as a text/plain .env file (GRAFANA_TOKEN=...) with expiry and scope as comments. Requires GRAFANA_ISSUER_TOKEN and GRAFANA_ACCESS_POLICY_ID on the server.",
+      "description": "Mint a short-lived Grafana Cloud access token (valid 1 hour) scoped to metrics and log read access. The access policy and one-hour TTL are fixed on the server, so this tool takes no arguments. Returns the token as a text/plain .env file (GRAFANA_TOKEN=...) with expiry and scope as comments. Requires GRAFANA_ISSUER_TOKEN, GRAFANA_READ_POLICY_ID, and GRAFANA_REGION on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {},

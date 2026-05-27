@@ -13,13 +13,14 @@ import (
 )
 
 func TestCreateTokenPostsExpectedRequest(t *testing.T) {
-	var gotAuth, gotPath, gotContentType string
+	var gotAuth, gotPath, gotContentType, gotRegion string
 	var gotBody map[string]any
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotContentType = r.Header.Get("Content-Type")
 		gotPath = r.URL.Path
+		gotRegion = r.URL.Query().Get("region")
 		raw, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(raw, &gotBody)
 		w.Header().Set("Content-Type", "application/json")
@@ -29,11 +30,12 @@ func TestCreateTokenPostsExpectedRequest(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{
-		issuerToken:    "glsa_issuer",
-		accessPolicyID: "policy-123",
-		apiBase:        srv.URL,
-		userAgent:      "homelab-k3s-mcp/test",
-		http:           srv.Client(),
+		issuerToken:  "glsa_issuer",
+		readPolicyID: "policy-123",
+		region:       "prod-us-east-0",
+		apiBase:      srv.URL,
+		userAgent:    "homelab-k3s-mcp/test",
+		http:         srv.Client(),
 	}
 
 	before := time.Now()
@@ -57,6 +59,9 @@ func TestCreateTokenPostsExpectedRequest(t *testing.T) {
 	}
 	if gotBody["accessPolicyId"] != "policy-123" {
 		t.Fatalf("accessPolicyId = %v", gotBody["accessPolicyId"])
+	}
+	if gotRegion != "prod-us-east-0" {
+		t.Fatalf("region query = %q, want prod-us-east-0", gotRegion)
 	}
 	name, _ := gotBody["name"].(string)
 	if !strings.HasPrefix(name, "homelab-k3s-mcp-") {
@@ -83,7 +88,7 @@ func TestCreateTokenWrapsNon2xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{accessPolicyID: "p", apiBase: srv.URL, http: srv.Client()}
+	c := &Client{readPolicyID: "p", apiBase: srv.URL, http: srv.Client()}
 	_, err := c.CreateToken(context.Background())
 	if err == nil {
 		t.Fatal("expected error")
@@ -104,7 +109,7 @@ func TestCreateTokenRejectsResponseWithoutToken(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := &Client{accessPolicyID: "p", apiBase: srv.URL, http: srv.Client()}
+	c := &Client{readPolicyID: "p", apiBase: srv.URL, http: srv.Client()}
 	_, err := c.CreateToken(context.Background())
 	if err == nil || !strings.Contains(err.Error(), "did not include a token") {
 		t.Fatalf("error = %v", err)
@@ -129,17 +134,17 @@ func TestFromEnvUnsetIssuerReturnsNil(t *testing.T) {
 	}
 }
 
-func TestFromEnvRequiresAccessPolicyID(t *testing.T) {
+func TestFromEnvRequiresReadPolicyID(t *testing.T) {
 	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
-	t.Setenv("GRAFANA_ACCESS_POLICY_ID", "")
-	if _, err := FromEnv(); err == nil || !strings.Contains(err.Error(), "GRAFANA_ACCESS_POLICY_ID") {
+	t.Setenv("GRAFANA_READ_POLICY_ID", "")
+	if _, err := FromEnv(); err == nil || !strings.Contains(err.Error(), "GRAFANA_READ_POLICY_ID") {
 		t.Fatalf("missing policy id err = %v", err)
 	}
 }
 
 func TestFromEnvDefaultsAPIBase(t *testing.T) {
 	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
-	t.Setenv("GRAFANA_ACCESS_POLICY_ID", "policy-123")
+	t.Setenv("GRAFANA_READ_POLICY_ID", "policy-123")
 	t.Setenv("GRAFANA_API_URL", "")
 	client, err := FromEnv()
 	if err != nil {
@@ -152,7 +157,7 @@ func TestFromEnvDefaultsAPIBase(t *testing.T) {
 
 func TestFromEnvTrimsAPIBaseTrailingSlash(t *testing.T) {
 	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
-	t.Setenv("GRAFANA_ACCESS_POLICY_ID", "policy-123")
+	t.Setenv("GRAFANA_READ_POLICY_ID", "policy-123")
 	t.Setenv("GRAFANA_API_URL", "https://grafana.example.com/")
 	client, err := FromEnv()
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -84,11 +85,12 @@ func (u *Unavailable) CreateToken(context.Context) (*Token, error) {
 
 // Client is the live Grafana Cloud implementation of Service.
 type Client struct {
-	issuerToken    string
-	accessPolicyID string
-	apiBase        string
-	userAgent      string
-	http           *http.Client
+	issuerToken  string
+	readPolicyID string
+	region       string
+	apiBase      string
+	userAgent    string
+	http         *http.Client
 }
 
 // FromEnv builds a Client from the GRAFANA_* environment variables. It returns
@@ -100,9 +102,9 @@ func FromEnv() (*Client, error) {
 		return nil, nil
 	}
 
-	accessPolicyID := os.Getenv("GRAFANA_ACCESS_POLICY_ID")
-	if accessPolicyID == "" {
-		return nil, fmt.Errorf("GRAFANA_ACCESS_POLICY_ID is required when GRAFANA_ISSUER_TOKEN is set")
+	readPolicyID := os.Getenv("GRAFANA_READ_POLICY_ID")
+	if readPolicyID == "" {
+		return nil, fmt.Errorf("GRAFANA_READ_POLICY_ID is required when GRAFANA_ISSUER_TOKEN is set")
 	}
 
 	apiBase := os.Getenv("GRAFANA_API_URL")
@@ -111,11 +113,12 @@ func FromEnv() (*Client, error) {
 	}
 
 	return &Client{
-		issuerToken:    issuerToken,
-		accessPolicyID: accessPolicyID,
-		apiBase:        strings.TrimRight(apiBase, "/"),
-		userAgent:      version.Name + "/" + version.Version,
-		http:           &http.Client{Timeout: httpClientTimeout},
+		issuerToken:  issuerToken,
+		readPolicyID: readPolicyID,
+		region:       os.Getenv("GRAFANA_REGION"),
+		apiBase:      strings.TrimRight(apiBase, "/"),
+		userAgent:    version.Name + "/" + version.Version,
+		http:         &http.Client{Timeout: httpClientTimeout},
 	}, nil
 }
 
@@ -126,7 +129,7 @@ func (c *Client) CreateToken(ctx context.Context) (*Token, error) {
 	expiresAt := time.Now().Add(tokenTTL).UTC().Format(time.RFC3339)
 
 	body := map[string]any{
-		"accessPolicyId": c.accessPolicyID,
+		"accessPolicyId": c.readPolicyID,
 		"name":           name,
 		"displayName":    name,
 		"expiresAt":      expiresAt,
@@ -136,8 +139,11 @@ func (c *Client) CreateToken(ctx context.Context) (*Token, error) {
 		return nil, apiError(fmt.Sprintf("encode request body: %v", err))
 	}
 
-	url := c.apiBase + "/api/v1/tokens"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(bodyBytes))
+	endpoint := c.apiBase + "/api/v1/tokens"
+	if c.region != "" {
+		endpoint += "?region=" + url.QueryEscape(c.region)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
@@ -148,13 +154,13 @@ func (c *Client) CreateToken(ctx context.Context) (*Token, error) {
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, apiError(fmt.Sprintf("post %s: %v", url, err))
+		return nil, apiError(fmt.Sprintf("post %s: %v", endpoint, err))
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, apiError(fmt.Sprintf("%s returned %s: %s", url, resp.Status, string(respBody)))
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
 	}
 
 	var token Token
