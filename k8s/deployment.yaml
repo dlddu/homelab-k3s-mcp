@@ -58,6 +58,10 @@ spec:
             # the optional AWS_CONFIG_* overrides for the aws_config_get tool.
             - secretRef:
                 name: homelab-k3s-mcp-aws-config
+            # GRAFANA_ISSUER_TOKEN, GRAFANA_ACCESS_POLICY_ID and the optional
+            # GRAFANA_API_URL override for the grafana_token tool.
+            - secretRef:
+                name: homelab-k3s-mcp-grafana
           startupProbe:
             httpGet:
               path: /healthz
