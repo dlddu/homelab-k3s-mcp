@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: grafana-mock
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# Stand-in for the Grafana Cloud access-policy token endpoint. The server posts
+# to /api/v1/tokens with a Bearer issuer token and a body carrying the access
+# policy id, a unique name and an RFC3339 expiry; this mock echoes those back in
+# a Grafana-shaped response (token = glc_mock_<name>) so the kind smoke check can
+# drive the full client path end-to-end without touching real Grafana Cloud.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-mock-script
+  namespace: grafana-mock
+data:
+  server.py: |
+    import json
+    import sys
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import urlsplit
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, fmt, *args):
+            sys.stdout.write("grafana-mock " + (fmt % args) + "\n")
+            sys.stdout.flush()
+
+        def do_GET(self):
+            if self.path == "/healthz":
+                self._json(200, {"status": "ok"})
+                return
+            self._json(404, {"message": "Not Found"})
+
+        def do_POST(self):
+            if urlsplit(self.path).path != "/api/v1/tokens":
+                self._json(404, {"message": "Not Found"})
+                return
+
+            auth = self.headers.get("Authorization", "")
+            if not auth.startswith("Bearer "):
+                self._json(401, {"message": "Requires authentication"})
+                return
+
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw = self.rfile.read(length).decode() if length else ""
+            try:
+                payload = json.loads(raw) if raw else {}
+            except json.JSONDecodeError:
+                self._json(400, {"message": "Invalid JSON"})
+                return
+
+            name = payload.get("name", "unknown")
+            self._json(
+                200,
+                {
+                    "id": "tok_mock",
+                    "name": name,
+                    "displayName": payload.get("displayName", name),
+                    "accessPolicyId": payload.get("accessPolicyId", ""),
+                    "expiresAt": payload.get("expiresAt", ""),
+                    "token": f"glc_mock_{name}",
+                },
+            )
+
+        def _json(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+    if __name__ == "__main__":
+        ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: grafana-mock
+  namespace: grafana-mock
+  labels:
+    app.kubernetes.io/name: grafana-mock
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: grafana-mock
+  template:
+    metadata:
+      labels:
+        app: grafana-mock
+    spec:
+      containers:
+        - name: server
+          image: python:3.12-alpine
+          command: ["python", "/scripts/server.py"]
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 5m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+      volumes:
+        - name: script
+          configMap:
+            name: grafana-mock-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: grafana-mock
+  namespace: grafana-mock
+spec:
+  selector:
+    app: grafana-mock
+  ports:
+    - port: 80
+      targetPort: 8080
+      protocol: TCP

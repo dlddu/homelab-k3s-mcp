@@ -10,6 +10,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
+	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/mcp"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
@@ -22,13 +23,13 @@ type health struct {
 
 // App builds the HTTP handler for the service. When authCfg is nil the /mcp
 // endpoint is served without authentication.
-func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service) http.Handler {
+func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", root)
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz)
 
-	mcpHandler := mcp.NewHandler(k8sSvc, ghSvc, awsSvc)
+	mcpHandler := mcp.NewHandler(k8sSvc, ghSvc, awsSvc, grafanaSvc)
 	if authCfg != nil {
 		mux.Handle("GET /.well-known/oauth-protected-resource", auth.MetadataHandler(authCfg))
 		mux.Handle("POST /mcp", authCfg.RequireBearer(mcpHandler))

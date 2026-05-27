@@ -13,6 +13,7 @@ import (
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
+	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
@@ -30,14 +31,15 @@ const (
 
 // Handler serves the MCP JSON-RPC endpoint.
 type Handler struct {
-	k8s    k8s.Service
-	github github.Service
-	aws    awsconfig.Service
+	k8s     k8s.Service
+	github  github.Service
+	aws     awsconfig.Service
+	grafana grafana.Service
 }
 
 // NewHandler builds an MCP handler backed by the given services.
-func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service) *Handler {
-	return &Handler{k8s: k8sSvc, github: ghSvc, aws: awsSvc}
+func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service) *Handler {
+	return &Handler{k8s: k8sSvc, github: ghSvc, aws: awsSvc, grafana: grafanaSvc}
 }
 
 type rpcRequest struct {
@@ -159,6 +161,8 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		return h.githubAppInstallationToken(ctx, rawArgs)
 	case "aws_config_get":
 		return h.awsConfigGet(ctx)
+	case "grafana_token":
+		return h.grafanaToken(ctx)
 	default:
 		return nil, errf(-32602, "unknown tool: %s", name)
 	}
@@ -595,6 +599,44 @@ func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
 		"structuredContent": payload,
 		"isError":           false,
 	}, nil
+}
+
+func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {
+	creds, err := h.grafana.CreateToken(ctx)
+	if err != nil {
+		return toolError(err), nil
+	}
+	return grafanaTokenResult(creds), nil
+}
+
+func grafanaTokenResult(creds *grafana.Credentials) any {
+	return map[string]any{
+		"content": []any{
+			map[string]any{
+				"type": "resource",
+				"resource": map[string]any{
+					"uri":      "file:///grafana-token.env",
+					"mimeType": "text/plain",
+					"text":     grafanaTokenEnv(creds),
+				},
+			},
+		},
+		"isError": false,
+	}
+}
+
+func grafanaTokenEnv(creds *grafana.Credentials) string {
+	var b strings.Builder
+	if creds.ExpiresAt != "" {
+		fmt.Fprintf(&b, "# token expires %s\n", creds.ExpiresAt)
+	}
+	fmt.Fprintf(&b, "GRAFANA_METRICS_URL=%s\n", creds.MetricsURL)
+	fmt.Fprintf(&b, "GRAFANA_METRICS_USER=%s\n", creds.MetricsUser)
+	fmt.Fprintf(&b, "GRAFANA_LOGS_URL=%s\n", creds.LogsURL)
+	fmt.Fprintf(&b, "GRAFANA_LOGS_USER=%s\n", creds.LogsUser)
+	fmt.Fprintf(&b, "# GRAFANA_TOKEN is the shared Basic-auth password for both *_USER values above\n")
+	fmt.Fprintf(&b, "GRAFANA_TOKEN=%s\n", creds.Token)
+	return b.String()
 }
 
 // --- shared helpers ---

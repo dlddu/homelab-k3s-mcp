@@ -97,6 +97,9 @@ jobs:
       - name: Deploy MinIO fixture
         run: kubectl apply -f tests/k8s/kind/minio.yaml
 
+      - name: Deploy grafana-mock fixture
+        run: kubectl apply -f tests/k8s/kind/grafana-mock.yaml
+
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
 
@@ -122,6 +125,19 @@ jobs:
             --from-literal=AWS_SECRET_ACCESS_KEY=minioadmin \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      - name: Create test Grafana secret
+        run: |
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-grafana \
+            --from-literal=GRAFANA_ISSUER_TOKEN=glsa_mock_issuer \
+            --from-literal=GRAFANA_READ_POLICY_ID=ci-read-policy \
+            --from-literal=GRAFANA_REGION=ci-region \
+            --from-literal=GRAFANA_API_URL=http://grafana-mock.grafana-mock.svc.cluster.local/api \
+            --from-literal=GRAFANA_METRICS_URL=https://prometheus-prod-ci.grafana.net/api/prom \
+            --from-literal=GRAFANA_METRICS_USER=111111 \
+            --from-literal=GRAFANA_LOGS_URL=https://logs-prod-ci.grafana.net \
+            --from-literal=GRAFANA_LOGS_USER=222222 \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
@@ -136,6 +152,9 @@ jobs:
 
       - name: Wait for MinIO rollout
         run: kubectl -n minio rollout status deploy/minio --timeout=180s
+
+      - name: Wait for grafana-mock rollout
+        run: kubectl -n grafana-mock rollout status deploy/grafana-mock --timeout=180s
 
       - name: Wait for MinIO seed job
         run: kubectl -n minio wait --for=condition=complete job/minio-seed --timeout=120s
@@ -184,6 +203,13 @@ jobs:
           trap "kill $PF_PID" EXIT
           python tests/integration/aws_config.py http://127.0.0.1:8084
 
+      - name: Validate grafana_token tool against mock
+        run: |
+          kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8085:80 >/tmp/pf-grafana.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          python tests/integration/grafana.py http://127.0.0.1:8085
+
       - name: Dump cluster diagnostics on failure
         if: failure()
         run: |
@@ -202,6 +228,9 @@ jobs:
           kubectl -n minio describe deploy/minio || true
           kubectl -n minio logs deploy/minio --tail=200 || true
           kubectl -n minio logs job/minio-seed --tail=200 || true
+          kubectl -n grafana-mock get all -o wide || true
+          kubectl -n grafana-mock describe deploy/grafana-mock || true
+          kubectl -n grafana-mock logs deploy/grafana-mock --tail=200 || true
 
   docker:
     name: docker build & push
