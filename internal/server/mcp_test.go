@@ -101,7 +101,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 	for _, name := range []string{
 		"ping", "namespace_list", "workload_list", "workload_restart",
 		"workload_scale", "workload_logs", "pod_describe",
-		"dear_baby_reset_onboarding", "github_app_installation_token",
+		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 	} {
 		findTool(t, tools, name)
@@ -375,12 +375,12 @@ func TestUnavailableK8sReturnsToolError(t *testing.T) {
 func TestToolsListAdvertisesDearBabyReset(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
 	tools := toolsList(t, app)
-	reset := findTool(t, tools, "dear_baby_reset_onboarding")
+	reset := findTool(t, tools, "dear_baby_reset_user")
 	required := enumStrings(t, at(t, reset, "inputSchema", "required"))
 	if !contains(required, "namespace") || !contains(required, "email") {
 		t.Fatalf("required = %v", required)
 	}
-	if at(t, reset, "annotations", "title") != "Reset dear-baby Onboarding" ||
+	if at(t, reset, "annotations", "title") != "Reset dear-baby User" ||
 		at(t, reset, "annotations", "destructiveHint") != true ||
 		at(t, reset, "annotations", "idempotentHint") != true {
 		t.Fatalf("annotations = %v", reset["annotations"])
@@ -392,14 +392,14 @@ func TestDearBabyResetDispatchesWithDefaults(t *testing.T) {
 		code := int32(0)
 		return &k8s.ExecOutcome{
 			Pod:      "dear-baby-7d9c9f6b8b-xyz",
-			Stdout:   "reset onboarding for user@example.com\n",
+			Stdout:   "reset user for user@example.com\n",
 			ExitCode: &code,
 			Success:  true,
 		}, nil
 	}}
 	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
 
-	body := callTool(t, app, 60, "dear_baby_reset_onboarding", map[string]any{
+	body := callTool(t, app, 60, "dear_baby_reset_user", map[string]any{
 		"namespace": "dear-baby", "email": "user@example.com",
 	})
 	if at(t, body, "result", "isError") != false {
@@ -410,7 +410,7 @@ func TestDearBabyResetDispatchesWithDefaults(t *testing.T) {
 		sc["pod"] != "dear-baby-7d9c9f6b8b-xyz" || sc["exitCode"] != float64(0) || sc["success"] != true {
 		t.Fatalf("structuredContent = %v", sc)
 	}
-	if !strings.Contains(sc["stdout"].(string), "reset onboarding") {
+	if !strings.Contains(sc["stdout"].(string), "reset user") {
 		t.Fatalf("stdout = %v", sc["stdout"])
 	}
 	if len(fake.execCalls) != 1 {
@@ -420,7 +420,7 @@ func TestDearBabyResetDispatchesWithDefaults(t *testing.T) {
 	if c.namespace != "dear-baby" || c.selector != "app=dear-baby" || c.container == nil || *c.container != "backend" {
 		t.Fatalf("execCall = %+v", c)
 	}
-	if len(c.command) != 2 || c.command[0] != "/reset-onboarding" || c.command[1] != "user@example.com" {
+	if len(c.command) != 2 || c.command[0] != "/reset-user" || c.command[1] != "user@example.com" {
 		t.Fatalf("command = %v", c.command)
 	}
 }
@@ -429,7 +429,7 @@ func TestDearBabyResetHonoursOverrides(t *testing.T) {
 	fake := &fakeK8s{}
 	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
 
-	body := callTool(t, app, 61, "dear_baby_reset_onboarding", map[string]any{
+	body := callTool(t, app, 61, "dear_baby_reset_user", map[string]any{
 		"namespace": "staging", "email": "qa@example.com",
 		"selector": "app=dear-baby,track=canary", "container": "api",
 	})
@@ -454,7 +454,7 @@ func TestDearBabyResetReportsNonZeroExit(t *testing.T) {
 	}}
 	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
 
-	body := callTool(t, app, 62, "dear_baby_reset_onboarding", map[string]any{
+	body := callTool(t, app, 62, "dear_baby_reset_user", map[string]any{
 		"namespace": "dear-baby", "email": "missing@example.com",
 	})
 	if at(t, body, "result", "isError") != true {
@@ -471,7 +471,7 @@ func TestDearBabyResetReportsNonZeroExit(t *testing.T) {
 
 func TestDearBabyResetRequiresNamespaceAndEmail(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
-	body := callTool(t, app, 63, "dear_baby_reset_onboarding", map[string]any{"email": "user@example.com"})
+	body := callTool(t, app, 63, "dear_baby_reset_user", map[string]any{"email": "user@example.com"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
 	}
