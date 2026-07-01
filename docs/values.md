@@ -53,6 +53,19 @@
 - **관련 도구/구성**: 전 도구 공통(인증), `internal/auth`, `k8s/rbac.yaml`,
   도구 어노테이션(`destructiveHint`)
 
+### V4: 운영 지식의 축적·검색
+
+- **유형**: 추상적
+- **설명**: 운영자가 홈랩을 운영하며 생기는 문서·기록·지식(트러블슈팅 노트, 구성 결정,
+  절차 등)을 AI 어시스턴트를 통해 축적하고, 필요한 순간 자연어로 검색해 재사용한다. 이
+  가치가 지향하는 방향은 **흩어진 운영 지식을 검색 가능한 한 곳에 모아, 같은 문제를 두 번
+  풀지 않게 하는 것**이다.
+- **기반 인프라**: OpenSearch Serverless(NextGen) `kubernetes-docs` 컬렉션 —
+  scale-to-zero(min 0 OCU)로 유휴 시 compute 과금이 멈추고, 접근은 IAM(`aoss`)과 데이터
+  액세스 정책의 2중 레이어로 통제된다.
+- **관련 도구**: `opensearch_search`, `opensearch_document_put`,
+  `opensearch_document_delete`
+
 ---
 
 ## 변경 이력
@@ -60,3 +73,4 @@
 | 시점 | 변경 내용 |
 |------|-----------|
 | 2026-06-19 | 가치 문서 최초 생성. 소유자 지정(홈랩 운영자), V1~V3 정의. |
+| 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |

@@ -14,10 +14,10 @@
 
 ## 현재 상태 요약
 
-- 정의된 가치: **3개** (V1~V3)
-- PRD: **12개** (도구 11 + 공통 기반 1)
-- Acceptance Criteria: **36개** (가치 연결됨: 36 / 미연결: 0)
-- 테스트 문서: **12개** (AC 커버됨: 36 / 미커버: 0)
+- 정의된 가치: **4개** (V1~V4)
+- PRD: **15개** (도구 14 + 공통 기반 1)
+- Acceptance Criteria: **50개** (가치 연결됨: 50 / 미연결: 0)
+- 테스트 문서: **15개** (AC 커버됨: 50 / 미커버: 0)
 - **건강 상태**: 🟢 **건강함** — 가치 → PRD → AC → 테스트 전 계층 연결 완료
 
 > 문서 체계의 모든 화살표가 연결되었다(고아 가치·미정렬 문서·무가치 PRD·AC 없는 PRD·
@@ -29,9 +29,9 @@
 | 종류 | 파일 |
 |------|------|
 | 가치 문서 | `values.md` |
-| PRD (도구) | `prd-ping.md`, `prd-namespace-list.md`, `prd-workload-list.md`, `prd-workload-logs.md`, `prd-pod-describe.md`, `prd-workload-restart.md`, `prd-workload-scale.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-grafana-token.md`, `prd-aws-config-get.md` |
+| PRD (도구) | `prd-ping.md`, `prd-namespace-list.md`, `prd-workload-list.md`, `prd-workload-logs.md`, `prd-pod-describe.md`, `prd-workload-restart.md`, `prd-workload-scale.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-grafana-token.md`, `prd-aws-config-get.md`, `prd-opensearch-search.md`, `prd-opensearch-document-put.md`, `prd-opensearch-document-delete.md` |
 | PRD (공통) | `prd-platform-auth-safety.md` |
-| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (12개) |
+| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (15개) |
 | 상태 추적 | `doc-tracker.md` |
 
 ## PRD ↔ 가치 ↔ AC ↔ 테스트 매트릭스
@@ -49,6 +49,9 @@
 | github_app_installation_token | V2, V3 | 4 | test-github-app-installation-token | ✅ 완전 |
 | grafana_token | V2, V3 | 4 | test-grafana-token | ✅ 완전 |
 | aws_config_get | V2, V3 | 3 | test-aws-config-get | ✅ 완전 |
+| opensearch_search | V4, V2, V3 | 4 | test-opensearch-search | ✅ 완전 |
+| opensearch_document_put | V4, V2, V3 | 5 | test-opensearch-document-put | ✅ 완전 |
+| opensearch_document_delete | V4, V2, V3 | 5 | test-opensearch-document-delete | ✅ 완전 |
 | platform (인증·안전 공통) | V3 | 6 | test-platform-auth-safety | ✅ 완전 |
 
 ## 가치 커버리지
@@ -56,8 +59,9 @@
 | 가치 | 이 가치를 달성하는 PRD |
 |------|------------------------|
 | V1: 자연어로 클러스터 운영 | namespace_list, workload_list, workload_logs, pod_describe, workload_restart, workload_scale, dear_baby_reset_user |
-| V2: 단명·최소권한 자격증명 | github_app_installation_token, grafana_token, aws_config_get |
-| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), ping, pod_describe, workload_restart, workload_scale, dear_baby_reset_user, github_app_installation_token, grafana_token, aws_config_get |
+| V2: 단명·최소권한 자격증명 | github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete |
+| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), ping, pod_describe, workload_restart, workload_scale, dear_baby_reset_user, github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete |
+| V4: 운영 지식의 축적·검색 | opensearch_search, opensearch_document_put, opensearch_document_delete |
 
 ## 위험 진단
 
@@ -92,6 +96,9 @@
 - 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
   platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
+  - opensearch_search / opensearch_document_put / opensearch_document_delete **전 AC(14)** —
+    **도구 미구현**(2026-07-02, PRD·테스트 문서 선행 작성). 구현 시 `internal/opensearch`
+    단위 테스트와 `tests/integration/opensearch.py` 통합 테스트로 자동화 필요.
   - workload_logs AC3 — 실제 previous/크래시 루프 로그 **내용** 미커버(픽스처가 pause 이미지).
   - github AC4 / grafana AC4 — 베이스 시크릿 **부재**를 명시적으로 단언하는 케이스 미존재.
 
@@ -104,3 +111,4 @@
 | 2026-06-19 | PRD를 도구 단위로 재구성(도구 11 + 공통 1), AC 36 | PRD 3 / AC 18 | 가치 3 / PRD 12 / AC 36 / 테스트 0 |
 | 2026-06-19 | workload_logs AC2 정정(초과 시 클램프 → 거부), 테스트 문서 12종 작성 | 테스트 0 | 가치 3 / PRD 12 / AC 36 / 테스트 12 (전 계층 연결) |
 | 2026-06-22 | platform AC1·AC2 인증 게이트/디스커버리 단위 테스트 추가(`internal/auth/auth_test.go`) | AC1·AC2 자동화 공백 | platform AC1·AC2 자동 검증(자동화 공백 7→5) |
+| 2026-07-02 | V4(운영 지식의 축적·검색) 추가, OpenSearch Serverless 도구 3종 PRD(AC 14)·테스트 문서 작성 — 구현 선행 문서(인프라 `kubernetes-docs` 컬렉션·권한은 부여 완료, 코드 미구현) | 가치 3 / PRD 12 / AC 36 / 테스트 12 | 가치 4 / PRD 15 / AC 50 / 테스트 15 |
