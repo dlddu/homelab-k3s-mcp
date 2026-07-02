@@ -1,6 +1,8 @@
 package server_test
 
 import (
+	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -9,6 +11,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
+	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 )
 
@@ -75,7 +78,7 @@ func wantStrSlice(t *testing.T, got []string, want ...string) {
 }
 
 func TestInitializeReturnsServerInfo(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := rpc(t, app, map[string]any{"jsonrpc": "2.0", "id": 1, "method": "initialize"})
 
 	if body["jsonrpc"] != "2.0" {
@@ -93,23 +96,24 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 }
 
 func TestToolsListIncludesAllTools(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
-	if len(tools) != 11 {
-		t.Fatalf("len(tools) = %d, want 11", len(tools))
+	if len(tools) != 14 {
+		t.Fatalf("len(tools) = %d, want 14", len(tools))
 	}
 	for _, name := range []string{
 		"ping", "namespace_list", "workload_list", "workload_restart",
 		"workload_scale", "workload_logs", "pod_describe",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
+		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 	} {
 		findTool(t, tools, name)
 	}
 }
 
 func TestToolsListAdvertisesAnnotations(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 
 	ping := findTool(t, tools, "ping")
@@ -136,7 +140,7 @@ func TestToolsListAdvertisesAnnotations(t *testing.T) {
 }
 
 func TestPingToolReturnsPong(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 3, "ping", map[string]any{})
 	if at(t, body, "result", "content", 0, "text") != "pong" {
 		t.Fatalf("text = %v", at(t, body, "result", "content", 0, "text"))
@@ -147,7 +151,7 @@ func TestPingToolReturnsPong(t *testing.T) {
 }
 
 func TestUnknownMethodReturnsError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := rpc(t, app, map[string]any{"jsonrpc": "2.0", "id": 4, "method": "does/not/exist"})
 	if at(t, body, "error", "code") != float64(-32601) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
@@ -155,7 +159,7 @@ func TestUnknownMethodReturnsError(t *testing.T) {
 }
 
 func TestUnknownToolReturnsError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := rpc(t, app, map[string]any{
 		"jsonrpc": "2.0", "id": 5, "method": "tools/call",
 		"params": map[string]any{"name": "nonexistent"},
@@ -167,7 +171,7 @@ func TestUnknownToolReturnsError(t *testing.T) {
 
 func TestWorkloadListDispatchesToService(t *testing.T) {
 	fake := &fakeK8s{items: []any{map[string]any{"name": "api", "namespace": "default", "replicas": 3}}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 10, "workload_list", map[string]any{"kind": "Deployment", "namespace": "default"})
 
@@ -190,7 +194,7 @@ func TestWorkloadListDispatchesToService(t *testing.T) {
 
 func TestWorkloadListWithoutNamespaceListsAll(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 11, "workload_list", map[string]any{"kind": "StatefulSet"})
 	if at(t, body, "result", "isError") != false {
@@ -205,7 +209,7 @@ func TestWorkloadListWithoutNamespaceListsAll(t *testing.T) {
 }
 
 func TestToolsListAdvertisesNamespaceList(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	ns := findTool(t, tools, "namespace_list")
 	if at(t, ns, "annotations", "title") != "List Namespaces" {
@@ -222,7 +226,7 @@ func TestNamespaceListDispatchesToService(t *testing.T) {
 		map[string]any{"name": "default", "phase": "Active"},
 		map[string]any{"name": "kube-system", "phase": "Active"},
 	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 13, "namespace_list", map[string]any{})
 	if at(t, body, "result", "isError") != false {
@@ -241,7 +245,7 @@ func TestNamespaceListDispatchesToService(t *testing.T) {
 }
 
 func TestNamespaceListUnavailableIsToolError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 14, "namespace_list", map[string]any{})
 	if at(t, body, "result", "isError") != true {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -254,7 +258,7 @@ func TestNamespaceListUnavailableIsToolError(t *testing.T) {
 
 func TestWorkloadRestartDispatchesToService(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 20, "workload_restart", map[string]any{
 		"kind": "DaemonSet", "namespace": "kube-system", "name": "kindnet",
@@ -275,7 +279,7 @@ func TestWorkloadRestartDispatchesToService(t *testing.T) {
 }
 
 func TestWorkloadRestartRequiresNamespaceAndName(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 30, "workload_restart", map[string]any{"kind": "Deployment", "namespace": "default"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
@@ -284,7 +288,7 @@ func TestWorkloadRestartRequiresNamespaceAndName(t *testing.T) {
 
 func TestWorkloadScaleDispatchesToService(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 70, "workload_scale", map[string]any{
 		"kind": "Deployment", "namespace": "default", "name": "api", "replicas": 3,
@@ -303,7 +307,7 @@ func TestWorkloadScaleDispatchesToService(t *testing.T) {
 
 func TestWorkloadScaleSupportsZeroReplicas(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 71, "workload_scale", map[string]any{
 		"kind": "StatefulSet", "namespace": "data", "name": "redis", "replicas": 0,
@@ -320,7 +324,7 @@ func TestWorkloadScaleSupportsZeroReplicas(t *testing.T) {
 }
 
 func TestWorkloadScaleRejectsNegativeReplicas(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 72, "workload_scale", map[string]any{
 		"kind": "Deployment", "namespace": "default", "name": "api", "replicas": -1,
 	})
@@ -330,7 +334,7 @@ func TestWorkloadScaleRejectsNegativeReplicas(t *testing.T) {
 }
 
 func TestWorkloadScaleRequiresReplicas(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 73, "workload_scale", map[string]any{
 		"kind": "Deployment", "namespace": "default", "name": "api",
 	})
@@ -340,7 +344,7 @@ func TestWorkloadScaleRequiresReplicas(t *testing.T) {
 }
 
 func TestToolsListAdvertisesWorkloadScale(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	scale := findTool(t, tools, "workload_scale")
 	if at(t, scale, "annotations", "title") != "Scale Workload" ||
@@ -353,7 +357,7 @@ func TestToolsListAdvertisesWorkloadScale(t *testing.T) {
 }
 
 func TestWorkloadRejectsUnknownKind(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 31, "workload_list", map[string]any{"kind": "Pod"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
@@ -361,7 +365,7 @@ func TestWorkloadRejectsUnknownKind(t *testing.T) {
 }
 
 func TestUnavailableK8sReturnsToolError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 40, "workload_list", map[string]any{"kind": "Deployment"})
 	if at(t, body, "result", "isError") != true {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -373,7 +377,7 @@ func TestUnavailableK8sReturnsToolError(t *testing.T) {
 }
 
 func TestToolsListAdvertisesDearBabyReset(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	reset := findTool(t, tools, "dear_baby_reset_user")
 	required := enumStrings(t, at(t, reset, "inputSchema", "required"))
@@ -397,7 +401,7 @@ func TestDearBabyResetDispatchesWithDefaults(t *testing.T) {
 			Success:  true,
 		}, nil
 	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 60, "dear_baby_reset_user", map[string]any{
 		"namespace": "dear-baby", "email": "user@example.com",
@@ -427,7 +431,7 @@ func TestDearBabyResetDispatchesWithDefaults(t *testing.T) {
 
 func TestDearBabyResetHonoursOverrides(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 61, "dear_baby_reset_user", map[string]any{
 		"namespace": "staging", "email": "qa@example.com",
@@ -452,7 +456,7 @@ func TestDearBabyResetReportsNonZeroExit(t *testing.T) {
 			Success:  false,
 		}, nil
 	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 62, "dear_baby_reset_user", map[string]any{
 		"namespace": "dear-baby", "email": "missing@example.com",
@@ -470,7 +474,7 @@ func TestDearBabyResetReportsNonZeroExit(t *testing.T) {
 }
 
 func TestDearBabyResetRequiresNamespaceAndEmail(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 63, "dear_baby_reset_user", map[string]any{"email": "user@example.com"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
@@ -478,7 +482,7 @@ func TestDearBabyResetRequiresNamespaceAndEmail(t *testing.T) {
 }
 
 func TestToolsListAdvertisesWorkloadLogs(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	logs := findTool(t, tools, "workload_logs")
 	if at(t, logs, "annotations", "title") != "View Workload Logs" {
@@ -497,7 +501,7 @@ func TestWorkloadLogsDispatchesWithDefaults(t *testing.T) {
 	fake := &fakeK8s{logResponse: func() (*k8s.LogResult, error) {
 		return &k8s.LogResult{Pod: "api-7d9c9f6b8b-xyz", Logs: "line one\nline two\n"}, nil
 	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 81, "workload_logs", map[string]any{
 		"kind": "Deployment", "namespace": "default", "name": "api",
@@ -526,7 +530,7 @@ func TestWorkloadLogsDispatchesWithDefaults(t *testing.T) {
 
 func TestWorkloadLogsHonoursOverrides(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 82, "workload_logs", map[string]any{
 		"kind": "StatefulSet", "namespace": "data", "name": "redis",
@@ -549,7 +553,7 @@ func TestWorkloadLogsHonoursOverrides(t *testing.T) {
 }
 
 func TestWorkloadLogsRejectsTailLinesOverMax(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 83, "workload_logs", map[string]any{
 		"kind": "Deployment", "namespace": "default", "name": "api", "tail_lines": 100000,
 	})
@@ -563,7 +567,7 @@ func TestWorkloadLogsRejectsTailLinesOverMax(t *testing.T) {
 }
 
 func TestWorkloadLogsRequiresNamespaceAndName(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 84, "workload_logs", map[string]any{"kind": "Deployment"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
@@ -574,7 +578,7 @@ func TestWorkloadLogsEmptyOutputPlaceholder(t *testing.T) {
 	fake := &fakeK8s{logResponse: func() (*k8s.LogResult, error) {
 		return &k8s.LogResult{Pod: "api-1", Logs: ""}, nil
 	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 85, "workload_logs", map[string]any{
 		"kind": "Deployment", "namespace": "default", "name": "api",
@@ -591,7 +595,7 @@ func TestWorkloadLogsEmptyOutputPlaceholder(t *testing.T) {
 }
 
 func TestToolsListAdvertisesPodDescribe(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	describe := findTool(t, tools, "pod_describe")
 	if at(t, describe, "annotations", "title") != "Describe Pod" {
@@ -651,7 +655,7 @@ func TestPodDescribeRendersStructuredPayload(t *testing.T) {
 			}},
 		}, nil
 	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 91, "pod_describe", map[string]any{
 		"namespace": "default", "name": "api-7d9c9f6b8b-xyz",
@@ -693,7 +697,7 @@ func TestPodDescribeRendersStructuredPayload(t *testing.T) {
 
 func TestPodDescribeAcceptsSelectorTarget(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 95, "pod_describe", map[string]any{"namespace": "default", "selector": "app=api"})
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -705,7 +709,7 @@ func TestPodDescribeAcceptsSelectorTarget(t *testing.T) {
 
 func TestPodDescribeAcceptsWorkloadTarget(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 96, "pod_describe", map[string]any{
 		"namespace": "default", "workload_kind": "Deployment", "workload_name": "api",
 	})
@@ -719,7 +723,7 @@ func TestPodDescribeAcceptsWorkloadTarget(t *testing.T) {
 }
 
 func TestPodDescribeRejectsMutuallyExclusiveTargets(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 97, "pod_describe", map[string]any{
 		"namespace": "default", "name": "api-0", "selector": "app=api",
 	})
@@ -733,7 +737,7 @@ func TestPodDescribeRejectsMutuallyExclusiveTargets(t *testing.T) {
 }
 
 func TestPodDescribeRejectsPartialWorkloadTarget(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 98, "pod_describe", map[string]any{
 		"namespace": "default", "workload_kind": "Deployment",
 	})
@@ -744,7 +748,7 @@ func TestPodDescribeRejectsPartialWorkloadTarget(t *testing.T) {
 
 func TestPodDescribeNoEventsPlaceholder(t *testing.T) {
 	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 92, "pod_describe", map[string]any{"namespace": "default", "name": "api-0"})
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -756,7 +760,7 @@ func TestPodDescribeNoEventsPlaceholder(t *testing.T) {
 }
 
 func TestPodDescribeRequiresTarget(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 93, "pod_describe", map[string]any{"namespace": "default"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
@@ -771,7 +775,7 @@ func TestPodDescribeSurfacesK8sErrorAsToolError(t *testing.T) {
 	fake := &fakeK8s{describeResponse: func() (*k8s.PodDescription, error) {
 		return nil, k8s.APIError("pods \"missing\" not found")
 	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 94, "pod_describe", map[string]any{"namespace": "default", "name": "missing"})
 	if at(t, body, "result", "isError") != true {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -783,7 +787,7 @@ func TestPodDescribeSurfacesK8sErrorAsToolError(t *testing.T) {
 }
 
 func TestToolsListAdvertisesGitHubToken(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	token := findTool(t, tools, "github_app_installation_token")
 	props := at(t, token, "inputSchema", "properties").(map[string]any)
@@ -811,7 +815,7 @@ func TestGitHubTokenDispatchesWithDefaults(t *testing.T) {
 			RepositorySelection: "all",
 		}, nil
 	}}
-	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 71, "github_app_installation_token", map[string]any{})
 	if at(t, body, "result", "isError") != false {
@@ -847,7 +851,7 @@ func TestGitHubTokenDispatchesWithDefaults(t *testing.T) {
 
 func TestGitHubTokenPassesThroughScope(t *testing.T) {
 	fake := &fakeGitHub{}
-	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 72, "github_app_installation_token", map[string]any{
 		"repositories": []any{"homelab-k3s-mcp", "infra"},
@@ -867,7 +871,7 @@ func TestGitHubTokenPassesThroughScope(t *testing.T) {
 
 func TestGitHubTokenWithoutArgumentsField(t *testing.T) {
 	fake := &fakeGitHub{}
-	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := rpc(t, app, map[string]any{
 		"jsonrpc": "2.0", "id": 73, "method": "tools/call",
 		"params": map[string]any{"name": "github_app_installation_token"},
@@ -881,7 +885,7 @@ func TestGitHubTokenWithoutArgumentsField(t *testing.T) {
 }
 
 func TestGitHubTokenUnavailableReturnsToolError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 74, "github_app_installation_token", map[string]any{})
 	if at(t, body, "result", "isError") != true {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -893,7 +897,7 @@ func TestGitHubTokenUnavailableReturnsToolError(t *testing.T) {
 }
 
 func TestGitHubTokenRejectsNonArrayRepositories(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 75, "github_app_installation_token", map[string]any{"repositories": "not-a-list"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
@@ -901,7 +905,7 @@ func TestGitHubTokenRejectsNonArrayRepositories(t *testing.T) {
 }
 
 func TestToolsListAdvertisesAWSConfig(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	cfg := findTool(t, tools, "aws_config_get")
 	props := at(t, cfg, "inputSchema", "properties").(map[string]any)
@@ -928,7 +932,7 @@ func TestAWSConfigGetDispatchesToService(t *testing.T) {
 			Size:         32,
 		}, nil
 	}}
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), fake, unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), fake, unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 100, "aws_config_get", map[string]any{})
 	if at(t, body, "result", "isError") != false {
@@ -952,7 +956,7 @@ func TestAWSConfigGetEmptyObjectPlaceholder(t *testing.T) {
 	fake := &fakeAWS{response: func() (*awsconfig.Object, error) {
 		return &awsconfig.Object{Bucket: "homelab-config", Key: "aws/config", Content: ""}, nil
 	}}
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), fake, unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), fake, unavailableGrafana(), unavailableOpenSearch())
 
 	body := callTool(t, app, 101, "aws_config_get", map[string]any{})
 	if at(t, body, "result", "isError") != false {
@@ -967,7 +971,7 @@ func TestAWSConfigGetEmptyObjectPlaceholder(t *testing.T) {
 }
 
 func TestAWSConfigGetUnavailableReturnsToolError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 102, "aws_config_get", map[string]any{})
 	if at(t, body, "result", "isError") != true {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -979,7 +983,7 @@ func TestAWSConfigGetUnavailableReturnsToolError(t *testing.T) {
 }
 
 func TestToolsListAdvertisesGrafanaToken(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	tools := toolsList(t, app)
 	token := findTool(t, tools, "grafana_token")
 	props := at(t, token, "inputSchema", "properties").(map[string]any)
@@ -1004,7 +1008,7 @@ func TestGrafanaTokenDispatchesEnvResource(t *testing.T) {
 			LogsUser:    "654321",
 		}, nil
 	}}
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), fake)
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), fake, unavailableOpenSearch())
 
 	body := callTool(t, app, 110, "grafana_token", map[string]any{})
 	if at(t, body, "result", "isError") != false {
@@ -1044,7 +1048,7 @@ func TestGrafanaTokenDispatchesEnvResource(t *testing.T) {
 
 func TestGrafanaTokenWithoutArgumentsField(t *testing.T) {
 	fake := &fakeGrafana{}
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), fake)
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), fake, unavailableOpenSearch())
 	body := rpc(t, app, map[string]any{
 		"jsonrpc": "2.0", "id": 111, "method": "tools/call",
 		"params": map[string]any{"name": "grafana_token"},
@@ -1058,7 +1062,7 @@ func TestGrafanaTokenWithoutArgumentsField(t *testing.T) {
 }
 
 func TestGrafanaTokenUnavailableReturnsToolError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana())
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
 	body := callTool(t, app, 112, "grafana_token", map[string]any{})
 	if at(t, body, "result", "isError") != true {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
@@ -1066,6 +1070,260 @@ func TestGrafanaTokenUnavailableReturnsToolError(t *testing.T) {
 	text, _ := at(t, body, "result", "content", 0, "text").(string)
 	if !strings.Contains(text, "grafana") {
 		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestToolsListAdvertisesOpenSearchSearch(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+	tools := toolsList(t, app)
+	search := findTool(t, tools, "opensearch_search")
+	required := at(t, search, "inputSchema", "required").([]any)
+	if len(required) != 1 || required[0] != "query" {
+		t.Fatalf("required = %v", required)
+	}
+	if at(t, search, "inputSchema", "properties", "size", "maximum") != float64(50) {
+		t.Fatalf("size.maximum = %v", at(t, search, "inputSchema", "properties", "size", "maximum"))
+	}
+	if at(t, search, "annotations", "title") != "Search OpenSearch" ||
+		at(t, search, "annotations", "readOnlyHint") != true ||
+		at(t, search, "annotations", "idempotentHint") != true ||
+		at(t, search, "annotations", "openWorldHint") != true {
+		t.Fatalf("opensearch_search annotations = %v", search["annotations"])
+	}
+}
+
+func TestToolsListAdvertisesOpenSearchDocumentPut(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+	tools := toolsList(t, app)
+	put := findTool(t, tools, "opensearch_document_put")
+	wantStrSlice(t, enumStrings(t, at(t, put, "inputSchema", "required")), "index", "document")
+	if at(t, put, "annotations", "title") != "Put OpenSearch Document" ||
+		at(t, put, "annotations", "readOnlyHint") != false ||
+		at(t, put, "annotations", "destructiveHint") != true ||
+		at(t, put, "annotations", "idempotentHint") != false ||
+		at(t, put, "annotations", "openWorldHint") != true {
+		t.Fatalf("opensearch_document_put annotations = %v", put["annotations"])
+	}
+}
+
+func TestToolsListAdvertisesOpenSearchDocumentDelete(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+	tools := toolsList(t, app)
+	del := findTool(t, tools, "opensearch_document_delete")
+	wantStrSlice(t, enumStrings(t, at(t, del, "inputSchema", "required")), "index", "id")
+	if at(t, del, "annotations", "title") != "Delete OpenSearch Document" ||
+		at(t, del, "annotations", "readOnlyHint") != false ||
+		at(t, del, "annotations", "destructiveHint") != true ||
+		at(t, del, "annotations", "idempotentHint") != true ||
+		at(t, del, "annotations", "openWorldHint") != true {
+		t.Fatalf("opensearch_document_delete annotations = %v", del["annotations"])
+	}
+}
+
+func TestOpenSearchSearchDispatchesToService(t *testing.T) {
+	score := 1.5
+	fake := &fakeOpenSearch{searchResponse: func() (*opensearch.SearchResult, error) {
+		return &opensearch.SearchResult{
+			Total: 1,
+			Hits: []opensearch.Hit{
+				{Index: "runbooks", ID: "r1", Score: &score, Source: json.RawMessage(`{"title":"etcd backup"}`)},
+			},
+		}, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), fake)
+
+	body := callTool(t, app, 120, "opensearch_search", map[string]any{
+		"query": "etcd backup",
+		"index": "runbooks",
+		"size":  25,
+	})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	c := fake.searchCalls[0]
+	if c.query != "etcd backup" || c.index == nil || *c.index != "runbooks" || c.size == nil || *c.size != 25 {
+		t.Fatalf("call = %+v", c)
+	}
+	sc := at(t, body, "result", "structuredContent").(map[string]any)
+	if sc["query"] != "etcd backup" || sc["index"] != "runbooks" || sc["total"] != float64(1) {
+		t.Fatalf("structuredContent = %v", sc)
+	}
+	hit := at(t, sc, "hits", 0).(map[string]any)
+	if hit["index"] != "runbooks" || hit["id"] != "r1" || hit["score"] != float64(1.5) {
+		t.Fatalf("hit = %v", hit)
+	}
+	if at(t, hit, "source", "title") != "etcd backup" {
+		t.Fatalf("source = %v", hit["source"])
+	}
+}
+
+func TestOpenSearchSearchDefaultsIndexAndSize(t *testing.T) {
+	fake := &fakeOpenSearch{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), fake)
+
+	body := callTool(t, app, 121, "opensearch_search", map[string]any{"query": "anything"})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	c := fake.searchCalls[0]
+	if c.index != nil || c.size != nil {
+		t.Fatalf("call = %+v (index and size should pass through as nil)", c)
+	}
+}
+
+func TestOpenSearchSearchRequiresQuery(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+	body := callTool(t, app, 122, "opensearch_search", map[string]any{"index": "runbooks"})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
+	}
+}
+
+func TestOpenSearchSearchServiceErrorIsToolError(t *testing.T) {
+	// The size cap itself lives in the opensearch package (unit-tested there);
+	// this covers the handler mapping a rejected size to a tool error.
+	fake := &fakeOpenSearch{searchResponse: func() (*opensearch.SearchResult, error) {
+		return nil, errors.New("opensearch error: size must be <= 50, got 51")
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), fake)
+
+	body := callTool(t, app, 123, "opensearch_search", map[string]any{"query": "q", "size": 51})
+	if at(t, body, "result", "isError") != true {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if !strings.Contains(text, "size must be <= 50") {
+		t.Fatalf("text = %q", text)
+	}
+}
+
+func TestOpenSearchDocumentPutDispatchesToService(t *testing.T) {
+	fake := &fakeOpenSearch{putResponse: func() (*opensearch.PutResult, error) {
+		return &opensearch.PutResult{Index: "notes", ID: "n1", Result: "updated"}, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), fake)
+
+	body := callTool(t, app, 130, "opensearch_document_put", map[string]any{
+		"index":    "notes",
+		"id":       "n1",
+		"document": map[string]any{"title": "hello", "count": 3},
+	})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	c := fake.putCalls[0]
+	if c.index != "notes" || c.id == nil || *c.id != "n1" {
+		t.Fatalf("call = %+v", c)
+	}
+	if c.document["title"] != "hello" {
+		t.Fatalf("document = %v", c.document)
+	}
+	sc := at(t, body, "result", "structuredContent").(map[string]any)
+	if sc["index"] != "notes" || sc["id"] != "n1" || sc["result"] != "updated" {
+		t.Fatalf("structuredContent = %v", sc)
+	}
+}
+
+func TestOpenSearchDocumentPutWithoutID(t *testing.T) {
+	fake := &fakeOpenSearch{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), fake)
+
+	body := callTool(t, app, 131, "opensearch_document_put", map[string]any{
+		"index":    "notes",
+		"document": map[string]any{"title": "hello"},
+	})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if fake.putCalls[0].id != nil {
+		t.Fatalf("id = %v, want nil", *fake.putCalls[0].id)
+	}
+	if at(t, body, "result", "structuredContent", "result") != "created" {
+		t.Fatalf("result = %v", at(t, body, "result", "structuredContent", "result"))
+	}
+}
+
+func TestOpenSearchDocumentPutValidatesArguments(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+
+	body := callTool(t, app, 132, "opensearch_document_put", map[string]any{"document": map[string]any{}})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("missing index: error.code = %v", at(t, body, "error", "code"))
+	}
+	body = callTool(t, app, 133, "opensearch_document_put", map[string]any{"index": "notes"})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("missing document: error.code = %v", at(t, body, "error", "code"))
+	}
+	body = callTool(t, app, 134, "opensearch_document_put", map[string]any{"index": "notes", "document": "not-an-object"})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("non-object document: error.code = %v", at(t, body, "error", "code"))
+	}
+}
+
+func TestOpenSearchDocumentDeleteDispatchesToService(t *testing.T) {
+	fake := &fakeOpenSearch{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), fake)
+
+	body := callTool(t, app, 140, "opensearch_document_delete", map[string]any{"index": "notes", "id": "n1"})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	c := fake.deleteCalls[0]
+	if c.index != "notes" || c.id != "n1" {
+		t.Fatalf("call = %+v", c)
+	}
+	sc := at(t, body, "result", "structuredContent").(map[string]any)
+	if sc["index"] != "notes" || sc["id"] != "n1" || sc["result"] != "deleted" {
+		t.Fatalf("structuredContent = %v", sc)
+	}
+}
+
+func TestOpenSearchDocumentDeleteReportsNotFound(t *testing.T) {
+	fake := &fakeOpenSearch{deleteResponse: func() (*opensearch.DeleteResult, error) {
+		return &opensearch.DeleteResult{Index: "notes", ID: "ghost", Result: "not_found"}, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), fake)
+
+	body := callTool(t, app, 141, "opensearch_document_delete", map[string]any{"index": "notes", "id": "ghost"})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if at(t, body, "result", "structuredContent", "result") != "not_found" {
+		t.Fatalf("result = %v", at(t, body, "result", "structuredContent", "result"))
+	}
+}
+
+func TestOpenSearchDocumentDeleteRequiresIndexAndID(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+
+	body := callTool(t, app, 142, "opensearch_document_delete", map[string]any{"id": "n1"})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("missing index: error.code = %v", at(t, body, "error", "code"))
+	}
+	body = callTool(t, app, 143, "opensearch_document_delete", map[string]any{"index": "notes"})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("missing id: error.code = %v", at(t, body, "error", "code"))
+	}
+}
+
+func TestOpenSearchUnavailableReturnsToolError(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+	for id, call := range map[int]struct {
+		name string
+		args map[string]any
+	}{
+		150: {"opensearch_search", map[string]any{"query": "q"}},
+		151: {"opensearch_document_put", map[string]any{"index": "notes", "document": map[string]any{}}},
+		152: {"opensearch_document_delete", map[string]any{"index": "notes", "id": "n1"}},
+	} {
+		body := callTool(t, app, id, call.name, call.args)
+		if at(t, body, "result", "isError") != true {
+			t.Fatalf("%s: isError = %v", call.name, at(t, body, "result", "isError"))
+		}
+		text, _ := at(t, body, "result", "content", 0, "text").(string)
+		if !strings.Contains(text, "opensearch") {
+			t.Fatalf("%s: text = %q", call.name, text)
+		}
 	}
 }
 

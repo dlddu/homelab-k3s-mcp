@@ -82,6 +82,12 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      # OpenSearch refuses to start when the host vm.max_map_count is below
+      # its bootstrap check; kind nodes share the runner kernel, so raise it
+      # here before the fixture is scheduled.
+      - name: Raise vm.max_map_count for the OpenSearch fixture
+        run: sudo sysctl -w vm.max_map_count=262144
+
       - name: Create kind cluster
         uses: helm/kind-action@v1
         with:
@@ -99,6 +105,9 @@ jobs:
 
       - name: Deploy grafana-mock fixture
         run: kubectl apply -f tests/k8s/kind/grafana-mock.yaml
+
+      - name: Deploy OpenSearch fixture
+        run: kubectl apply -f tests/k8s/kind/opensearch.yaml
 
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
@@ -138,6 +147,19 @@ jobs:
             --from-literal=GRAFANA_LOGS_USER=222222 \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      # OPENSEARCH_STS_ENDPOINT routes the AssumeRole call to MinIO so the
+      # tools exercise the same assume-role path as aws_config_get; the base
+      # credentials come from the AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in
+      # the aws-config secret above.
+      - name: Create test OpenSearch secret
+        run: |
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-opensearch \
+            --from-literal=OPENSEARCH_ENDPOINT=http://opensearch.opensearch.svc.cluster.local:9200 \
+            --from-literal=OPENSEARCH_ROLE_ARN=arn:aws:iam::000000000000:role/ci-opensearch \
+            --from-literal=OPENSEARCH_REGION=us-east-1 \
+            --from-literal=OPENSEARCH_STS_ENDPOINT=http://minio.minio.svc.cluster.local:9000 \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
@@ -158,6 +180,9 @@ jobs:
 
       - name: Wait for MinIO seed job
         run: kubectl -n minio wait --for=condition=complete job/minio-seed --timeout=120s
+
+      - name: Wait for OpenSearch rollout
+        run: kubectl -n opensearch rollout status deploy/opensearch --timeout=300s
 
       - name: Wait for rollout
         run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
@@ -210,6 +235,13 @@ jobs:
           trap "kill $PF_PID" EXIT
           python tests/integration/grafana.py http://127.0.0.1:8085
 
+      - name: Validate opensearch tools against fixture
+        run: |
+          kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8086:80 >/tmp/pf-opensearch.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          python tests/integration/opensearch.py http://127.0.0.1:8086
+
       - name: Dump cluster diagnostics on failure
         if: failure()
         run: |
@@ -231,6 +263,9 @@ jobs:
           kubectl -n grafana-mock get all -o wide || true
           kubectl -n grafana-mock describe deploy/grafana-mock || true
           kubectl -n grafana-mock logs deploy/grafana-mock --tail=200 || true
+          kubectl -n opensearch get all -o wide || true
+          kubectl -n opensearch describe deploy/opensearch || true
+          kubectl -n opensearch logs deploy/opensearch --tail=200 || true
 
   docker:
     name: docker build & push

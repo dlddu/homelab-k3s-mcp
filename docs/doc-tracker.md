@@ -88,17 +88,19 @@
 테스트 문서는 모든 AC를 커버하지만, 그 시나리오가 참조하는 **자동화 상태**는 세 가지로 나뉜다.
 
 - 🟢 **자동 검증됨** (Go 단위 `internal/server/mcp_test.go`·`health_test.go`·
-  `internal/auth/auth_test.go`, `internal/awsconfig`·`internal/grafana` 단위 테스트 +
-  Python 통합 `tests/integration/`):
+  `internal/auth/auth_test.go`, `internal/awsconfig`·`internal/grafana`·
+  `internal/opensearch` 단위 테스트 + Python 통합 `tests/integration/`):
   ping, namespace_list, workload_list, workload_logs(AC1·2·4), pod_describe(전체),
   workload_restart, workload_scale, dear_baby_reset_user, 자격증명 3종의 발급/스코프/
-  unavailable, platform AC1·AC2(인증 게이트·디스커버리)·AC5·AC6.
+  unavailable, opensearch 3종 전 AC(14 — 단위 + `tests/integration/opensearch.py`,
+  픽스처는 security off 단일노드 OpenSearch + MinIO STS),
+  platform AC1·AC2(인증 게이트·디스커버리)·AC5·AC6.
 - 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
   platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
-  - opensearch_search / opensearch_document_put / opensearch_document_delete **전 AC(14)** —
-    **도구 미구현**(2026-07-02, PRD·테스트 문서 선행 작성). 구현 시 `internal/opensearch`
-    단위 테스트와 `tests/integration/opensearch.py` 통합 테스트로 자동화 필요.
+  - opensearch 3종 — **프로덕션 스모크 미수행**(env 배선이 infrastructure/flux-cd-apps
+    반영에 걸려 있음). CI 자동화는 완료; 실제 `kubernetes-docs` 컬렉션 대상
+    put→search→delete 확인은 배선 완료 후 수행.
   - workload_logs AC3 — 실제 previous/크래시 루프 로그 **내용** 미커버(픽스처가 pause 이미지).
   - github AC4 / grafana AC4 — 베이스 시크릿 **부재**를 명시적으로 단언하는 케이스 미존재.
 
@@ -112,3 +114,4 @@
 | 2026-06-19 | workload_logs AC2 정정(초과 시 클램프 → 거부), 테스트 문서 12종 작성 | 테스트 0 | 가치 3 / PRD 12 / AC 36 / 테스트 12 (전 계층 연결) |
 | 2026-06-22 | platform AC1·AC2 인증 게이트/디스커버리 단위 테스트 추가(`internal/auth/auth_test.go`) | AC1·AC2 자동화 공백 | platform AC1·AC2 자동 검증(자동화 공백 7→5) |
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가, OpenSearch Serverless 도구 3종 PRD(AC 14)·테스트 문서 작성 — 구현 선행 문서(인프라 `kubernetes-docs` 컬렉션·권한은 부여 완료, 코드 미구현) | 가치 3 / PRD 12 / AC 36 / 테스트 12 | 가치 4 / PRD 15 / AC 50 / 테스트 15 |
+| 2026-07-02 | OpenSearch 도구 3종 구현(`internal/opensearch` + 도구 표면 + CI 통합 테스트), 테스트 문서 자동화 필드를 실제 테스트 경로로 갱신 | opensearch 14 AC 자동화 공백(도구 미구현) | opensearch 14 AC 자동 검증(프로덕션 스모크만 잔여 — env 배선 후) |

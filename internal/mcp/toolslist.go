@@ -295,6 +295,93 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "opensearch_search",
+      "description": "Full-text search over the preconfigured OpenSearch Serverless collection. Provide 'query' (the search text); optionally scope the search to a single index with 'index' (omitted = every index in the collection) and control the result count with 'size' (default 10, maximum 50 — larger values are rejected, not clamped). Returns matching documents with their index, id, relevance score, and body (_source). The server signs requests with SigV4 (service 'aoss') using short-lived credentials from assuming OPENSEARCH_ROLE_ARN via STS; requires OPENSEARCH_ENDPOINT and OPENSEARCH_ROLE_ARN on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "Full-text search query."
+          },
+          "index": {
+            "type": "string",
+            "description": "Index to search. Optional; omitted = every index in the collection."
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 50,
+            "description": "Maximum number of hits to return. Defaults to 10; values above 50 are rejected."
+          }
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Search OpenSearch",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "opensearch_document_put",
+      "description": "Index (upsert) a JSON document into an index of the preconfigured OpenSearch Serverless collection. Provide 'index' and 'document' (a JSON object); optionally provide 'id' to upsert that exact document — re-putting an existing id overwrites it (result 'updated'), while omitting 'id' auto-generates one (result 'created'). The target index is created automatically on first write. The document becomes searchable after the next refresh, not instantly. Returns index, id, and result. Signs requests with SigV4 (service 'aoss') using short-lived AssumeRole credentials; requires OPENSEARCH_ENDPOINT and OPENSEARCH_ROLE_ARN on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "string",
+            "description": "Target index. Created automatically if it does not exist."
+          },
+          "document": {
+            "type": "object",
+            "description": "The JSON document body to index."
+          },
+          "id": {
+            "type": "string",
+            "description": "Document id. Optional; when set, an existing document with the same id is overwritten (upsert). Omitted = auto-generated id."
+          }
+        },
+        "required": ["index", "document"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Put OpenSearch Document",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "opensearch_document_delete",
+      "description": "Delete a single document by id from an index of the preconfigured OpenSearch Serverless collection. Returns result 'deleted', or 'not_found' when the document (or index) does not exist — repeated deletes of the same id converge on 'not_found'. Only single-document deletion is exposed: no index deletion and no delete-by-query. Signs requests with SigV4 (service 'aoss') using short-lived AssumeRole credentials; requires OPENSEARCH_ENDPOINT and OPENSEARCH_ROLE_ARN on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "string",
+            "description": "Index containing the document."
+          },
+          "id": {
+            "type": "string",
+            "description": "Id of the document to delete."
+          }
+        },
+        "required": ["index", "id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Delete OpenSearch Document",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "grafana_token",
       "description": "Mint a short-lived Grafana Cloud token (valid 1 hour) scoped to metrics and log read access, and return it with the static query endpoints and instance IDs needed to use it. The Grafana Cloud metrics (Mimir/Prometheus) and logs (Loki) endpoints use HTTP Basic auth where the password is this token and the username is the data source's numeric instance ID, so the token alone is not enough. The access policy and one-hour TTL are fixed on the server, so this tool takes no arguments. Returns a text/plain .env file with GRAFANA_METRICS_URL, GRAFANA_METRICS_USER, GRAFANA_LOGS_URL, GRAFANA_LOGS_USER and GRAFANA_TOKEN (the shared password). Requires GRAFANA_ISSUER_TOKEN, GRAFANA_READ_POLICY_ID, GRAFANA_REGION, GRAFANA_METRICS_URL, GRAFANA_METRICS_USER, GRAFANA_LOGS_URL and GRAFANA_LOGS_USER on the server.",
       "inputSchema": {
