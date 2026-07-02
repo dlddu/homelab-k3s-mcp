@@ -17,6 +17,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
+	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 )
 
@@ -43,10 +44,11 @@ func main() {
 	ghSvc := buildGitHubService()
 	awsSvc := buildAWSService(ctx)
 	grafanaSvc := buildGrafanaService()
+	osSvc := buildOpenSearchService(ctx)
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc),
+		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc),
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -117,6 +119,20 @@ func buildAWSService(ctx context.Context) awsconfig.Service {
 		return awsconfig.NewUnavailable("")
 	}
 	slog.Info("aws config integration loaded")
+	return client
+}
+
+func buildOpenSearchService(ctx context.Context) opensearch.Service {
+	client, err := opensearch.FromEnv(ctx)
+	if err != nil {
+		slog.Error("failed to initialize opensearch client; tools will return errors", "error", err)
+		return opensearch.NewUnavailable(err.Error())
+	}
+	if client == nil {
+		slog.Warn("OPENSEARCH_ENDPOINT not set: opensearch tools will return errors")
+		return opensearch.NewUnavailable("")
+	}
+	slog.Info("opensearch integration loaded")
 	return client
 }
 

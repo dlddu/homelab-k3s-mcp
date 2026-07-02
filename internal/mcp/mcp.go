@@ -15,6 +15,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
+	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
 
@@ -31,15 +32,16 @@ const (
 
 // Handler serves the MCP JSON-RPC endpoint.
 type Handler struct {
-	k8s     k8s.Service
-	github  github.Service
-	aws     awsconfig.Service
-	grafana grafana.Service
+	k8s        k8s.Service
+	github     github.Service
+	aws        awsconfig.Service
+	grafana    grafana.Service
+	opensearch opensearch.Service
 }
 
 // NewHandler builds an MCP handler backed by the given services.
-func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service) *Handler {
-	return &Handler{k8s: k8sSvc, github: ghSvc, aws: awsSvc, grafana: grafanaSvc}
+func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service) *Handler {
+	return &Handler{k8s: k8sSvc, github: ghSvc, aws: awsSvc, grafana: grafanaSvc, opensearch: osSvc}
 }
 
 type rpcRequest struct {
@@ -163,6 +165,12 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		return h.awsConfigGet(ctx)
 	case "grafana_token":
 		return h.grafanaToken(ctx)
+	case "opensearch_search":
+		return h.opensearchSearch(ctx, rawArgs)
+	case "opensearch_document_put":
+		return h.opensearchDocumentPut(ctx, rawArgs)
+	case "opensearch_document_delete":
+		return h.opensearchDocumentDelete(ctx, rawArgs)
 	default:
 		return nil, errf(-32602, "unknown tool: %s", name)
 	}
@@ -637,6 +645,94 @@ func grafanaTokenEnv(creds *grafana.Credentials) string {
 	fmt.Fprintf(&b, "# GRAFANA_TOKEN is the shared Basic-auth password for both *_USER values above\n")
 	fmt.Fprintf(&b, "GRAFANA_TOKEN=%s\n", creds.Token)
 	return b.String()
+}
+
+func (h *Handler) opensearchSearch(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	query := optionalString(obj, "query")
+	if query == nil {
+		return nil, errf(-32602, "query is required")
+	}
+	index := optionalString(obj, "index")
+
+	var size *int64
+	if v, present := obj["size"]; present {
+		n, ok := intValue(v)
+		if !ok {
+			return nil, errf(-32602, "size must be an integer")
+		}
+		size = &n
+	}
+
+	result, err := h.opensearch.Search(ctx, *query, index, size)
+	if err != nil {
+		return toolError(err), nil
+	}
+	payload := map[string]any{
+		"query": *query,
+		"index": index,
+		"total": result.Total,
+		"hits":  result.Hits,
+	}
+	return successResult(payload), nil
+}
+
+func (h *Handler) opensearchDocumentPut(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	index := optionalString(obj, "index")
+	if index == nil {
+		return nil, errf(-32602, "index is required")
+	}
+	dv, present := obj["document"]
+	if !present {
+		return nil, errf(-32602, "document is required")
+	}
+	document, ok := dv.(map[string]any)
+	if !ok {
+		return nil, errf(-32602, "document must be an object")
+	}
+	id := optionalString(obj, "id")
+
+	result, err := h.opensearch.PutDocument(ctx, *index, id, document)
+	if err != nil {
+		return toolError(err), nil
+	}
+	return successResult(map[string]any{
+		"index":  result.Index,
+		"id":     result.ID,
+		"result": result.Result,
+	}), nil
+}
+
+func (h *Handler) opensearchDocumentDelete(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	index := optionalString(obj, "index")
+	if index == nil {
+		return nil, errf(-32602, "index is required")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	result, err := h.opensearch.DeleteDocument(ctx, *index, *id)
+	if err != nil {
+		return toolError(err), nil
+	}
+	return successResult(map[string]any{
+		"index":  result.Index,
+		"id":     result.ID,
+		"result": result.Result,
+	}), nil
 }
 
 // --- shared helpers ---

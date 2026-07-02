@@ -8,6 +8,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
+	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 )
 
 type execCall struct {
@@ -219,9 +220,74 @@ func (f *fakeGrafana) CreateToken(context.Context) (*grafana.Credentials, error)
 	}, nil
 }
 
+type searchCall struct {
+	query string
+	index *string
+	size  *int64
+}
+
+type putCall struct {
+	index    string
+	id       *string
+	document map[string]any
+}
+
+type deleteCall struct {
+	index string
+	id    string
+}
+
+type fakeOpenSearch struct {
+	mu sync.Mutex
+
+	searchCalls []searchCall
+	putCalls    []putCall
+	deleteCalls []deleteCall
+
+	searchResponse func() (*opensearch.SearchResult, error)
+	putResponse    func() (*opensearch.PutResult, error)
+	deleteResponse func() (*opensearch.DeleteResult, error)
+}
+
+func (f *fakeOpenSearch) Search(_ context.Context, query string, index *string, size *int64) (*opensearch.SearchResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.searchCalls = append(f.searchCalls, searchCall{query: query, index: index, size: size})
+	if f.searchResponse != nil {
+		return f.searchResponse()
+	}
+	return &opensearch.SearchResult{Total: 0, Hits: []opensearch.Hit{}}, nil
+}
+
+func (f *fakeOpenSearch) PutDocument(_ context.Context, index string, id *string, document map[string]any) (*opensearch.PutResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.putCalls = append(f.putCalls, putCall{index: index, id: id, document: document})
+	if f.putResponse != nil {
+		return f.putResponse()
+	}
+	docID := "auto-generated"
+	if id != nil {
+		docID = *id
+	}
+	return &opensearch.PutResult{Index: index, ID: docID, Result: "created"}, nil
+}
+
+func (f *fakeOpenSearch) DeleteDocument(_ context.Context, index, id string) (*opensearch.DeleteResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleteCalls = append(f.deleteCalls, deleteCall{index: index, id: id})
+	if f.deleteResponse != nil {
+		return f.deleteResponse()
+	}
+	return &opensearch.DeleteResult{Index: index, ID: id, Result: "deleted"}, nil
+}
+
 func unavailableK8s() k8s.Service         { return k8s.NewUnavailable("") }
 func unavailableGitHub() github.Service   { return github.NewUnavailable("") }
 func unavailableAWS() awsconfig.Service   { return awsconfig.NewUnavailable("") }
 func unavailableGrafana() grafana.Service { return grafana.NewUnavailable("") }
+
+func unavailableOpenSearch() opensearch.Service { return opensearch.NewUnavailable("") }
 
 func int32Ptr(v int32) *int32 { return &v }
