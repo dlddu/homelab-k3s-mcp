@@ -296,7 +296,7 @@ const toolsListJSON = `{
     },
     {
       "name": "opensearch_search",
-      "description": "Full-text search over the preconfigured OpenSearch Serverless collection. Provide 'query' (the search text); optionally scope the search to a single index with 'index' (omitted = every index in the collection) and control the result count with 'size' (default 10, maximum 50 — larger values are rejected, not clamped). Returns matching documents with their index, id, relevance score, and body (_source). The server signs requests with SigV4 (service 'aoss') using short-lived credentials from assuming OPENSEARCH_ROLE_ARN via STS; requires OPENSEARCH_ENDPOINT and OPENSEARCH_ROLE_ARN on the server.",
+      "description": "Full-text search over the preconfigured OpenSearch collection. Provide 'query' (the search text); optionally scope the search to a single index with 'index' (omitted = every index in the collection) and control the result count with 'size' (default 10, maximum 50 — larger values are rejected, not clamped). Returns matching documents with their index, id, relevance score, and body (_source).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -327,7 +327,7 @@ const toolsListJSON = `{
     },
     {
       "name": "opensearch_document_put",
-      "description": "Index (upsert) a JSON document into an index of the preconfigured OpenSearch Serverless collection. Provide 'index' and 'document' (a JSON object); optionally provide 'id' to upsert that exact document — re-putting an existing id overwrites it (result 'updated'), while omitting 'id' auto-generates one (result 'created'). The target index is created automatically on first write. The document becomes searchable after the next refresh, not instantly. Returns index, id, and result. Signs requests with SigV4 (service 'aoss') using short-lived AssumeRole credentials; requires OPENSEARCH_ENDPOINT and OPENSEARCH_ROLE_ARN on the server.",
+      "description": "Index (upsert) a JSON document into an index of the preconfigured OpenSearch collection. Provide 'index' and 'document' (a JSON object); optionally provide 'id' to upsert that exact document — re-putting an existing id overwrites it (result 'updated'), while omitting 'id' auto-generates one (result 'created'). The target index is created automatically on first write. The document becomes searchable after the next refresh, not instantly. Returns index, id, and result.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -357,7 +357,7 @@ const toolsListJSON = `{
     },
     {
       "name": "opensearch_document_delete",
-      "description": "Delete a single document by id from an index of the preconfigured OpenSearch Serverless collection. Returns result 'deleted', or 'not_found' when the document (or index) does not exist — repeated deletes of the same id converge on 'not_found'. Only single-document deletion is exposed: no index deletion and no delete-by-query. Signs requests with SigV4 (service 'aoss') using short-lived AssumeRole credentials; requires OPENSEARCH_ENDPOINT and OPENSEARCH_ROLE_ARN on the server.",
+      "description": "Delete a single document by id from an index of the preconfigured OpenSearch collection. Returns result 'deleted', or 'not_found' when the document (or index) does not exist — repeated deletes of the same id converge on 'not_found'. Only single-document deletion is exposed: no index deletion and no delete-by-query.",
       "inputSchema": {
         "type": "object",
         "properties": {
