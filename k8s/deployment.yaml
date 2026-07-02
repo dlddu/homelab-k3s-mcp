@@ -63,6 +63,10 @@ spec:
             # GRAFANA_API_URL override for the grafana_token tool.
             - secretRef:
                 name: homelab-k3s-mcp-grafana
+            # OPENSEARCH_ENDPOINT, OPENSEARCH_ROLE_ARN, OPENSEARCH_REGION and
+            # the optional OPENSEARCH_* overrides for the opensearch_* tools.
+            - secretRef:
+                name: homelab-k3s-mcp-opensearch
           startupProbe:
             httpGet:
               path: /healthz

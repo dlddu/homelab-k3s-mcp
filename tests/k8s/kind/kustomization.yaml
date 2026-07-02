@@ -17,18 +17,3 @@ configMapGenerator:
       - MCP_AUTH_DISABLED=1
     options:
       disableNameSuffixHash: true
-
-patches:
-  # CI-only: inject the OPENSEARCH_* secretRef so the opensearch_* tools run
-  # against the kind fixture. The production k8s/ base gains this secretRef
-  # only after the ExternalSecret exists in the cluster (plan stage 6); once
-  # it moves into the base, drop this patch.
-  - target:
-      kind: Deployment
-      name: homelab-k3s-mcp
-    patch: |-
-      - op: add
-        path: /spec/template/spec/containers/0/envFrom/-
-        value:
-          secretRef:
-            name: homelab-k3s-mcp-opensearch
