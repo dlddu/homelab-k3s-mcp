@@ -33,3 +33,41 @@ spec:
             limits:
               cpu: 50m
               memory: 16Mi
+---
+# Crash-looping fixture for the workload_logs previous=true scenario
+# (test-workload-logs.md S3 / AC3). Each container instance prints a known
+# marker line and exits non-zero, so once restartCount >= 1 the previous
+# instance's logs are guaranteed to contain the marker. Intentionally never
+# becomes Ready: CI must not add a rollout-status wait for it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: crashloop-fixture
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: crashloop-fixture
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: crashloop-fixture
+  template:
+    metadata:
+      labels:
+        app: crashloop-fixture
+    spec:
+      containers:
+        - name: boom
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - 'echo "crashloop-fixture: boom before exit"; sleep 1; exit 1'
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 50m
+              memory: 16Mi

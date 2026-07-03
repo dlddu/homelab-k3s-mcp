@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import subprocess
+import time
 
 from mcp.shared.exceptions import McpError
 
@@ -11,9 +12,49 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
 WORKLOAD = "workload-fixture"
+CRASHLOOP_WORKLOAD = "crashloop-fixture"
+# Must match the echo line in tests/k8s/kind/test-deployment.yaml.
+CRASHLOOP_MARKER = "crashloop-fixture: boom before exit"
 RESTART_ANNOTATION_PATH = (
     r"{.spec.template.metadata.annotations.kubectl\.kubernetes\.io/restartedAt}"
 )
+
+
+def wait_for_crashloop_restart(timeout: float = 180.0) -> None:
+    """Block until the crashloop fixture pod has restarted at least once.
+
+    previous=true logs only exist once the kubelet has restarted the container
+    (restartCount >= 1). The fixture is applied minutes before this script runs
+    in CI, so this normally returns immediately; the poll is a safety net for
+    scheduling/backoff timing.
+    """
+    deadline = time.monotonic() + timeout
+    last = "<no pod yet>"
+    while time.monotonic() < deadline:
+        proc = subprocess.run(
+            [
+                "kubectl",
+                "-n",
+                NAMESPACE,
+                "get",
+                "pod",
+                "-l",
+                f"app={CRASHLOOP_WORKLOAD}",
+                "-o",
+                "jsonpath={.items[0].status.containerStatuses[0].restartCount}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        last = proc.stdout.strip() or proc.stderr.strip()
+        if proc.returncode == 0 and proc.stdout.strip().isdigit():
+            if int(proc.stdout.strip()) >= 1:
+                return
+        time.sleep(3)
+    raise RuntimeError(
+        f"crashloop fixture never reached restartCount >= 1 within {timeout:.0f}s"
+        f" (last observation: {last!r})"
+    )
 
 
 def kubectl_jsonpath(jsonpath: str) -> str:
@@ -176,10 +217,11 @@ async def run() -> None:
         print("workload_scale daemonset rejection ok")
 
         # --- workload_logs ---
-        # The fixture runs the `pause` image, which emits no log output. We can
-        # still verify the full plumbing: selector resolution, pod lookup, the
-        # pods/log RBAC binding, option propagation, and the empty-output
-        # placeholder. Real log content is exercised in the Go unit tests.
+        # The main fixture runs the `pause` image, which emits no log output.
+        # These first checks verify the plumbing: selector resolution, pod
+        # lookup, the pods/log RBAC binding, option propagation, and the
+        # empty-output placeholder. Actual log *content* (previous=true after
+        # a crash loop) is covered below against the crashloop-fixture.
         print("--- workload_logs (defaults, empty output) ---")
         result = await session.call_tool(
             "workload_logs",
@@ -242,6 +284,29 @@ async def run() -> None:
             print("workload_logs tail_lines rejection ok")
         else:
             raise AssertionError("expected McpError for tail_lines over max")
+
+        print("--- workload_logs (previous=true, crash-loop log content) ---")
+        # test-workload-logs.md S3 / AC3: after a crash loop, previous=true
+        # must return the terminated instance's actual log content. The
+        # crashloop-fixture prints a known marker each run and exits non-zero.
+        wait_for_crashloop_restart()
+        result = await session.call_tool(
+            "workload_logs",
+            {
+                "kind": "Deployment",
+                "namespace": NAMESPACE,
+                "name": CRASHLOOP_WORKLOAD,
+                "previous": True,
+            },
+        )
+        assert result.isError is False, result
+        payload = result.structuredContent
+        pod_name = payload["pod"]
+        assert pod_name.startswith(f"{CRASHLOOP_WORKLOAD}-"), pod_name
+        assert payload["previous"] is True, payload
+        assert CRASHLOOP_MARKER in payload["logs"], payload["logs"]
+        assert CRASHLOOP_MARKER in result.content[0].text, result.content[0].text
+        print("workload_logs previous content ok, pod:", pod_name)
 
         print("--- workload_logs (missing workload returns tool error) ---")
         result = await session.call_tool(
