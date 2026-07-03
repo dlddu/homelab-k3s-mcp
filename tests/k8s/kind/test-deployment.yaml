@@ -34,11 +34,14 @@ spec:
               cpu: 50m
               memory: 16Mi
 ---
-# Crash-looping fixture for the workload_logs previous=true scenario
-# (test-workload-logs.md S3 / AC3). Each container instance prints a known
-# marker line and exits non-zero, so once restartCount >= 1 the previous
-# instance's logs are guaranteed to contain the marker. Intentionally never
-# becomes Ready: CI must not add a rollout-status wait for it.
+# Crash-once fixture for the workload_logs previous=true scenario
+# (test-workload-logs.md S3 / AC3). The first container instance prints a
+# known marker line and exits non-zero; every later instance finds the
+# emptyDir sentinel and stays Running. That pins lastState.terminated to the
+# marker-printing instance, so previous=true deterministically returns the
+# marker. A perpetual crash loop is deliberately avoided: rapid restarts let
+# containerd GC the previous instance mid-read ("unable to retrieve container
+# logs for containerd://..."), which made the E2E flaky.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -57,13 +60,27 @@ spec:
       labels:
         app: crashloop-fixture
     spec:
+      volumes:
+        - name: state
+          emptyDir: {}
       containers:
         - name: boom
           image: busybox:1.36
           command:
             - sh
             - -c
-            - 'echo "crashloop-fixture: boom before exit"; sleep 1; exit 1'
+            - >-
+              if [ ! -f /state/crashed ]; then
+              echo "crashloop-fixture: boom before exit";
+              touch /state/crashed;
+              sleep 1;
+              exit 1;
+              fi;
+              echo "crashloop-fixture: recovered";
+              exec sleep 2147483647
+          volumeMounts:
+            - name: state
+              mountPath: /state
           resources:
             requests:
               cpu: 1m
