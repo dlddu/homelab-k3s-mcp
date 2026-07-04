@@ -42,7 +42,9 @@
   의도하지 않은 파괴적 동작, 무인증 접근, 통합 미설정으로 인한 서버 다운이 기본적으로
   차단된다.
 - **구체적 근거**:
-  - `/mcp` 엔드포인트는 OAuth 2.0 Bearer(RS256 JWT + JWKS 검증)로 보호된다.
+  - `/mcp` 엔드포인트는 인증 없이 접근할 수 없다 — 대화형 클라이언트는 OAuth 2.0
+    Bearer(RS256 JWT + JWKS 검증)로, 자동화(비대화형) 클라이언트는 정적 API 키로
+    인증한다. 두 방식은 병행 가능하며 최소 하나는 활성이어야 한다.
   - 파괴적 도구는 `destructiveHint`로 명시된다 — `workload_restart`,
     `workload_scale`, `dear_baby_reset_user`.
   - 통합(k8s/GitHub/AWS/Grafana)이 미설정이어도 서버는 죽지 않고 해당 도구만 에러를
@@ -74,3 +76,4 @@
 |------|-----------|
 | 2026-06-19 | 가치 문서 최초 생성. 소유자 지정(홈랩 운영자), V1~V3 정의. |
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |
+| 2026-07-04 | V3 인증 서술 확장 — `/mcp`에 정적 API 키 인증(비대화형 자동화용)을 OAuth와 병행 추가(platform PRD AC7·AC8). 새 가치 추가 없음. |

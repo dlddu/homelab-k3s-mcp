@@ -7,6 +7,8 @@
 - AC4: 하드닝된 런타임 (PRD: platform)
 - AC5: 서버 수준 graceful degradation (PRD: platform)
 - AC6: 헬스·레디니스 (PRD: platform)
+- AC7: API 키 인증 (비대화형) (PRD: platform)
+- AC8: 인증 방식 구성 유연성 (PRD: platform)
 
 ## 테스트 시나리오
 
@@ -60,3 +62,28 @@
 - **자동화**: Go 단위 `internal/server/health_test.go::TestHealthzReturnsOK`,
   `TestReadyzReturnsReady`, `TestRootReturnsServiceName`, `TestUnknownRouteReturns404`. 통합
   `smoke.py`(/healthz, /readyz).
+
+### 시나리오 7: API 키 인증 게이트 (비대화형)
+- **사전 조건**: 인증 활성(`MCP_AUTH_DISABLED` 미설정), `MCP_API_KEYS`에 하나 이상의 키 설정
+- **실행 단계**: (a) 유효 키를 `Authorization: Bearer <key>`로 요청, (b) 목록에 없는 키로 요청,
+  (c) Authorization 헤더 없이 요청, (d) OAuth도 함께 구성한 상태에서 유효 JWT로 요청
+- **기대 결과**: (a) 정상 처리, (b)(c) 401, (d) 정상 처리(API 키 경로 실패 후 JWT 폴백으로 통과).
+  어느 응답에도 키 값이 노출되지 않음.
+- **검증 AC**: AC7 (일부 AC1)
+- **자동화**: ❌ 신규 — 구현 시 `internal/auth/auth_test.go`에 추가 권장:
+  유효/무효/부재 키 게이트(table-driven), JWT 병행 시 양쪽 통과, 상수시간 비교 경로 단언,
+  키 비노출(로그/응답) 단언. 기존 `TestExtractBearerClassifiesHeader`·`TestRequireBearer*`
+  패턴 재사용.
+
+### 시나리오 8: 인증 방식 구성 유연성 (env 게이팅)
+- **사전 조건**: 각 조합별 env 세팅
+- **실행 단계**: `FromEnv`를 (a) `MCP_API_KEYS`만, (b) `MCP_OAUTH_*`만, (c) 둘 다,
+  (d) 둘 다 미설정 + `MCP_AUTH_DISABLED`도 미설정으로 각각 호출; 각 경우 `App` 라우팅에서
+  `/.well-known/oauth-protected-resource` 제공 여부 확인
+- **기대 결과**: (a) 인증 활성 + 디스커버리 엔드포인트 미제공, (b) 기존 동작(디스커버리 제공),
+  (c) 둘 다 동작, (d) 기동 실패(무방비 노출 차단)
+- **검증 AC**: AC8
+- **자동화**: ❌ 신규 — 구현 시 `internal/auth/auth_test.go`에 `FromEnv` env 게이팅 테이블 추가
+  권장. **주의**: 기존 `TestFromEnvRequiresIssuer`·`TestFromEnvRequiresAudience`는 "API 키
+  미설정 시에만 OAuth 필수"로 의미가 바뀌므로 함께 갱신. 디스커버리 조건부 제공은
+  `internal/server`에서 `App` 라우팅 테스트로 커버.
