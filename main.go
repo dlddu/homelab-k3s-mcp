@@ -38,6 +38,14 @@ func main() {
 	}
 	if authCfg == nil {
 		slog.Warn("MCP_AUTH_DISABLED is set: serving /mcp without authentication")
+	} else {
+		slog.Info("mcp authentication enabled",
+			"api_keys", authCfg.APIKeyCount(),
+			"oauth", authCfg.OAuthConfigured(),
+		)
+		if !authCfg.OAuthConfigured() {
+			slog.Info("MCP_OAUTH_* not set: OAuth discovery disabled, authenticating with API keys only")
+		}
 	}
 
 	k8sSvc := buildK8sService()

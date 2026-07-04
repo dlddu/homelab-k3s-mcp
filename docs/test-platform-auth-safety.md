@@ -70,10 +70,10 @@
 - **기대 결과**: (a) 정상 처리, (b)(c) 401, (d) 정상 처리(API 키 경로 실패 후 JWT 폴백으로 통과).
   어느 응답에도 키 값이 노출되지 않음.
 - **검증 AC**: AC7 (일부 AC1)
-- **자동화**: ❌ 신규 — 구현 시 `internal/auth/auth_test.go`에 추가 권장:
-  유효/무효/부재 키 게이트(table-driven), JWT 병행 시 양쪽 통과, 상수시간 비교 경로 단언,
-  키 비노출(로그/응답) 단언. 기존 `TestExtractBearerClassifiesHeader`·`TestRequireBearer*`
-  패턴 재사용.
+- **자동화**: Go 단위 `internal/auth/auth_test.go::TestParseAPIKeys`, `TestMatchAPIKey`,
+  `TestRequireBearerAcceptsAPIKey`, `TestRequireBearerRejectsUnknownKeyInKeyOnlyMode`,
+  `TestRequireBearerRejectsJWTInKeyOnlyMode`, `TestRequireBearerAcceptsAPIKeyAndJWT`
+  — 유효/무효/부재 키 게이트, JWT 병행 시 양쪽 통과, 상수시간 대조 경로, 키 비노출 단언.
 
 ### 시나리오 8: 인증 방식 구성 유연성 (env 게이팅)
 - **사전 조건**: 각 조합별 env 세팅
@@ -83,7 +83,9 @@
 - **기대 결과**: (a) 인증 활성 + 디스커버리 엔드포인트 미제공, (b) 기존 동작(디스커버리 제공),
   (c) 둘 다 동작, (d) 기동 실패(무방비 노출 차단)
 - **검증 AC**: AC8
-- **자동화**: ❌ 신규 — 구현 시 `internal/auth/auth_test.go`에 `FromEnv` env 게이팅 테이블 추가
-  권장. **주의**: 기존 `TestFromEnvRequiresIssuer`·`TestFromEnvRequiresAudience`는 "API 키
-  미설정 시에만 OAuth 필수"로 의미가 바뀌므로 함께 갱신. 디스커버리 조건부 제공은
-  `internal/server`에서 `App` 라우팅 테스트로 커버.
+- **자동화**: Go 단위 `internal/auth/auth_test.go::TestFromEnvAPIKeysOnly`, `TestFromEnvOAuthGating`,
+  `TestFromEnvNoAuthConfiguredErrors`, `TestFromEnvRequiresIssuerWhenOAuthRequested`,
+  `TestFromEnvRequiresAudienceWhenOAuthRequested`(`FromEnv` env 게이팅 4조합 — 기존
+  issuer/audience 필수 테스트를 "API 키 미설정 시에만 OAuth 필수"로 갱신). 디스커버리 조건부
+  제공은 `internal/server/auth_routing_test.go::TestDiscoveryServedWhenOAuthConfigured`·
+  `TestDiscoveryAbsentWhenOAuthNotConfigured`.

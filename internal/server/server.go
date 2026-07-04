@@ -23,7 +23,9 @@ type health struct {
 }
 
 // App builds the HTTP handler for the service. When authCfg is nil the /mcp
-// endpoint is served without authentication.
+// endpoint is served without authentication. The OAuth protected-resource
+// discovery document is registered only when OAuth is configured; in
+// API-key-only mode there is no OAuth metadata to advertise.
 func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", root)
@@ -32,7 +34,9 @@ func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc 
 
 	mcpHandler := mcp.NewHandler(k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc)
 	if authCfg != nil {
-		mux.Handle("GET /.well-known/oauth-protected-resource", auth.MetadataHandler(authCfg))
+		if authCfg.OAuthConfigured() {
+			mux.Handle("GET /.well-known/oauth-protected-resource", auth.MetadataHandler(authCfg))
+		}
 		mux.Handle("POST /mcp", authCfg.RequireBearer(mcpHandler))
 	} else {
 		mux.Handle("POST /mcp", mcpHandler)

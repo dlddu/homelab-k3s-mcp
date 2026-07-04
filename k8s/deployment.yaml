@@ -67,6 +67,14 @@ spec:
             # the optional OPENSEARCH_* overrides for the opensearch_* tools.
             - secretRef:
                 name: homelab-k3s-mcp-opensearch
+            # MCP_API_KEYS: comma-separated static bearer keys that let
+            # non-interactive clients authenticate to /mcp without the OAuth
+            # flow. Optional so OAuth-only (and MCP_AUTH_DISABLED) deployments
+            # need not provide the secret; when used it is created out-of-band
+            # like the other credential secrets and never committed.
+            - secretRef:
+                name: homelab-k3s-mcp-api-keys
+                optional: true
           startupProbe:
             httpGet:
               path: /healthz
