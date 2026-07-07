@@ -29,12 +29,14 @@
 
 ### 시나리오 3: 최소권한 RBAC 경계
 - **사전 조건**: 배포된 RBAC(`k8s/rbac.yaml`)
-- **실행 단계**: RBAC 규칙 정적 검토
+- **실행 단계**: 서버 ServiceAccount로 impersonate(`kubectl auth can-i --as`)하여
+  허용/금지 권한 매트릭스 단언
 - **기대 결과**: 워크로드 get/list/watch/patch, 파드 get/list, pods/log get, pods/exec
   get/create, namespaces·events get/list만 존재. delete·시크릿 읽기·워크로드 create 없음.
 - **검증 AC**: AC3
-- **자동화**: 🟡 정적 검증(`k8s/rbac.yaml` 리뷰). pods/log·pods/exec 바인딩은 통합
-  `workload.py`/`dear_baby.py`로 간접 동작 확인. delete/secret 부재 단언 자동화 추가 권장.
+- **자동화**: e2e `tests/integration/rbac.py` — 부여 21개 allow + 미부여 11개(delete 전반·
+  secrets get/list·워크로드 create) deny를 실제 클러스터에서 단언. ALLOWED 매트릭스는
+  `k8s/rbac.yaml`과 수동 동기화(권한 확장이 양쪽 diff로 드러나도록 의도적 하드코딩).
 
 ### 시나리오 4: 하드닝된 런타임
 - **사전 조건**: 배포 매니페스트(`k8s/deployment.yaml`)

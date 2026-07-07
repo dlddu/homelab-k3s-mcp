@@ -96,10 +96,10 @@
   비노출(github·grafana AC4)/unavailable,
   opensearch 3종 전 AC(14 — 단위 + `tests/integration/opensearch.py`,
   픽스처는 security off 단일노드 OpenSearch + MinIO STS),
-  platform AC1·AC2(인증 게이트·디스커버리)·AC5·AC6·AC7·AC8(API 키 게이트·구성 유연성·
+  platform AC1·AC2(인증 게이트·디스커버리)·AC3(RBAC 경계 — e2e `rbac.py` can-i 허용/금지
+  매트릭스)·AC5·AC6·AC7·AC8(API 키 게이트·구성 유연성·
   디스커버리 조건부 — `internal/auth/auth_test.go`·`internal/server/auth_routing_test.go`).
-- 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
-  platform AC4(하드닝 — `k8s/deployment.yaml`).
+- 🟡 **정적 검증** (매니페스트 리뷰): platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
   - opensearch 3종 — **프로덕션 스모크 미수행**(env 배선이 infrastructure/flux-cd-apps
     반영에 걸려 있음). CI 자동화는 완료; 실제 `kubernetes-docs` 컬렉션 대상
@@ -120,3 +120,4 @@
 | 2026-07-02 | OpenSearch 도구 3종 구현(`internal/opensearch` + 도구 표면 + CI 통합 테스트), 테스트 문서 자동화 필드를 실제 테스트 경로로 갱신 | opensearch 14 AC 자동화 공백(도구 미구현) | opensearch 14 AC 자동 검증(프로덕션 스모크만 잔여 — env 배선 후) |
 | 2026-07-04 | platform PRD에 API 키 인증 AC7·AC8 추가(비대화형 자동화용, 구현 선행 문서), values V3 서술 확장, 테스트 시나리오 7·8 추가. 위험 진단 수치 정합성 보정(PRD 15/AC 52/테스트 15) | 가치 4 / PRD 15 / AC 50 / 테스트 15 | 가치 4 / PRD 15 / AC 52 / 테스트 15 (전 계층 연결, AC7·AC8만 자동화 공백) |
 | 2026-07-04 | platform AC7·AC8 구현(`internal/auth` API 키 게이트·OAuth 선택화·디스커버리 조건부 + `MCP_API_KEYS`) 및 단위 테스트(`internal/auth/auth_test.go`·`internal/server/auth_routing_test.go`) 작성, 테스트 문서 자동화 필드를 실제 테스트 경로로 갱신 | platform AC7·AC8 자동화 공백(구현 선행 문서) | platform AC7·AC8 자동 검증(전 계층 연결·자동화 완료) |
+| 2026-07-07 | platform AC3 RBAC 경계 e2e 추가(`tests/integration/rbac.py` — SA impersonate can-i 허용 21·금지 11 매트릭스, CI 스텝) | AC3 정적 검증만(🟡) | platform AC3 자동 검증(🟡 잔여: AC4 하드닝 1건) |

@@ -214,6 +214,12 @@ jobs:
           trap "kill $PF_PID" EXIT
           python tests/integration/dear_baby.py http://127.0.0.1:8082
 
+      # Impersonates the server's ServiceAccount and asserts the full
+      # allow/deny permission matrix (platform AC3, least privilege).
+      # Talks to the apiserver directly, so no port-forward is needed.
+      - name: Validate RBAC boundary (least privilege)
+        run: python tests/integration/rbac.py
+
       - name: Validate github_app_installation_token tool against mock
         run: |
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8083:80 >/tmp/pf-gh.log 2>&1 &
