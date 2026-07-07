@@ -81,19 +81,48 @@ def can_i(verb: str, resource: str, namespaced: bool) -> bool:
     )
 
 
+def diagnose(verb: str, resource: str, namespaced: bool) -> None:
+    """Print raw context for an unexpected can-i answer."""
+    cmd = ["kubectl", "auth", "can-i", verb, resource, "--as", SERVICE_ACCOUNT, "-v=8"]
+    if namespaced:
+        cmd += ["-n", NAMESPACE]
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    print(f"--- diagnose: {verb} {resource} (rc={proc.returncode}) ---", file=sys.stderr)
+    print(proc.stderr[-3000:], file=sys.stderr)
+    listing = subprocess.run(
+        ["kubectl", "auth", "can-i", "--list", "--as", SERVICE_ACCOUNT, "-n", NAMESPACE],
+        capture_output=True,
+        text=True,
+    )
+    print("--- can-i --list ---", file=sys.stderr)
+    print(listing.stdout, file=sys.stderr)
+    role = subprocess.run(
+        ["kubectl", "get", "clusterrole", "homelab-k3s-mcp:workloads", "-o", "yaml"],
+        capture_output=True,
+        text=True,
+    )
+    print("--- deployed ClusterRole ---", file=sys.stderr)
+    print(role.stdout, file=sys.stderr)
+
+
 def main() -> None:
     failures: list[str] = []
 
     print(f"--- RBAC boundary as {SERVICE_ACCOUNT} ---")
+    allow_fail = 0
     for verb, resource, namespaced in ALLOWED:
         if not can_i(verb, resource, namespaced):
             failures.append(f"expected ALLOW, got deny: {verb} {resource}")
-    print(f"allowed matrix ok: {len(ALLOWED)} grants confirmed")
+            diagnose(verb, resource, namespaced)
+            allow_fail += 1
+    print(f"allowed matrix: {len(ALLOWED) - allow_fail}/{len(ALLOWED)} grants confirmed")
 
+    deny_fail = 0
     for verb, resource, namespaced in DENIED:
         if can_i(verb, resource, namespaced):
             failures.append(f"expected DENY, got allow: {verb} {resource}")
-    print(f"denied matrix ok: {len(DENIED)} ungranted permissions confirmed absent")
+            deny_fail += 1
+    print(f"denied matrix: {len(DENIED) - deny_fail}/{len(DENIED)} ungranted permissions confirmed absent")
 
     if failures:
         for f in failures:
