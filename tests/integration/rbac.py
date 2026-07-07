@@ -1,11 +1,18 @@
 """End-to-end check for the least-privilege RBAC boundary (platform AC3).
 
-Impersonates the server's ServiceAccount with ``kubectl auth can-i`` and
-asserts the full permission matrix against the live cluster:
+Authenticates *as* the server's ServiceAccount (a short-lived token from
+``kubectl create token``) and asserts the full permission matrix with
+``kubectl auth can-i`` against the live cluster:
 
 - every rule granted by ``k8s/rbac.yaml`` is allowed, and
 - representative *ungranted* permissions are denied — no delete anywhere, no
   secret reads, no workload creation (test-platform-auth-safety.md S3).
+
+A real token is used instead of ``--as`` impersonation deliberately: it
+evaluates the exact authentication path production requests take, and in CI
+the impersonated evaluation of ``create pods/exec`` disagreed with both
+``can-i --list`` and a real exec (see PR discussion) while the token-based
+answer matches reality.
 
 The ALLOWED matrix below is intentionally hard-coded rather than derived from
 the manifest: if ``k8s/rbac.yaml`` changes, this file must change with it, so
@@ -17,7 +24,8 @@ from __future__ import annotations
 import subprocess
 import sys
 
-SERVICE_ACCOUNT = "system:serviceaccount:homelab-k3s-mcp:homelab-k3s-mcp"
+SA_NAMESPACE = "homelab-k3s-mcp"
+SA_NAME = "homelab-k3s-mcp"
 # Any namespace works for namespaced checks (the grant is a ClusterRoleBinding);
 # workload-test exists in CI and is where the fixtures live.
 NAMESPACE = "workload-test"
@@ -63,8 +71,20 @@ DENIED: list[tuple[str, str, bool]] = [
 ]
 
 
-def can_i(verb: str, resource: str, namespaced: bool) -> bool:
-    cmd = ["kubectl", "auth", "can-i", verb, resource, "--as", SERVICE_ACCOUNT]
+def sa_token() -> str:
+    """Mint a short-lived token for the server's ServiceAccount."""
+    proc = subprocess.run(
+        ["kubectl", "-n", SA_NAMESPACE, "create", "token", SA_NAME, "--duration=10m"],
+        capture_output=True,
+        text=True,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        raise RuntimeError(f"create token failed: {proc.stderr.strip()!r}")
+    return proc.stdout.strip()
+
+
+def can_i(token: str, verb: str, resource: str, namespaced: bool) -> bool:
+    cmd = ["kubectl", "auth", "can-i", verb, resource, "--token", token]
     if namespaced:
         cmd += ["-n", NAMESPACE]
     proc = subprocess.run(cmd, capture_output=True, text=True)
@@ -81,50 +101,38 @@ def can_i(verb: str, resource: str, namespaced: bool) -> bool:
     )
 
 
-def diagnose(verb: str, resource: str, namespaced: bool) -> None:
-    """Print raw context for an unexpected can-i answer."""
-    cmd = ["kubectl", "auth", "can-i", verb, resource, "--as", SERVICE_ACCOUNT, "-v=8"]
-    if namespaced:
-        cmd += ["-n", NAMESPACE]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
-    print(f"--- diagnose: {verb} {resource} (rc={proc.returncode}) ---", file=sys.stderr)
-    print(proc.stderr[-3000:], file=sys.stderr)
+def diagnose(token: str) -> None:
+    """Print the full rules view for the ServiceAccount on unexpected answers."""
     listing = subprocess.run(
-        ["kubectl", "auth", "can-i", "--list", "--as", SERVICE_ACCOUNT, "-n", NAMESPACE],
+        ["kubectl", "auth", "can-i", "--list", "--token", token, "-n", NAMESPACE],
         capture_output=True,
         text=True,
     )
-    print("--- can-i --list ---", file=sys.stderr)
+    print("--- can-i --list (as ServiceAccount token) ---", file=sys.stderr)
     print(listing.stdout, file=sys.stderr)
-    role = subprocess.run(
-        ["kubectl", "get", "clusterrole", "homelab-k3s-mcp:workloads", "-o", "yaml"],
-        capture_output=True,
-        text=True,
-    )
-    print("--- deployed ClusterRole ---", file=sys.stderr)
-    print(role.stdout, file=sys.stderr)
 
 
 def main() -> None:
     failures: list[str] = []
+    token = sa_token()
 
-    print(f"--- RBAC boundary as {SERVICE_ACCOUNT} ---")
+    print(f"--- RBAC boundary as ServiceAccount {SA_NAMESPACE}/{SA_NAME} (token auth) ---")
     allow_fail = 0
     for verb, resource, namespaced in ALLOWED:
-        if not can_i(verb, resource, namespaced):
+        if not can_i(token, verb, resource, namespaced):
             failures.append(f"expected ALLOW, got deny: {verb} {resource}")
-            diagnose(verb, resource, namespaced)
             allow_fail += 1
     print(f"allowed matrix: {len(ALLOWED) - allow_fail}/{len(ALLOWED)} grants confirmed")
 
     deny_fail = 0
     for verb, resource, namespaced in DENIED:
-        if can_i(verb, resource, namespaced):
+        if can_i(token, verb, resource, namespaced):
             failures.append(f"expected DENY, got allow: {verb} {resource}")
             deny_fail += 1
     print(f"denied matrix: {len(DENIED) - deny_fail}/{len(DENIED)} ungranted permissions confirmed absent")
 
     if failures:
+        diagnose(token)
         for f in failures:
             print("FAIL:", f, file=sys.stderr)
         raise SystemExit(1)
