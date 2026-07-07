@@ -137,7 +137,15 @@ def assert_identity(kubeconfig: str) -> None:
 
 
 def can_i(kubeconfig: str, verb: str, resource: str, namespaced: bool) -> bool:
-    cmd = ["kubectl", "--kubeconfig", kubeconfig, "auth", "can-i", verb, resource]
+    # "pods/exec" slash notation is NOT parsed as a subresource by kubectl's
+    # can-i: the SSAR it builds carries resource=pods, name="exec" (verified
+    # against the -v=8 protobuf dump in CI), so `get pods/exec` passes only by
+    # coincidence via the pods get rule while `create pods/exec` reads as
+    # deny. Split and pass --subresource explicitly instead.
+    res, _, sub = resource.partition("/")
+    cmd = ["kubectl", "--kubeconfig", kubeconfig, "auth", "can-i", verb, res]
+    if sub:
+        cmd += ["--subresource", sub]
     if namespaced:
         cmd += ["-n", NAMESPACE]
     proc = subprocess.run(cmd, capture_output=True, text=True)
