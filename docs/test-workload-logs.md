@@ -31,8 +31,9 @@
 - **기대 결과**: 종료된 직전 인스턴스의 로그 반환(Running 파드 없어도 매칭 파드 사용)
 - **검증 AC**: AC3
 - **자동화**: 옵션 전달은 Go 단위 `mcp_test.go::TestWorkloadLogsHonoursOverrides`로 검증.
-  실제 previous 로그 **내용**은 현재 e2e 미커버(픽스처가 pause 이미지라 로그 없음) → 크래시
-  루프 시나리오 자동화 추가 권장.
+  실제 previous 로그 **내용**은 e2e `tests/integration/workload.py`가 crash-once 픽스처
+  (`crashloop-fixture` — busybox가 마커 출력 후 1회만 exit 1, 이후 안정 Running으로
+  lastState 고정, restartCount ≥ 1 대기)로 검증.
 
 ### 시나리오 4: 컨테이너 지정·출력 옵션
 - **사전 조건**: 동일

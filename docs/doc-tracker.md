@@ -90,7 +90,8 @@
 - 🟢 **자동 검증됨** (Go 단위 `internal/server/mcp_test.go`·`health_test.go`·
   `internal/auth/auth_test.go`, `internal/awsconfig`·`internal/github`·`internal/grafana`·
   `internal/opensearch` 단위 테스트 + Python 통합 `tests/integration/`):
-  ping, namespace_list, workload_list, workload_logs(AC1·2·4), pod_describe(전체),
+  ping, namespace_list, workload_list, workload_logs(전체 — AC3 크래시 루프 previous
+  내용은 e2e `crashloop-fixture`), pod_describe(전체),
   workload_restart, workload_scale, dear_baby_reset_user, 자격증명 3종의 발급/스코프/
   비노출(github·grafana AC4)/unavailable,
   opensearch 3종 전 AC(14 — 단위 + `tests/integration/opensearch.py`,
@@ -103,7 +104,6 @@
   - opensearch 3종 — **프로덕션 스모크 미수행**(env 배선이 infrastructure/flux-cd-apps
     반영에 걸려 있음). CI 자동화는 완료; 실제 `kubernetes-docs` 컬렉션 대상
     put→search→delete 확인은 배선 완료 후 수행.
-  - workload_logs AC3 — 실제 previous/크래시 루프 로그 **내용** 미커버(픽스처가 pause 이미지).
 
 ## 변경 이력
 
@@ -115,6 +115,7 @@
 | 2026-06-19 | workload_logs AC2 정정(초과 시 클램프 → 거부), 테스트 문서 12종 작성 | 테스트 0 | 가치 3 / PRD 12 / AC 36 / 테스트 12 (전 계층 연결) |
 | 2026-06-22 | platform AC1·AC2 인증 게이트/디스커버리 단위 테스트 추가(`internal/auth/auth_test.go`) | AC1·AC2 자동화 공백 | platform AC1·AC2 자동 검증(자동화 공백 7→5) |
 | 2026-06-22 | github·grafana AC4 베이스 시크릿 비노출 단위 테스트 추가(`internal/github`·`internal/grafana`) | github·grafana AC4 자동화 공백 | github·grafana AC4 자동 검증(잔여 공백: workload_logs AC3 1건) |
+| 2026-07-03 | workload_logs AC3 크래시 루프 previous 로그 **내용** e2e 추가(`crashloop-fixture` + `workload.py`) | workload_logs AC3 자동화 공백 | workload_logs 전 AC 자동 검증(잔여: opensearch 프로덕션 스모크 — 외부 배선 대기) |
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가, OpenSearch Serverless 도구 3종 PRD(AC 14)·테스트 문서 작성 — 구현 선행 문서(인프라 `kubernetes-docs` 컬렉션·권한은 부여 완료, 코드 미구현) | 가치 3 / PRD 12 / AC 36 / 테스트 12 | 가치 4 / PRD 15 / AC 50 / 테스트 15 |
 | 2026-07-02 | OpenSearch 도구 3종 구현(`internal/opensearch` + 도구 표면 + CI 통합 테스트), 테스트 문서 자동화 필드를 실제 테스트 경로로 갱신 | opensearch 14 AC 자동화 공백(도구 미구현) | opensearch 14 AC 자동 검증(프로덕션 스모크만 잔여 — env 배선 후) |
 | 2026-07-04 | platform PRD에 API 키 인증 AC7·AC8 추가(비대화형 자동화용, 구현 선행 문서), values V3 서술 확장, 테스트 시나리오 7·8 추가. 위험 진단 수치 정합성 보정(PRD 15/AC 52/테스트 15) | 가치 4 / PRD 15 / AC 50 / 테스트 15 | 가치 4 / PRD 15 / AC 52 / 테스트 15 (전 계층 연결, AC7·AC8만 자동화 공백) |
