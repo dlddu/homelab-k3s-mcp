@@ -116,7 +116,7 @@
 - **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
 - **현재 미충족(후속 리팩터)**: `tests/integration/`의 7개 파일은 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 ✅는 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다.
 
-### AC 레지스트리 (52) — ✅ 통합 e2e 32 · ⬜ e2e 보강 14 · 🔧 정적/단위 검증 5 · 🚫 e2e 예외 1
+### AC 레지스트리 (52) — ✅ 통합 e2e 32 · ⬜ e2e 보강 19 · 🚫 e2e 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -125,7 +125,7 @@
 | aws-config-get/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
 | dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 통합 `dear_baby.py` |
 | dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 통합 `dear_baby.py` |
-| dear-baby-reset-user/AC3 | 파괴적 작업 표기 | 🔧 정적/단위 검증 |
+| dear-baby-reset-user/AC3 | 파괴적 작업 표기 | ⬜ 보강 필요 |
 | github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 통합 `github_app.py` |
 | github-app-installation-token/AC2 | 스코프 제한 | ✅ 통합 `github_app.py` |
 | github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
@@ -137,12 +137,12 @@
 | namespace-list/AC1 | 네임스페이스 열거 | ✅ 통합 `workload.py` |
 | opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 통합 `opensearch.py` |
 | opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 통합 `opensearch.py` |
-| opensearch-document-delete/AC3 | 파괴적 작업 표기 | 🔧 정적/단위 검증 |
+| opensearch-document-delete/AC3 | 파괴적 작업 표기 | ⬜ 보강 필요 |
 | opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ✅ 통합 `opensearch.py` |
 | opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
 | opensearch-document-put/AC1 | 문서 색인·업서트 | ✅ 통합 `opensearch.py` |
 | opensearch-document-put/AC2 | 인덱스 자동 생성 | ✅ 통합 `opensearch.py` |
-| opensearch-document-put/AC3 | 파괴적 작업 표기 | 🔧 정적/단위 검증 |
+| opensearch-document-put/AC3 | 파괴적 작업 표기 | ⬜ 보강 필요 |
 | opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ✅ 통합 `opensearch.py` |
 | opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
 | opensearch-search/AC1 | 질의 검색 | ✅ 통합 `opensearch.py` |
@@ -168,12 +168,12 @@
 | workload-logs/AC3 | 크래시 루프 후 직전 로그 | ✅ 통합 `workload.py` |
 | workload-logs/AC4 | 컨테이너 선택과 필터 | ✅ 통합 `workload.py` |
 | workload-restart/AC1 | 롤링 재시작 트리거 | ✅ 통합 `workload.py` |
-| workload-restart/AC2 | 파괴적 작업 표기 | 🔧 정적/단위 검증 |
+| workload-restart/AC2 | 파괴적 작업 표기 | ⬜ 보강 필요 |
 | workload-scale/AC1 | 레플리카 설정 | ✅ 통합 `workload.py` |
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 통합 `workload.py` |
-| workload-scale/AC3 | 파괴적 작업 표기 | 🔧 정적/단위 검증 |
+| workload-scale/AC3 | 파괴적 작업 표기 | ⬜ 보강 필요 |
 
-### ⬜ e2e 보강 backlog (14) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
+### ⬜ e2e 보강 backlog (19) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
@@ -194,21 +194,18 @@
 - **opensearch-search/AC4** 미설정 시 graceful 거부 → `tests/integration/opensearch.py`(no-config 변형): OpenSearch 미배선에서 검색이 graceful 거부
 - **grafana-token/AC4** 발급자 토큰 비노출 → `tests/integration/grafana.py`: 발급 응답 본문에 발급자(원본) 토큰 문자열이 포함되지 않음을 단언(출력-내용 e2e 단정)
 
-### 🔧 정적/단위 검증 (5) — 도구 메타데이터 속성, e2e 비대상·검증 충족
-
-> 파괴적 작업 표기는 **도구 정의 annotations의 `destructiveHint` 속성**이다 — 클러스터 동작이 아니라 도구 스키마 속성이므로 파괴 동작을 e2e로 실행해 검증할 대상이 아니다. `tools/list`가 광고하는 annotation을 검사하는 **Go 단위 테스트로 이미 검증**된다(아래 경로). e2e 1:1 관점에서 e2e 비대상이되 **예외가 아니라 정적/단위 검증으로 충족**이다. 후속 per-AC 리팩터 대상도 아님.
-
-- **dear-baby-reset-user/AC3** 파괴적 작업 표기 → `internal/server/mcp_test.go::TestToolsListAdvertisesDearBabyReset` (reset `destructiveHint=true` 단언). ✔ 충족.
-- **opensearch-document-put/AC3** 파괴적 작업 표기 → `internal/server/mcp_test.go::TestToolsListAdvertisesOpenSearchDocumentPut` (`destructiveHint=true`). ✔ 충족.
-- **opensearch-document-delete/AC3** 파괴적 작업 표기 → `internal/server/mcp_test.go::TestToolsListAdvertisesOpenSearchDocumentDelete` (`destructiveHint=true`). ✔ 충족.
-- **workload-restart/AC2** 파괴적 작업 표기 → `internal/server/mcp_test.go::TestToolsListAdvertisesAnnotations` (workload_restart `destructiveHint=true`). ✔ 충족.
-- **workload-scale/AC3** 파괴적 작업 표기 → `internal/server/mcp_test.go::TestToolsListAdvertisesWorkloadScale` (`destructiveHint=true`). ✔ 충족.
+> **파괴적 작업 표기(5)**: 파괴 동작을 실제로 실행하지 않고, 배포된 서버의 **`tools/list` 응답에서 해당 도구 `annotations.destructiveHint == true`(및 `readOnlyHint == false`)를 e2e로 단언**한다(메타데이터 검증을 e2e 계층에서 수행). 기존 `internal/server/mcp_test.go`가 in-process로 하는 단언을 배포 서버 대상 통합 e2e로 승격.
+- **dear-baby-reset-user/AC3** 파괴적 작업 표기 → `tests/integration/dear_baby.py`: `tools/list`에서 `dear_baby_reset_user`의 `destructiveHint=true` 단언
+- **opensearch-document-delete/AC3** 파괴적 작업 표기 → `tests/integration/opensearch.py`: `tools/list`에서 `opensearch_document_delete`의 `destructiveHint=true` 단언
+- **opensearch-document-put/AC3** 파괴적 작업 표기 → `tests/integration/opensearch.py`: `tools/list`에서 `opensearch_document_put`의 `destructiveHint=true` 단언
+- **workload-restart/AC2** 파괴적 작업 표기 → `tests/integration/workload.py`: `tools/list`에서 `workload_restart`의 `destructiveHint=true` 단언
+- **workload-scale/AC3** 파괴적 작업 표기 → `tests/integration/workload.py`: `tools/list`에서 `workload_scale`의 `destructiveHint=true` 단언
 
 ### 🚫 e2e 예외 (1) — e2e 비현실적, 모델 정의 예외 개정 제안
 
 > e2e로 커버하기 비현실적이고 정적 검토로 대체하는 AC. definition이 `task에서 제안한다`고 명시하므로 모델 정의(`to-be-models.json`)에 일방 적용하지 않고 ratify 후 예외 목록에 반영한다.
 >
-> **정의 예외 개정 제안(6건, e2e 비대상)**: e2e 1:1 계수에서 빠져야 하는 AC는 아래 🚫 1건 + 위 🔧 5건 = 6건이다. 단 🔧 5건은 정적/단위 메타데이터 검증으로 **충족**(테스트 경로 명시)이고, 아래 1건은 정적 매니페스트 리뷰로 대체한다. 정의의 예외 목록에는 6건을 등재하되 각 대체검증 수단을 함께 명시하도록 제안한다.
+> **정의 예외 개정 제안(1건, e2e 비대상)**: e2e 1:1 계수에서 빠져야 하는 AC는 아래 platform/AC4 1건뿐이다. 파괴적 표기 5건은 `tools/list` 메타데이터를 e2e로 단언해 커버하므로(⬜ 보강) e2e 예외가 아니다. 정의의 예외 목록에는 이 1건만 등재하도록 제안한다.
 
 - **platform-auth-safety/AC4** 하드닝된 런타임 — [정적 매니페스트] `k8s/deployment.yaml` securityContext(비루트·읽기전용 루트FS·capability drop 등) 정적 검증 — definition이 든 e2e 예외 예시. 대체: 정적 매니페스트 리뷰 + (선택) 런타임 securityContext 단언 단위.
 
@@ -216,7 +213,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
-| 2026-07-12 | AC↔e2e 1:1 정합성(reconciler) 레지스트리 신설: e2e-only 렌즈로 52 AC 분류, per-AC 케이스 식별 규약 명문화, e2e 보강 backlog·예외 제안 작성. **2026-07-19 사용자 검토 반영 재분류**: 미설정 graceful 거부 6·grafana AC4 출력 비노출 1을 예외→⬜ 보강(총 14), 파괴적 표기 5를 🔧 정적/단위 검증(기존 destructiveHint 단위 테스트로 충족)으로, platform AC4만 🚫 e2e 예외로 확정 → **✅32·⬜14·🔧5·🚫1**. 전용 per-AC 케이스 분리·신설과 정의 예외 개정(6건)은 후속·ratify. | 통합 파일 7개 다중 AC 공유, 인코드 AC 선언 1건, e2e 케이스 규약 부재 | 52 AC 분류(✅32·⬜14·🔧5·🚫1), 규약·backlog(14)·정적검증(5)·예외(1)·정의 개정 제안 문서화(tests/ 코드 미변경) |
+| 2026-07-12 | AC↔e2e 1:1 정합성(reconciler) 레지스트리 신설: e2e-only 렌즈로 52 AC 분류, per-AC 케이스 식별 규약 명문화, e2e 보강 backlog·예외 제안 작성. **2026-07-19 사용자 검토 반영 재분류**: 미설정 graceful 거부 6·grafana AC4 출력 비노출 1을 예외→⬜ 보강, 파괴적 표기 5도 `tools/list` 메타데이터를 e2e로 단언하는 ⬜ 보강으로(파괴 동작 미실행), platform AC4만 🚫 e2e 예외로 확정 → **✅32·⬜19·🚫1**. 전용 per-AC 케이스 분리·신설과 정의 예외 개정(1건)은 후속·ratify. | 통합 파일 7개 다중 AC 공유, 인코드 AC 선언 1건, e2e 케이스 규약 부재 | 52 AC 분류(✅32·⬜19·🚫1), 규약·backlog(19)·예외(1)·정의 개정 제안 문서화(tests/ 코드 미변경) |
 | 2026-06-19 | 가치 문서 생성, V1~V3 정의, 소유자 지정 | (없음) | 가치 3 / PRD 0 / AC 0 / 테스트 0 |
 | 2026-06-19 | 가치별 PRD 3종 작성(AC 18) | 가치 3 / PRD 0 | 가치 3 / PRD 3 / AC 18 / 테스트 0 |
 | 2026-06-19 | PRD를 도구 단위로 재구성(도구 11 + 공통 1), AC 36 | PRD 3 / AC 18 | 가치 3 / PRD 12 / AC 36 / 테스트 0 |
