@@ -8,7 +8,12 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _helpers import base_url, open_session, wait_for_healthz
+from _helpers import (
+    assert_destructive_annotation,
+    base_url,
+    open_session,
+    wait_for_healthz,
+)
 
 NAMESPACE = "workload-test"
 WORKLOAD = "workload-fixture"
@@ -88,6 +93,24 @@ def kubectl_wait_rollout() -> None:
         ],
         check=True,
     )
+
+
+async def test_workload_restart_ac2_destructive_hint(session) -> None:
+    """AC: workload-restart/AC2 — workload_restart advertises destructiveHint=true.
+
+    Verifies the destructive-operation marking via tools/list metadata only; no
+    restart is triggered.
+    """
+    await assert_destructive_annotation(session, "workload_restart")
+
+
+async def test_workload_scale_ac3_destructive_hint(session) -> None:
+    """AC: workload-scale/AC3 — workload_scale advertises destructiveHint=true.
+
+    Verifies the destructive-operation marking via tools/list metadata only; no
+    scale is performed.
+    """
+    await assert_destructive_annotation(session, "workload_scale")
 
 
 async def run() -> None:
@@ -322,6 +345,14 @@ async def run() -> None:
         )
         assert result.isError, result
         print("workload_logs missing-workload rejection ok")
+
+        print("--- workload_restart destructiveHint (AC: workload-restart/AC2) ---")
+        await test_workload_restart_ac2_destructive_hint(session)
+        print("workload_restart destructiveHint ok")
+
+        print("--- workload_scale destructiveHint (AC: workload-scale/AC3) ---")
+        await test_workload_scale_ac3_destructive_hint(session)
+        print("workload_scale destructiveHint ok")
 
 
 if __name__ == "__main__":

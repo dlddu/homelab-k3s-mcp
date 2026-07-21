@@ -66,3 +66,30 @@ async def open_session(url: str) -> AsyncIterator[ClientSession]:
     async with streamablehttp_client(mcp_url) as (read, write, _):
         async with ClientSession(read, write) as session:
             yield session
+
+
+async def assert_destructive_annotation(
+    session: ClientSession, tool_name: str
+) -> None:
+    """Assert the deployed server advertises ``tool_name`` as a destructive tool.
+
+    Fetches ``tools/list`` from the live server and checks the MCP annotations
+    that encode "파괴적 작업 표기" (destructive-operation marking): the tool must
+    advertise ``destructiveHint == True`` and ``readOnlyHint == False``. This
+    promotes the in-process assertion in ``internal/server/mcp_test.go``
+    (``TestToolsListAdvertisesAnnotations``) to the deployed-server e2e layer
+    without ever executing the destructive operation itself.
+    """
+    tools = await session.list_tools()
+    by_name = {tool.name: tool for tool in tools.tools}
+    assert tool_name in by_name, (
+        f"{tool_name} not advertised by tools/list: {sorted(by_name)}"
+    )
+    annotations = by_name[tool_name].annotations
+    assert annotations is not None, f"{tool_name} advertises no annotations"
+    assert annotations.destructiveHint is True, (
+        f"{tool_name} destructiveHint = {annotations.destructiveHint!r}, expected True"
+    )
+    assert annotations.readOnlyHint is False, (
+        f"{tool_name} readOnlyHint = {annotations.readOnlyHint!r}, expected False"
+    )

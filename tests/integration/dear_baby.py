@@ -4,9 +4,23 @@ from __future__ import annotations
 
 import asyncio
 
-from _helpers import base_url, open_session, wait_for_healthz
+from _helpers import (
+    assert_destructive_annotation,
+    base_url,
+    open_session,
+    wait_for_healthz,
+)
 
 NAMESPACE = "dear-baby-test"
+
+
+async def test_dear_baby_reset_user_ac3_destructive_hint(session) -> None:
+    """AC: dear-baby-reset-user/AC3 — dear_baby_reset_user advertises destructiveHint=true.
+
+    Verifies the destructive-operation marking via tools/list metadata only; no
+    user reset is exec'd.
+    """
+    await assert_destructive_annotation(session, "dear_baby_reset_user")
 
 
 async def run() -> None:
@@ -71,6 +85,13 @@ async def run() -> None:
         text = result.content[0].text
         assert "no Running pod matched" in text, text
         print("reset no-pod path ok")
+
+        print(
+            "--- dear_baby_reset_user destructiveHint "
+            "(AC: dear-baby-reset-user/AC3) ---"
+        )
+        await test_dear_baby_reset_user_ac3_destructive_hint(session)
+        print("dear_baby_reset_user destructiveHint ok")
 
 
 if __name__ == "__main__":

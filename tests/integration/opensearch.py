@@ -23,7 +23,12 @@ import json
 import time
 import uuid
 
-from _helpers import base_url, open_session, wait_for_healthz
+from _helpers import (
+    assert_destructive_annotation,
+    base_url,
+    open_session,
+    wait_for_healthz,
+)
 
 # Fresh per run so re-runs against a warm fixture never see stale documents.
 RUN_ID = uuid.uuid4().hex[:8]
@@ -69,6 +74,24 @@ async def search_until(session, query, predicate, description, index=None):
 
 def hit_ids(hits):
     return {hit["id"] for hit in hits}
+
+
+async def test_opensearch_document_put_ac3_destructive_hint(session) -> None:
+    """AC: opensearch-document-put/AC3 — opensearch_document_put advertises destructiveHint=true.
+
+    Verifies the destructive-operation marking via tools/list metadata only; no
+    document is written.
+    """
+    await assert_destructive_annotation(session, "opensearch_document_put")
+
+
+async def test_opensearch_document_delete_ac3_destructive_hint(session) -> None:
+    """AC: opensearch-document-delete/AC3 — opensearch_document_delete advertises destructiveHint=true.
+
+    Verifies the destructive-operation marking via tools/list metadata only; no
+    document is deleted.
+    """
+    await assert_destructive_annotation(session, "opensearch_document_delete")
 
 
 async def run() -> None:
@@ -179,6 +202,14 @@ async def run() -> None:
                 )
             )
             assert not_found["result"] == "not_found", not_found
+
+        print("--- opensearch_document_put destructiveHint (AC: opensearch-document-put/AC3) ---")
+        await test_opensearch_document_put_ac3_destructive_hint(session)
+        print("opensearch_document_put destructiveHint ok")
+
+        print("--- opensearch_document_delete destructiveHint (AC: opensearch-document-delete/AC3) ---")
+        await test_opensearch_document_delete_ac3_destructive_hint(session)
+        print("opensearch_document_delete destructiveHint ok")
 
         print("opensearch tools ok ->", RUNBOOKS_INDEX, "/", NOTES_INDEX)
 
