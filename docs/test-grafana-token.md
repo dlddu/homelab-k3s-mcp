@@ -38,5 +38,6 @@
 - **실행 단계**: 발급 결과 검사
 - **기대 결과**: 출력은 단명 read 토큰·엔드포인트·USER뿐이며 `GRAFANA_ISSUER_TOKEN` 미포함
 - **검증 AC**: AC4
-- **자동화**: 부분 — 출력 내용 검증으로 간접 확인. 발급자 토큰 부재를 명시적으로 단언하는 케이스
-  추가 권장.
+- **자동화**: 통합 `grafana.py::test_grafana_token_ac4_issuer_token_not_exposed` — 발급 응답 .env에
+  `GRAFANA_ISSUER_TOKEN` 키·그 구성값(`glsa_mock_issuer`)·발급자 접두(`glsa_`)가 부재하고 단명 read
+  토큰(`GRAFANA_TOKEN=glc_mock_…`)만 포함됨을 단언. 구성 검증은 `internal/grafana/grafana_test.go`.

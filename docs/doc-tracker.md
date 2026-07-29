@@ -116,7 +116,7 @@
 - **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
 - **현재 미충족(후속 리팩터)**: `tests/integration/`의 7개 파일은 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 ✅는 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다.
 
-### AC 레지스트리 (52) — ✅ e2e 37 (통합 32 · 전용 케이스 5) · ⬜ e2e 보강 14 · 🚫 e2e 예외 1
+### AC 레지스트리 (52) — ✅ e2e 38 (통합 32 · 전용 케이스 6) · ⬜ e2e 보강 13 · 🚫 e2e 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -133,7 +133,7 @@
 | grafana-token/AC1 | read-only 토큰 발급 | ✅ 통합 `grafana.py` |
 | grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 통합 `grafana.py` |
 | grafana-token/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
-| grafana-token/AC4 | 발급자 토큰 비노출 | ⬜ 보강 필요 |
+| grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac4_issuer_token_not_exposed` |
 | namespace-list/AC1 | 네임스페이스 열거 | ✅ 통합 `workload.py` |
 | opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 통합 `opensearch.py` |
 | opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 통합 `opensearch.py` |
@@ -173,7 +173,7 @@
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 통합 `workload.py` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac3_destructive_hint` |
 
-### ⬜ e2e 보강 backlog (14) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
+### ⬜ e2e 보강 backlog (13) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
@@ -192,7 +192,6 @@
 - **opensearch-document-delete/AC5** 미설정 시 graceful 거부 → `tests/integration/opensearch.py`(no-config 변형): OpenSearch 미배선에서 삭제가 graceful 거부
 - **opensearch-document-put/AC5** 미설정 시 graceful 거부 → `tests/integration/opensearch.py`(no-config 변형): OpenSearch 미배선에서 색인이 graceful 거부
 - **opensearch-search/AC4** 미설정 시 graceful 거부 → `tests/integration/opensearch.py`(no-config 변형): OpenSearch 미배선에서 검색이 graceful 거부
-- **grafana-token/AC4** 발급자 토큰 비노출 → `tests/integration/grafana.py`: 발급 응답 본문에 발급자(원본) 토큰 문자열이 포함되지 않음을 단언(출력-내용 e2e 단정)
 
 > **파괴적 작업 표기(5) — ✅ 완료(2026-07-21)**: 파괴 동작을 실제로 실행하지 않고 배포 서버 `tools/list`의 `annotations.destructiveHint == true`(및 `readOnlyHint == false`)를 e2e로 단언하는 per-AC 전용 케이스를 신설해 위 레지스트리에서 ✅로 승격했다(`internal/server/mcp_test.go`의 in-process 단언을 배포 서버 통합 e2e로 승격). 케이스: `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint`, `opensearch.py::test_opensearch_document_{put,delete}_ac3_destructive_hint`, `workload.py::test_workload_{restart_ac2,scale_ac3}_destructive_hint`. 남은 backlog 14건은 no-config 배포 변형·신규 픽스처가 필요한 후속 슬라이스.
 
@@ -208,6 +207,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-07-29 | grafana-token/AC4(발급자 토큰 비노출)을 배포 서버 응답 .env에 서버측 `GRAFANA_ISSUER_TOKEN`(키·구성값 `glsa_mock_issuer`·발급자 접두 `glsa_`)이 부재하고 단명 read 토큰 `glc_mock_…`만 노출됨을 단언하는 per-AC 전용 e2e 케이스로 승격(`grafana.py::test_grafana_token_ac4_issuer_token_not_exposed`). CI가 이미 실행하는 `grafana.py::run()`에 케이스 추가(발급 호출 재사용, 신규 픽스처·`ci.yml` 변경 없음, 부작용 없음). tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅37·⬜14·🚫1 (grafana AC4 = ⬜) | ✅38·⬜13·🚫1 (grafana AC4 = ✅ 전용 케이스) |
 | 2026-07-21 | 파괴적 작업 표기 5건(dear-baby-reset-user/AC3·opensearch-document-{put,delete}/AC3·workload-{restart/AC2,scale/AC3})을 배포 서버 `tools/list`의 `destructiveHint=true`·`readOnlyHint=false`를 단언하는 per-AC 전용 e2e 케이스로 승격(파괴 동작 미실행, 메타데이터만). 기존 CI가 실행하는 `workload.py`·`dear_baby.py`·`opensearch.py`에 케이스 추가(+공용 헬퍼 `_helpers.py::assert_destructive_annotation`), 새 파일·`ci.yml` 변경 없음. tests/ additive라 as-is 해시만 변경(prd 불변). | ✅32·⬜19·🚫1 (파괴적 표기 5 = ⬜) | ✅37·⬜14·🚫1 (파괴적 표기 5 = ✅ 전용 케이스) |
 | 2026-07-12 | AC↔e2e 1:1 정합성(reconciler) 레지스트리 신설: e2e-only 렌즈로 52 AC 분류, per-AC 케이스 식별 규약 명문화, e2e 보강 backlog·예외 제안 작성. **2026-07-19 사용자 검토 반영 재분류**: 미설정 graceful 거부 6·grafana AC4 출력 비노출 1을 예외→⬜ 보강, 파괴적 표기 5도 `tools/list` 메타데이터를 e2e로 단언하는 ⬜ 보강으로(파괴 동작 미실행), platform AC4만 🚫 e2e 예외로 확정 → **✅32·⬜19·🚫1**. 전용 per-AC 케이스 분리·신설과 정의 예외 개정(1건)은 후속·ratify. | 통합 파일 7개 다중 AC 공유, 인코드 AC 선언 1건, e2e 케이스 규약 부재 | 52 AC 분류(✅32·⬜19·🚫1), 규약·backlog(19)·예외(1)·정의 개정 제안 문서화(tests/ 코드 미변경) |
 | 2026-06-19 | 가치 문서 생성, V1~V3 정의, 소유자 지정 | (없음) | 가치 3 / PRD 0 / AC 0 / 테스트 0 |
