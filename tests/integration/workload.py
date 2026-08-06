@@ -113,6 +113,107 @@ async def test_workload_scale_ac3_destructive_hint(session) -> None:
     await assert_destructive_annotation(session, "workload_scale")
 
 
+async def test_pod_describe_ac1_snapshot(session) -> None:
+    """AC: pod-describe/AC1 — pod_describe returns a structured pod snapshot.
+
+    Describes the running workload-fixture pod (resolved by label selector so the
+    case is independent of the generated pod name) and asserts the snapshot
+    carries pod metadata plus per-container state (state / ready / restart count),
+    conditions, and the kubectl-describe-style rendered text.
+    """
+    result = await session.call_tool(
+        "pod_describe",
+        {"namespace": NAMESPACE, "selector": f"app={WORKLOAD}"},
+    )
+    assert result.isError is False, result
+    snapshot = result.structuredContent
+    assert snapshot["namespace"] == NAMESPACE, snapshot
+    assert snapshot["name"].startswith(f"{WORKLOAD}-"), snapshot
+    assert snapshot["phase"] == "Running", snapshot
+    pause = next(
+        (c for c in snapshot["containers"] if c["name"] == "pause"), None
+    )
+    assert pause is not None, snapshot["containers"]
+    assert "pause" in pause["image"], pause
+    assert pause["ready"] is True, pause
+    assert pause["restart_count"] == 0, pause
+    assert pause["state"] == "running", pause
+    assert isinstance(snapshot["conditions"], list) and snapshot["conditions"], (
+        snapshot
+    )
+    text = result.content[0].text
+    assert "Name:" in text and NAMESPACE in text, text
+    print("pod_describe snapshot ok, pod:", snapshot["name"])
+
+
+async def test_pod_describe_ac2_target_resolution(session) -> None:
+    """AC: pod-describe/AC2 — name / selector / workload targeting resolves one pod.
+
+    Verifies each single targeting mode resolves to a workload-fixture pod and
+    that supplying two modes at once is rejected (mutually exclusive). Target
+    argument errors come back as JSON-RPC errors, surfaced by the SDK as
+    McpError rather than a tool result object.
+    """
+    by_selector = await session.call_tool(
+        "pod_describe",
+        {"namespace": NAMESPACE, "selector": f"app={WORKLOAD}"},
+    )
+    assert by_selector.isError is False, by_selector
+    pod_name = by_selector.structuredContent["name"]
+    assert pod_name.startswith(f"{WORKLOAD}-"), pod_name
+
+    by_name = await session.call_tool(
+        "pod_describe",
+        {"namespace": NAMESPACE, "name": pod_name},
+    )
+    assert by_name.isError is False, by_name
+    assert by_name.structuredContent["name"] == pod_name, by_name.structuredContent
+
+    by_workload = await session.call_tool(
+        "pod_describe",
+        {
+            "namespace": NAMESPACE,
+            "workload_kind": "Deployment",
+            "workload_name": WORKLOAD,
+        },
+    )
+    assert by_workload.isError is False, by_workload
+    assert by_workload.structuredContent["name"].startswith(f"{WORKLOAD}-"), (
+        by_workload.structuredContent
+    )
+
+    try:
+        await session.call_tool(
+            "pod_describe",
+            {
+                "namespace": NAMESPACE,
+                "name": pod_name,
+                "selector": f"app={WORKLOAD}",
+            },
+        )
+    except McpError as exc:
+        assert "mutually exclusive" in str(exc), exc
+        print("pod_describe mutual-exclusion rejection ok")
+    else:
+        raise AssertionError("expected McpError for name+selector both provided")
+
+
+async def test_pod_describe_ac3_events_best_effort(session) -> None:
+    """AC: pod-describe/AC3 — the snapshot includes an events section best-effort.
+
+    The server lists events best-effort and always returns an ``events`` array
+    (empty when unavailable) without failing the describe call.
+    """
+    result = await session.call_tool(
+        "pod_describe",
+        {"namespace": NAMESPACE, "selector": f"app={WORKLOAD}"},
+    )
+    assert result.isError is False, result
+    events = result.structuredContent["events"]
+    assert isinstance(events, list), result.structuredContent
+    print("pod_describe events best-effort ok, events:", len(events))
+
+
 async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
@@ -353,6 +454,16 @@ async def run() -> None:
         print("--- workload_scale destructiveHint (AC: workload-scale/AC3) ---")
         await test_workload_scale_ac3_destructive_hint(session)
         print("workload_scale destructiveHint ok")
+
+        print("--- pod_describe snapshot (AC: pod-describe/AC1) ---")
+        await test_pod_describe_ac1_snapshot(session)
+
+        print("--- pod_describe target resolution (AC: pod-describe/AC2) ---")
+        await test_pod_describe_ac2_target_resolution(session)
+        print("pod_describe target resolution ok")
+
+        print("--- pod_describe events best-effort (AC: pod-describe/AC3) ---")
+        await test_pod_describe_ac3_events_best_effort(session)
 
 
 if __name__ == "__main__":
