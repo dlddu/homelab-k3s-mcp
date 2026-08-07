@@ -1,4 +1,9 @@
-"""No-config e2e: the six "미설정 시 graceful 거부" ACs.
+"""No-config e2e: server-level graceful degradation + the six per-tool refusals.
+
+Everything here runs against the one deployment where "미설정" is true, so it
+carries both the server-level AC (platform-auth-safety/AC5 — the server starts
+and keeps advertising its tools with every integration unset) and the six
+per-tool refusal ACs below.
 
 Every credential-backed tool must answer an ``unavailable``-class error when its
 server configuration is absent, without taking the server or the other tools
@@ -25,11 +30,30 @@ import asyncio
 
 from mcp import ClientSession
 
-from _helpers import base_url, open_session, wait_for_healthz
+from _helpers import base_url, get_json, open_session, wait_for_healthz
 
 # Must match MCP_API_KEYS in tests/k8s/kind/auth-fixture.yaml (same value as
 # tests/integration/auth.py — the variant carries a single static key).
 API_KEY = "ci-e2e-key"
+
+# The full tool surface the server must keep advertising even with every
+# integration unconfigured (platform-auth-safety/AC5).
+EXPECTED_TOOLS = {
+    "ping",
+    "namespace_list",
+    "workload_list",
+    "workload_restart",
+    "workload_scale",
+    "workload_logs",
+    "pod_describe",
+    "dear_baby_reset_user",
+    "grafana_token",
+    "github_app_installation_token",
+    "aws_config_get",
+    "opensearch_search",
+    "opensearch_document_put",
+    "opensearch_document_delete",
+}
 
 # The exact refusal texts, from the default reasons in NewUnavailable() and the
 # Error() prefixes of each package (internal/{awsconfig,github,grafana,
@@ -72,6 +96,36 @@ async def assert_unavailable_refusal(
         f"ping broke after the {tool_name} refusal: {survivor}"
     )
     assert survivor.content and survivor.content[0].text == "pong", survivor
+
+
+async def test_platform_auth_safety_ac5_graceful_degradation(
+    url: str, session: ClientSession
+) -> None:
+    """AC: platform-auth-safety/AC5 — the server runs with integrations unset.
+
+    This is the only deployment in the suite where the AC's premise holds. The
+    primary kind deployment wires up every credential secret, so a healthy
+    tools/list there says nothing about degradation; this variant attaches none
+    of them (GITHUB_APP_CLIENT_ID / AWS_CONFIG_S3_BUCKET / GRAFANA_ISSUER_TOKEN /
+    OPENSEARCH_ENDPOINT all unset), which is exactly the "자격증명 env를 비운 채
+    기동" the verification method describes.
+
+    Asserts both halves of that method against this pod: the server is up and
+    answering its liveness probe, and tools/list still returns the complete tool
+    surface — including every tool whose backing integration is unavailable.
+    Unconfigured integrations degrade the tools' *results* (the per-tool cases
+    below assert that), never the server's ability to start and advertise them.
+    """
+    healthz = get_json(url, "/healthz")
+    assert healthz.get("status") == "ok", f"unexpected /healthz: {healthz!r}"
+
+    tools = await session.list_tools()
+    names = {tool.name for tool in tools.tools}
+    missing = EXPECTED_TOOLS - names
+    assert not missing, (
+        f"tools/list degraded with integrations unset: missing {sorted(missing)} "
+        f"(got {sorted(names)})"
+    )
 
 
 async def test_aws_config_get_ac3_unconfigured_refusal(session: ClientSession) -> None:
@@ -162,6 +216,11 @@ async def run() -> None:
     async with open_session(
         url, headers={"Authorization": f"Bearer {API_KEY}"}
     ) as session:
+        print("--- server-level graceful degradation "
+              "(AC: platform-auth-safety/AC5) ---")
+        await test_platform_auth_safety_ac5_graceful_degradation(url, session)
+        print("degradation ok: platform-auth-safety/AC5")
+
         for label, case in (
             ("aws-config-get/AC3", test_aws_config_get_ac3_unconfigured_refusal),
             (

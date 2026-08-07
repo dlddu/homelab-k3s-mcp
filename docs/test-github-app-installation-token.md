@@ -14,8 +14,11 @@
 - **기대 결과**: text/plain 리소스에 `GITHUB_TOKEN=...`, `# Expires at:` 주석,
   `# Repository selection: all`, `contents=` 포함
 - **검증 AC**: AC1
-- **자동화**: Go 단위 `mcp_test.go::TestGitHubTokenDispatchesWithDefaults`. 통합
-  `github_app.py`(defaults). 참고: 실제 ~1시간 TTL은 GitHub 측 동작이며 mock은 고정 만료를 사용.
+- **자동화**: 통합 `github_app.py::test_github_app_installation_token_ac1_short_lived_token`
+  — 서명 JWT ↔ 설치 토큰 교환이 실제로 일어났음을(`ghs_mock_67890`) + 만료·스코프 주석이 담긴
+  .env 형태를 단언. Go 단위 `mcp_test.go::TestGitHubTokenDispatchesWithDefaults`.
+  참고: 실제 ~1시간 TTL은 GitHub 측 동작이며 mock은 고정 만료(2099-01-01)를 사용하므로
+  TTL 자체는 e2e에서 관측 불가.
 
 ### 시나리오 2: repo/권한 스코프 제한
 - **사전 조건**: 동일
@@ -24,8 +27,12 @@
 - **기대 결과**: `# Repository selection: selected`, `# Permissions: contents=read` 반영.
   비배열 repositories는 거부.
 - **검증 AC**: AC2
-- **자동화**: Go 단위 `mcp_test.go::TestGitHubTokenPassesThroughScope`,
-  `TestGitHubTokenRejectsNonArrayRepositories`. 통합 `github_app.py`(with scope).
+- **자동화**: 통합 `github_app.py::test_github_app_installation_token_ac2_scope_restriction`
+  — 미지정 시 `Repository selection: all`(기본 권한 동봉), 지정 시 `selected` +
+  `Permissions: contents=read`로 좁혀지고 기본 `metadata=read`가 사라짐을 단언. Go 단위
+  `mcp_test.go::TestGitHubTokenPassesThroughScope`,
+  `TestGitHubTokenRejectsNonArrayRepositories`. 참고: 설치 범위 밖 repo 거부는 GitHub 측
+  동작이라 mock으로는 관측 불가.
 
 ### 시나리오 3: 미설정 시 도구 에러
 - **사전 조건**: GitHub App env 미설정
@@ -41,5 +48,8 @@
 - **실행 단계**: 발급 결과 검사
 - **기대 결과**: 출력은 설치 토큰·만료·스코프 주석뿐이며 App 개인키 미포함
 - **검증 AC**: AC4
-- **자동화**: 부분 — 출력 내용 검증으로 간접 확인(통합 `github_app.py`). 개인키 부재를 명시적으로
-  단언하는 케이스 추가 권장.
+- **자동화**: 통합 `github_app.py::test_github_app_installation_token_ac4_private_key_not_exposed`
+  — 직렬화한 전체 도구 결과(content + structured)에 PEM 아머(`-----BEGIN`/`-----END`),
+  `PRIVATE KEY`/`RSA PRIVATE`, env 이름 `GITHUB_APP_PRIVATE_KEY`, 서명된 App JWT(`eyJ`)가
+  하나도 없고 노출되는 것은 설치 토큰뿐임을 단언. 키 바이트는 CI 실행마다 생성되므로
+  아머 마커로 판정한다.
