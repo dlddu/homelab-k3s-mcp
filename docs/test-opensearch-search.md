@@ -48,4 +48,6 @@
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestFromEnvUnsetEndpointReturnsNil`, `TestFromEnvRequiresRoleARN`) +
-  `internal/server/mcp_test.go` (`TestOpenSearchUnavailableReturnsToolError`).
+  `internal/server/mcp_test.go` (`TestOpenSearchUnavailableReturnsToolError`) + 통합
+  `tests/integration/no_config.py::test_opensearch_search_ac4_unconfigured_refusal`
+  (자격증명 미부착 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).

@@ -31,4 +31,6 @@
 - **기대 결과**: 서버 정상, 호출만 unavailable 도구 에러
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `awsconfig_test.go::TestUnavailableGetConfig`,
-  `TestFromEnvUnsetBucketReturnsNil`, `TestFromEnvRequiresKeyAndRole`.
+  `TestFromEnvUnsetBucketReturnsNil`, `TestFromEnvRequiresKeyAndRole`. 통합
+  `tests/integration/no_config.py::test_aws_config_get_ac3_unconfigured_refusal`
+  (자격증명 미부착 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).

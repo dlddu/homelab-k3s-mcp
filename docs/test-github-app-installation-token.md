@@ -32,7 +32,9 @@
 - **실행 단계**: 호출
 - **기대 결과**: 서버 정상, 호출만 unavailable 도구 에러
 - **검증 AC**: AC3
-- **자동화**: Go 단위 `mcp_test.go::TestGitHubTokenUnavailableReturnsToolError`.
+- **자동화**: Go 단위 `mcp_test.go::TestGitHubTokenUnavailableReturnsToolError`. 통합
+  `tests/integration/no_config.py::test_github_app_installation_token_ac3_unconfigured_refusal`
+  (자격증명 미부착 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).
 
 ### 시나리오 4: 개인키 비노출
 - **사전 조건**: 동일(구성됨)
