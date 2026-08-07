@@ -29,8 +29,14 @@ import (
 
 const (
 	defaultRoleSessionName = "homelab-k3s-mcp"
-	requestTimeout         = 15 * time.Second
-	signingService         = "aoss"
+	// requestTimeout budgets one request end to end, including the AssumeRole
+	// credential fetch. The collection is NextGen with scale-to-zero (min 0
+	// OCU), so the first request after 10 idle minutes waits while capacity is
+	// restored — AWS documents 10-30s for that, per component. 35s covers the
+	// documented worst case instead of cutting off a cold start that would have
+	// succeeded.
+	requestTimeout = 35 * time.Second
+	signingService = "aoss"
 
 	// DefaultSearchSize is used when a search request does not specify a size.
 	DefaultSearchSize int64 = 10
