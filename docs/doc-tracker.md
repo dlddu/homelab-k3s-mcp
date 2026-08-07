@@ -116,39 +116,39 @@
 - **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
 - **현재 미충족(후속 리팩터)**: `tests/integration/`의 7개 파일은 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 ✅는 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다.
 
-### AC 레지스트리 (52) — ✅ e2e 43 (통합 32 · 전용 케이스 11) · ⬜ e2e 보강 8 · 🚫 e2e 예외 1
+### AC 레지스트리 (52) — ✅ e2e 49 (통합 32 · 전용 케이스 17) · ⬜ e2e 보강 2 · 🚫 e2e 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
 | aws-config-get/AC1 | 고정 객체 조회 | ✅ 통합 `aws_config.py` |
 | aws-config-get/AC2 | 정적 키 미사용 | ✅ 통합 `aws_config.py` |
-| aws-config-get/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
+| aws-config-get/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_aws_config_get_ac3_unconfigured_refusal` |
 | dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 통합 `dear_baby.py` |
 | dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 통합 `dear_baby.py` |
 | dear-baby-reset-user/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint` |
 | github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 통합 `github_app.py` |
 | github-app-installation-token/AC2 | 스코프 제한 | ✅ 통합 `github_app.py` |
-| github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
+| github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_github_app_installation_token_ac3_unconfigured_refusal` |
 | github-app-installation-token/AC4 | 베이스 키 비노출 | ✅ 통합 `github_app.py` |
 | grafana-token/AC1 | read-only 토큰 발급 | ✅ 통합 `grafana.py` |
 | grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 통합 `grafana.py` |
-| grafana-token/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
+| grafana-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_grafana_token_ac3_unconfigured_refusal` |
 | grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac4_issuer_token_not_exposed` |
 | namespace-list/AC1 | 네임스페이스 열거 | ✅ 통합 `workload.py` |
 | opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 통합 `opensearch.py` |
 | opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 통합 `opensearch.py` |
 | opensearch-document-delete/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_delete_ac3_destructive_hint` |
 | opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ✅ 통합 `opensearch.py` |
-| opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
+| opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_opensearch_document_delete_ac5_unconfigured_refusal` |
 | opensearch-document-put/AC1 | 문서 색인·업서트 | ✅ 통합 `opensearch.py` |
 | opensearch-document-put/AC2 | 인덱스 자동 생성 | ✅ 통합 `opensearch.py` |
 | opensearch-document-put/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_put_ac3_destructive_hint` |
 | opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ✅ 통합 `opensearch.py` |
-| opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
+| opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_opensearch_document_put_ac5_unconfigured_refusal` |
 | opensearch-search/AC1 | 질의 검색 | ✅ 통합 `opensearch.py` |
 | opensearch-search/AC2 | 결과 상한 | ✅ 통합 `opensearch.py` |
 | opensearch-search/AC3 | AssumeRole·SigV4 접근 | ✅ 통합 `opensearch.py` |
-| opensearch-search/AC4 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
+| opensearch-search/AC4 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_opensearch_search_ac4_unconfigured_refusal` |
 | ping/AC1 | 항상 pong 응답 | ✅ 통합 `smoke.py` |
 | platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac1_gate` |
 | platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 보강 필요 |
@@ -173,7 +173,7 @@
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 통합 `workload.py` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac3_destructive_hint` |
 
-### ⬜ e2e 보강 backlog (8) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
+### ⬜ e2e 보강 backlog (2) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
@@ -184,13 +184,7 @@
 
 > **pod-describe(3) — ✅ 완료(2026-07-30)**: pod-describe/AC1·AC2·AC3을 기존 CI 스텝(`workload.py`, port 8081)과 `workload-fixture` 러닝 파드를 재사용하는 per-AC 전용 케이스로 승격했다(신규 파일·픽스처·`ci.yml` 변경 없음). 케이스: `workload.py::test_pod_describe_ac1_snapshot`(스냅샷 필드), `::test_pod_describe_ac2_target_resolution`(name/selector/workload 해석 + 상호배타 거부), `::test_pod_describe_ac3_events_best_effort`(events 필드 best-effort present).
 
-> **미설정 graceful 거부(6)**: kind 픽스처가 모든 시크릿을 제공하므로, 대상 시크릿만 뺀 **no-config/env-게이팅 배포 변형**을 띄워 해당 도구 호출이 크래시 없이 명확한 거부를 반환하는지 검증한다(platform-auth-safety/AC8의 env-게이팅 다중 구성 메커니즘 공유).
-- **aws-config-get/AC3** 미설정 시 graceful 거부 → `tests/integration/aws_config.py`(no-config 변형): AWS 시크릿 미배선에서 조회가 graceful 거부(비크래시·명확 에러)
-- **github-app-installation-token/AC3** 미설정 시 graceful 거부 → `tests/integration/github_app.py`(no-config 변형): App 자격 미배선에서 발급이 graceful 거부
-- **grafana-token/AC3** 미설정 시 graceful 거부 → `tests/integration/grafana.py`(no-config 변형): Grafana 자격 미배선에서 발급이 graceful 거부
-- **opensearch-document-delete/AC5** 미설정 시 graceful 거부 → `tests/integration/opensearch.py`(no-config 변형): OpenSearch 미배선에서 삭제가 graceful 거부
-- **opensearch-document-put/AC5** 미설정 시 graceful 거부 → `tests/integration/opensearch.py`(no-config 변형): OpenSearch 미배선에서 색인이 graceful 거부
-- **opensearch-search/AC4** 미설정 시 graceful 거부 → `tests/integration/opensearch.py`(no-config 변형): OpenSearch 미배선에서 검색이 graceful 거부
+> **미설정 graceful 거부(6) — ✅ 완료(2026-08-07)**: 별도 no-config 픽스처를 만들지 않고, 인증 변형 `tests/k8s/kind/auth-fixture.yaml`이 이미 **자격증명 시크릿을 하나도 붙이지 않은** 배포(= `GITHUB_APP_CLIENT_ID`·`AWS_CONFIG_S3_BUCKET`·`GRAFANA_ISSUER_TOKEN`·`OPENSEARCH_ENDPOINT` 전부 미설정 → `main.go`의 `build*Service`가 모두 `NewUnavailable("")`로 degrade)라는 점을 이용해 그 파드에 6개 per-AC 전용 케이스를 신설했다(`tests/integration/no_config.py`, CI 스텝 port 8088 하나 추가, 신규 픽스처·신규 롤아웃 대기 없음). 각 케이스는 (1) 호출이 `isError=true` + `<도메인> unavailable: <미구성 사유>` 텍스트로 돌아오고 (2) 직후 `ping`이 여전히 `pong`을 반환함을 단언해 AC 문언의 "서버 기동·다른 도구에 영향 없음"까지 관측한다. 그 대가로 이 변형에는 자격증명을 붙이면 안 된다(픽스처 헤더 주석에 명시).
 
 > **파괴적 작업 표기(5) — ✅ 완료(2026-07-21)**: 파괴 동작을 실제로 실행하지 않고 배포 서버 `tools/list`의 `annotations.destructiveHint == true`(및 `readOnlyHint == false`)를 e2e로 단언하는 per-AC 전용 케이스를 신설해 위 레지스트리에서 ✅로 승격했다(`internal/server/mcp_test.go`의 in-process 단언을 배포 서버 통합 e2e로 승격). 케이스: `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint`, `opensearch.py::test_opensearch_document_{put,delete}_ac3_destructive_hint`, `workload.py::test_workload_{restart_ac2,scale_ac3}_destructive_hint`. 남은 backlog 14건은 no-config 배포 변형·신규 픽스처가 필요한 후속 슬라이스.
 
@@ -206,6 +200,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-07 | "미설정 시 graceful 거부" 6건(aws-config-get/AC3·github-app-installation-token/AC3·grafana-token/AC3·opensearch-{search/AC4,document-put/AC5,document-delete/AC5})을 per-AC 전용 e2e 케이스로 승격(`tests/integration/no_config.py`). 신규 픽스처 없이 직전 슬라이스가 올린 `auth-fixture.yaml`(자격증명 시크릿 미부착 = 정의상 no-config 배포)을 재사용하고 `ci.yml`에 검증 스텝 1개(port 8088)만 추가. 각 케이스는 `isError=true` + `<도메인> unavailable: <미구성 사유>` 단언에 더해 직후 `ping`이 정상임을 단언해 "서버 기동·다른 도구 무영향"까지 커버. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅43·⬜8·🚫1 (미설정 거부 6 = ⬜) | ✅49·⬜2·🚫1 (미설정 거부 6 = ✅ 전용 케이스) |
 | 2026-08-07 | platform-auth-safety/AC1(인증 게이트)·AC7(API 키 인증)을 인증 켠 배포 변형(`tests/k8s/kind/auth-fixture.yaml`: `MCP_API_KEYS` 세팅·`MCP_AUTH_DISABLED` 미설정, 자격증명 시크릿 미부착 graceful degrade) 전용 e2e per-AC 케이스로 승격(`auth.py::test_platform_auth_safety_ac1_gate` 무Authorization→401 `missing_token`, `::test_platform_auth_safety_ac7_api_key` 무효 키→401 `invalid_token`·유효 키→tools/list 인가). 신규 파일 `auth-fixture.yaml`·`tests/integration/auth.py` + `ci.yml` 스텝 3개(별 네임스페이스 배포·롤아웃 대기·port 8087 검증), 기존 배포·kustomize 불변. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅41·⬜10·🚫1 (platform AC1·AC7 = ⬜) | ✅43·⬜8·🚫1 (platform AC1·AC7 = ✅ 전용 케이스) |
 | 2026-07-30 | pod-describe/AC1(파드 상세 스냅샷)·AC2(대상 지정 방식)·AC3(이벤트 best-effort)을 배포 서버 통합 e2e per-AC 전용 케이스로 승격(`workload.py::test_pod_describe_ac1_snapshot`·`::test_pod_describe_ac2_target_resolution`·`::test_pod_describe_ac3_events_best_effort`). CI가 이미 실행하는 `workload.py::run()`에 케이스 추가(기존 `workload-fixture` 러닝 파드·CI 스텝 port 8081 재사용, 신규 파일·픽스처·`ci.yml` 변경 없음, 부작용 없음). AC2는 name/selector/workload 3경로 해석 + name+selector 상호배타 McpError 거부까지 단언. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅38·⬜13·🚫1 (pod-describe 3 = ⬜) | ✅41·⬜10·🚫1 (pod-describe 3 = ✅ 전용 케이스) |
 | 2026-07-29 | grafana-token/AC4(발급자 토큰 비노출)을 배포 서버 응답 .env에 서버측 `GRAFANA_ISSUER_TOKEN`(키·구성값 `glsa_mock_issuer`·발급자 접두 `glsa_`)이 부재하고 단명 read 토큰 `glc_mock_…`만 노출됨을 단언하는 per-AC 전용 e2e 케이스로 승격(`grafana.py::test_grafana_token_ac4_issuer_token_not_exposed`). CI가 이미 실행하는 `grafana.py::run()`에 케이스 추가(발급 호출 재사용, 신규 픽스처·`ci.yml` 변경 없음, 부작용 없음). tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅37·⬜14·🚫1 (grafana AC4 = ⬜) | ✅38·⬜13·🚫1 (grafana AC4 = ✅ 전용 케이스) |

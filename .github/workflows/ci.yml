@@ -255,6 +255,16 @@ jobs:
           trap "kill $PF_PID" EXIT
           python tests/integration/auth.py http://127.0.0.1:8087
 
+      # Same auth-variant pod as the step above: it runs with no credential
+      # secrets attached, so it is also the only deployment where the
+      # "미설정 시 graceful 거부" ACs are observable.
+      - name: Validate no-config graceful refusal against variant
+        run: |
+          kubectl -n homelab-k3s-mcp-auth port-forward svc/homelab-k3s-mcp-auth 8088:80 >/tmp/pf-no-config.log 2>&1 &
+          PF_PID=$!
+          trap "kill $PF_PID" EXIT
+          python tests/integration/no_config.py http://127.0.0.1:8088
+
       - name: Dump cluster diagnostics on failure
         if: failure()
         run: |

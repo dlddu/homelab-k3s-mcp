@@ -9,6 +9,13 @@
 # key authorizes. No credential secrets are attached: main.go's buildXService
 # helpers degrade to an "unavailable" service when a secret is absent and the
 # server still starts, which is all the auth-gate assertions need.
+#
+# That absence is now a contract, not just a convenience:
+# tests/integration/no_config.py asserts the "미설정 시 graceful 거부" ACs against
+# this same variant (aws-config-get/AC3, github-app-installation-token/AC3,
+# grafana-token/AC3, opensearch-{search/AC4,document-put/AC5,document-delete/AC5}).
+# Do not attach credential secrets or credential env here — wire them into the
+# primary kind deployment instead.
 apiVersion: v1
 kind: Namespace
 metadata:
