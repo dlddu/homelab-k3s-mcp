@@ -116,7 +116,7 @@
 - **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
 - **현재 미충족(후속 리팩터)**: `tests/integration/`의 7개 파일은 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 ✅는 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다.
 
-### AC 레지스트리 (52) — ✅ e2e 41 (통합 32 · 전용 케이스 9) · ⬜ e2e 보강 10 · 🚫 e2e 예외 1
+### AC 레지스트리 (52) — ✅ e2e 43 (통합 32 · 전용 케이스 11) · ⬜ e2e 보강 8 · 🚫 e2e 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -150,13 +150,13 @@
 | opensearch-search/AC3 | AssumeRole·SigV4 접근 | ✅ 통합 `opensearch.py` |
 | opensearch-search/AC4 | 미설정 시 graceful 거부 | ⬜ 보강 필요 |
 | ping/AC1 | 항상 pong 응답 | ✅ 통합 `smoke.py` |
-| platform-auth-safety/AC1 | 인증 게이트 | ⬜ 보강 필요 |
+| platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac1_gate` |
 | platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 보강 필요 |
 | platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 통합 `workload.py` |
 | platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 e2e 예외 |
 | platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 통합 `smoke.py` |
 | platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 통합 `smoke.py` |
-| platform-auth-safety/AC7 | API 키 인증 | ⬜ 보강 필요 |
+| platform-auth-safety/AC7 | API 키 인증 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac7_api_key` |
 | platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ⬜ 보강 필요 |
 | pod-describe/AC1 | 파드 상세 스냅샷 | ✅ 전용 케이스 `workload.py::test_pod_describe_ac1_snapshot` |
 | pod-describe/AC2 | 대상 지정 방식 | ✅ 전용 케이스 `workload.py::test_pod_describe_ac2_target_resolution` |
@@ -173,14 +173,14 @@
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 통합 `workload.py` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac3_destructive_hint` |
 
-### ⬜ e2e 보강 backlog (10) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
+### ⬜ e2e 보강 backlog (8) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
-- **platform-auth-safety/AC1** 인증 게이트 → `tests/integration/smoke.py`: 미인증(Bearer 없음) 호출이 401로 거부되는지 (kind 배포가 `MCP_AUTH_DISABLED=1`이라 auth-게이팅 배포 변형 필요)
-- **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/smoke.py`: 디스커버리 엔드포인트가 인증 방식을 반환하는지 (auth-게이팅 배포 변형 필요)
-- **platform-auth-safety/AC7** API 키 인증 → `tests/integration/smoke.py`: MCP_API_KEYS 배선 후 유효 키 호출 인가·무효 키 거부
+- **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/smoke.py`: 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/smoke.py`: env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
+
+> **platform 인증 게이트(2) — ✅ 완료(2026-08-07)**: platform-auth-safety/AC1(인증 게이트)·AC7(API 키 인증)을, 인증을 켠 최소 배포 변형(`tests/k8s/kind/auth-fixture.yaml` — 같은 `:ci` 이미지에 `MCP_API_KEYS` 세팅·`MCP_AUTH_DISABLED` 미설정, 자격증명 시크릿 미부착 graceful degrade)을 별 네임스페이스에 띄워 검증하는 per-AC 전용 e2e 케이스로 승격했다(신규 CI 스텝 port 8087, 기존 배포·kustomize 불변). 케이스: `auth.py::test_platform_auth_safety_ac1_gate`(무Authorization → 401 `missing_token`), `::test_platform_auth_safety_ac7_api_key`(무효 키 → 401 `invalid_token`, 유효 키 → tools/list 인가). 잔여 platform 2건(AC2 디스커버리·AC8 구성 유연성)은 OIDC 발급자 mock·다중 구성 전환이 필요한 후속 슬라이스.
 
 > **pod-describe(3) — ✅ 완료(2026-07-30)**: pod-describe/AC1·AC2·AC3을 기존 CI 스텝(`workload.py`, port 8081)과 `workload-fixture` 러닝 파드를 재사용하는 per-AC 전용 케이스로 승격했다(신규 파일·픽스처·`ci.yml` 변경 없음). 케이스: `workload.py::test_pod_describe_ac1_snapshot`(스냅샷 필드), `::test_pod_describe_ac2_target_resolution`(name/selector/workload 해석 + 상호배타 거부), `::test_pod_describe_ac3_events_best_effort`(events 필드 best-effort present).
 
@@ -206,6 +206,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-07 | platform-auth-safety/AC1(인증 게이트)·AC7(API 키 인증)을 인증 켠 배포 변형(`tests/k8s/kind/auth-fixture.yaml`: `MCP_API_KEYS` 세팅·`MCP_AUTH_DISABLED` 미설정, 자격증명 시크릿 미부착 graceful degrade) 전용 e2e per-AC 케이스로 승격(`auth.py::test_platform_auth_safety_ac1_gate` 무Authorization→401 `missing_token`, `::test_platform_auth_safety_ac7_api_key` 무효 키→401 `invalid_token`·유효 키→tools/list 인가). 신규 파일 `auth-fixture.yaml`·`tests/integration/auth.py` + `ci.yml` 스텝 3개(별 네임스페이스 배포·롤아웃 대기·port 8087 검증), 기존 배포·kustomize 불변. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅41·⬜10·🚫1 (platform AC1·AC7 = ⬜) | ✅43·⬜8·🚫1 (platform AC1·AC7 = ✅ 전용 케이스) |
 | 2026-07-30 | pod-describe/AC1(파드 상세 스냅샷)·AC2(대상 지정 방식)·AC3(이벤트 best-effort)을 배포 서버 통합 e2e per-AC 전용 케이스로 승격(`workload.py::test_pod_describe_ac1_snapshot`·`::test_pod_describe_ac2_target_resolution`·`::test_pod_describe_ac3_events_best_effort`). CI가 이미 실행하는 `workload.py::run()`에 케이스 추가(기존 `workload-fixture` 러닝 파드·CI 스텝 port 8081 재사용, 신규 파일·픽스처·`ci.yml` 변경 없음, 부작용 없음). AC2는 name/selector/workload 3경로 해석 + name+selector 상호배타 McpError 거부까지 단언. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅38·⬜13·🚫1 (pod-describe 3 = ⬜) | ✅41·⬜10·🚫1 (pod-describe 3 = ✅ 전용 케이스) |
 | 2026-07-29 | grafana-token/AC4(발급자 토큰 비노출)을 배포 서버 응답 .env에 서버측 `GRAFANA_ISSUER_TOKEN`(키·구성값 `glsa_mock_issuer`·발급자 접두 `glsa_`)이 부재하고 단명 read 토큰 `glc_mock_…`만 노출됨을 단언하는 per-AC 전용 e2e 케이스로 승격(`grafana.py::test_grafana_token_ac4_issuer_token_not_exposed`). CI가 이미 실행하는 `grafana.py::run()`에 케이스 추가(발급 호출 재사용, 신규 픽스처·`ci.yml` 변경 없음, 부작용 없음). tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅37·⬜14·🚫1 (grafana AC4 = ⬜) | ✅38·⬜13·🚫1 (grafana AC4 = ✅ 전용 케이스) |
 | 2026-07-21 | 파괴적 작업 표기 5건(dear-baby-reset-user/AC3·opensearch-document-{put,delete}/AC3·workload-{restart/AC2,scale/AC3})을 배포 서버 `tools/list`의 `destructiveHint=true`·`readOnlyHint=false`를 단언하는 per-AC 전용 e2e 케이스로 승격(파괴 동작 미실행, 메타데이터만). 기존 CI가 실행하는 `workload.py`·`dear_baby.py`·`opensearch.py`에 케이스 추가(+공용 헬퍼 `_helpers.py::assert_destructive_annotation`), 새 파일·`ci.yml` 변경 없음. tests/ additive라 as-is 해시만 변경(prd 불변). | ✅32·⬜19·🚫1 (파괴적 표기 5 = ⬜) | ✅37·⬜14·🚫1 (파괴적 표기 5 = ✅ 전용 케이스) |

@@ -17,7 +17,10 @@
 - **실행 단계**: (a) 토큰 없이 `/mcp` 요청, (b) 무효 토큰 요청, (c) 유효 토큰 요청
 - **기대 결과**: (a)(b) 401 + `WWW-Authenticate`가 보호 리소스 메타데이터를 가리킴, (c) 정상 처리
 - **검증 AC**: AC1
-- **자동화**: ❌ 현재 자동화 없음(`internal/auth` 단위 테스트 부재) → 인증 게이트 자동화 추가 권장.
+- **자동화**: 배포 서버 통합 e2e `tests/integration/auth.py::test_platform_auth_safety_ac1_gate`
+  (인증 켠 배포 변형 `tests/k8s/kind/auth-fixture.yaml`에서 무Authorization `/mcp` 호출 →
+  401 `missing_token` + `WWW-Authenticate: Bearer`). Go 단위 `internal/auth/auth_test.go`의
+  RequireBearer 게이트 단언과 병행.
 
 ### 시나리오 2: 인증 디스커버리
 - **사전 조건**: 동일
@@ -74,6 +77,8 @@
   `TestRequireBearerAcceptsAPIKey`, `TestRequireBearerRejectsUnknownKeyInKeyOnlyMode`,
   `TestRequireBearerRejectsJWTInKeyOnlyMode`, `TestRequireBearerAcceptsAPIKeyAndJWT`
   — 유효/무효/부재 키 게이트, JWT 병행 시 양쪽 통과, 상수시간 대조 경로, 키 비노출 단언.
+  배포 서버 통합 e2e `tests/integration/auth.py::test_platform_auth_safety_ac7_api_key`
+  (인증 켠 변형에서 무효 키 → 401 `invalid_token`, 유효 키 → tools/list 인가, 응답에 키 미노출).
 
 ### 시나리오 8: 인증 방식 구성 유연성 (env 게이팅)
 - **사전 조건**: 각 조합별 env 세팅

@@ -60,10 +60,16 @@ def get_json(url: str, path: str) -> dict[str, Any]:
 
 
 @contextlib.asynccontextmanager
-async def open_session(url: str) -> AsyncIterator[ClientSession]:
-    """Open an MCP ClientSession against ``<url>/mcp`` (skips initialize)."""
+async def open_session(
+    url: str, headers: dict[str, str] | None = None
+) -> AsyncIterator[ClientSession]:
+    """Open an MCP ClientSession against ``<url>/mcp`` (skips initialize).
+
+    ``headers`` are attached to every HTTP request the transport makes, letting
+    auth-gated deployments be exercised with an ``Authorization`` header.
+    """
     mcp_url = f"{url}/mcp"
-    async with streamablehttp_client(mcp_url) as (read, write, _):
+    async with streamablehttp_client(mcp_url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
             yield session
 

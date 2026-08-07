@@ -1,0 +1,123 @@
+# Auth-enabled deployment variant for the platform-auth-safety AC1/AC7 e2e.
+#
+# The primary kind deployment sets MCP_AUTH_DISABLED=1 (see the kind overlay's
+# configMapGenerator), so its /mcp endpoint is ungated and the auth gate cannot
+# be observed there. This standalone variant runs the same homelab-k3s-mcp:ci
+# image with auth ENABLED — MCP_AUTH_DISABLED is left unset and MCP_API_KEYS
+# carries a single static key — so tests/integration/auth.py can assert that
+# unauthenticated / unknown-key requests are rejected (401) and the configured
+# key authorizes. No credential secrets are attached: main.go's buildXService
+# helpers degrade to an "unavailable" service when a secret is absent and the
+# server still starts, which is all the auth-gate assertions need.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-auth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-auth
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-auth
+  namespace: homelab-k3s-mcp-auth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-auth
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-auth
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-auth
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # Auth ENABLED: MCP_AUTH_DISABLED is deliberately unset and a single
+            # static API key gates /mcp. The value is a throwaway CI credential
+            # and must match API_KEY in tests/integration/auth.py.
+            - name: MCP_API_KEYS
+              value: ci-e2e-key
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-auth
+  namespace: homelab-k3s-mcp-auth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-auth
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-auth
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
