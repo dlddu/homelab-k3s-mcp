@@ -53,18 +53,22 @@
 - **기대 결과**: 서버 정상 기동, `tools/list` 정상 응답(전 도구 광고), 미설정 도구만 unavailable
   도구 에러
 - **검증 AC**: AC5
-- **자동화**: Go 단위 `mcp_test.go::TestToolsListIncludesAllTools`,
-  `TestToolsListAdvertisesAnnotations`, 각 `*UnavailableReturnsToolError`. 통합 `smoke.py`
-  (tools/list).
+- **자동화**: 통합 `tests/integration/no_config.py::test_platform_auth_safety_ac5_graceful_degradation`
+  — 자격증명 시크릿을 하나도 붙이지 않은 배포 변형(`auth-fixture.yaml`)에서 `/healthz` 정상 +
+  `tools/list`가 전체 도구 표면을 그대로 반환함을 단언. 자격증명이 모두 배선된 주 배포에서는
+  이 AC의 전제가 성립하지 않아 `smoke.py`로는 관측 불가. Go 단위
+  `mcp_test.go::TestToolsListIncludesAllTools`, `TestToolsListAdvertisesAnnotations`,
+  각 `*UnavailableReturnsToolError`.
 
 ### 시나리오 6: 헬스·레디니스
 - **사전 조건**: 서버 기동
 - **실행 단계**: `/healthz`, `/readyz`, 루트, 미존재 경로 요청
 - **기대 결과**: `/healthz` status=ok, `/readyz` status=ready, 루트는 서비스명, 미존재 경로는 404
 - **검증 AC**: AC6
-- **자동화**: Go 단위 `internal/server/health_test.go::TestHealthzReturnsOK`,
-  `TestReadyzReturnsReady`, `TestRootReturnsServiceName`, `TestUnknownRouteReturns404`. 통합
-  `smoke.py`(/healthz, /readyz).
+- **자동화**: 통합 `tests/integration/smoke.py::test_platform_auth_safety_ac6_health_readiness`
+  — 배포 서버의 `/healthz`(status=ok)·`/readyz`(status=ready)를 단언(비정상 측면은 e2e로
+  강제할 수단이 없어 미커버). Go 단위 `internal/server/health_test.go::TestHealthzReturnsOK`,
+  `TestReadyzReturnsReady`, `TestRootReturnsServiceName`, `TestUnknownRouteReturns404`.
 
 ### 시나리오 7: API 키 인증 게이트 (비대화형)
 - **사전 조건**: 인증 활성(`MCP_AUTH_DISABLED` 미설정), `MCP_API_KEYS`에 하나 이상의 키 설정

@@ -114,9 +114,9 @@
 - **규칙 1 (AC→e2e)**: 예외 목록에 없는 모든 AC는 자신을 검증하는 e2e 케이스를 **정확히 하나** 가진다.
 - **규칙 2 (e2e→AC)**: 모든 e2e 케이스는 **정확히 하나의 AC**를 검증 대상으로 선언한다.
 - **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
-- **현재 미충족(후속 리팩터)**: `tests/integration/`의 7개 파일은 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 ✅는 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다.
+- **현재 미충족(후속 리팩터, 잔여 24)**: `aws_config.py`(2) · `dear_baby.py`(2) · `opensearch.py`(9) · `workload.py`(11)는 아직 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 `✅ 통합`은 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다. `smoke.py`·`github_app.py`·`grafana.py`·`no_config.py`·`auth.py`는 분리를 마쳐 `run()`이 per-AC 케이스 디스패처다(2026-08-07).
 
-### AC 레지스트리 (52) — ✅ e2e 49 (통합 32 · 전용 케이스 17) · ⬜ e2e 보강 2 · 🚫 e2e 예외 1
+### AC 레지스트리 (52) — ✅ e2e 49 (통합 24 · 전용 케이스 25) · ⬜ e2e 보강 2 · 🚫 e2e 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -126,12 +126,12 @@
 | dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 통합 `dear_baby.py` |
 | dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 통합 `dear_baby.py` |
 | dear-baby-reset-user/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint` |
-| github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 통합 `github_app.py` |
-| github-app-installation-token/AC2 | 스코프 제한 | ✅ 통합 `github_app.py` |
+| github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 전용 케이스 `github_app.py::test_github_app_installation_token_ac1_short_lived_token` |
+| github-app-installation-token/AC2 | 스코프 제한 | ✅ 전용 케이스 `github_app.py::test_github_app_installation_token_ac2_scope_restriction` |
 | github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_github_app_installation_token_ac3_unconfigured_refusal` |
-| github-app-installation-token/AC4 | 베이스 키 비노출 | ✅ 통합 `github_app.py` |
-| grafana-token/AC1 | read-only 토큰 발급 | ✅ 통합 `grafana.py` |
-| grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 통합 `grafana.py` |
+| github-app-installation-token/AC4 | 베이스 키 비노출 | ✅ 전용 케이스 `github_app.py::test_github_app_installation_token_ac4_private_key_not_exposed` |
+| grafana-token/AC1 | read-only 토큰 발급 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac1_read_only_short_lived` |
+| grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac2_ready_to_use_env` |
 | grafana-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_grafana_token_ac3_unconfigured_refusal` |
 | grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac4_issuer_token_not_exposed` |
 | namespace-list/AC1 | 네임스페이스 열거 | ✅ 통합 `workload.py` |
@@ -149,13 +149,13 @@
 | opensearch-search/AC2 | 결과 상한 | ✅ 통합 `opensearch.py` |
 | opensearch-search/AC3 | AssumeRole·SigV4 접근 | ✅ 통합 `opensearch.py` |
 | opensearch-search/AC4 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_opensearch_search_ac4_unconfigured_refusal` |
-| ping/AC1 | 항상 pong 응답 | ✅ 통합 `smoke.py` |
+| ping/AC1 | 항상 pong 응답 | ✅ 전용 케이스 `smoke.py::test_ping_ac1_always_pong` |
 | platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac1_gate` |
 | platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 보강 필요 |
 | platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 통합 `workload.py` |
 | platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 e2e 예외 |
-| platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 통합 `smoke.py` |
-| platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 통합 `smoke.py` |
+| platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 전용 케이스 `no_config.py::test_platform_auth_safety_ac5_graceful_degradation` |
+| platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 전용 케이스 `smoke.py::test_platform_auth_safety_ac6_health_readiness` |
 | platform-auth-safety/AC7 | API 키 인증 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac7_api_key` |
 | platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ⬜ 보강 필요 |
 | pod-describe/AC1 | 파드 상세 스냅샷 | ✅ 전용 케이스 `workload.py::test_pod_describe_ac1_snapshot` |
@@ -180,6 +180,8 @@
 - **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/smoke.py`: 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/smoke.py`: env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
 
+> **통합 커버 8건 → per-AC 전용 케이스 — ✅ 완료(2026-08-07)**: 규칙 1·2를 미충족하던 파일 수준 `✅ 통합` 32건 중 **8건**(ping/AC1 · platform-auth-safety/AC5·AC6 · github-app-installation-token/AC1·AC2·AC4 · grafana-token/AC1·AC2)을 per-AC 전용 케이스로 분리했다. **신규 픽스처·신규 CI 스텝 없음** — 이미 도는 `smoke.py`(8080) · `github_app.py`(8083) · `grafana.py`(8085) · `no_config.py`(8088) 스텝 안에서 평면 `run()` 본문을 케이스 함수로 재구성했을 뿐이다. 분리 과정에서 **단정이 비어 있던 세 곳을 실제 단언으로 채웠다**: ping/AC1은 `smoke.py`가 `ping`을 호출조차 하지 않고 tools/list 존재만 확인했고, github/AC4(개인키 비노출)는 어떤 단언도 없었으며, grafana/AC1은 `# token expires` 주석의 **존재**만 봤다(이제 RFC3339를 파싱해 TTL이 50~70분임을 단언 — mock이 서버가 보낸 `expiresAt`을 되돌려주므로 1시간 TTL이 실제로 관측된다). **platform/AC5는 파일을 옮겼다**: AC 문언이 "자격증명 env를 비운 채 기동"을 전제하는데 `smoke.py`가 도는 주 배포는 모든 자격증명이 배선돼 있어 그 전제가 성립하지 않는다 — 전제가 성립하는 유일한 배포인 자격증명 미부착 변형(`no_config.py`, port 8088)으로 옮겨 `/healthz` + 전체 도구 표면 유지를 단언한다. 잔여 통합 24건(`aws_config.py` 2 · `dear_baby.py` 2 · `opensearch.py` 9 · `workload.py` 11)은 후속 슬라이스.
+
 > **platform 인증 게이트(2) — ✅ 완료(2026-08-07)**: platform-auth-safety/AC1(인증 게이트)·AC7(API 키 인증)을, 인증을 켠 최소 배포 변형(`tests/k8s/kind/auth-fixture.yaml` — 같은 `:ci` 이미지에 `MCP_API_KEYS` 세팅·`MCP_AUTH_DISABLED` 미설정, 자격증명 시크릿 미부착 graceful degrade)을 별 네임스페이스에 띄워 검증하는 per-AC 전용 e2e 케이스로 승격했다(신규 CI 스텝 port 8087, 기존 배포·kustomize 불변). 케이스: `auth.py::test_platform_auth_safety_ac1_gate`(무Authorization → 401 `missing_token`), `::test_platform_auth_safety_ac7_api_key`(무효 키 → 401 `invalid_token`, 유효 키 → tools/list 인가). 잔여 platform 2건(AC2 디스커버리·AC8 구성 유연성)은 OIDC 발급자 mock·다중 구성 전환이 필요한 후속 슬라이스.
 
 > **pod-describe(3) — ✅ 완료(2026-07-30)**: pod-describe/AC1·AC2·AC3을 기존 CI 스텝(`workload.py`, port 8081)과 `workload-fixture` 러닝 파드를 재사용하는 per-AC 전용 케이스로 승격했다(신규 파일·픽스처·`ci.yml` 변경 없음). 케이스: `workload.py::test_pod_describe_ac1_snapshot`(스냅샷 필드), `::test_pod_describe_ac2_target_resolution`(name/selector/workload 해석 + 상호배타 거부), `::test_pod_describe_ac3_events_best_effort`(events 필드 best-effort present).
@@ -200,6 +202,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-07 | 파일 수준 `✅ 통합` 커버 8건(ping/AC1·platform-auth-safety/AC5·AC6·github-app-installation-token/AC1·AC2·AC4·grafana-token/AC1·AC2)을 per-AC 전용 케이스로 분리(규칙 1·2). 신규 픽스처·신규 CI 스텝 없이 기존 스텝(`smoke.py` 8080·`github_app.py` 8083·`grafana.py` 8085·`no_config.py` 8088) 안에서 `run()`을 케이스 디스패처로 재구성. 분리하며 빈 단정 3건을 실제 단언으로 보강(ping은 호출 자체가 없었음 → `pong` 단언, github/AC4 개인키 비노출 단언 신설, grafana/AC1은 주석 존재 → RFC3339 파싱 후 TTL 50~70분 단언). platform/AC5는 AC 전제(자격증명 미설정)가 성립하지 않는 `smoke.py`에서 자격증명 미부착 변형 `no_config.py`로 이관. tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅49(통합 32·전용 17)·⬜2·🚫1 | ✅49(통합 24·전용 25)·⬜2·🚫1 |
 | 2026-08-07 | "미설정 시 graceful 거부" 6건(aws-config-get/AC3·github-app-installation-token/AC3·grafana-token/AC3·opensearch-{search/AC4,document-put/AC5,document-delete/AC5})을 per-AC 전용 e2e 케이스로 승격(`tests/integration/no_config.py`). 신규 픽스처 없이 직전 슬라이스가 올린 `auth-fixture.yaml`(자격증명 시크릿 미부착 = 정의상 no-config 배포)을 재사용하고 `ci.yml`에 검증 스텝 1개(port 8088)만 추가. 각 케이스는 `isError=true` + `<도메인> unavailable: <미구성 사유>` 단언에 더해 직후 `ping`이 정상임을 단언해 "서버 기동·다른 도구 무영향"까지 커버. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅43·⬜8·🚫1 (미설정 거부 6 = ⬜) | ✅49·⬜2·🚫1 (미설정 거부 6 = ✅ 전용 케이스) |
 | 2026-08-07 | platform-auth-safety/AC1(인증 게이트)·AC7(API 키 인증)을 인증 켠 배포 변형(`tests/k8s/kind/auth-fixture.yaml`: `MCP_API_KEYS` 세팅·`MCP_AUTH_DISABLED` 미설정, 자격증명 시크릿 미부착 graceful degrade) 전용 e2e per-AC 케이스로 승격(`auth.py::test_platform_auth_safety_ac1_gate` 무Authorization→401 `missing_token`, `::test_platform_auth_safety_ac7_api_key` 무효 키→401 `invalid_token`·유효 키→tools/list 인가). 신규 파일 `auth-fixture.yaml`·`tests/integration/auth.py` + `ci.yml` 스텝 3개(별 네임스페이스 배포·롤아웃 대기·port 8087 검증), 기존 배포·kustomize 불변. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅41·⬜10·🚫1 (platform AC1·AC7 = ⬜) | ✅43·⬜8·🚫1 (platform AC1·AC7 = ✅ 전용 케이스) |
 | 2026-07-30 | pod-describe/AC1(파드 상세 스냅샷)·AC2(대상 지정 방식)·AC3(이벤트 best-effort)을 배포 서버 통합 e2e per-AC 전용 케이스로 승격(`workload.py::test_pod_describe_ac1_snapshot`·`::test_pod_describe_ac2_target_resolution`·`::test_pod_describe_ac3_events_best_effort`). CI가 이미 실행하는 `workload.py::run()`에 케이스 추가(기존 `workload-fixture` 러닝 파드·CI 스텝 port 8081 재사용, 신규 파일·픽스처·`ci.yml` 변경 없음, 부작용 없음). AC2는 name/selector/workload 3경로 해석 + name+selector 상호배타 McpError 거부까지 단언. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅38·⬜13·🚫1 (pod-describe 3 = ⬜) | ✅41·⬜10·🚫1 (pod-describe 3 = ✅ 전용 케이스) |
