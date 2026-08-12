@@ -21,6 +21,8 @@
   방향은 **홈랩 운영의 마찰(명령어 암기·반복 타이핑·컨텍스트 전환)을 줄이는 것**이다.
 - **관련 도구**: `namespace_list`, `workload_list`, `workload_logs`, `pod_describe`,
   `workload_restart`, `workload_scale`, `ping`
+- **경계**: 쿠버네티스 API를 직접 다루는 도구만 여기 속한다. 클러스터 위에 올라간 **앱의
+  기능**을 도구로 여는 것은 V5의 몫이다.
 
 ### V2: 단명·최소권한 자격증명
 
@@ -46,9 +48,9 @@
     Bearer(RS256 JWT + JWKS 검증)로, 자동화(비대화형) 클라이언트는 정적 API 키로
     인증한다. 두 방식은 병행 가능하며 최소 하나는 활성이어야 한다.
   - 파괴적 도구는 `destructiveHint`로 명시된다 — `workload_restart`,
-    `workload_scale`, `dear_baby_reset_user`.
-  - 통합(k8s/GitHub/AWS/Grafana)이 미설정이어도 서버는 죽지 않고 해당 도구만 에러를
-    반환한다(graceful degradation).
+    `workload_scale`, `dear_baby_reset_user`, `session_write`.
+  - 통합(k8s/GitHub/AWS/Grafana/OpenSearch/session-platform)이 미설정이어도 서버는 죽지
+    않고 해당 도구만 에러를 반환한다(graceful degradation).
   - 클러스터 RBAC가 최소권한으로 제한된다 — 워크로드에 `get/list/watch/patch`만
     부여되고 `delete`·시크릿 읽기·워크로드 생성 권한이 없어, 가능한 피해 범위가
     구조적으로 제한된다.
@@ -68,6 +70,18 @@
 - **관련 도구**: `opensearch_search`, `opensearch_document_put`,
   `opensearch_document_delete`
 
+### V5: 클러스터 내부 앱 기능의 도구화
+
+- **유형**: 추상적
+- **설명**: 클러스터 안에서만 닿는 앱의 기능(내부 서비스 API, 파드 안의 CLI)을 MCP 도구
+  표면으로 끌어올려, 운영자가 포트포워딩·`kubectl exec`·인그레스 공개 없이 AI 어시스턴트를
+  통해 다룬다. 노출되는 것은 앱 전체가 아니라 **도구로 명시한 동작뿐**이며, 그 동작의 안전
+  장치(인증 게이트·파괴적 표기·미설정 거부)는 V3가 담당한다. 이 가치가 지향하는 방향은
+  **앱을 외부에 열지 않고도 필요한 조작만 좁게 열어주는 것**이다.
+- **경계**: V1이 쿠버네티스 API 자체를 다루는 반면, V5는 클러스터 안에서 돌고 있는 앱의
+  도메인 기능을 다룬다. 같은 `kubectl exec`을 쓰더라도 목적이 앱 상태 조작이면 V5다.
+- **관련 도구**: `dear_baby_reset_user`, `session_list`, `session_read`, `session_write`
+
 ---
 
 ## 변경 이력
@@ -76,4 +90,5 @@
 |------|-----------|
 | 2026-06-19 | 가치 문서 최초 생성. 소유자 지정(홈랩 운영자), V1~V3 정의. |
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |
+| 2026-08-12 | V5(클러스터 내부 앱 기능의 도구화) 추가 — session-platform 제어면 연동 도구 3종의 근거 가치. 기존 `dear_baby_reset_user`를 V1에서 V5로 재배치(앱 상태 조작은 클러스터 운영이 아니라는 경계 확정)하고, V1에 경계 문구 추가. |
 | 2026-07-04 | V3 인증 서술 확장 — `/mcp`에 정적 API 키 인증(비대화형 자동화용)을 OAuth와 병행 추가(platform PRD AC7·AC8). 새 가치 추가 없음. |
