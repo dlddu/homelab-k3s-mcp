@@ -14,10 +14,10 @@
 
 ## 현재 상태 요약
 
-- 정의된 가치: **4개** (V1~V4)
-- PRD: **15개** (도구 14 + 공통 기반 1)
-- Acceptance Criteria: **52개** (가치 연결됨: 52 / 미연결: 0)
-- 테스트 문서: **15개** (AC 커버됨: 52 / 미커버: 0)
+- 정의된 가치: **5개** (V1~V5)
+- PRD: **18개** (도구 17 + 공통 기반 1)
+- Acceptance Criteria: **64개** (가치 연결됨: 64 / 미연결: 0)
+- 테스트 문서: **18개** (AC 커버됨: 64 / 미커버: 0)
 - **건강 상태**: 🟢 **건강함** — 가치 → PRD → AC → 테스트 전 계층 연결 완료
 
 > 문서 체계의 모든 화살표가 연결되었다(고아 가치·미정렬 문서·무가치 PRD·AC 없는 PRD·
@@ -29,9 +29,9 @@
 | 종류 | 파일 |
 |------|------|
 | 가치 문서 | `values.md` |
-| PRD (도구) | `prd-ping.md`, `prd-namespace-list.md`, `prd-workload-list.md`, `prd-workload-logs.md`, `prd-pod-describe.md`, `prd-workload-restart.md`, `prd-workload-scale.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-grafana-token.md`, `prd-aws-config-get.md`, `prd-opensearch-search.md`, `prd-opensearch-document-put.md`, `prd-opensearch-document-delete.md` |
+| PRD (도구) | `prd-ping.md`, `prd-namespace-list.md`, `prd-workload-list.md`, `prd-workload-logs.md`, `prd-pod-describe.md`, `prd-workload-restart.md`, `prd-workload-scale.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-grafana-token.md`, `prd-aws-config-get.md`, `prd-opensearch-search.md`, `prd-opensearch-document-put.md`, `prd-opensearch-document-delete.md`, `prd-session-list.md`, `prd-session-read.md`, `prd-session-write.md` |
 | PRD (공통) | `prd-platform-auth-safety.md` |
-| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (15개) |
+| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (18개) |
 | 상태 추적 | `doc-tracker.md` |
 
 ## PRD ↔ 가치 ↔ AC ↔ 테스트 매트릭스
@@ -45,23 +45,27 @@
 | pod_describe | V1, V3 | 3 | test-pod-describe | ✅ 완전 |
 | workload_restart | V1, V3 | 2 | test-workload-restart | ✅ 완전 |
 | workload_scale | V1, V3 | 3 | test-workload-scale | ✅ 완전 |
-| dear_baby_reset_user | V1, V3 | 3 | test-dear-baby-reset-user | ✅ 완전 |
+| dear_baby_reset_user | V5, V3 | 3 | test-dear-baby-reset-user | ✅ 완전 |
 | github_app_installation_token | V2, V3 | 4 | test-github-app-installation-token | ✅ 완전 |
 | grafana_token | V2, V3 | 4 | test-grafana-token | ✅ 완전 |
 | aws_config_get | V2, V3 | 3 | test-aws-config-get | ✅ 완전 |
 | opensearch_search | V4, V2, V3 | 4 | test-opensearch-search | ✅ 완전 |
 | opensearch_document_put | V4, V2, V3 | 5 | test-opensearch-document-put | ✅ 완전 |
 | opensearch_document_delete | V4, V2, V3 | 5 | test-opensearch-document-delete | ✅ 완전 |
+| session_list | V5, V3 | 3 | test-session-list | ✅ 완전 (구현 선행) |
+| session_read | V5, V3 | 4 | test-session-read | ✅ 완전 (구현 선행) |
+| session_write | V5, V3 | 5 | test-session-write | ✅ 완전 (구현 선행) |
 | platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
 
 ## 가치 커버리지
 
 | 가치 | 이 가치를 달성하는 PRD |
 |------|------------------------|
-| V1: 자연어로 클러스터 운영 | namespace_list, workload_list, workload_logs, pod_describe, workload_restart, workload_scale, dear_baby_reset_user |
+| V1: 자연어로 클러스터 운영 | namespace_list, workload_list, workload_logs, pod_describe, workload_restart, workload_scale |
 | V2: 단명·최소권한 자격증명 | github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete |
-| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), ping, pod_describe, workload_restart, workload_scale, dear_baby_reset_user, github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete |
+| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), ping, pod_describe, workload_restart, workload_scale, dear_baby_reset_user, github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete, session_list, session_read, session_write |
 | V4: 운영 지식의 축적·검색 | opensearch_search, opensearch_document_put, opensearch_document_delete |
+| V5: 클러스터 내부 앱 기능의 도구화 | dear_baby_reset_user, session_list, session_read, session_write |
 
 ## 위험 진단
 
@@ -72,16 +76,16 @@
 - (없음)
 
 ### 무가치 PRD / AC 없는 PRD
-- (없음) — 15개 PRD 모두 가치를 달성하고 AC를 보유
+- (없음) — 18개 PRD 모두 가치를 달성하고 AC를 보유
 
 ### 미연결 AC (가치와 연결되지 않은 AC)
-- (없음) — 52개 AC 모두 가치에 연결
+- (없음) — 64개 AC 모두 가치에 연결
 
 ### 미검증 AC (테스트 없는 AC)
-- (없음) — 52개 AC 모두 테스트 문서의 시나리오로 커버
+- (없음) — 64개 AC 모두 테스트 문서의 시나리오로 커버
 
 ### 고아 테스트 (AC를 참조하지 않는 테스트)
-- (없음) — 15개 테스트 문서 모두 검증 대상 AC를 명시
+- (없음) — 18개 테스트 문서 모두 검증 대상 AC를 명시
 
 ## 자동화 커버리지 (문서 구조와 별개)
 
@@ -101,6 +105,10 @@
 - 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
   platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
+  - **session 3종 12 AC — 도구 미구현(구현 선행 문서)**. session-platform 배포가
+    2026-08-06에 클러스터에서 제거된 상태라(레포 `dlddu/session-platform`은 유지) 실제
+    제어면 대상 검증이 불가능하다. 배선 순서: 앱 재배포 → `SESSION_PLATFORM_ENDPOINT`
+    배선 → `internal/sessionplatform` 구현 → 단위·통합 테스트 작성.
   - opensearch 3종 — **프로덕션 스모크 미수행**(env 배선이 infrastructure/flux-cd-apps
     반영에 걸려 있음). CI 자동화는 완료; 실제 `kubernetes-docs` 컬렉션 대상
     put→search→delete 확인은 배선 완료 후 수행.
@@ -116,7 +124,7 @@
 - **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
 - **현재 미충족(후속 리팩터, 잔여 24)**: `aws_config.py`(2) · `dear_baby.py`(2) · `opensearch.py`(9) · `workload.py`(11)는 아직 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 `✅ 통합`은 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다. `smoke.py`·`github_app.py`·`grafana.py`·`no_config.py`·`auth.py`는 분리를 마쳐 `run()`이 per-AC 케이스 디스패처다(2026-08-07).
 
-### AC 레지스트리 (52) — ✅ e2e 49 (통합 24 · 전용 케이스 25) · ⬜ e2e 보강 2 · 🚫 e2e 예외 1
+### AC 레지스트리 (64) — ✅ e2e 49 (통합 24 · 전용 케이스 25) · ⬜ e2e 보강 14 · 🚫 e2e 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -161,6 +169,18 @@
 | pod-describe/AC1 | 파드 상세 스냅샷 | ✅ 전용 케이스 `workload.py::test_pod_describe_ac1_snapshot` |
 | pod-describe/AC2 | 대상 지정 방식 | ✅ 전용 케이스 `workload.py::test_pod_describe_ac2_target_resolution` |
 | pod-describe/AC3 | 이벤트 best-effort | ✅ 전용 케이스 `workload.py::test_pod_describe_ac3_events_best_effort` |
+| session-list/AC1 | 세션 열거 | ⬜ 보강 필요 (도구 미구현) |
+| session-list/AC2 | 상태를 바꾸지 않는 조회 | ⬜ 보강 필요 (도구 미구현) |
+| session-list/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 (도구 미구현) |
+| session-read/AC1 | 오프셋 커서 읽기 | ⬜ 보강 필요 (도구 미구현) |
+| session-read/AC2 | 상태 분기 노출 | ⬜ 보강 필요 (도구 미구현) |
+| session-read/AC3 | 대상 부재·잘못된 커서 처리 | ⬜ 보강 필요 (도구 미구현) |
+| session-read/AC4 | 미설정 시 graceful 거부 | ⬜ 보강 필요 (도구 미구현) |
+| session-write/AC1 | 워크로드 입력 주입 | ⬜ 보강 필요 (도구 미구현) |
+| session-write/AC2 | 상태 분기 처리와 노출 | ⬜ 보강 필요 (도구 미구현) |
+| session-write/AC3 | 파괴적 작업 표기 | ⬜ 보강 필요 (도구 미구현) |
+| session-write/AC4 | 거부 응답의 구분 전달 | ⬜ 보강 필요 (도구 미구현) |
+| session-write/AC5 | 미설정 시 graceful 거부 | ⬜ 보강 필요 (도구 미구현) |
 | workload-list/AC1 | 종류별 워크로드 조회 | ✅ 통합 `workload.py` |
 | workload-list/AC2 | 네임스페이스 스코프 | ✅ 통합 `workload.py` |
 | workload-logs/AC1 | 워크로드 기준 로그 조회 | ✅ 통합 `workload.py` |
@@ -173,12 +193,13 @@
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 통합 `workload.py` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac3_destructive_hint` |
 
-### ⬜ e2e 보강 backlog (2) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
+### ⬜ e2e 보강 backlog (14) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
 - **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/smoke.py`: 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/smoke.py`: env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
+- **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → `tests/integration/session.py`(신규) + 미설정 거부 3건은 기존 `no_config.py`(port 8088, 자격증명 미부착 변형). **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
 
 > **통합 커버 8건 → per-AC 전용 케이스 — ✅ 완료(2026-08-07)**: 규칙 1·2를 미충족하던 파일 수준 `✅ 통합` 32건 중 **8건**(ping/AC1 · platform-auth-safety/AC5·AC6 · github-app-installation-token/AC1·AC2·AC4 · grafana-token/AC1·AC2)을 per-AC 전용 케이스로 분리했다. **신규 픽스처·신규 CI 스텝 없음** — 이미 도는 `smoke.py`(8080) · `github_app.py`(8083) · `grafana.py`(8085) · `no_config.py`(8088) 스텝 안에서 평면 `run()` 본문을 케이스 함수로 재구성했을 뿐이다. 분리 과정에서 **단정이 비어 있던 세 곳을 실제 단언으로 채웠다**: ping/AC1은 `smoke.py`가 `ping`을 호출조차 하지 않고 tools/list 존재만 확인했고, github/AC4(개인키 비노출)는 어떤 단언도 없었으며, grafana/AC1은 `# token expires` 주석의 **존재**만 봤다(이제 RFC3339를 파싱해 TTL이 50~70분임을 단언 — mock이 서버가 보낸 `expiresAt`을 되돌려주므로 1시간 TTL이 실제로 관측된다). **platform/AC5는 파일을 옮겼다**: AC 문언이 "자격증명 env를 비운 채 기동"을 전제하는데 `smoke.py`가 도는 주 배포는 모든 자격증명이 배선돼 있어 그 전제가 성립하지 않는다 — 전제가 성립하는 유일한 배포인 자격증명 미부착 변형(`no_config.py`, port 8088)으로 옮겨 `/healthz` + 전체 도구 표면 유지를 단언한다. 잔여 통합 24건(`aws_config.py` 2 · `dear_baby.py` 2 · `opensearch.py` 9 · `workload.py` 11)은 후속 슬라이스.
 
@@ -202,6 +223,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-12 | V5(클러스터 내부 앱 기능의 도구화) 신설 + session-platform 제어면 연동 도구 3종(`session_list`·`session_read`·`session_write`) PRD·테스트 문서 작성(AC 12, 구현 선행 문서). 기존 `dear_baby_reset_user`의 달성 가치를 V1→V5로 재배치(앱 상태 조작은 클러스터 운영이 아님 — V1/V5 경계를 values.md에 명문화). 도구는 제어면 `GET /sessions`·`POST /sessions/{id}/read`·`/write`에 각각 대응하며, read/write의 "접근=active화" 부수 효과(유휴 승격·스냅샷 복원)를 결과 `path`로 노출하는 것을 AC로 못박음. session-platform 배포가 2026-08-06 제거된 상태라 12 AC 전부 자동화 공백. | 가치 4 / PRD 15 / AC 52 / 테스트 15 · ✅49·⬜2·🚫1 | 가치 5 / PRD 18 / AC 64 / 테스트 18 · ✅49·⬜14·🚫1 |
 | 2026-08-07 | 파일 수준 `✅ 통합` 커버 8건(ping/AC1·platform-auth-safety/AC5·AC6·github-app-installation-token/AC1·AC2·AC4·grafana-token/AC1·AC2)을 per-AC 전용 케이스로 분리(규칙 1·2). 신규 픽스처·신규 CI 스텝 없이 기존 스텝(`smoke.py` 8080·`github_app.py` 8083·`grafana.py` 8085·`no_config.py` 8088) 안에서 `run()`을 케이스 디스패처로 재구성. 분리하며 빈 단정 3건을 실제 단언으로 보강(ping은 호출 자체가 없었음 → `pong` 단언, github/AC4 개인키 비노출 단언 신설, grafana/AC1은 주석 존재 → RFC3339 파싱 후 TTL 50~70분 단언). platform/AC5는 AC 전제(자격증명 미설정)가 성립하지 않는 `smoke.py`에서 자격증명 미부착 변형 `no_config.py`로 이관. tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅49(통합 32·전용 17)·⬜2·🚫1 | ✅49(통합 24·전용 25)·⬜2·🚫1 |
 | 2026-08-07 | "미설정 시 graceful 거부" 6건(aws-config-get/AC3·github-app-installation-token/AC3·grafana-token/AC3·opensearch-{search/AC4,document-put/AC5,document-delete/AC5})을 per-AC 전용 e2e 케이스로 승격(`tests/integration/no_config.py`). 신규 픽스처 없이 직전 슬라이스가 올린 `auth-fixture.yaml`(자격증명 시크릿 미부착 = 정의상 no-config 배포)을 재사용하고 `ci.yml`에 검증 스텝 1개(port 8088)만 추가. 각 케이스는 `isError=true` + `<도메인> unavailable: <미구성 사유>` 단언에 더해 직후 `ping`이 정상임을 단언해 "서버 기동·다른 도구 무영향"까지 커버. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅43·⬜8·🚫1 (미설정 거부 6 = ⬜) | ✅49·⬜2·🚫1 (미설정 거부 6 = ✅ 전용 케이스) |
 | 2026-08-07 | platform-auth-safety/AC1(인증 게이트)·AC7(API 키 인증)을 인증 켠 배포 변형(`tests/k8s/kind/auth-fixture.yaml`: `MCP_API_KEYS` 세팅·`MCP_AUTH_DISABLED` 미설정, 자격증명 시크릿 미부착 graceful degrade) 전용 e2e per-AC 케이스로 승격(`auth.py::test_platform_auth_safety_ac1_gate` 무Authorization→401 `missing_token`, `::test_platform_auth_safety_ac7_api_key` 무효 키→401 `invalid_token`·유효 키→tools/list 인가). 신규 파일 `auth-fixture.yaml`·`tests/integration/auth.py` + `ci.yml` 스텝 3개(별 네임스페이스 배포·롤아웃 대기·port 8087 검증), 기존 배포·kustomize 불변. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅41·⬜10·🚫1 (platform AC1·AC7 = ⬜) | ✅43·⬜8·🚫1 (platform AC1·AC7 = ✅ 전용 케이스) |
