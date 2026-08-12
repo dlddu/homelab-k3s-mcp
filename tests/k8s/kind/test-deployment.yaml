@@ -88,3 +88,66 @@ spec:
             limits:
               cpu: 50m
               memory: 16Mi
+---
+# Non-Deployment workload kinds for workload_list AC1 ("각 enum 종류에 대해")
+# and workload_scale AC2 (DaemonSet rejection against a DaemonSet that really
+# exists, so the refusal is observably about the *kind* rather than about the
+# object being absent). Both are list-only targets: no case waits for their
+# pods, so ci.yml needs no extra rollout step.
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: workload-fixture-sts
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: workload-fixture-sts
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  serviceName: workload-fixture-sts
+  replicas: 1
+  selector:
+    matchLabels:
+      app: workload-fixture-sts
+  template:
+    metadata:
+      labels:
+        app: workload-fixture-sts
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 50m
+              memory: 16Mi
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: workload-fixture-ds
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: workload-fixture-ds
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  selector:
+    matchLabels:
+      app: workload-fixture-ds
+  template:
+    metadata:
+      labels:
+        app: workload-fixture-ds
+    spec:
+      containers:
+        - name: pause
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 50m
+              memory: 16Mi

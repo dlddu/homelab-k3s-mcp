@@ -122,9 +122,9 @@
 - **규칙 1 (AC→e2e)**: 예외 목록에 없는 모든 AC는 자신을 검증하는 e2e 케이스를 **정확히 하나** 가진다.
 - **규칙 2 (e2e→AC)**: 모든 e2e 케이스는 **정확히 하나의 AC**를 검증 대상으로 선언한다.
 - **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
-- **현재 미충족(후속 리팩터, 잔여 24)**: `aws_config.py`(2) · `dear_baby.py`(2) · `opensearch.py`(9) · `workload.py`(11)는 아직 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 `✅ 통합`은 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다. `smoke.py`·`github_app.py`·`grafana.py`·`no_config.py`·`auth.py`는 분리를 마쳐 `run()`이 per-AC 케이스 디스패처다(2026-08-07).
+- **현재 미충족(후속 리팩터, 잔여 13)**: `aws_config.py`(2) · `dear_baby.py`(2) · `opensearch.py`(9)는 아직 도메인당 평면 스크립트로 여러 AC를 함께 실행한다(아래 표의 `✅ 통합`은 파일 수준 커버). 규칙 1·2를 충족하려면 이 스크립트들을 **per-AC 케이스 함수로 분리**해야 하며, 이는 kind 클러스터 CI 검증이 필요한 후속 작업이다. `smoke.py`·`github_app.py`·`grafana.py`·`no_config.py`·`auth.py`·`workload.py`는 분리를 마쳐 `run()`이 per-AC 케이스 디스패처다(2026-08-07).
 
-### AC 레지스트리 (64) — ✅ e2e 49 (통합 24 · 전용 케이스 25) · ⬜ e2e 보강 14 · 🚫 e2e 예외 1
+### AC 레지스트리 (64) — ✅ e2e 49 (통합 13 · 전용 케이스 36) · ⬜ e2e 보강 14 · 🚫 e2e 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -142,7 +142,7 @@
 | grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac2_ready_to_use_env` |
 | grafana-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_grafana_token_ac3_unconfigured_refusal` |
 | grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac4_issuer_token_not_exposed` |
-| namespace-list/AC1 | 네임스페이스 열거 | ✅ 통합 `workload.py` |
+| namespace-list/AC1 | 네임스페이스 열거 | ✅ 전용 케이스 `workload.py::test_namespace_list_ac1_enumerates_namespaces` |
 | opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 통합 `opensearch.py` |
 | opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 통합 `opensearch.py` |
 | opensearch-document-delete/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_delete_ac3_destructive_hint` |
@@ -160,7 +160,7 @@
 | ping/AC1 | 항상 pong 응답 | ✅ 전용 케이스 `smoke.py::test_ping_ac1_always_pong` |
 | platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac1_gate` |
 | platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 보강 필요 |
-| platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 통합 `workload.py` |
+| platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 전용 케이스 `workload.py::test_platform_auth_safety_ac3_rbac_boundary` |
 | platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 e2e 예외 |
 | platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 전용 케이스 `no_config.py::test_platform_auth_safety_ac5_graceful_degradation` |
 | platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 전용 케이스 `smoke.py::test_platform_auth_safety_ac6_health_readiness` |
@@ -181,16 +181,16 @@
 | session-write/AC3 | 파괴적 작업 표기 | ⬜ 보강 필요 (도구 미구현) |
 | session-write/AC4 | 거부 응답의 구분 전달 | ⬜ 보강 필요 (도구 미구현) |
 | session-write/AC5 | 미설정 시 graceful 거부 | ⬜ 보강 필요 (도구 미구현) |
-| workload-list/AC1 | 종류별 워크로드 조회 | ✅ 통합 `workload.py` |
-| workload-list/AC2 | 네임스페이스 스코프 | ✅ 통합 `workload.py` |
-| workload-logs/AC1 | 워크로드 기준 로그 조회 | ✅ 통합 `workload.py` |
-| workload-logs/AC2 | tail 라인 제어 | ✅ 통합 `workload.py` |
-| workload-logs/AC3 | 크래시 루프 후 직전 로그 | ✅ 통합 `workload.py` |
-| workload-logs/AC4 | 컨테이너 선택과 필터 | ✅ 통합 `workload.py` |
-| workload-restart/AC1 | 롤링 재시작 트리거 | ✅ 통합 `workload.py` |
+| workload-list/AC1 | 종류별 워크로드 조회 | ✅ 전용 케이스 `workload.py::test_workload_list_ac1_kinds_with_replica_summary` |
+| workload-list/AC2 | 네임스페이스 스코프 | ✅ 전용 케이스 `workload.py::test_workload_list_ac2_namespace_scope` |
+| workload-logs/AC1 | 워크로드 기준 로그 조회 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac1_logs_by_workload` |
+| workload-logs/AC2 | tail 라인 제어 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac2_tail_lines` |
+| workload-logs/AC3 | 크래시 루프 후 직전 로그 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac3_previous_after_crash` |
+| workload-logs/AC4 | 컨테이너 선택과 필터 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac4_container_and_filters` |
+| workload-restart/AC1 | 롤링 재시작 트리거 | ✅ 전용 케이스 `workload.py::test_workload_restart_ac1_rolling_restart` |
 | workload-restart/AC2 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_restart_ac2_destructive_hint` |
-| workload-scale/AC1 | 레플리카 설정 | ✅ 통합 `workload.py` |
-| workload-scale/AC2 | DaemonSet 거부 | ✅ 통합 `workload.py` |
+| workload-scale/AC1 | 레플리카 설정 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac1_replica_count` |
+| workload-scale/AC2 | DaemonSet 거부 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac2_daemonset_rejected` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac3_destructive_hint` |
 
 ### ⬜ e2e 보강 backlog (14) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
@@ -200,6 +200,10 @@
 - **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/smoke.py`: 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/smoke.py`: env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
 - **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → `tests/integration/session.py`(신규) + 미설정 거부 3건은 기존 `no_config.py`(port 8088, 자격증명 미부착 변형). **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
+
+> **부분 단정 잔여(계수 밖, ✅ 유지)**: `workload-logs/AC4`의 "파드에 컨테이너가 둘 이상이면 `container`가 필요하다" 절은 아직 단정되지 않는다 — 이 배포의 픽스처 파드가 전부 단일 컨테이너라 거부를 관측할 대상이 없다. 러닝 멀티컨테이너 픽스처 + 롤아웃 대기(= `ci.yml` 스텝 추가)가 필요해 후속 슬라이스로 남긴다. 케이스 docstring에 "단언하지 않는 것"으로 명시돼 있다(2026-08-07).
+
+> **`workload.py` 통합 커버 11건 → per-AC 전용 케이스 — ✅ 완료(2026-08-07)**: 잔여 `✅ 통합` 24건 중 `workload.py`가 소유한 **11건 전부**(namespace-list/AC1 · workload-list/AC1·AC2 · workload-logs/AC1·AC2·AC3·AC4 · workload-restart/AC1 · workload-scale/AC1·AC2 · platform-auth-safety/AC3)를 per-AC 전용 케이스로 분리했다. **신규 CI 스텝·신규 네임스페이스·신규 롤아웃 대기 없음** — 이미 도는 `workload.py`(port 8081) 스텝 안에서 평면 `run()`을 케이스 디스패처로 재구성했고, 픽스처는 목록 조회 전용 오브젝트 2개(`workload-fixture-sts` StatefulSet · `workload-fixture-ds` DaemonSet)만 `test-deployment.yaml`에 더했다(러닝 파드를 기다리는 케이스가 없어 `ci.yml` 무변경). 분리하며 **AC 본문과 대조해 비어 있거나 반쪽이던 단정 6건을 실단정으로 채웠다**: (1) platform/AC3(RBAC 경계)은 `workload.py`에 단언이 **0개**였다 → `kubectl auth can-i`로 배포된 ServiceAccount 신원(그룹 3개 포함)을 임퍼소네이트해 허용 15동사·금지 11동사를 apiserver SubjectAccessReview로 관측(매니페스트 재독이 아니라 실제로 바인딩된 RBAC를 본다). (2) workload-list/AC1은 AC가 요구하는 "각 enum 종류"를 Deployment 하나만 보고 "레플리카 요약"을 아예 안 봤다 → 3 enum 전부 호출 + kind별 요약 필드를 단정하고 **다른 kind의 필드가 섞여 나오지 않음**까지 확인. (3) namespace-list/AC1은 AC 문언의 **생성 시각**을 빼먹었다 → 전 항목에 phase·creation_timestamp가 있고 파싱 가능한 실제 instant임을 단정. (4) workload-logs/AC1은 로그를 내지 않는 `pause` 픽스처에서 `logs == ""`만 봐 "최근 로그가 반환된다"를 관측하지 못했다 → 실제로 출력을 내는 `crashloop-fixture`의 현재 인스턴스 마커를 단정(이전 인스턴스 마커와 문자열이 달라 AC3와 서로를 대신할 수 없다). (5) workload-scale/AC1은 AC가 명시한 **replicas=0**을 한 번도 시도하지 않았다 → 3 → 0 → 1 경로로 확장(0은 `.status.replicas` 드레인으로 확인). (6) workload-restart/AC1은 "delete가 아닌 patch"를 단언하지 않았다 → 재시작 전후 `metadata.uid`·`creationTimestamp` 불변 + `metadata.generation` 증가를 단정. workload-logs/AC4도 에코 필드 확인에서 **출력 반영**(timestamps → RFC3339 접두, since_seconds → 시작 마커 탈락) + 잘못된 컨테이너 거부로 강화했다. 잔여 통합 13건(`aws_config.py` 2 · `dear_baby.py` 2 · `opensearch.py` 9)은 후속 슬라이스.
 
 > **통합 커버 8건 → per-AC 전용 케이스 — ✅ 완료(2026-08-07)**: 규칙 1·2를 미충족하던 파일 수준 `✅ 통합` 32건 중 **8건**(ping/AC1 · platform-auth-safety/AC5·AC6 · github-app-installation-token/AC1·AC2·AC4 · grafana-token/AC1·AC2)을 per-AC 전용 케이스로 분리했다. **신규 픽스처·신규 CI 스텝 없음** — 이미 도는 `smoke.py`(8080) · `github_app.py`(8083) · `grafana.py`(8085) · `no_config.py`(8088) 스텝 안에서 평면 `run()` 본문을 케이스 함수로 재구성했을 뿐이다. 분리 과정에서 **단정이 비어 있던 세 곳을 실제 단언으로 채웠다**: ping/AC1은 `smoke.py`가 `ping`을 호출조차 하지 않고 tools/list 존재만 확인했고, github/AC4(개인키 비노출)는 어떤 단언도 없었으며, grafana/AC1은 `# token expires` 주석의 **존재**만 봤다(이제 RFC3339를 파싱해 TTL이 50~70분임을 단언 — mock이 서버가 보낸 `expiresAt`을 되돌려주므로 1시간 TTL이 실제로 관측된다). **platform/AC5는 파일을 옮겼다**: AC 문언이 "자격증명 env를 비운 채 기동"을 전제하는데 `smoke.py`가 도는 주 배포는 모든 자격증명이 배선돼 있어 그 전제가 성립하지 않는다 — 전제가 성립하는 유일한 배포인 자격증명 미부착 변형(`no_config.py`, port 8088)으로 옮겨 `/healthz` + 전체 도구 표면 유지를 단언한다. 잔여 통합 24건(`aws_config.py` 2 · `dear_baby.py` 2 · `opensearch.py` 9 · `workload.py` 11)은 후속 슬라이스.
 
@@ -223,6 +227,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-13 | `workload.py`가 소유하던 파일 수준 `✅ 통합` 커버 **11건**(namespace-list/AC1 · workload-list/AC1·AC2 · workload-logs/AC1~AC4 · workload-restart/AC1 · workload-scale/AC1·AC2 · platform-auth-safety/AC3)을 per-AC 전용 케이스로 분리(규칙 1·2). 신규 CI 스텝·네임스페이스·롤아웃 대기 없이 기존 스텝(`workload.py` 8081) 안에서 `run()`을 케이스 디스패처로 재구성하고, `test-deployment.yaml`에 목록 조회 전용 StatefulSet·DaemonSet 1개씩만 추가(`ci.yml` 무변경). 분리하며 빈/반쪽 단정 6건을 실단정으로 보강(platform/AC3은 단언 0 → `kubectl auth can-i` 임퍼소네이션으로 허용 15·금지 11 동사 관측, workload-list/AC1은 enum 1종·요약 미단언 → 3종+kind별 요약, namespace-list/AC1 생성 시각 추가, workload-logs/AC1을 실제 출력 픽스처로 이관, workload-scale/AC1에 replicas=0 추가, workload-restart/AC1에 uid·generation 단정 추가). tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅49(통합 24·전용 25)·⬜14·🚫1 | ✅49(통합 13·전용 36)·⬜14·🚫1 |
 | 2026-08-12 | V5(클러스터 내부 앱 기능의 도구화) 신설 + session-platform 제어면 연동 도구 3종(`session_list`·`session_read`·`session_write`) PRD·테스트 문서 작성(AC 12, 구현 선행 문서). 기존 `dear_baby_reset_user`의 달성 가치를 V1→V5로 재배치(앱 상태 조작은 클러스터 운영이 아님 — V1/V5 경계를 values.md에 명문화). 도구는 제어면 `GET /sessions`·`POST /sessions/{id}/read`·`/write`에 각각 대응하며, read/write의 "접근=active화" 부수 효과(유휴 승격·스냅샷 복원)를 결과 `path`로 노출하는 것을 AC로 못박음. session-platform 배포가 2026-08-06 제거된 상태라 12 AC 전부 자동화 공백. | 가치 4 / PRD 15 / AC 52 / 테스트 15 · ✅49·⬜2·🚫1 | 가치 5 / PRD 18 / AC 64 / 테스트 18 · ✅49·⬜14·🚫1 |
 | 2026-08-07 | 파일 수준 `✅ 통합` 커버 8건(ping/AC1·platform-auth-safety/AC5·AC6·github-app-installation-token/AC1·AC2·AC4·grafana-token/AC1·AC2)을 per-AC 전용 케이스로 분리(규칙 1·2). 신규 픽스처·신규 CI 스텝 없이 기존 스텝(`smoke.py` 8080·`github_app.py` 8083·`grafana.py` 8085·`no_config.py` 8088) 안에서 `run()`을 케이스 디스패처로 재구성. 분리하며 빈 단정 3건을 실제 단언으로 보강(ping은 호출 자체가 없었음 → `pong` 단언, github/AC4 개인키 비노출 단언 신설, grafana/AC1은 주석 존재 → RFC3339 파싱 후 TTL 50~70분 단언). platform/AC5는 AC 전제(자격증명 미설정)가 성립하지 않는 `smoke.py`에서 자격증명 미부착 변형 `no_config.py`로 이관. tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅49(통합 32·전용 17)·⬜2·🚫1 | ✅49(통합 24·전용 25)·⬜2·🚫1 |
 | 2026-08-07 | "미설정 시 graceful 거부" 6건(aws-config-get/AC3·github-app-installation-token/AC3·grafana-token/AC3·opensearch-{search/AC4,document-put/AC5,document-delete/AC5})을 per-AC 전용 e2e 케이스로 승격(`tests/integration/no_config.py`). 신규 픽스처 없이 직전 슬라이스가 올린 `auth-fixture.yaml`(자격증명 시크릿 미부착 = 정의상 no-config 배포)을 재사용하고 `ci.yml`에 검증 스텝 1개(port 8088)만 추가. 각 케이스는 `isError=true` + `<도메인> unavailable: <미구성 사유>` 단언에 더해 직후 `ping`이 정상임을 단언해 "서버 기동·다른 도구 무영향"까지 커버. tests/ additive라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅43·⬜8·🚫1 (미설정 거부 6 = ⬜) | ✅49·⬜2·🚫1 (미설정 거부 6 = ✅ 전용 케이스) |
