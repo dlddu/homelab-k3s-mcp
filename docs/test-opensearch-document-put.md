@@ -17,16 +17,21 @@
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestPutDocumentWithIDUpserts`, `TestPutDocumentReportsUpdated`,
-  `TestPutDocumentWithoutIDAutoGenerates`) + 통합 `tests/integration/opensearch.py`
-  (created→updated·새 본문 검색·자동 id 2회 상이).
+  `TestPutDocumentWithoutIDAutoGenerates`) + 통합
+  `tests/integration/opensearch.py::test_opensearch_document_put_ac1_upsert_semantics`
+  (created→updated·업서트 후 검색이 돌려주는 본문이 두 번째 본문·자동 id 2회 상이 +
+  최종 문서 3건).
 
 ### 시나리오 2: 미존재 인덱스 자동 생성
 - **사전 조건**: `troubleshooting-2026` 인덱스 부재
 - **실행 단계**: 해당 인덱스명으로 문서 색인
 - **기대 결과**: 인덱스가 자동 생성되고, refresh 이후 그 인덱스에서 문서가 검색된다.
 - **검증 AC**: AC2
-- **자동화**: 통합 `tests/integration/opensearch.py` — 실행마다 새 인덱스명
-  (`ci-runbooks-*`/`ci-notes-*`)으로 색인해 자동 생성 후 검색까지 검증.
+- **자동화**: 통합
+  `tests/integration/opensearch.py::test_opensearch_document_put_ac2_index_auto_creation`
+  — 실행·케이스마다 새 인덱스명(`ci-put-ac2-<RUN_ID>`)을 쓰고, 색인 **전** 그 인덱스
+  검색이 404 `index_not_found_exception`으로 거부되는 것을 선행 관측한 뒤 색인 후 검색을
+  확인한다(사전 부재를 단정해야 자동 생성의 증거가 된다).
 
 ### 시나리오 3: destructiveHint 광고
 - **사전 조건**: 서버 기동
@@ -43,8 +48,11 @@
   요청. 정적 키 미사용.
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go` (서명 경로는 3도구 공통
-  `do()` — `TestSearchSignsRequestWithAssumedRoleCreds`) + 통합
-  `tests/integration/opensearch.py` (MinIO STS AssumeRole 경유 e2e).
+  `do()` — `TestSearchSignsRequestWithAssumedRoleCreds`). **e2e 공백(⬜)**: kind 픽스처의
+  OpenSearch는 security 플러그인이 꺼져 있어 서명된 요청과 서명 없는 요청을 구분하지 못하고,
+  MinIO는 베이스 자격증명도 그대로 받아준다 — 접근 경로를 관측할 수단이 없어 통합 e2e에는
+  이 시나리오의 케이스가 없다. 관측 수단(MinIO HTTP trace / 서명 기록 프록시) 신설은
+  `docs/doc-tracker.md`의 ⬜ backlog 참조.
 
 ### 시나리오 5: 미설정 시 도구 에러
 - **사전 조건**: OpenSearch 관련 env 미설정

@@ -15,8 +15,9 @@
 - **기대 결과**: deleted 반환. refresh 이후 검색에서 `n1`은 미노출, `n2`는 유지.
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
-  (`TestDeleteDocumentDeleted`) + 통합 `tests/integration/opensearch.py`
-  (삭제 대상만 검색에서 사라지고 나머지 문서는 유지).
+  (`TestDeleteDocumentDeleted`) + 통합
+  `tests/integration/opensearch.py::test_opensearch_document_delete_ac1_single_document`
+  (같은 인덱스·같은 질의 토큰을 공유하는 문서 2건 중 삭제 대상만 사라지고 나머지는 유지).
 
 ### 시나리오 2: 없는 문서 삭제 → not_found
 - **사전 조건**: `notes` 인덱스에 `ghost` id 부재
@@ -27,7 +28,8 @@
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestDeleteDocumentMissingMapsToNotFound`) + `internal/server/mcp_test.go`
   (`TestOpenSearchDocumentDeleteReportsNotFound`) + 통합
-  `tests/integration/opensearch.py` (같은 id 반복 삭제가 not_found로 수렴).
+  `tests/integration/opensearch.py::test_opensearch_document_delete_ac2_missing_document_not_found`
+  (미생성 인덱스의 id·삭제된 id 반복 호출이 모두 not_found로 수렴 + 직후 ping 정상).
 
 ### 시나리오 3: destructiveHint 광고
 - **사전 조건**: 서버 기동
@@ -44,8 +46,9 @@
   요청. 정적 키 미사용.
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go` (서명 경로는 3도구 공통
-  `do()` — `TestSearchSignsRequestWithAssumedRoleCreds`) + 통합
-  `tests/integration/opensearch.py` (MinIO STS AssumeRole 경유 e2e).
+  `do()` — `TestSearchSignsRequestWithAssumedRoleCreds`). **e2e 공백(⬜)**: 픽스처가 서명
+  유무를 구분하지 못해 접근 경로를 관측할 수단이 없다 — `docs/doc-tracker.md`의 ⬜ backlog
+  참조.
 
 ### 시나리오 5: 미설정 시 도구 에러
 - **사전 조건**: OpenSearch 관련 env 미설정

@@ -1,16 +1,27 @@
-"""End-to-end check for the opensearch_* tools against the OpenSearch fixture.
+"""End-to-end checks for the opensearch_* tools against the OpenSearch fixture.
 
 The server assumes OPENSEARCH_ROLE_ARN against MinIO's STS endpoint and sends
 SigV4-signed (service "aoss") requests to the single-node OpenSearch fixture
-(tests/k8s/kind/opensearch.yaml, security plugin disabled). This exercises the
-full assume-role -> sign -> data-plane path for put, search, and delete.
+(tests/k8s/kind/opensearch.yaml, security plugin disabled).
 
-Scenario (mirrors docs/test-opensearch-*.md):
-  put id=doc-1 (created) -> re-put same id (updated) -> put twice without id
-  (distinct auto ids) -> search finds the matching docs only, index param
-  scopes the search -> size=51 is rejected as a tool error -> delete doc-1
-  (deleted) -> doc-1 gone from search, sibling doc remains -> delete doc-1
-  again (not_found, idempotent).
+Per-AC case names + docstrings declare the AC they verify (registry rule 3);
+``docs/doc-tracker.md`` is the AC<->case mapping SSOT. ``run()`` is only a
+dispatcher: the cases are order independent because each one owns its documents
+end to end — it writes into its own ``ci-<case>-<RUN_ID>`` index (a put
+auto-creates it) and matches on its own unique query token, so no case can
+observe another's writes even on the unscoped searches.
+
+What these cases deliberately do NOT assert is the AssumeRole -> SigV4 access
+path (opensearch-search/AC3, opensearch-document-put/AC4,
+opensearch-document-delete/AC4). This fixture runs with the security plugin
+disabled, so it accepts signed and unsigned requests alike and cannot tell
+"signed with assumed-role credentials" apart from "not signed at all" — an e2e
+assertion here would pass just as happily against a server that never assumed
+the role. Those three ACs are tracked as ⬜ in ``docs/doc-tracker.md`` until the
+fixture grows an observation point; the SigV4 scope / session-token assertions
+live in ``internal/opensearch/opensearch_test.go``
+(``TestSearchSignsRequestWithAssumedRoleCreds``), which is a unit test and
+therefore outside this loop's e2e scope.
 
 Documents become searchable only after a refresh (~1s on the fixture), so
 search assertions poll until the expected state appears.
@@ -32,10 +43,24 @@ from _helpers import (
 
 # Fresh per run so re-runs against a warm fixture never see stale documents.
 RUN_ID = uuid.uuid4().hex[:8]
-RUNBOOKS_INDEX = f"ci-runbooks-{RUN_ID}"
-NOTES_INDEX = f"ci-notes-{RUN_ID}"
 
 SEARCH_DEADLINE_SECONDS = 60.0
+
+
+def index_for(case: str) -> str:
+    """Index owned by one case: never written to by any other case or run."""
+    return f"ci-{case}-{RUN_ID}"
+
+
+def token_for(case: str) -> str:
+    """Query token owned by one case.
+
+    Alphanumeric on purpose: the standard analyzer splits on everything else, so
+    a token like ``searchac1a1b2c3d4`` stays a single term that no other case's
+    documents contain. That is what makes the unscoped (collection-wide)
+    searches deterministic while every case seeds documents concurrently.
+    """
+    return f"{case}{RUN_ID}"
 
 
 def structured(result):
@@ -51,6 +76,14 @@ async def put_doc(session, index, document, doc_id=None):
     return structured(await session.call_tool("opensearch_document_put", args))
 
 
+async def delete_doc(session, index, doc_id):
+    return structured(
+        await session.call_tool(
+            "opensearch_document_delete", {"index": index, "id": doc_id}
+        )
+    )
+
+
 async def search(session, query, index=None, size=None):
     args = {"query": query}
     if index is not None:
@@ -60,12 +93,12 @@ async def search(session, query, index=None, size=None):
     return structured(await session.call_tool("opensearch_search", args))
 
 
-async def search_until(session, query, predicate, description, index=None):
+async def search_until(session, query, predicate, description, index=None, size=None):
     """Poll search until predicate(hits) holds (documents surface on refresh)."""
     deadline = time.monotonic() + SEARCH_DEADLINE_SECONDS
     last = None
     while time.monotonic() < deadline:
-        last = await search(session, query, index=index)
+        last = await search(session, query, index=index, size=size)
         if predicate(last["hits"]):
             return last
         await asyncio.sleep(1)
@@ -74,6 +107,282 @@ async def search_until(session, query, predicate, description, index=None):
 
 def hit_ids(hits):
     return {hit["id"] for hit in hits}
+
+
+async def test_opensearch_document_put_ac1_upsert_semantics(session) -> None:
+    """AC: opensearch-document-put/AC1 — index a document, and re-putting an id upserts it.
+
+    Walks the AC's verification method clause by clause: the first write of an
+    explicit id reports ``created``; re-putting that id reports ``updated`` and
+    the *new* body is what a later search returns (so the second write replaced
+    the document instead of adding a second one); two id-less writes of the same
+    body come back ``created`` with two different auto-generated ids and leave
+    three documents behind, not two.
+    """
+    index = index_for("put-ac1")
+    token = token_for("putac1")
+
+    created = await put_doc(
+        session,
+        index,
+        {"title": f"etcd backup runbook {token}", "body": "how to back up etcd"},
+        doc_id="doc-1",
+    )
+    assert created == {"index": index, "id": "doc-1", "result": "created"}, created
+
+    updated = await put_doc(
+        session,
+        index,
+        {"title": f"etcd backup runbook {token}", "body": "how to back up etcd, v2"},
+        doc_id="doc-1",
+    )
+    assert updated == {"index": index, "id": "doc-1", "result": "updated"}, updated
+
+    def upserted(hits):
+        return hit_ids(hits) == {"doc-1"} and hits[0]["source"]["body"] == (
+            "how to back up etcd, v2"
+        )
+
+    await search_until(
+        session,
+        token,
+        upserted,
+        "doc-1 is a single document carrying the second body",
+        index=index,
+    )
+
+    auto_one = await put_doc(session, index, {"title": f"etcd backup checklist {token}"})
+    auto_two = await put_doc(session, index, {"title": f"etcd backup checklist {token}"})
+    assert auto_one["result"] == "created", auto_one
+    assert auto_two["result"] == "created", auto_two
+    assert auto_one["id"] and auto_two["id"], (auto_one, auto_two)
+    assert auto_one["id"] != auto_two["id"], (auto_one, auto_two)
+    assert "doc-1" not in {auto_one["id"], auto_two["id"]}, (auto_one, auto_two)
+
+    final = await search_until(
+        session,
+        token,
+        lambda hits: hit_ids(hits) == {"doc-1", auto_one["id"], auto_two["id"]},
+        "the upsert plus both auto-id writes leave exactly three documents",
+        index=index,
+    )
+    assert final["total"] == 3, final
+    print("opensearch_document_put upsert semantics ok ->", index)
+
+
+async def test_opensearch_document_put_ac2_index_auto_creation(session) -> None:
+    """AC: opensearch-document-put/AC2 — writing to a missing index creates it.
+
+    The pre-state is asserted, not assumed: searching the index *before* the
+    write comes back as a tool error carrying OpenSearch's 404
+    ``index_not_found_exception``. Without that step a passing search afterwards
+    would be equally consistent with the index having existed all along, and the
+    case would demonstrate nothing about auto-creation.
+    """
+    index = index_for("put-ac2")
+    token = token_for("putac2")
+
+    missing = await session.call_tool(
+        "opensearch_search", {"query": token, "index": index}
+    )
+    assert missing.isError is True, missing
+    refusal = missing.content[0].text
+    assert "status 404" in refusal, refusal
+    assert "index_not_found_exception" in refusal, refusal
+
+    created = await put_doc(
+        session, index, {"title": f"auto-created index {token}"}, doc_id="doc-1"
+    )
+    assert created == {"index": index, "id": "doc-1", "result": "created"}, created
+
+    found = await search_until(
+        session,
+        token,
+        lambda hits: hit_ids(hits) == {"doc-1"},
+        f"{index} exists and holds the document after the write",
+        index=index,
+    )
+    assert found["hits"][0]["index"] == index, found
+    print("opensearch_document_put index auto-creation ok ->", index)
+
+
+async def test_opensearch_search_ac1_query_matching(session) -> None:
+    """AC: opensearch-search/AC1 — matching documents only, with index/id/score/source.
+
+    Seeds two indexes so both halves of the AC are observable: the unscoped call
+    spans the collection (both indexes answer) while ``index`` narrows it to one,
+    and a non-matching document seeded alongside the matches is what proves the
+    query — not merely the index scope — is doing the filtering.
+    """
+    index_a = index_for("search-ac1-a")
+    index_b = index_for("search-ac1-b")
+    token = token_for("searchac1")
+    other_token = token_for("searchac1other")
+
+    await put_doc(
+        session,
+        index_a,
+        {"title": f"apiserver certificate rotation {token}", "body": "rotate certs"},
+        doc_id="match-a",
+    )
+    await put_doc(
+        session,
+        index_a,
+        {"title": f"unrelated grafana note {other_token}"},
+        doc_id="other-a",
+    )
+    await put_doc(
+        session,
+        index_b,
+        {"title": f"etcd certificate rotation {token}"},
+        doc_id="match-b",
+    )
+
+    across = await search_until(
+        session,
+        token,
+        lambda hits: hit_ids(hits) == {"match-a", "match-b"},
+        "both indexes answer the collection-wide query",
+    )
+    assert across["total"] == 2, across
+    assert across["index"] is None, across
+    for hit in across["hits"]:
+        assert hit["index"] in {index_a, index_b}, hit
+        assert hit["id"], hit
+        assert hit["score"] is not None, hit
+        assert token in json.dumps(hit["source"]), hit
+
+    scoped = await search(session, token, index=index_a)
+    assert hit_ids(scoped["hits"]) == {"match-a"}, scoped
+    assert scoped["index"] == index_a, scoped
+    assert scoped["hits"][0]["index"] == index_a, scoped
+
+    # The non-matching document is in index_a and searchable, so its absence
+    # from the queries above is the query filtering, not a missing document.
+    other = await search_until(
+        session,
+        other_token,
+        lambda hits: hit_ids(hits) == {"other-a"},
+        "the non-matching document is searchable under its own token",
+        index=index_a,
+    )
+    assert other["hits"][0]["index"] == index_a, other
+    print("opensearch_search query matching ok ->", index_a, "/", index_b)
+
+
+async def test_opensearch_search_ac2_size_default_and_cap(session) -> None:
+    """AC: opensearch-search/AC2 — size defaults to 10, allows 50, rejects 51.
+
+    Seeds 12 matching documents because the default is otherwise invisible: with
+    ten or fewer documents a size-less search returns everything and "defaults to
+    10" cannot be told apart from "no limit at all". ``total`` staying 12 while
+    only 10 hits come back is what shows the default caps the returned page
+    rather than the match set.
+    """
+    index = index_for("search-ac2")
+    token = token_for("searchac2")
+
+    seeded = set()
+    for n in range(12):
+        put = await put_doc(
+            session, index, {"title": f"scaling note {n} {token}"}, doc_id=f"doc-{n}"
+        )
+        assert put["result"] == "created", put
+        seeded.add(put["id"])
+    assert len(seeded) == 12, seeded
+
+    full = await search_until(
+        session,
+        token,
+        lambda hits: hit_ids(hits) == seeded,
+        "all 12 seeded documents are searchable",
+        index=index,
+        size=50,
+    )
+    assert full["total"] == 12, full
+
+    defaulted = await search(session, token, index=index)
+    assert len(defaulted["hits"]) == 10, defaulted
+    assert defaulted["total"] == 12, defaulted
+    assert hit_ids(defaulted["hits"]) <= seeded, defaulted
+
+    oversize = await session.call_tool(
+        "opensearch_search", {"query": token, "index": index, "size": 51}
+    )
+    assert oversize.isError is True, oversize
+    assert "size must be <= 50" in oversize.content[0].text, oversize
+    print("opensearch_search size default/cap ok ->", index)
+
+
+async def test_opensearch_document_delete_ac1_single_document(session) -> None:
+    """AC: opensearch-document-delete/AC1 — only the named document is removed.
+
+    Two documents share the index and the query token, so the surviving one is
+    the control: the post-delete search has to keep returning it while the
+    deleted id disappears.
+    """
+    index = index_for("delete-ac1")
+    token = token_for("deleteac1")
+
+    await put_doc(session, index, {"title": f"stale runbook {token}"}, doc_id="doomed")
+    await put_doc(session, index, {"title": f"current runbook {token}"}, doc_id="kept")
+    await search_until(
+        session,
+        token,
+        lambda hits: hit_ids(hits) == {"doomed", "kept"},
+        "both documents are searchable before the delete",
+        index=index,
+    )
+
+    deleted = await delete_doc(session, index, "doomed")
+    assert deleted == {"index": index, "id": "doomed", "result": "deleted"}, deleted
+
+    survivors = await search_until(
+        session,
+        token,
+        lambda hits: hit_ids(hits) == {"kept"},
+        "only the deleted document leaves the index",
+        index=index,
+    )
+    assert survivors["total"] == 1, survivors
+    print("opensearch_document_delete single document ok ->", index)
+
+
+async def test_opensearch_document_delete_ac2_missing_document_not_found(
+    session,
+) -> None:
+    """AC: opensearch-document-delete/AC2 — a missing document answers not_found.
+
+    Covers both flavours of "missing": an id in an index that was never created,
+    and an id that existed until this case deleted it (the repeat the tool
+    advertises as idempotent). The ``ping`` at the end is what turns the AC's
+    second half — no effect on the server or the other tools — into an assertion
+    instead of an assumption.
+    """
+    index = index_for("delete-ac2")
+    token = token_for("deleteac2")
+
+    never_written = await delete_doc(session, index, "never-written")
+    assert never_written == {
+        "index": index,
+        "id": "never-written",
+        "result": "not_found",
+    }, never_written
+
+    await put_doc(session, index, {"title": f"short-lived note {token}"}, doc_id="doc-1")
+    first = await delete_doc(session, index, "doc-1")
+    assert first == {"index": index, "id": "doc-1", "result": "deleted"}, first
+    repeated = await delete_doc(session, index, "doc-1")
+    assert repeated == {
+        "index": index,
+        "id": "doc-1",
+        "result": "not_found",
+    }, repeated
+
+    pong = await session.call_tool("ping", {})
+    assert pong.isError is False, pong
+    assert pong.content[0].text == "pong", pong
+    print("opensearch_document_delete not_found handling ok ->", index)
 
 
 async def test_opensearch_document_put_ac3_destructive_hint(session) -> None:
@@ -99,119 +408,50 @@ async def run() -> None:
     wait_for_healthz(url)
 
     async with open_session(url) as session:
-        print("--- opensearch_document_put: upsert with explicit id ---")
-        created = await put_doc(
-            session,
-            RUNBOOKS_INDEX,
-            {"title": "etcd backup runbook", "body": "how to back up etcd"},
-            doc_id="doc-1",
-        )
-        assert created["index"] == RUNBOOKS_INDEX, created
-        assert created["id"] == "doc-1", created
-        assert created["result"] == "created", created
+        # Order is free: every case owns its index and query token, so none of
+        # them can see another's documents.
+        print("--- opensearch_document_put upsert (AC: opensearch-document-put/AC1) ---")
+        await test_opensearch_document_put_ac1_upsert_semantics(session)
 
-        updated = await put_doc(
-            session,
-            RUNBOOKS_INDEX,
-            {"title": "etcd backup runbook", "body": "how to back up etcd, v2"},
-            doc_id="doc-1",
+        print(
+            "--- opensearch_document_put index auto-creation "
+            "(AC: opensearch-document-put/AC2) ---"
         )
-        assert updated["result"] == "updated", updated
+        await test_opensearch_document_put_ac2_index_auto_creation(session)
 
-        print("--- opensearch_document_put: auto-generated ids ---")
-        auto_one = await put_doc(
-            session, RUNBOOKS_INDEX, {"title": "etcd backup checklist"}
+        print("--- opensearch_search query matching (AC: opensearch-search/AC1) ---")
+        await test_opensearch_search_ac1_query_matching(session)
+
+        print("--- opensearch_search size default/cap (AC: opensearch-search/AC2) ---")
+        await test_opensearch_search_ac2_size_default_and_cap(session)
+
+        print(
+            "--- opensearch_document_delete single document "
+            "(AC: opensearch-document-delete/AC1) ---"
         )
-        auto_two = await put_doc(
-            session, RUNBOOKS_INDEX, {"title": "etcd backup checklist"}
+        await test_opensearch_document_delete_ac1_single_document(session)
+
+        print(
+            "--- opensearch_document_delete not_found "
+            "(AC: opensearch-document-delete/AC2) ---"
         )
-        assert auto_one["result"] == "created", auto_one
-        assert auto_two["result"] == "created", auto_two
-        assert auto_one["id"] and auto_two["id"], (auto_one, auto_two)
-        assert auto_one["id"] != auto_two["id"], (auto_one, auto_two)
+        await test_opensearch_document_delete_ac2_missing_document_not_found(session)
 
-        # Unrelated document in a second index: proves matching stays scoped to
-        # the query, and that the index parameter narrows the search. The index
-        # did not exist before this put (auto-creation).
-        unrelated = await put_doc(
-            session, NOTES_INDEX, {"title": "grafana dashboard notes"}, doc_id="note-1"
+        print(
+            "--- opensearch_document_put destructiveHint "
+            "(AC: opensearch-document-put/AC3) ---"
         )
-        assert unrelated["result"] == "created", unrelated
-
-        print("--- opensearch_search: query matching and index scoping ---")
-        expected_ids = {"doc-1", auto_one["id"], auto_two["id"]}
-        result = await search_until(
-            session,
-            "etcd backup",
-            lambda hits: hit_ids(hits) == expected_ids,
-            f"expected exactly {expected_ids}",
-        )
-        assert result["total"] == 3, result
-        for hit in result["hits"]:
-            assert hit["index"] == RUNBOOKS_INDEX, hit
-            assert hit["score"] is not None, hit
-            assert "etcd backup" in json.dumps(hit["source"]), hit
-        doc_one = next(h for h in result["hits"] if h["id"] == "doc-1")
-        assert doc_one["source"]["body"] == "how to back up etcd, v2", doc_one
-
-        # The unrelated document is searchable in its own index but never
-        # matches the etcd query.
-        await search_until(
-            session,
-            "grafana dashboard",
-            lambda hits: hit_ids(hits) == {"note-1"},
-            "expected exactly {note-1}",
-        )
-        scoped = await search(session, "etcd backup", index=NOTES_INDEX)
-        assert scoped["hits"] == [], scoped
-
-        print("--- opensearch_search: size cap is rejected, not clamped ---")
-        capped = await search(session, "etcd backup", size=50)
-        assert len(capped["hits"]) == 3, capped
-        oversize = await session.call_tool(
-            "opensearch_search", {"query": "etcd backup", "size": 51}
-        )
-        assert oversize.isError is True, oversize
-        assert "size must be <= 50" in oversize.content[0].text, oversize
-
-        print("--- opensearch_document_delete: single-document delete ---")
-        deleted = structured(
-            await session.call_tool(
-                "opensearch_document_delete",
-                {"index": RUNBOOKS_INDEX, "id": "doc-1"},
-            )
-        )
-        assert deleted["index"] == RUNBOOKS_INDEX, deleted
-        assert deleted["id"] == "doc-1", deleted
-        assert deleted["result"] == "deleted", deleted
-
-        survivors = {auto_one["id"], auto_two["id"]}
-        await search_until(
-            session,
-            "etcd backup",
-            lambda hits: hit_ids(hits) == survivors,
-            f"doc-1 gone, {survivors} kept",
-        )
-
-        print("--- opensearch_document_delete: missing doc -> not_found ---")
-        for _ in range(2):
-            not_found = structured(
-                await session.call_tool(
-                    "opensearch_document_delete",
-                    {"index": RUNBOOKS_INDEX, "id": "doc-1"},
-                )
-            )
-            assert not_found["result"] == "not_found", not_found
-
-        print("--- opensearch_document_put destructiveHint (AC: opensearch-document-put/AC3) ---")
         await test_opensearch_document_put_ac3_destructive_hint(session)
         print("opensearch_document_put destructiveHint ok")
 
-        print("--- opensearch_document_delete destructiveHint (AC: opensearch-document-delete/AC3) ---")
+        print(
+            "--- opensearch_document_delete destructiveHint "
+            "(AC: opensearch-document-delete/AC3) ---"
+        )
         await test_opensearch_document_delete_ac3_destructive_hint(session)
         print("opensearch_document_delete destructiveHint ok")
 
-        print("opensearch tools ok ->", RUNBOOKS_INDEX, "/", NOTES_INDEX)
+        print("opensearch tools ok -> run", RUN_ID)
 
 
 if __name__ == "__main__":

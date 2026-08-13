@@ -15,7 +15,10 @@
   success=false(도구 에러).
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestDearBabyResetDispatchesWithDefaults`,
-  `TestDearBabyResetReportsNonZeroExit`. 통합 `dear_baby.py`(success / failure path).
+  `TestDearBabyResetReportsNonZeroExit`. 통합
+  `dear_baby.py::test_dear_baby_reset_user_ac1_reset_execution`(success / failure path).
+  **단, 온보딩 필드 초기화 자체는 e2e에서 관측하지 않는다** — kind 픽스처의 `/reset-user`는
+  busybox 스텁 스크립트라 뒤에 DB가 없다(필드 단위 효과는 실제 백엔드 이미지 + 시드 DB 필요).
 
 ### 시나리오 2: 대상 지정(이메일 필수, 셀렉터/컨테이너 기본·재정의)
 - **사전 조건**: 동일
@@ -24,11 +27,15 @@
   매칭 Running 파드 없으면 "no Running pod matched" 도구 에러.
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `mcp_test.go::TestDearBabyResetRequiresNamespaceAndEmail`,
-  `TestDearBabyResetHonoursOverrides`. 통합 `dear_baby.py`(no Running pod path).
+  `TestDearBabyResetHonoursOverrides`. 통합
+  `dear_baby.py::test_dear_baby_reset_user_ac2_explicit_target`(email 누락 → `McpError:
+  email is required`, 기본 selector·container 에코, selector 재정의 → no Running pod,
+  container 재정의 → 실패 = 재정의가 실제로 반영됨의 판별자).
 
 ### 시나리오 3: 파괴적 어노테이션 광고
 - **사전 조건**: 서버 기동
 - **실행 단계**: `tools/list` 조회
 - **기대 결과**: `dear_baby_reset_user`가 `destructiveHint=true`로 광고됨
 - **검증 AC**: AC3
-- **자동화**: Go 단위 `mcp_test.go::TestToolsListAdvertisesDearBabyReset`.
+- **자동화**: Go 단위 `mcp_test.go::TestToolsListAdvertisesDearBabyReset`. 통합
+  `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint`.
