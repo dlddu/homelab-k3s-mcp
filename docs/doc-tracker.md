@@ -209,13 +209,13 @@
 | workload-scale/AC2 | DaemonSet 거부 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
 | workload-scale/AC3 | 파괴적 작업 표기 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
 
-### ⬜ e2e 보강 backlog (14) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
+### ⬜ 공백 backlog (14) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
-- **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/smoke.py`: 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
-- **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/smoke.py`: env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
-- **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → `tests/integration/session.py`(신규) + 미설정 거부 3건은 기존 `no_config.py`(port 8088, 자격증명 미부착 변형). **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
+- **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/platform_auth_safety_ac2.py`(신규 전용 파일): 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
+- **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/platform_auth_safety_ac8.py`(신규 전용 파일): env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
+- **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → AC별 전용 파일 12개(신규, 파일 단위 규칙 2) + 미설정 거부 3건은 기존 `no_config.py`(port 8088, 자격증명 미부착 변형). **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
 
 > **AssumeRole·SigV4 4건 — 관측 수단 신설 후 ✅ 승격(2026-08-14)**: 직전 슬라이스가 `⬜ 보강 필요 (관측 수단 부재)`로 정정했던 4건(aws-config-get/AC2 · opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4)을, **관측 수단을 먼저 만든 뒤** per-AC 전용 케이스로 승격했다. 정정 자체는 옳았다 — 그때는 어떤 e2e 단언도 "역할을 한 번도 assume 하지 않는 서버"에서 그대로 통과했다. 바뀐 것은 픽스처다.
 
@@ -251,9 +251,9 @@
 
 - (없음)
 
-### 🚫 e2e 예외 (1) — e2e 비현실적, 모델 정의 예외 개정 제안
+### 🚫 e2e 예외 (1) — 규칙 4 등재 (1:1 계수에서 제외)
 
-> e2e로 커버하기 비현실적이고 정적 검토로 대체하는 AC. definition이 `task에서 제안한다`고 명시하므로 모델 정의(`to-be-models.json`)에 일방 적용하지 않고 ratify 후 예외 목록에 반영한다.
+> e2e로 커버하기 비현실적이고 정적 검토로 대체하는 AC. 모델 정의의 **규칙 4**가 "AC별 사유와 대체 검증 수단을 적어 이 문서에 등재"하도록 정하고, 정의의 현황 메모도 예외 등재 후보로 아래 1건만 지목한다 — 그에 따라 **등재**했고 체커가 1:1 계수에서 제외한다(`예외 등재: 1`). 정의 문서 자체는 고치지 않는다(등재의 SSOT는 이 문서다). **도구·기능 미구현은 예외 사유가 아니다**(규칙 4) — session-\* 12건이 공백으로 남아 있는 이유다.
 >
 > **정의 예외 개정 제안(1건, e2e 비대상)**: e2e 1:1 계수에서 빠져야 하는 AC는 아래 platform/AC4 1건뿐이다. 파괴적 표기 5건은 `tools/list` 메타데이터를 e2e로 단언해 커버하므로(✅ 전용 케이스, 2026-07-21 완료) e2e 예외가 아니다. 정의의 예외 목록에는 이 1건만 등재하도록 제안한다.
 
