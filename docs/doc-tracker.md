@@ -118,81 +118,96 @@
 
 > **렌즈 차이**: reconciler 정합성 모델(`tbm_homelab-k3s-mcp-ac-e2e`)은 **`tests/integration/`의 통합 e2e만** 검증으로 인정한다 — `internal/`의 Go 단위 테스트는 정의상 e2e가 아니다. 따라서 위 "자동화 커버리지"에서 🟢로 세는 다수 AC가 이 e2e 렌즈에서는 **e2e 공백**으로 계수된다. 이 섹션은 그 e2e-전용 렌즈의 레지스트리다.
 
-### 케이스 식별 규약 (규칙 1·2·3)
+### 파일 식별 규약 (규칙 1·2·3·5·6)
 
-- **규칙 1 (AC→e2e)**: 예외 목록에 없는 모든 AC는 자신을 검증하는 e2e 케이스를 **정확히 하나** 가진다.
-- **규칙 2 (e2e→AC)**: 모든 e2e 케이스는 **정확히 하나의 AC**를 검증 대상으로 선언한다.
-- **규칙 3 (식별)**: 각 e2e 케이스는 이름+docstring으로 대상 AC를 명시한다 — 예: `def test_<domain>_ac<n>_<slug>():` + docstring 첫 줄 `AC: <domain>/ACn`. 본 레지스트리가 AC↔케이스 매핑 SSOT이며, `test-*.md` 자동화 필드는 케이스 신설 후 해당 케이스 경로를 지목한다.
-- **파일 수준 커버 잔여 0(2026-08-13)**: `tests/integration/`의 모든 스크립트(`smoke.py`·`github_app.py`·`grafana.py`·`no_config.py`·`auth.py`·`workload.py`·`opensearch.py`·`aws_config.py`·`dear_baby.py`)가 `run()`을 per-AC 케이스 디스패처로 갖는다. 레지스트리에 `✅ 통합`(파일 수준 커버) 행은 더 이상 없으며, ✅는 전부 전용 케이스다. 규칙 1을 아직 못 채운 AC는 케이스가 **없는** ⬜ 14건뿐이다.
+> **2026-08-14 개정 — 매칭 단위가 "테스트 케이스"에서 "파일"로 바뀌었다.** 모델 정의(`tbm_homelab-k3s-mcp-ac-e2e`)가 `ac-e2e` 템플릿 고정부에 맞춰 판정 단위를 파일로 옮겼다. 파일 안에서 케이스가 몇 개로 쪼개져 있는지는 이제 판정과 **무관**하다. 케이스 단위 시절에 쌓인 per-AC 케이스는 그대로 자산이며, 분할은 "새 검증 작성"이 아니라 **케이스를 파일로 승격**하는 작업이다.
 
-### AC 레지스트리 (64) — ✅ e2e 49 (전용 케이스 49) · ⬜ e2e 보강 14 · 🚫 e2e 예외 1
+- **규칙 1 (AC→파일)**: 예외 목록에 없는 모든 AC는 자신을 주검증하는 파일을 **정확히 하나** 가진다. 여러 AC를 겸하는 파일은 그 AC의 전용 파일이 아니므로, 겸용 상태의 AC는 여전히 **공백**으로 계수한다.
+- **규칙 2 (파일→AC)**: 모든 매칭 단위 파일은 **정확히 하나의 AC**만 주검증 대상으로 선언한다. 2개 이상을 선언한 파일은 **분할 대기**(규칙 2 위반)다.
+- **규칙 3 (식별)**: 매칭 단위 파일은 **모듈 docstring**에 `검증 AC: <domain>/AC<n>` 을 선언한다. AC 대신 스모크/인프라를 검증하는 파일은 `검증 AC: 없음 (스모크/인프라)` 을 선언하고 아래 "비-AC 파일" 목록에 등재한다. 어디에도 매핑되지 않은 파일은 고아다.
+- **매칭 단위**: `tests/integration/` 최상위 `*.py`. 단 공유 헬퍼 `_helpers.py` 와 하네스 자신(`run_all.py` · `check_ac_mapping.py`)은 매칭 단위가 아니다.
+- **기계 검사**: `python3 tests/integration/check_ac_mapping.py` 가 위 규칙과 아래 집계를 CI(`fmt + vet` 잡)에서 강제한다. 이 표의 행별 상태·집계 숫자가 실측과 **정확히** 같아야 통과하므로, 파일을 쪼개거나 AC를 추가한 PR은 같은 PR에서 이 절을 갱신해야 한다.
+- **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"를 검사해 **만들어 놓고 실행되지 않는 파일**을 구조적으로 막는다.
+
+<!-- ac-e2e-집계 -->
+- AC 전집: 64
+- 예외 등재: 1
+- 1:1 대상: 63
+- 매칭 파일(전용): 9
+- 분할 대기 파일(규칙 2 위반): 6
+- 공백 AC: 54
+<!-- /ac-e2e-집계 -->
+
+> 공백 54건의 내역: **40건**은 분할 대기 파일 6개(`workload.py` 16 · `opensearch.py` 11 · `no_config.py` 7 · `aws_config.py` 2 · `auth.py` 2 · `smoke.py` 2)가 겸용으로 커버하고 있어 분할만 하면 ✅가 되고, **14건**은 케이스 자체가 없다(아래 backlog). 진행 방향은 매칭 파일 ↑ / 분할 대기 ↓ / 공백 ↓ 이다.
+
+### AC 레지스트리 (64) — ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
-| aws-config-get/AC1 | 고정 객체 조회 | ✅ 전용 케이스 `aws_config.py::test_aws_config_get_ac1_fixed_object` |
-| aws-config-get/AC2 | 정적 키 미사용 | ✅ 전용 케이스 `aws_config.py::test_aws_config_get_ac2_assume_role_access` |
-| aws-config-get/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_aws_config_get_ac3_unconfigured_refusal` |
-| dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 전용 케이스 `dear_baby.py::test_dear_baby_reset_user_ac1_reset_execution` |
-| dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 전용 케이스 `dear_baby.py::test_dear_baby_reset_user_ac2_explicit_target` |
-| dear-baby-reset-user/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint` |
-| github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 전용 케이스 `github_app.py::test_github_app_installation_token_ac1_short_lived_token` |
-| github-app-installation-token/AC2 | 스코프 제한 | ✅ 전용 케이스 `github_app.py::test_github_app_installation_token_ac2_scope_restriction` |
-| github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_github_app_installation_token_ac3_unconfigured_refusal` |
-| github-app-installation-token/AC4 | 베이스 키 비노출 | ✅ 전용 케이스 `github_app.py::test_github_app_installation_token_ac4_private_key_not_exposed` |
-| grafana-token/AC1 | read-only 토큰 발급 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac1_read_only_short_lived` |
-| grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac2_ready_to_use_env` |
-| grafana-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_grafana_token_ac3_unconfigured_refusal` |
-| grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 케이스 `grafana.py::test_grafana_token_ac4_issuer_token_not_exposed` |
-| namespace-list/AC1 | 네임스페이스 열거 | ✅ 전용 케이스 `workload.py::test_namespace_list_ac1_enumerates_namespaces` |
-| opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_delete_ac1_single_document` |
-| opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_delete_ac2_missing_document_not_found` |
-| opensearch-document-delete/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_delete_ac3_destructive_hint` |
-| opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_delete_ac4_assume_role_sigv4` |
-| opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_opensearch_document_delete_ac5_unconfigured_refusal` |
-| opensearch-document-put/AC1 | 문서 색인·업서트 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_put_ac1_upsert_semantics` |
-| opensearch-document-put/AC2 | 인덱스 자동 생성 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_put_ac2_index_auto_creation` |
-| opensearch-document-put/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_put_ac3_destructive_hint` |
-| opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 케이스 `opensearch.py::test_opensearch_document_put_ac4_assume_role_sigv4` |
-| opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_opensearch_document_put_ac5_unconfigured_refusal` |
-| opensearch-search/AC1 | 질의 검색 | ✅ 전용 케이스 `opensearch.py::test_opensearch_search_ac1_query_matching` |
-| opensearch-search/AC2 | 결과 상한 | ✅ 전용 케이스 `opensearch.py::test_opensearch_search_ac2_size_default_and_cap` |
-| opensearch-search/AC3 | AssumeRole·SigV4 접근 | ✅ 전용 케이스 `opensearch.py::test_opensearch_search_ac3_assume_role_sigv4` |
-| opensearch-search/AC4 | 미설정 시 graceful 거부 | ✅ 전용 케이스 `no_config.py::test_opensearch_search_ac4_unconfigured_refusal` |
-| ping/AC1 | 항상 pong 응답 | ✅ 전용 케이스 `smoke.py::test_ping_ac1_always_pong` |
-| platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac1_gate` |
-| platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 보강 필요 |
-| platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 전용 케이스 `workload.py::test_platform_auth_safety_ac3_rbac_boundary` |
-| platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 e2e 예외 |
-| platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 전용 케이스 `no_config.py::test_platform_auth_safety_ac5_graceful_degradation` |
-| platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 전용 케이스 `smoke.py::test_platform_auth_safety_ac6_health_readiness` |
-| platform-auth-safety/AC7 | API 키 인증 | ✅ 전용 케이스 `auth.py::test_platform_auth_safety_ac7_api_key` |
-| platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ⬜ 보강 필요 |
-| pod-describe/AC1 | 파드 상세 스냅샷 | ✅ 전용 케이스 `workload.py::test_pod_describe_ac1_snapshot` |
-| pod-describe/AC2 | 대상 지정 방식 | ✅ 전용 케이스 `workload.py::test_pod_describe_ac2_target_resolution` |
-| pod-describe/AC3 | 이벤트 best-effort | ✅ 전용 케이스 `workload.py::test_pod_describe_ac3_events_best_effort` |
-| session-list/AC1 | 세션 열거 | ⬜ 보강 필요 (도구 미구현) |
-| session-list/AC2 | 상태를 바꾸지 않는 조회 | ⬜ 보강 필요 (도구 미구현) |
-| session-list/AC3 | 미설정 시 graceful 거부 | ⬜ 보강 필요 (도구 미구현) |
-| session-read/AC1 | 오프셋 커서 읽기 | ⬜ 보강 필요 (도구 미구현) |
-| session-read/AC2 | 상태 분기 노출 | ⬜ 보강 필요 (도구 미구현) |
-| session-read/AC3 | 대상 부재·잘못된 커서 처리 | ⬜ 보강 필요 (도구 미구현) |
-| session-read/AC4 | 미설정 시 graceful 거부 | ⬜ 보강 필요 (도구 미구현) |
-| session-write/AC1 | 워크로드 입력 주입 | ⬜ 보강 필요 (도구 미구현) |
-| session-write/AC2 | 상태 분기 처리와 노출 | ⬜ 보강 필요 (도구 미구현) |
-| session-write/AC3 | 파괴적 작업 표기 | ⬜ 보강 필요 (도구 미구현) |
-| session-write/AC4 | 거부 응답의 구분 전달 | ⬜ 보강 필요 (도구 미구현) |
-| session-write/AC5 | 미설정 시 graceful 거부 | ⬜ 보강 필요 (도구 미구현) |
-| workload-list/AC1 | 종류별 워크로드 조회 | ✅ 전용 케이스 `workload.py::test_workload_list_ac1_kinds_with_replica_summary` |
-| workload-list/AC2 | 네임스페이스 스코프 | ✅ 전용 케이스 `workload.py::test_workload_list_ac2_namespace_scope` |
-| workload-logs/AC1 | 워크로드 기준 로그 조회 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac1_logs_by_workload` |
-| workload-logs/AC2 | tail 라인 제어 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac2_tail_lines` |
-| workload-logs/AC3 | 크래시 루프 후 직전 로그 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac3_previous_after_crash` |
-| workload-logs/AC4 | 컨테이너 선택과 필터 | ✅ 전용 케이스 `workload.py::test_workload_logs_ac4_container_and_filters` |
-| workload-restart/AC1 | 롤링 재시작 트리거 | ✅ 전용 케이스 `workload.py::test_workload_restart_ac1_rolling_restart` |
-| workload-restart/AC2 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_restart_ac2_destructive_hint` |
-| workload-scale/AC1 | 레플리카 설정 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac1_replica_count` |
-| workload-scale/AC2 | DaemonSet 거부 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac2_daemonset_rejected` |
-| workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 케이스 `workload.py::test_workload_scale_ac3_destructive_hint` |
+| aws-config-get/AC1 | 고정 객체 조회 | ⬜ 분할 대기 — `aws_config.py`(2 AC 겸용) |
+| aws-config-get/AC2 | 정적 키 미사용 | ⬜ 분할 대기 — `aws_config.py`(2 AC 겸용) |
+| aws-config-get/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 전용 파일 `dear_baby_reset_user_ac1.py` |
+| dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 전용 파일 `dear_baby_reset_user_ac2.py` |
+| dear-baby-reset-user/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `dear_baby_reset_user_ac3.py` |
+| github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 전용 파일 `github_app_installation_token_ac1.py` |
+| github-app-installation-token/AC2 | 스코프 제한 | ✅ 전용 파일 `github_app_installation_token_ac2.py` |
+| github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| github-app-installation-token/AC4 | 베이스 키 비노출 | ✅ 전용 파일 `github_app_installation_token_ac4.py` |
+| grafana-token/AC1 | read-only 토큰 발급 | ✅ 전용 파일 `grafana_token_ac1.py` |
+| grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 전용 파일 `grafana_token_ac2.py` |
+| grafana-token/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 파일 `grafana_token_ac4.py` |
+| namespace-list/AC1 | 네임스페이스 열거 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| opensearch-document-delete/AC1 | 단일 문서 삭제 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-delete/AC3 | 파괴적 작업 표기 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| opensearch-document-put/AC1 | 문서 색인·업서트 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-put/AC2 | 인덱스 자동 생성 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-put/AC3 | 파괴적 작업 표기 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| opensearch-search/AC1 | 질의 검색 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-search/AC2 | 결과 상한 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-search/AC3 | AssumeRole·SigV4 접근 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-search/AC4 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| ping/AC1 | 항상 pong 응답 | ⬜ 분할 대기 — `smoke.py`(2 AC 겸용) |
+| platform-auth-safety/AC1 | 인증 게이트 | ⬜ 분할 대기 — `auth.py`(2 AC 겸용) |
+| platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 공백 — 케이스 없음 |
+| platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 예외 |
+| platform-auth-safety/AC5 | 서버 수준 graceful degradation | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| platform-auth-safety/AC6 | 헬스·레디니스 | ⬜ 분할 대기 — `smoke.py`(2 AC 겸용) |
+| platform-auth-safety/AC7 | API 키 인증 | ⬜ 분할 대기 — `auth.py`(2 AC 겸용) |
+| platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ⬜ 공백 — 케이스 없음 |
+| pod-describe/AC1 | 파드 상세 스냅샷 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| pod-describe/AC2 | 대상 지정 방식 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| pod-describe/AC3 | 이벤트 best-effort | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| session-list/AC1 | 세션 열거 | ⬜ 공백 — 케이스 없음 |
+| session-list/AC2 | 상태를 바꾸지 않는 조회 | ⬜ 공백 — 케이스 없음 |
+| session-list/AC3 | 미설정 시 graceful 거부 | ⬜ 공백 — 케이스 없음 |
+| session-read/AC1 | 오프셋 커서 읽기 | ⬜ 공백 — 케이스 없음 |
+| session-read/AC2 | 상태 분기 노출 | ⬜ 공백 — 케이스 없음 |
+| session-read/AC3 | 대상 부재·잘못된 커서 처리 | ⬜ 공백 — 케이스 없음 |
+| session-read/AC4 | 미설정 시 graceful 거부 | ⬜ 공백 — 케이스 없음 |
+| session-write/AC1 | 워크로드 입력 주입 | ⬜ 공백 — 케이스 없음 |
+| session-write/AC2 | 상태 분기 처리와 노출 | ⬜ 공백 — 케이스 없음 |
+| session-write/AC3 | 파괴적 작업 표기 | ⬜ 공백 — 케이스 없음 |
+| session-write/AC4 | 거부 응답의 구분 전달 | ⬜ 공백 — 케이스 없음 |
+| session-write/AC5 | 미설정 시 graceful 거부 | ⬜ 공백 — 케이스 없음 |
+| workload-list/AC1 | 종류별 워크로드 조회 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-list/AC2 | 네임스페이스 스코프 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-logs/AC1 | 워크로드 기준 로그 조회 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-logs/AC2 | tail 라인 제어 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-logs/AC3 | 크래시 루프 후 직전 로그 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-logs/AC4 | 컨테이너 선택과 필터 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-restart/AC1 | 롤링 재시작 트리거 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-restart/AC2 | 파괴적 작업 표기 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-scale/AC1 | 레플리카 설정 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-scale/AC2 | DaemonSet 거부 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-scale/AC3 | 파괴적 작업 표기 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
 
 ### ⬜ e2e 보강 backlog (14) — e2e 가능 클러스터 동작, 전용 케이스 신설 필요
 
@@ -230,6 +245,12 @@
 
 > **파괴적 작업 표기(5) — ✅ 완료(2026-07-21)**: 파괴 동작을 실제로 실행하지 않고 배포 서버 `tools/list`의 `annotations.destructiveHint == true`(및 `readOnlyHint == false`)를 e2e로 단언하는 per-AC 전용 케이스를 신설해 위 레지스트리에서 ✅로 승격했다(`internal/server/mcp_test.go`의 in-process 단언을 배포 서버 통합 e2e로 승격). 케이스: `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint`, `opensearch.py::test_opensearch_document_{put,delete}_ac3_destructive_hint`, `workload.py::test_workload_{restart_ac2,scale_ac3}_destructive_hint`. 남은 backlog 14건은 no-config 배포 변형·신규 픽스처가 필요한 후속 슬라이스.
 
+### 비-AC 파일 (스모크·인프라) (0)
+
+> AC 대신 스모크/인프라 확인(서버 기동·`/healthz`·도구 표면 존재)을 주검증한다고 선언한 매칭 단위 파일의 등재 자리다(규칙 3). 현재 0건이다 — smoke.py 는 ping/AC1 과 platform-auth-safety/AC6 을 선언하고 있어 비-AC 파일이 아니라 **분할 대기** 파일이다. 그 둘을 전용 파일로 떼어내는 후속 슬라이스에서, 남는 도구 표면 확인(공유 선행 조건)을 비-AC 파일로 등재할지 판단한다.
+
+- (없음)
+
 ### 🚫 e2e 예외 (1) — e2e 비현실적, 모델 정의 예외 개정 제안
 
 > e2e로 커버하기 비현실적이고 정적 검토로 대체하는 AC. definition이 `task에서 제안한다`고 명시하므로 모델 정의(`to-be-models.json`)에 일방 적용하지 않고 ratify 후 예외 목록에 반영한다.
@@ -242,6 +263,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-14 | **판정 단위를 케이스 → 파일로 옮긴 개정(모델 `tbm_homelab-k3s-mcp-ac-e2e`, reconciler `7529b609`)에 맞춰 e2e 렌즈를 재작성했다.** ① 매칭 단위 파일 9개 전부에 모듈 docstring `검증 AC:`·`실행 대상:` 선언을 도입(개정 전에는 확인 지점이 레포에 0건이라 파일 단위 매핑을 기계로 확인할 방법 자체가 없었다). ② 체커 `tests/integration/check_ac_mapping.py` 신설 — AC 전집(PRD)·선언·레지스트리를 각각 재도출해 규칙 1·2·3·5·6과 집계 일치를 lint 잡에서 강제한다. ③ 러너 `tests/integration/run_all.py` 신설 — 파일을 자동 발견해 `실행 대상`별로 실행하고, `ci.yml`의 파일별 9개 스텝을 배포 대상별 2스텝으로 대체했다(앞으로 분할해도 CI 수정 불필요, 배차 누락은 체커가 차단). ④ **3개 도메인 9 AC를 전용 파일로 분할**(grafana-token AC1·AC2·AC4 · github-app-installation-token AC1·AC2·AC4 · dear-baby-reset-user AC1·AC2·AC3) — 케이스 함수·상수를 한 글자도 바꾸지 않은 순수 이동이며 AST 대조로 26개 정의가 원본과 동일함을 확인했다. ⑤ 레지스트리 64행을 파일 단위 표기(전용 파일 / 분할 대기 / 공백 / 예외)로 재작성하고 집계 블록을 기계 판독 가능하게 만들었다. PRD(AC 본문)는 불변. | 케이스 단위: ✅49(전용 케이스)·⬜14·🚫1 (파일 단위로는 매칭 파일 0 · 규칙 1 위반 63) | 파일 단위: ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | AssumeRole·SigV4 계열 4건(aws-config-get/AC2 · opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4)을 **관측 수단 신설 후** per-AC 전용 케이스로 승격. 신규 픽스처 `tests/k8s/kind/http-trace.yaml` — MinIO(S3+STS)와 OpenSearch 양쪽 앞단에 서는 기록 리버스 프록시 1개(ConfigMap + `python:3.12-alpine`, 신규 이미지 없음)로, `AWS_CONFIG_S3_ENDPOINT`·`OPENSEARCH_STS_ENDPOINT`·`OPENSEARCH_ENDPOINT`를 프록시로 재배선하고 트레이스를 `:8081`로 노출(기존 스텝 2개에 포트포워드만 추가, 신규 검증 스텝 없음). backlog가 든 MinIO 단독 trace 후보는 데이터 플레인 서명이 OpenSearch로 가 관측 범위 밖이라 채택하지 않았다. 단정은 AssumeRole 발급 키 = 데이터 플레인 서명 키 대조 + 베이스 키 배제 + 세션 토큰 + 서명 스코프(`s3`/`aoss`)로, 무서명·베이스 키 서명·STS 미호출을 각각 falsify한다. 프록시의 Host 보존 전제는 SigV4를 재계산하는 가짜 업스트림과 Host 재작성 음성 대조로 검증. tests/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅45(전용 45)·⬜18·🚫1 | ✅49(전용 49)·⬜14·🚫1 |
 | 2026-08-13 | 잔여 파일 수준 `✅ 통합` 커버 **13건**(`opensearch.py` 9 · `aws_config.py` 2 · `dear_baby.py` 2)을 정리해 레지스트리에서 `✅ 통합` 행을 0으로 만들었다. **9건은 per-AC 전용 케이스로 승격**(opensearch-document-put/AC1·AC2 · opensearch-search/AC1·AC2 · opensearch-document-delete/AC1·AC2 · aws-config-get/AC1 · dear-baby-reset-user/AC1·AC2), **4건(opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4 · aws-config-get/AC2 — 전부 AssumeRole·SigV4 계열)은 ⬜로 정정**: 파일에 접근 경로를 관측하는 단언이 없었고, security 플러그인이 꺼진 OpenSearch 픽스처와 베이스 자격증명을 그대로 받아주는 MinIO에서는 어떤 e2e 단언도 '역할을 assume 하지 않는 서버'에서 그대로 통과해 vacuous하다(관측 수단 신설이 선행되는 후속 슬라이스). 신규 픽스처·CI 스텝·롤아웃 대기 없이 기존 스텝(8082·8084·8086) 안에서 `run()`을 케이스 디스패처로 재구성하고, opensearch의 put→search→delete 공유 상태는 케이스별 전용 인덱스 + 유일 질의 토큰으로 제거. 분리하며 빈 단정 4건 보강(search/AC2 기본값 10 최초 관측 — 12건 시드, put/AC2 색인 전 404 선행 관측, dear-baby/AC2 `email` 누락 거부 단언 신설, aws-config/AC1 contentType·ETag·lastModified 단정). tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅49(통합 13·전용 36)·⬜14·🚫1 | ✅45(전용 45)·⬜18·🚫1 |
 | 2026-08-13 | `workload.py`가 소유하던 파일 수준 `✅ 통합` 커버 **11건**(namespace-list/AC1 · workload-list/AC1·AC2 · workload-logs/AC1~AC4 · workload-restart/AC1 · workload-scale/AC1·AC2 · platform-auth-safety/AC3)을 per-AC 전용 케이스로 분리(규칙 1·2). 신규 CI 스텝·네임스페이스·롤아웃 대기 없이 기존 스텝(`workload.py` 8081) 안에서 `run()`을 케이스 디스패처로 재구성하고, `test-deployment.yaml`에 목록 조회 전용 StatefulSet·DaemonSet 1개씩만 추가(`ci.yml` 무변경). 분리하며 빈/반쪽 단정 6건을 실단정으로 보강(platform/AC3은 단언 0 → `kubectl auth can-i` 임퍼소네이션으로 허용 15·금지 11 동사 관측, workload-list/AC1은 enum 1종·요약 미단언 → 3종+kind별 요약, namespace-list/AC1 생성 시각 추가, workload-logs/AC1을 실제 출력 픽스처로 이관, workload-scale/AC1에 replicas=0 추가, workload-restart/AC1에 uid·generation 단정 추가). tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅49(통합 24·전용 25)·⬜14·🚫1 | ✅49(통합 13·전용 36)·⬜14·🚫1 |

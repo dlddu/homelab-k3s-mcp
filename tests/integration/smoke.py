@@ -1,5 +1,14 @@
 """Smoke checks against the primary kind deployment: /healthz, /readyz, tools/list.
 
+검증 AC: ping/AC1, platform-auth-safety/AC6
+실행 대상: primary
+실행 순서: 0
+
+**분할 대기(2 AC 겸용)** — 모델 `tbm_homelab-k3s-mcp-ac-e2e`의 파일 단위 규칙 2는
+파일 하나가 AC 하나만 주검증할 것을 요구하므로, 이 파일은 AC별 전용 파일로 쪼개질 대상이다.
+위 선언은 현재 겸용 상태를 있는 그대로 신고하는 것이고,
+`tests/integration/check_ac_mapping.py`가 이를 규칙 2 위반으로 계수해 `docs/doc-tracker.md`와 대조한다.
+
 Per-AC case names + docstrings declare the AC they verify (registry rule 3);
 ``docs/doc-tracker.md`` is the AC<->case mapping SSOT.
 """

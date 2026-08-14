@@ -37,7 +37,8 @@
   get/create, namespaces·events get/list만 존재. delete·시크릿 읽기·워크로드 create 없음.
 - **검증 AC**: AC3
 - **자동화**: 🟡 정적 검증(`k8s/rbac.yaml` 리뷰). pods/log·pods/exec 바인딩은 통합
-  `workload.py`/`dear_baby.py`로 간접 동작 확인. delete/secret 부재 단언 자동화 추가 권장.
+  `workload.py`/`dear_baby_reset_user_ac1.py`로 간접 동작 확인. delete/secret 부재 단언
+  자동화 추가 권장.
 
 ### 시나리오 4: 하드닝된 런타임
 - **사전 조건**: 배포 매니페스트(`k8s/deployment.yaml`)
