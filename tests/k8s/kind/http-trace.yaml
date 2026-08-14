@@ -83,6 +83,12 @@ data:
         "transfer-encoding",
         "upgrade",
         "expect",
+        # Re-sent below from the body actually forwarded, so it must be dropped
+        # here or the upstream receives it twice. Identical duplicates are legal
+        # enough that MinIO folds them, but OpenSearch rejects the request with
+        # "Multiple Content-Length values found". The re-sent value is byte-equal
+        # to the original, so a signature covering content-length still verifies.
+        "content-length",
     }
     SKIP_RESPONSE_HEADERS = {
         "connection",
@@ -210,6 +216,7 @@ data:
                 # SigV4 covers the Host header, so the upstream has to see exactly
                 # the host the client signed -- not this proxy's address.
                 original_host = self.headers.get("Host", "")
+                had_content_length = self.headers.get("Content-Length") is not None
 
                 conn = HTTPConnection(upstream_host, upstream_port, timeout=60)
                 try:
@@ -223,7 +230,11 @@ data:
                         conn.putheader("Host", original_host)
                     for name, value in headers:
                         conn.putheader(name, value)
-                    if body or self.command in ("POST", "PUT", "PATCH"):
+                    if had_content_length or body or self.command in (
+                        "POST",
+                        "PUT",
+                        "PATCH",
+                    ):
                         conn.putheader("Content-Length", str(len(body)))
                     conn.endheaders()
                     if body:
