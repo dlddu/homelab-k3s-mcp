@@ -7,15 +7,13 @@ resulting credentials.
 Per-AC case names + docstrings declare the AC they verify (registry rule 3);
 ``docs/doc-tracker.md`` is the AC<->case mapping SSOT.
 
-What this file does NOT assert is the assume-role access path itself
-(aws-config-get/AC2, "정적 키 미사용"). The call succeeding shows *some*
-credential worked against MinIO, but MinIO accepts the base credentials the CI
-secret already carries just as readily as the assumed-role ones, so no
-observation available here distinguishes the two. That AC is tracked as ⬜ in
-``docs/doc-tracker.md`` until the fixture grows an observation point; the
-assume-role wiring itself is asserted by the unit tests in
-``internal/awsconfig/awsconfig_test.go``, which are outside this loop's e2e
-scope.
+The access path itself (AC2, "정적 키 미사용") is not observable from the tool
+response: MinIO accepts the base credentials the CI secret carries just as
+readily as assumed-role ones, so a successful call proves only that *some*
+credential worked. ``tests/k8s/kind/http-trace.yaml`` supplies the missing
+observation point — a recording proxy in front of MinIO — and
+``test_aws_config_get_ac2_assume_role_access`` reads it to assert which
+credential actually signed the GetObject.
 """
 
 from __future__ import annotations
@@ -24,13 +22,24 @@ import asyncio
 import datetime
 import re
 
-from _helpers import base_url, open_session, wait_for_healthz
+from _helpers import (
+    assert_assumed_role_access,
+    base_url,
+    fetch_trace,
+    open_session,
+    trace_url,
+    wait_for_healthz,
+)
 
 # Must match tests/k8s/kind/minio.yaml: the seed ConfigMap and the bucket/key
 # the minio-seed Job uploads to.
 EXPECTED_BUCKET = "ci-config-bucket"
 EXPECTED_KEY = "aws/config"
 EXPECTED_CONTENT = "[default]\nregion = ap-northeast-2\noutput = json\n"
+
+# Must match the aws-config secret in .github/workflows/ci.yml.
+ROLE_ARN = "arn:aws:iam::000000000000:role/ci-config-reader"
+REGION = "us-east-1"
 
 # GetConfig strips the quotes S3 wraps around an ETag before returning it
 # (internal/awsconfig/awsconfig.go), leaving the bare hex digest — optionally
@@ -86,13 +95,51 @@ async def test_aws_config_get_ac1_fixed_object(session) -> None:
     )
 
 
+async def test_aws_config_get_ac2_assume_role_access(session, trace) -> None:
+    """AC: aws-config-get/AC2 — the object is read with assumed-role credentials, not static keys.
+
+    Reads the http-trace recording rather than the tool response, because the
+    tool response cannot tell the two apart: MinIO honours the static
+    ``AWS_ACCESS_KEY_ID`` in the CI secret exactly as readily as the assumed
+    role's temporary key, so "the call succeeded" is true either way.
+
+    What is asserted is the access path — an AssumeRole for the configured
+    role ARN was issued and signed with the base credential, and the GetObject
+    that followed was signed with a key STS handed back (never the base key)
+    and carried a session token. A server that read the object with the static
+    keys, or with no signature at all, fails all of it.
+    """
+    await session.call_tool("aws_config_get", {})
+
+    record = assert_assumed_role_access(
+        fetch_trace(trace),
+        role_arn=ROLE_ARN,
+        upstream="minio",
+        method="GET",
+        path=f"/{EXPECTED_BUCKET}/{EXPECTED_KEY}",
+        service="s3",
+        region=REGION,
+    )
+    assert record["status"] == 200, record
+
+    print(
+        "aws_config_get assume-role path ok ->",
+        f"GET {record['path']} signed by {record['sigv4']['accessKeyId']}"
+        f" (base key never used on the data plane)",
+    )
+
+
 async def run() -> None:
     url = base_url()
+    trace = trace_url()
     wait_for_healthz(url)
 
     async with open_session(url) as session:
         print("--- aws_config_get fixed object (AC: aws-config-get/AC1) ---")
         await test_aws_config_get_ac1_fixed_object(session)
+
+        print("--- aws_config_get assume-role access (AC: aws-config-get/AC2) ---")
+        await test_aws_config_get_ac2_assume_role_access(session, trace)
 
 
 if __name__ == "__main__":

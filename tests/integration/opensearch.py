@@ -11,17 +11,16 @@ end to end — it writes into its own ``ci-<case>-<RUN_ID>`` index (a put
 auto-creates it) and matches on its own unique query token, so no case can
 observe another's writes even on the unscoped searches.
 
-What these cases deliberately do NOT assert is the AssumeRole -> SigV4 access
-path (opensearch-search/AC3, opensearch-document-put/AC4,
-opensearch-document-delete/AC4). This fixture runs with the security plugin
-disabled, so it accepts signed and unsigned requests alike and cannot tell
-"signed with assumed-role credentials" apart from "not signed at all" — an e2e
-assertion here would pass just as happily against a server that never assumed
-the role. Those three ACs are tracked as ⬜ in ``docs/doc-tracker.md`` until the
-fixture grows an observation point; the SigV4 scope / session-token assertions
-live in ``internal/opensearch/opensearch_test.go``
-(``TestSearchSignsRequestWithAssumedRoleCreds``), which is a unit test and
-therefore outside this loop's e2e scope.
+The AssumeRole -> SigV4 access path (opensearch-search/AC3,
+opensearch-document-put/AC4, opensearch-document-delete/AC4) is not observable
+from the tool responses. This fixture runs with the security plugin disabled,
+so it accepts signed and unsigned requests alike, and MinIO accepts the base
+credentials in the CI secret as readily as assumed-role ones — an
+outcome-based assertion would pass against a server that never assumed the
+role. ``tests/k8s/kind/http-trace.yaml`` supplies the missing observation
+point: a recording proxy in front of both the STS endpoint and OpenSearch, so
+the ``*_assume_role_sigv4`` cases below can assert which credential signed each
+data-plane request.
 
 Documents become searchable only after a refresh (~1s on the fixture), so
 search assertions poll until the expected state appears.
@@ -35,11 +34,21 @@ import time
 import uuid
 
 from _helpers import (
+    assert_assumed_role_access,
     assert_destructive_annotation,
     base_url,
+    fetch_trace,
     open_session,
+    trace_url,
     wait_for_healthz,
 )
+
+# Must match the opensearch secret in .github/workflows/ci.yml.
+ROLE_ARN = "arn:aws:iam::000000000000:role/ci-opensearch"
+REGION = "us-east-1"
+# OpenSearch Serverless signs with the "aoss" service name
+# (internal/opensearch/opensearch.go).
+SIGNING_SERVICE = "aoss"
 
 # Fresh per run so re-runs against a warm fixture never see stale documents.
 RUN_ID = uuid.uuid4().hex[:8]
@@ -385,6 +394,108 @@ async def test_opensearch_document_delete_ac2_missing_document_not_found(
     print("opensearch_document_delete not_found handling ok ->", index)
 
 
+async def test_opensearch_search_ac3_assume_role_sigv4(session, trace) -> None:
+    """AC: opensearch-search/AC3 — the search request is SigV4-signed with assumed-role credentials.
+
+    Reads the http-trace recording rather than the tool response. The fixture
+    runs with the security plugin disabled, so it would answer an unsigned
+    search exactly the same way — the response cannot distinguish the access
+    path, only the recording can.
+
+    Asserts the whole chain: an AssumeRole for the configured role ARN was
+    issued (signed with the base credential), and the ``_search`` that followed
+    carried an ``AWS4-HMAC-SHA256`` header scoped to ``aoss`` in this region,
+    signed with a key STS handed back — never the static base key — and with a
+    session token attached.
+    """
+    index = index_for("searchac3")
+    await put_doc(session, index, {"title": f"sigv4 probe {token_for('searchac3')}"})
+    await search(session, token_for("searchac3"), index=index)
+
+    record = assert_assumed_role_access(
+        fetch_trace(trace),
+        role_arn=ROLE_ARN,
+        upstream="opensearch",
+        method="POST",
+        path=f"/{index}/_search",
+        service=SIGNING_SERVICE,
+        region=REGION,
+    )
+    # The payload hash has to be signed too, or the body could be swapped in
+    # flight without invalidating the signature.
+    assert "x-amz-content-sha256" in record["sigv4"]["signedHeaders"], record
+    print(
+        "opensearch_search assume-role SigV4 ok ->",
+        f"POST {record['path']} signed by {record['sigv4']['accessKeyId']}"
+        f" ({record['sigv4']['service']}/{record['sigv4']['region']})",
+    )
+
+
+async def test_opensearch_document_put_ac4_assume_role_sigv4(session, trace) -> None:
+    """AC: opensearch-document-put/AC4 — the index write is SigV4-signed with assumed-role credentials.
+
+    Same reasoning as opensearch-search/AC3: the security-disabled fixture
+    accepts an unsigned write just as happily, so the assertion has to come
+    from the http-trace recording of the write itself (``PUT /<index>/_doc/<id>``)
+    rather than from the ``created`` result.
+    """
+    index = index_for("putac4")
+    doc_id = "sigv4-put"
+    await put_doc(
+        session, index, {"title": f"sigv4 probe {token_for('putac4')}"}, doc_id=doc_id
+    )
+
+    record = assert_assumed_role_access(
+        fetch_trace(trace),
+        role_arn=ROLE_ARN,
+        upstream="opensearch",
+        method="PUT",
+        path=f"/{index}/_doc/{doc_id}",
+        service=SIGNING_SERVICE,
+        region=REGION,
+    )
+    assert "x-amz-content-sha256" in record["sigv4"]["signedHeaders"], record
+    print(
+        "opensearch_document_put assume-role SigV4 ok ->",
+        f"PUT {record['path']} signed by {record['sigv4']['accessKeyId']}"
+        f" ({record['sigv4']['service']}/{record['sigv4']['region']})",
+    )
+
+
+async def test_opensearch_document_delete_ac4_assume_role_sigv4(session, trace) -> None:
+    """AC: opensearch-document-delete/AC4 — the delete is SigV4-signed with assumed-role credentials.
+
+    Same reasoning as opensearch-search/AC3. The document is seeded first so
+    the recorded ``DELETE /<index>/_doc/<id>`` is a real deletion rather than a
+    not_found, keeping the observed request the one the AC is about.
+    """
+    index = index_for("deleteac4")
+    doc_id = "sigv4-delete"
+    await put_doc(
+        session,
+        index,
+        {"title": f"sigv4 probe {token_for('deleteac4')}"},
+        doc_id=doc_id,
+    )
+    deleted = await delete_doc(session, index, doc_id)
+    assert deleted["result"] == "deleted", deleted
+
+    record = assert_assumed_role_access(
+        fetch_trace(trace),
+        role_arn=ROLE_ARN,
+        upstream="opensearch",
+        method="DELETE",
+        path=f"/{index}/_doc/{doc_id}",
+        service=SIGNING_SERVICE,
+        region=REGION,
+    )
+    print(
+        "opensearch_document_delete assume-role SigV4 ok ->",
+        f"DELETE {record['path']} signed by {record['sigv4']['accessKeyId']}"
+        f" ({record['sigv4']['service']}/{record['sigv4']['region']})",
+    )
+
+
 async def test_opensearch_document_put_ac3_destructive_hint(session) -> None:
     """AC: opensearch-document-put/AC3 — opensearch_document_put advertises destructiveHint=true.
 
@@ -405,6 +516,7 @@ async def test_opensearch_document_delete_ac3_destructive_hint(session) -> None:
 
 async def run() -> None:
     url = base_url()
+    trace = trace_url()
     wait_for_healthz(url)
 
     async with open_session(url) as session:
@@ -436,6 +548,24 @@ async def run() -> None:
             "(AC: opensearch-document-delete/AC2) ---"
         )
         await test_opensearch_document_delete_ac2_missing_document_not_found(session)
+
+        print(
+            "--- opensearch_search assume-role SigV4 "
+            "(AC: opensearch-search/AC3) ---"
+        )
+        await test_opensearch_search_ac3_assume_role_sigv4(session, trace)
+
+        print(
+            "--- opensearch_document_put assume-role SigV4 "
+            "(AC: opensearch-document-put/AC4) ---"
+        )
+        await test_opensearch_document_put_ac4_assume_role_sigv4(session, trace)
+
+        print(
+            "--- opensearch_document_delete assume-role SigV4 "
+            "(AC: opensearch-document-delete/AC4) ---"
+        )
+        await test_opensearch_document_delete_ac4_assume_role_sigv4(session, trace)
 
         print(
             "--- opensearch_document_put destructiveHint "

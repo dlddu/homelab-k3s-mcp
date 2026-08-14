@@ -25,9 +25,12 @@
   미사용. GetObject 실패는 에러로 래핑.
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `awsconfig_test.go`(assume-role 배선·
-  `TestGetConfigWrapsGetObjectError`). **e2e 공백(⬜)**: MinIO는 CI 시크릿의 베이스
-  자격증명(minioadmin)도 AssumeRole 자격증명과 똑같이 받아주므로, 통합 e2e에서는 어느 쪽으로
-  접근했는지 구분할 수단이 없다 — `docs/doc-tracker.md`의 ⬜ backlog 참조.
+  `TestGetConfigWrapsGetObjectError`). 통합
+  `aws_config.py::test_aws_config_get_ac2_assume_role_access` — MinIO는 베이스
+  자격증명(minioadmin)도 똑같이 받아주므로 도구 응답으로는 구분되지 않는다. 대신
+  `tests/k8s/kind/http-trace.yaml` 프록시 기록에서 (1) 설정된 role ARN의 AssumeRole이
+  베이스 자격증명으로 서명돼 발급됐고 (2) 뒤이은 GetObject가 STS가 내준 키로 서명됐으며
+  베이스 키가 아니고 (3) 세션 토큰을 달고 있음을 단정한다.
 
 ### 시나리오 3: 미설정 시 도구 에러
 - **사전 조건**: AWS config env 미설정

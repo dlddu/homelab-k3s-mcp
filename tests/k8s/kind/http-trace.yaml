@@ -1,0 +1,434 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: http-trace
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# Recording reverse proxy that makes the AssumeRole -> SigV4 access path
+# OBSERVABLE, which the fixtures on their own are not.
+#
+# Why this exists: the MinIO fixture accepts the base credentials the CI secret
+# carries (minioadmin) exactly as readily as assumed-role credentials, and the
+# OpenSearch fixture runs with the security plugin disabled, so it accepts
+# signed and unsigned requests alike. A server that never assumed a role would
+# therefore pass every outcome-based e2e assertion in tests/integration --
+# making those assertions vacuous with respect to
+# aws-config-get/AC2 and opensearch-{search/AC3,document-put/AC4,
+# document-delete/AC4}. This proxy sits in front of both upstreams and records
+# WHICH credential signed each request, so the tests can assert the access path
+# itself rather than only its outcome.
+#
+# Wiring (see .github/workflows/ci.yml): AWS_CONFIG_S3_ENDPOINT and
+# OPENSEARCH_STS_ENDPOINT point at :9000 (MinIO co-locates S3 and STS) and
+# OPENSEARCH_ENDPOINT points at :9200. The trace is read over :8081.
+#
+# The proxy is signature-transparent: SigV4 signs the Host header, so the
+# client's original Host is forwarded verbatim and the upstream recomputes the
+# same signature it would have computed without the proxy in the path.
+#
+# It records identifiers only, never secrets -- no request/response bodies, no
+# Signature=, no session token, no STS secret key.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: http-trace-script
+  namespace: http-trace
+data:
+  trace_proxy.py: |
+    """Recording reverse proxy that makes the AssumeRole -> SigV4 path observable.
+
+    One process fronts several upstreams (one listener per upstream) and keeps a
+    bounded in-memory log of request *metadata*. A separate admin port serves that
+    log as JSON so integration tests can assert which credential actually signed a
+    request, instead of only asserting that the request succeeded.
+
+    Transparency matters more than anything else here: SigV4 signs the ``Host``
+    header, so the proxy forwards the client's original ``Host`` verbatim and
+    copies the request line, headers and body byte for byte. The upstream then
+    recomputes the same signature it would have computed without the proxy.
+
+    What is recorded is deliberately narrow -- identifiers only, never secrets:
+    method, path, the parsed ``Credential=`` scope of the SigV4 Authorization
+    header, which headers were signed, whether ``X-Amz-Security-Token`` was
+    present, and for STS AssumeRole calls the requested role plus the AccessKeyId
+    that STS handed back. The signature itself, the session token, the STS secret
+    key and every request/response body stay out of the log.
+    """
+
+    from __future__ import annotations
+
+    import json
+    import os
+    import re
+    import sys
+    import threading
+    import time
+    from http.client import HTTPConnection
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import parse_qs
+
+    MAX_RECORDS = 2000
+
+    # Hop-by-hop headers must not be forwarded. "Expect" is dropped too: the Go SDK
+    # never signs it, and passing it through would make the upstream wait for a
+    # 100-continue handshake this proxy does not relay.
+    SKIP_REQUEST_HEADERS = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+        "expect",
+    }
+    SKIP_RESPONSE_HEADERS = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+        "content-length",
+    }
+
+    AUTHORIZATION_RE = re.compile(
+        r"^(?P<algorithm>AWS4-HMAC-SHA256)\s+"
+        r"Credential=(?P<access_key_id>[^/]+)/(?P<date>[^/]+)/(?P<region>[^/]+)/"
+        r"(?P<service>[^/]+)/aws4_request,\s*"
+        r"SignedHeaders=(?P<signed_headers>[^,]+),"
+    )
+    ISSUED_ACCESS_KEY_RE = re.compile(r"<AccessKeyId>([^<]+)</AccessKeyId>")
+
+    _lock = threading.Lock()
+    _records: list[dict] = []
+    _next_seq = 1
+
+
+    def log(message: str) -> None:
+        sys.stdout.write(f"http-trace {message}\n")
+        sys.stdout.flush()
+
+
+    def record(entry: dict) -> None:
+        global _next_seq
+        with _lock:
+            entry["seq"] = _next_seq
+            _next_seq += 1
+            _records.append(entry)
+            if len(_records) > MAX_RECORDS:
+                # Evict the oldest ordinary records but keep every AssumeRole one.
+                # A client caches the credentials it was issued, so it assumes each
+                # role once per process: an evicted AssumeRole entry can never be
+                # observed again, and it is the anchor every access-path assertion
+                # correlates against.
+                overflow = len(_records) - MAX_RECORDS
+                kept = []
+                for item in _records:
+                    if overflow and item.get("sts") is None:
+                        overflow -= 1
+                        continue
+                    kept.append(item)
+                _records[:] = kept
+        log(
+            "{seq} {upstream} {method} {path} -> {status}".format(
+                seq=entry["seq"],
+                upstream=entry["upstream"],
+                method=entry["method"],
+                path=entry["path"],
+                status=entry["status"],
+            )
+        )
+
+
+    def snapshot() -> list[dict]:
+        with _lock:
+            return list(_records)
+
+
+    def parse_sigv4(authorization: str | None) -> dict | None:
+        """Parse the identifying parts of a SigV4 Authorization header.
+
+        Returns None for an absent or non-SigV4 header -- which is itself the
+        observation that matters when a test asserts a request *was* signed. The
+        ``Signature=`` component is never returned.
+        """
+        if not authorization:
+            return None
+        match = AUTHORIZATION_RE.match(authorization.strip())
+        if not match:
+            return None
+        return {
+            "algorithm": match.group("algorithm"),
+            "accessKeyId": match.group("access_key_id"),
+            "date": match.group("date"),
+            "region": match.group("region"),
+            "service": match.group("service"),
+            "signedHeaders": match.group("signed_headers").split(";"),
+        }
+
+
+    def parse_assume_role(body: bytes) -> dict | None:
+        """Pull the whitelisted fields out of an STS AssumeRole form body."""
+        try:
+            form = parse_qs(body.decode("utf-8"))
+        except UnicodeDecodeError:
+            return None
+        if form.get("Action", [""])[0] != "AssumeRole":
+            return None
+        return {
+            "action": "AssumeRole",
+            "roleArn": form.get("RoleArn", [""])[0],
+            "roleSessionName": form.get("RoleSessionName", [""])[0],
+        }
+
+
+    def make_proxy_handler(upstream_name: str, upstream_host: str, upstream_port: int):
+        class ProxyHandler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, fmt, *args):  # noqa: D102 - quieter default log
+                pass
+
+            def _read_body(self) -> bytes:
+                length = int(self.headers.get("Content-Length") or 0)
+                return self.rfile.read(length) if length else b""
+
+            def _forward(self) -> None:
+                body = self._read_body()
+
+                headers = []
+                for name, value in self.headers.items():
+                    if name.lower() in SKIP_REQUEST_HEADERS or name.lower() == "host":
+                        continue
+                    headers.append((name, value))
+
+                # SigV4 covers the Host header, so the upstream has to see exactly
+                # the host the client signed -- not this proxy's address.
+                original_host = self.headers.get("Host", "")
+
+                conn = HTTPConnection(upstream_host, upstream_port, timeout=60)
+                try:
+                    conn.putrequest(
+                        self.command,
+                        self.path,
+                        skip_host=True,
+                        skip_accept_encoding=True,
+                    )
+                    if original_host:
+                        conn.putheader("Host", original_host)
+                    for name, value in headers:
+                        conn.putheader(name, value)
+                    if body or self.command in ("POST", "PUT", "PATCH"):
+                        conn.putheader("Content-Length", str(len(body)))
+                    conn.endheaders()
+                    if body:
+                        conn.send(body)
+
+                    response = conn.getresponse()
+                    response_body = response.read()
+                    status = response.status
+                    response_headers = response.getheaders()
+                except Exception as exc:  # upstream unreachable / protocol error
+                    log(f"{upstream_name} {self.command} {self.path} failed: {exc}")
+                    self.send_response_only(502)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                finally:
+                    conn.close()
+
+                self._record(status, body, response_body)
+
+                self.send_response_only(status)
+                for name, value in response_headers:
+                    if name.lower() in SKIP_RESPONSE_HEADERS:
+                        continue
+                    self.send_header(name, value)
+                self.send_header("Content-Length", str(len(response_body)))
+                self.end_headers()
+                if response_body and self.command != "HEAD":
+                    self.wfile.write(response_body)
+
+            def _record(self, status: int, body: bytes, response_body: bytes) -> None:
+                path, _, query = self.path.partition("?")
+                entry = {
+                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    "upstream": upstream_name,
+                    "method": self.command,
+                    "path": path,
+                    "query": query,
+                    "host": self.headers.get("Host", ""),
+                    "status": status,
+                    "sigv4": parse_sigv4(self.headers.get("Authorization")),
+                    "securityToken": self.headers.get("X-Amz-Security-Token") is not None,
+                    "sts": None,
+                }
+
+                if self.command == "POST" and path in ("", "/"):
+                    assume_role = parse_assume_role(body)
+                    if assume_role is not None:
+                        if status == 200:
+                            issued = ISSUED_ACCESS_KEY_RE.search(
+                                response_body.decode("utf-8", "replace")
+                            )
+                            # Only the issued key id (an identifier that travels in
+                            # cleartext on every signed request anyway). The secret
+                            # key and session token in the same body are ignored.
+                            assume_role["issuedAccessKeyId"] = (
+                                issued.group(1) if issued else ""
+                            )
+                        entry["sts"] = assume_role
+
+                record(entry)
+
+            do_GET = _forward
+            do_PUT = _forward
+            do_POST = _forward
+            do_HEAD = _forward
+            do_DELETE = _forward
+            do_PATCH = _forward
+
+        return ProxyHandler
+
+
+    class AdminHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt, *args):  # noqa: D102
+            pass
+
+        def do_GET(self):
+            if self.path == "/healthz":
+                self._json(200, {"status": "ok"})
+                return
+            if self.path.startswith("/requests"):
+                self._json(200, {"requests": snapshot()})
+                return
+            self._json(404, {"error": "not found"})
+
+        def _json(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response_only(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+
+    def serve(server: ThreadingHTTPServer) -> None:
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+
+
+    def main() -> None:
+        # TRACE_ROUTES: "<name>=<listen port>=<upstream host>:<upstream port>,..."
+        routes = os.environ.get("TRACE_ROUTES", "").strip()
+        if not routes:
+            raise SystemExit("TRACE_ROUTES is required")
+
+        for route in routes.split(","):
+            name, listen_port, upstream = route.split("=", 2)
+            host, _, port = upstream.rpartition(":")
+            handler = make_proxy_handler(name, host, int(port))
+            serve(ThreadingHTTPServer(("0.0.0.0", int(listen_port)), handler))
+            log(f"routing :{listen_port} -> {host}:{port} as {name!r}")
+
+        admin_port = int(os.environ.get("TRACE_ADMIN_PORT", "8081"))
+        serve(ThreadingHTTPServer(("0.0.0.0", admin_port), AdminHandler))
+        log(f"admin api on :{admin_port}")
+
+        threading.Event().wait()
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: http-trace
+  namespace: http-trace
+  labels:
+    app.kubernetes.io/name: http-trace
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: http-trace
+  template:
+    metadata:
+      labels:
+        app: http-trace
+    spec:
+      containers:
+        - name: proxy
+          image: python:3.12-alpine
+          command: ["python", "-u", "/scripts/trace_proxy.py"]
+          env:
+            # "<name>=<listen port>=<upstream host>:<upstream port>"
+            - name: TRACE_ROUTES
+              value: >-
+                minio=9000=minio.minio.svc.cluster.local:9000,opensearch=9200=opensearch.opensearch.svc.cluster.local:9200
+            - name: TRACE_ADMIN_PORT
+              value: "8081"
+          ports:
+            - name: minio
+              containerPort: 9000
+            - name: opensearch
+              containerPort: 9200
+            - name: admin
+              containerPort: 8081
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: admin
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+      volumes:
+        - name: script
+          configMap:
+            name: http-trace-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: http-trace
+  namespace: http-trace
+spec:
+  selector:
+    app: http-trace
+  ports:
+    - name: minio
+      port: 9000
+      targetPort: 9000
+      protocol: TCP
+    - name: opensearch
+      port: 9200
+      targetPort: 9200
+      protocol: TCP
+    - name: admin
+      port: 8081
+      targetPort: 8081
+      protocol: TCP

@@ -41,10 +41,12 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestSearchSignsRequestWithAssumedRoleCreds` — SigV4 `aoss` 스코프·payload 해시·
-  세션 토큰 헤더 단언). **e2e 공백(⬜)**: 통합 e2e는 MinIO STS를 경유하도록 배선돼 있지만,
-  security 플러그인이 꺼진 OpenSearch 픽스처는 서명 유무를 구분하지 못해 "assume 하지 않는
-  서버"에서도 똑같이 통과한다 — 관측 수단 신설 전까지 이 시나리오의 e2e 케이스는 없다
-  (`docs/doc-tracker.md` ⬜ backlog 참조).
+  세션 토큰 헤더 단언). 통합
+  `opensearch.py::test_opensearch_search_ac3_assume_role_sigv4` — security 플러그인이 꺼진
+  픽스처는 서명 유무를 구분하지 못하므로 도구 응답 대신
+  `tests/k8s/kind/http-trace.yaml` 프록시 기록을 읽어, `POST /<index>/_search`가
+  `aoss` 스코프로 서명됐고 그 키가 STS가 내준 키(≠ 베이스 키)이며 세션 토큰을 달고 있음을
+  단정한다.
 
 ### 시나리오 4: 미설정 시 도구 에러
 - **사전 조건**: `OPENSEARCH_ENDPOINT` 등 관련 env 미설정

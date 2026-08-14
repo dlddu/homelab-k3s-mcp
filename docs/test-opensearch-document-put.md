@@ -48,11 +48,11 @@
   요청. 정적 키 미사용.
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go` (서명 경로는 3도구 공통
-  `do()` — `TestSearchSignsRequestWithAssumedRoleCreds`). **e2e 공백(⬜)**: kind 픽스처의
-  OpenSearch는 security 플러그인이 꺼져 있어 서명된 요청과 서명 없는 요청을 구분하지 못하고,
-  MinIO는 베이스 자격증명도 그대로 받아준다 — 접근 경로를 관측할 수단이 없어 통합 e2e에는
-  이 시나리오의 케이스가 없다. 관측 수단(MinIO HTTP trace / 서명 기록 프록시) 신설은
-  `docs/doc-tracker.md`의 ⬜ backlog 참조.
+  `do()` — `TestSearchSignsRequestWithAssumedRoleCreds`). 통합
+  `opensearch.py::test_opensearch_document_put_ac4_assume_role_sigv4` — 픽스처는 서명 유무를
+  구분하지 못하므로 `tests/k8s/kind/http-trace.yaml` 프록시 기록을 읽어,
+  `PUT /<index>/_doc/<id>`가 `aoss` 스코프로 서명됐고 그 키가 STS가 내준 키(≠ 베이스 키)이며
+  세션 토큰을 달고 있음을 단정한다.
 
 ### 시나리오 5: 미설정 시 도구 에러
 - **사전 조건**: OpenSearch 관련 env 미설정
