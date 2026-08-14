@@ -109,6 +109,14 @@ jobs:
       - name: Deploy OpenSearch fixture
         run: kubectl apply -f tests/k8s/kind/opensearch.yaml
 
+      # Recording proxy in front of MinIO (S3 + STS) and OpenSearch. The
+      # endpoints below point the server at it instead of at the upstreams
+      # directly, which is what makes the AssumeRole -> SigV4 access path
+      # observable to the integration tests (aws-config-get/AC2,
+      # opensearch-{search/AC3,document-put/AC4,document-delete/AC4}).
+      - name: Deploy http-trace fixture
+        run: kubectl apply -f tests/k8s/kind/http-trace.yaml
+
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
 
@@ -122,6 +130,10 @@ jobs:
             --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      # AWS_CONFIG_S3_ENDPOINT points at the http-trace proxy rather than at
+      # MinIO directly (the proxy forwards to MinIO preserving the signed Host
+      # header). That is what lets aws_config.py observe which credential
+      # signed the GetObject.
       - name: Create test AWS config secret
         run: |
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-aws-config \
@@ -129,7 +141,7 @@ jobs:
             --from-literal=AWS_CONFIG_S3_KEY=aws/config \
             --from-literal=AWS_CONFIG_ROLE_ARN=arn:aws:iam::000000000000:role/ci-config-reader \
             --from-literal=AWS_CONFIG_S3_REGION=us-east-1 \
-            --from-literal=AWS_CONFIG_S3_ENDPOINT=http://minio.minio.svc.cluster.local:9000 \
+            --from-literal=AWS_CONFIG_S3_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
             --from-literal=AWS_ACCESS_KEY_ID=minioadmin \
             --from-literal=AWS_SECRET_ACCESS_KEY=minioadmin \
             --dry-run=client -o yaml | kubectl apply -f -
@@ -147,17 +159,18 @@ jobs:
             --from-literal=GRAFANA_LOGS_USER=222222 \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      # OPENSEARCH_STS_ENDPOINT routes the AssumeRole call to MinIO so the
-      # tools exercise the same assume-role path as aws_config_get; the base
-      # credentials come from the AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY in
-      # the aws-config secret above.
+      # Both endpoints point at the http-trace proxy: :9000 forwards to MinIO
+      # (the AssumeRole call, sharing the aws-config secret's base credentials)
+      # and :9200 forwards to OpenSearch (the signed data-plane requests).
+      # Recording both on one proxy is what lets opensearch.py correlate the
+      # key STS issued with the key that signed each data-plane request.
       - name: Create test OpenSearch secret
         run: |
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-opensearch \
-            --from-literal=OPENSEARCH_ENDPOINT=http://opensearch.opensearch.svc.cluster.local:9200 \
+            --from-literal=OPENSEARCH_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9200 \
             --from-literal=OPENSEARCH_ROLE_ARN=arn:aws:iam::000000000000:role/ci-opensearch \
             --from-literal=OPENSEARCH_REGION=us-east-1 \
-            --from-literal=OPENSEARCH_STS_ENDPOINT=http://minio.minio.svc.cluster.local:9000 \
+            --from-literal=OPENSEARCH_STS_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)
@@ -186,6 +199,12 @@ jobs:
 
       - name: Wait for OpenSearch rollout
         run: kubectl -n opensearch rollout status deploy/opensearch --timeout=300s
+
+      # Has to be ready before the first tool call: the server caches the
+      # credentials it assumes, so an AssumeRole that bypassed the proxy would
+      # never be re-issued and could never be observed.
+      - name: Wait for http-trace rollout
+        run: kubectl -n http-trace rollout status deploy/http-trace --timeout=180s
 
       - name: Wait for rollout
         run: kubectl -n homelab-k3s-mcp rollout status deploy/homelab-k3s-mcp --timeout=180s
@@ -231,8 +250,10 @@ jobs:
         run: |
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8084:80 >/tmp/pf-aws.log 2>&1 &
           PF_PID=$!
-          trap "kill $PF_PID" EXIT
-          python tests/integration/aws_config.py http://127.0.0.1:8084
+          kubectl -n http-trace port-forward svc/http-trace 8090:8081 >/tmp/pf-trace-aws.log 2>&1 &
+          TRACE_PID=$!
+          trap "kill $PF_PID $TRACE_PID" EXIT
+          python tests/integration/aws_config.py http://127.0.0.1:8084 http://127.0.0.1:8090
 
       - name: Validate grafana_token tool against mock
         run: |
@@ -245,8 +266,10 @@ jobs:
         run: |
           kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8086:80 >/tmp/pf-opensearch.log 2>&1 &
           PF_PID=$!
-          trap "kill $PF_PID" EXIT
-          python tests/integration/opensearch.py http://127.0.0.1:8086
+          kubectl -n http-trace port-forward svc/http-trace 8091:8081 >/tmp/pf-trace-opensearch.log 2>&1 &
+          TRACE_PID=$!
+          trap "kill $PF_PID $TRACE_PID" EXIT
+          python tests/integration/opensearch.py http://127.0.0.1:8086 http://127.0.0.1:8091
 
       - name: Validate auth gate against variant
         run: |
@@ -289,6 +312,9 @@ jobs:
           kubectl -n opensearch get all -o wide || true
           kubectl -n opensearch describe deploy/opensearch || true
           kubectl -n opensearch logs deploy/opensearch --tail=200 || true
+          kubectl -n http-trace get all -o wide || true
+          kubectl -n http-trace describe deploy/http-trace || true
+          kubectl -n http-trace logs deploy/http-trace --tail=200 || true
           kubectl -n homelab-k3s-mcp-auth get all -o wide || true
           kubectl -n homelab-k3s-mcp-auth describe deploy/homelab-k3s-mcp-auth || true
           kubectl -n homelab-k3s-mcp-auth logs deploy/homelab-k3s-mcp-auth --tail=200 || true

@@ -14,7 +14,9 @@
   size, etag 반환. 텍스트 블록은 객체 내용과 일치.
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/awsconfig/awsconfig_test.go::TestGetConfigMapsObjectAndMetadata`,
-  `mcp_test.go::TestAWSConfigGetDispatchesToService`. 통합 `aws_config.py`.
+  `mcp_test.go::TestAWSConfigGetDispatchesToService`. 통합
+  `aws_config.py::test_aws_config_get_ac1_fixed_object`(내용·size + contentType·ETag 모양·
+  lastModified RFC3339 파싱까지 단정, 텍스트 블록 = 객체 내용).
 
 ### 시나리오 2: AssumeRole → GetObject 경로(정적 키 없음)
 - **사전 조건**: 동일(서버가 MinIO STS로 AWS_CONFIG_ROLE_ARN AssumeRole)
@@ -22,8 +24,13 @@
 - **기대 결과**: 기본 자격증명 체인 → STS AssumeRole → 단명 자격증명으로 GetObject. 정적 키
   미사용. GetObject 실패는 에러로 래핑.
 - **검증 AC**: AC2
-- **자동화**: 통합 `aws_config.py`(assume-role → GetObject 전 경로). Go 단위
-  `awsconfig_test.go::TestGetConfigWrapsGetObjectError`.
+- **자동화**: Go 단위 `awsconfig_test.go`(assume-role 배선·
+  `TestGetConfigWrapsGetObjectError`). 통합
+  `aws_config.py::test_aws_config_get_ac2_assume_role_access` — MinIO는 베이스
+  자격증명(minioadmin)도 똑같이 받아주므로 도구 응답으로는 구분되지 않는다. 대신
+  `tests/k8s/kind/http-trace.yaml` 프록시 기록에서 (1) 설정된 role ARN의 AssumeRole이
+  베이스 자격증명으로 서명돼 발급됐고 (2) 뒤이은 GetObject가 STS가 내준 키로 서명됐으며
+  베이스 키가 아니고 (3) 세션 토큰을 달고 있음을 단정한다.
 
 ### 시나리오 3: 미설정 시 도구 에러
 - **사전 조건**: AWS config env 미설정
