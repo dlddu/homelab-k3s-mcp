@@ -70,6 +70,15 @@ def get_json(url: str, path: str) -> dict[str, Any]:
     return response.json()
 
 
+def parse_env_resource(result) -> tuple[str, str]:
+    """Extract (env_text, mime_type) from a tool result's embedded resource."""
+    assert result.content, result
+    block = result.content[0]
+    assert block.type == "resource", block
+    resource = block.resource
+    return resource.text, resource.mimeType
+
+
 @contextlib.asynccontextmanager
 async def open_session(
     url: str, headers: dict[str, str] | None = None

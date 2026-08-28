@@ -1,5 +1,14 @@
 """End-to-end check for aws_config_get against the MinIO fixture.
 
+검증 AC: aws-config-get/AC1, aws-config-get/AC2
+실행 대상: primary
+추가 인자: trace
+
+**분할 대기(2 AC 겸용)** — 모델 `tbm_homelab-k3s-mcp-ac-e2e`의 파일 단위 규칙 2는
+파일 하나가 AC 하나만 주검증할 것을 요구하므로, 이 파일은 AC별 전용 파일로 쪼개질 대상이다.
+위 선언은 현재 겸용 상태를 있는 그대로 신고하는 것이고,
+`tests/integration/check_ac_mapping.py`가 이를 규칙 2 위반으로 계수해 `docs/doc-tracker.md`와 대조한다.
+
 The server assumes AWS_CONFIG_ROLE_ARN against MinIO's STS endpoint and reads
 s3://ci-config-bucket/aws/config (seeded by tests/k8s/kind/minio.yaml) with the
 resulting credentials.

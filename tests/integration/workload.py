@@ -1,5 +1,13 @@
 """End-to-end checks for the cluster-facing tools against the kind fixtures.
 
+검증 AC: namespace-list/AC1, platform-auth-safety/AC3, pod-describe/AC1, pod-describe/AC2, pod-describe/AC3, workload-list/AC1, workload-list/AC2, workload-logs/AC1, workload-logs/AC2, workload-logs/AC3, workload-logs/AC4, workload-restart/AC1, workload-restart/AC2, workload-scale/AC1, workload-scale/AC2, workload-scale/AC3
+실행 대상: primary
+
+**분할 대기(16 AC 겸용)** — 모델 `tbm_homelab-k3s-mcp-ac-e2e`의 파일 단위 규칙 2는
+파일 하나가 AC 하나만 주검증할 것을 요구하므로, 이 파일은 AC별 전용 파일로 쪼개질 대상이다.
+위 선언은 현재 겸용 상태를 있는 그대로 신고하는 것이고,
+`tests/integration/check_ac_mapping.py`가 이를 규칙 2 위반으로 계수해 `docs/doc-tracker.md`와 대조한다.
+
 Covers namespace_list / workload_list / workload_logs / workload_restart /
 workload_scale / pod_describe plus the deployed RBAC boundary.
 
