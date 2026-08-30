@@ -98,7 +98,7 @@
   내용은 e2e `crashloop-fixture`), pod_describe(전체),
   workload_restart, workload_scale, dear_baby_reset_user, 자격증명 3종의 발급/스코프/
   비노출(github·grafana AC4)/unavailable,
-  opensearch 3종 전 AC(14 — 단위 + `tests/integration/opensearch.py`,
+  opensearch 3종 전 AC(14 — 단위 + `tests/integration/opensearch_*_ac*.py`,
   픽스처는 security off 단일노드 OpenSearch + MinIO STS + 접근 경로 관측용
   `http-trace` 기록 프록시),
   platform AC1·AC2(인증 게이트·디스커버리)·AC5·AC6·AC7·AC8(API 키 게이트·구성 유연성·
@@ -133,19 +133,21 @@
 - AC 전집: 64
 - 예외 등재: 1
 - 1:1 대상: 63
-- 매칭 파일(전용): 9
-- 분할 대기 파일(규칙 2 위반): 6
-- 공백 AC: 54
+- 매칭 파일(전용): 22
+- 분할 대기 파일(규칙 2 위반): 4
+- 공백 AC: 41
 <!-- /ac-e2e-집계 -->
 
-> 공백 54건의 내역: **40건**은 분할 대기 파일 6개(`workload.py` 16 · `opensearch.py` 11 · `no_config.py` 7 · `aws_config.py` 2 · `auth.py` 2 · `smoke.py` 2)가 겸용으로 커버하고 있어 분할만 하면 ✅가 되고, **14건**은 케이스 자체가 없다(아래 backlog). 진행 방향은 매칭 파일 ↑ / 분할 대기 ↓ / 공백 ↓ 이다.
+> 공백 41건의 내역: **27건**은 분할 대기 파일 4개(`workload.py` 16 · `no_config.py` 7 · `auth.py` 2 · `smoke.py` 2)가 겸용으로 커버하고 있어 분할만 하면 ✅가 되고, **14건**은 케이스 자체가 없다(아래 backlog). 진행 방향은 매칭 파일 ↑ / 분할 대기 ↓ / 공백 ↓ 이다.
+>
+> 남은 4개는 각각 **분할 전에 정할 것이 하나씩 있다** — `workload.py`는 케이스가 공유 픽스처 상태에 순서 의존적이고(러너가 파일별 프로세스로 돌리므로 순서 의존을 먼저 끊어야 한다), `no_config.py`·`auth.py`는 `auth-variant` 배포 그룹이라 그 그룹의 배차가 2 → 8·2 → 4로 늘며, `smoke.py`는 두 AC를 떼고 남는 도구 표면 확인을 규칙 3의 **비-AC 파일**로 등재할지가 미결이다. 이번 슬라이스가 `opensearch.py`·`aws_config.py`를 고른 것은 그 둘만 **선결 판단 없이 순수 이동으로 끝나기** 때문이다.
 
-### AC 레지스트리 (64) — ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1
+### AC 레지스트리 (64) — ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
-| aws-config-get/AC1 | 고정 객체 조회 | ⬜ 분할 대기 — `aws_config.py`(2 AC 겸용) |
-| aws-config-get/AC2 | 정적 키 미사용 | ⬜ 분할 대기 — `aws_config.py`(2 AC 겸용) |
+| aws-config-get/AC1 | 고정 객체 조회 | ✅ 전용 파일 `aws_config_get_ac1.py` |
+| aws-config-get/AC2 | 정적 키 미사용 | ✅ 전용 파일 `aws_config_get_ac2.py` |
 | aws-config-get/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
 | dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 전용 파일 `dear_baby_reset_user_ac1.py` |
 | dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 전용 파일 `dear_baby_reset_user_ac2.py` |
@@ -159,19 +161,19 @@
 | grafana-token/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
 | grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 파일 `grafana_token_ac4.py` |
 | namespace-list/AC1 | 네임스페이스 열거 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| opensearch-document-delete/AC1 | 단일 문서 삭제 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-document-delete/AC3 | 파괴적 작업 표기 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 전용 파일 `opensearch_document_delete_ac1.py` |
+| opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 전용 파일 `opensearch_document_delete_ac2.py` |
+| opensearch-document-delete/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `opensearch_document_delete_ac3.py` |
+| opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_document_delete_ac4.py` |
 | opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
-| opensearch-document-put/AC1 | 문서 색인·업서트 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-document-put/AC2 | 인덱스 자동 생성 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-document-put/AC3 | 파괴적 작업 표기 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-document-put/AC1 | 문서 색인·업서트 | ✅ 전용 파일 `opensearch_document_put_ac1.py` |
+| opensearch-document-put/AC2 | 인덱스 자동 생성 | ✅ 전용 파일 `opensearch_document_put_ac2.py` |
+| opensearch-document-put/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `opensearch_document_put_ac3.py` |
+| opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_document_put_ac4.py` |
 | opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
-| opensearch-search/AC1 | 질의 검색 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-search/AC2 | 결과 상한 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
-| opensearch-search/AC3 | AssumeRole·SigV4 접근 | ⬜ 분할 대기 — `opensearch.py`(11 AC 겸용) |
+| opensearch-search/AC1 | 질의 검색 | ✅ 전용 파일 `opensearch_search_ac1.py` |
+| opensearch-search/AC2 | 결과 상한 | ✅ 전용 파일 `opensearch_search_ac2.py` |
+| opensearch-search/AC3 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_search_ac3.py` |
 | opensearch-search/AC4 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
 | ping/AC1 | 항상 pong 응답 | ⬜ 분할 대기 — `smoke.py`(2 AC 겸용) |
 | platform-auth-safety/AC1 | 인증 게이트 | ⬜ 분할 대기 — `auth.py`(2 AC 겸용) |
@@ -216,6 +218,18 @@
 - **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/platform_auth_safety_ac2.py`(신규 전용 파일): 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/platform_auth_safety_ac8.py`(신규 전용 파일): env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
 - **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → AC별 전용 파일 12개(신규, 파일 단위 규칙 2) + 미설정 거부 3건은 기존 `no_config.py`(port 8088, 자격증명 미부착 변형). **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
+
+> **`opensearch.py`(11) · `aws_config.py`(2) → AC별 전용 파일 13개 — ✅ 완료(2026-08-30)**: 분할 대기 6개 파일 중 **선결 판단 없이 순수 이동으로 끝나는 둘**을 골라 13개 전용 파일로 쪼갰다(`opensearch_{search,document_put,document_delete}_ac*.py` 11 · `aws_config_get_ac{1,2}.py` 2). 매칭 파일 **9 → 22**, 규칙 2 위반 **6 → 4**, 규칙 1 위반(공백) **54 → 41**(겸용 커버 40 → 27, 케이스 없음 14는 불변).
+>
+> **왜 이 둘인가**: 두 파일의 케이스는 이미 서로를 관측하지 못한다 — 2026-08-13 슬라이스가 opensearch 쪽 공유 상태(put→search→delete 파이프라인)를 **케이스별 전용 인덱스 `ci-<case>-<RUN_ID>` + 케이스별 유일 질의 토큰**으로 없애 뒀고, `run()` 주석이 "순서는 자유"라고 명시한다. 파일이 나뉘어 프로세스가 갈라지면 `RUN_ID`도 파일별로 새로 뽑히므로 격리는 오히려 강해진다. 남은 4개는 각각 선결 판단이 있어 이번 슬라이스에 섞지 않았다(위 「공백 내역」 참조).
+>
+> **신규 픽스처·신규 CI 스텝·`ci.yml` 워크플로 로직 변경 없음** — 2026-08-14가 넣은 러너가 파일을 자동 발견해 배차하므로, 분할은 파일을 더하고 빼는 것으로 끝난다(체커가 배차 누락을 막는다). 이번 PR의 `ci.yml` 변경은 삭제된 파일명을 가리키던 **주석 2줄뿐**이다.
+>
+> **순수 이동임을 주장하지 않고 증명했다**: 케이스 함수·상수를 손으로 옮기지 않고 원본의 ast 소스 세그먼트를 떠서 생성한 뒤, 원본(`HEAD`)과 신규 파일의 top-level 정의를 ast로 대조해 **32개 정의 전부가 정확히 한 파일에 동일하게 착지**함을 확인했다(도메인별로 스코프해 대조 — `REGION`처럼 두 원본에 같은 값이 있던 상수도 각자의 도메인 모듈에 하나씩 남는다). 재작성한 것은 파일별 `run()` 디스패처와 모듈 docstring뿐이다. 단언은 한 줄도 바뀌지 않았다.
+>
+> **공유 표면은 `_` 접두 모듈로 내렸다**: `_opensearch.py`(픽스처 상수 + `index_for`·`token_for`·`put_doc`·`search_until` 등 문서 헬퍼) · `_aws_config.py`(버킷·키·role ARN·ETag 모양). 둘 다 `run_all.py`의 `matching_unit_paths()`가 `_` 접두를 걸러내므로 매칭 단위가 아니고, 따라서 `검증 AC:` 선언을 갖지 않는다 — 체커가 이 제외를 러너와 **같은 함수로** 판정하므로 두 곳이 어긋날 수 없다.
+>
+> **`추가 인자: trace` 선언이 정밀해졌다**: 겸용 시절에는 파일 하나가 11개 케이스를 담아 trace를 쓰지 않는 케이스까지 프록시 URL을 요구했다. 이제 http-trace 기록을 실제로 읽는 4개(`opensearch_{search_ac3,document_put_ac4,document_delete_ac4}.py` · `aws_config_get_ac2.py`)만 신고한다. 프록시가 **AssumeRole 레코드만은 evict 하지 않기** 때문에(`tests/k8s/kind/http-trace.yaml`) 서버가 자격증명을 캐시해 한 번만 발급해도 파일이 나뉜 뒤의 각 프로세스가 그 앵커를 계속 관측할 수 있다 — 이 성질이 없었다면 분할이 접근 경로 단정을 깨뜨렸을 것이다.
 
 > **AssumeRole·SigV4 4건 — 관측 수단 신설 후 ✅ 승격(2026-08-14)**: 직전 슬라이스가 `⬜ 보강 필요 (관측 수단 부재)`로 정정했던 4건(aws-config-get/AC2 · opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4)을, **관측 수단을 먼저 만든 뒤** per-AC 전용 케이스로 승격했다. 정정 자체는 옳았다 — 그때는 어떤 e2e 단언도 "역할을 한 번도 assume 하지 않는 서버"에서 그대로 통과했다. 바뀐 것은 픽스처다.
 
@@ -263,6 +277,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-30 | 분할 대기 6개 파일 중 `opensearch.py`(11 AC)·`aws_config.py`(2 AC)를 **AC별 전용 파일 13개**로 분할했다(`opensearch_{search,document_put,document_delete}_ac*.py` · `aws_config_get_ac{1,2}.py`). 이 둘을 고른 근거는 **선결 판단이 없는 유일한 후보**라는 것이다 — 케이스가 이미 케이스별 전용 인덱스·유일 질의 토큰으로 서로 격리돼 있어 순서 의존이 없다(남은 4개는 순서 의존·`auth-variant` 배차 증가·규칙 3 재분류라는 미결 판단을 각각 안고 있다). 공유 표면은 매칭 단위에서 제외되는 `_opensearch.py`·`_aws_config.py`로 내렸고, 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **32개 정의 전부가 원본과 AST 동일**함을 대조로 확인했다(재작성은 파일별 `run()`과 모듈 docstring뿐, 단언 무변경). 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 변경은 삭제된 파일명을 가리키던 주석 2줄뿐이다. `추가 인자: trace` 신고는 http-trace를 실제로 읽는 4개 파일로 좁혀졌다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | **판정 단위를 케이스 → 파일로 옮긴 개정(모델 `tbm_homelab-k3s-mcp-ac-e2e`, reconciler `7529b609`)에 맞춰 e2e 렌즈를 재작성했다.** ① 매칭 단위 파일 9개 전부에 모듈 docstring `검증 AC:`·`실행 대상:` 선언을 도입(개정 전에는 확인 지점이 레포에 0건이라 파일 단위 매핑을 기계로 확인할 방법 자체가 없었다). ② 체커 `tests/integration/check_ac_mapping.py` 신설 — AC 전집(PRD)·선언·레지스트리를 각각 재도출해 규칙 1·2·3·5·6과 집계 일치를 lint 잡에서 강제한다. ③ 러너 `tests/integration/run_all.py` 신설 — 파일을 자동 발견해 `실행 대상`별로 실행하고, `ci.yml`의 파일별 9개 스텝을 배포 대상별 2스텝으로 대체했다(앞으로 분할해도 CI 수정 불필요, 배차 누락은 체커가 차단). ④ **3개 도메인 9 AC를 전용 파일로 분할**(grafana-token AC1·AC2·AC4 · github-app-installation-token AC1·AC2·AC4 · dear-baby-reset-user AC1·AC2·AC3) — 케이스 함수·상수를 한 글자도 바꾸지 않은 순수 이동이며 AST 대조로 26개 정의가 원본과 동일함을 확인했다. ⑤ 레지스트리 64행을 파일 단위 표기(전용 파일 / 분할 대기 / 공백 / 예외)로 재작성하고 집계 블록을 기계 판독 가능하게 만들었다. PRD(AC 본문)는 불변. | 케이스 단위: ✅49(전용 케이스)·⬜14·🚫1 (파일 단위로는 매칭 파일 0 · 규칙 1 위반 63) | 파일 단위: ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | AssumeRole·SigV4 계열 4건(aws-config-get/AC2 · opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4)을 **관측 수단 신설 후** per-AC 전용 케이스로 승격. 신규 픽스처 `tests/k8s/kind/http-trace.yaml` — MinIO(S3+STS)와 OpenSearch 양쪽 앞단에 서는 기록 리버스 프록시 1개(ConfigMap + `python:3.12-alpine`, 신규 이미지 없음)로, `AWS_CONFIG_S3_ENDPOINT`·`OPENSEARCH_STS_ENDPOINT`·`OPENSEARCH_ENDPOINT`를 프록시로 재배선하고 트레이스를 `:8081`로 노출(기존 스텝 2개에 포트포워드만 추가, 신규 검증 스텝 없음). backlog가 든 MinIO 단독 trace 후보는 데이터 플레인 서명이 OpenSearch로 가 관측 범위 밖이라 채택하지 않았다. 단정은 AssumeRole 발급 키 = 데이터 플레인 서명 키 대조 + 베이스 키 배제 + 세션 토큰 + 서명 스코프(`s3`/`aoss`)로, 무서명·베이스 키 서명·STS 미호출을 각각 falsify한다. 프록시의 Host 보존 전제는 SigV4를 재계산하는 가짜 업스트림과 Host 재작성 음성 대조로 검증. tests/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅45(전용 45)·⬜18·🚫1 | ✅49(전용 49)·⬜14·🚫1 |
 | 2026-08-13 | 잔여 파일 수준 `✅ 통합` 커버 **13건**(`opensearch.py` 9 · `aws_config.py` 2 · `dear_baby.py` 2)을 정리해 레지스트리에서 `✅ 통합` 행을 0으로 만들었다. **9건은 per-AC 전용 케이스로 승격**(opensearch-document-put/AC1·AC2 · opensearch-search/AC1·AC2 · opensearch-document-delete/AC1·AC2 · aws-config-get/AC1 · dear-baby-reset-user/AC1·AC2), **4건(opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4 · aws-config-get/AC2 — 전부 AssumeRole·SigV4 계열)은 ⬜로 정정**: 파일에 접근 경로를 관측하는 단언이 없었고, security 플러그인이 꺼진 OpenSearch 픽스처와 베이스 자격증명을 그대로 받아주는 MinIO에서는 어떤 e2e 단언도 '역할을 assume 하지 않는 서버'에서 그대로 통과해 vacuous하다(관측 수단 신설이 선행되는 후속 슬라이스). 신규 픽스처·CI 스텝·롤아웃 대기 없이 기존 스텝(8082·8084·8086) 안에서 `run()`을 케이스 디스패처로 재구성하고, opensearch의 put→search→delete 공유 상태는 케이스별 전용 인덱스 + 유일 질의 토큰으로 제거. 분리하며 빈 단정 4건 보강(search/AC2 기본값 10 최초 관측 — 12건 시드, put/AC2 색인 전 404 선행 관측, dear-baby/AC2 `email` 누락 거부 단언 신설, aws-config/AC1 contentType·ETag·lastModified 단정). tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅49(통합 13·전용 36)·⬜14·🚫1 | ✅45(전용 45)·⬜18·🚫1 |

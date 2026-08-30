@@ -18,7 +18,7 @@
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestSearchSignsRequestWithAssumedRoleCreds` — 결과 매핑,
   `TestSearchWithoutIndexTargetsCollection` — 인덱스 스코프) + 통합
-  `tests/integration/opensearch.py::test_opensearch_search_ac1_query_matching`
+  `tests/integration/opensearch_search_ac1.py`
   (인덱스 2개에 매칭 2건·비매칭 1건을 시드해 컬렉션 전체 검색은 두 인덱스에서 매칭만,
   index 지정은 한 인덱스로 한정, 각 hit의 index·id·score·`source` 단정).
 
@@ -30,7 +30,7 @@
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestSearchRejectsSizeOverMaxWithoutClamping`, 기본값 10은
   `TestSearchSignsRequestWithAssumedRoleCreds`의 요청 본문 단언) + 통합
-  `tests/integration/opensearch.py::test_opensearch_search_ac2_size_default_and_cap`
+  `tests/integration/opensearch_search_ac2.py`
   (문서 12건 시드 → size 미지정에 hits 10·total 12, size=50에 12건, size=51 도구 에러).
 
 ### 시나리오 3: AssumeRole → SigV4 경로(정적 키 없음)
@@ -42,7 +42,7 @@
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestSearchSignsRequestWithAssumedRoleCreds` — SigV4 `aoss` 스코프·payload 해시·
   세션 토큰 헤더 단언). 통합
-  `opensearch.py::test_opensearch_search_ac3_assume_role_sigv4` — security 플러그인이 꺼진
+  `opensearch_search_ac3.py` — security 플러그인이 꺼진
   픽스처는 서명 유무를 구분하지 못하므로 도구 응답 대신
   `tests/k8s/kind/http-trace.yaml` 프록시 기록을 읽어, `POST /<index>/_search`가
   `aoss` 스코프로 서명됐고 그 키가 STS가 내준 키(≠ 베이스 키)이며 세션 토큰을 달고 있음을
