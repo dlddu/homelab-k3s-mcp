@@ -138,8 +138,8 @@ jobs:
 
       # AWS_CONFIG_S3_ENDPOINT points at the http-trace proxy rather than at
       # MinIO directly (the proxy forwards to MinIO preserving the signed Host
-      # header). That is what lets aws_config.py observe which credential
-      # signed the GetObject.
+      # header). That is what lets aws_config_get_ac2.py observe which
+      # credential signed the GetObject.
       - name: Create test AWS config secret
         run: |
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-aws-config \
@@ -168,8 +168,9 @@ jobs:
       # Both endpoints point at the http-trace proxy: :9000 forwards to MinIO
       # (the AssumeRole call, sharing the aws-config secret's base credentials)
       # and :9200 forwards to OpenSearch (the signed data-plane requests).
-      # Recording both on one proxy is what lets opensearch.py correlate the
-      # key STS issued with the key that signed each data-plane request.
+      # Recording both on one proxy is what lets the opensearch *_ac*.py
+      # access-path cases correlate the key STS issued with the key that
+      # signed each data-plane request.
       - name: Create test OpenSearch secret
         run: |
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-opensearch \
