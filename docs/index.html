@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>homelab-k3s-mcp 문서</title>
+<meta name="description" content="homelab-k3s-mcp의 제품 가치·PRD·테스트 문서 진입점">
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1b1b1b;
+    --muted: #6a6a6a;
+    --line: #e2e2e2;
+    --soft: #f5f5f5;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+            "Noto Sans KR", "Malgun Gothic", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161616; --fg:#e6e6e6; --muted:#9a9a9a; --line:#2f2f2f; --soft:#1f1f1f; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--sans); font-size: 16px; line-height: 1.7;
+  }
+  a { color: inherit; text-underline-offset: 2px; text-decoration-color: var(--line); }
+  a:hover { text-decoration-color: currentColor; }
+  a:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+  .wrap { max-width: 58rem; margin: 0 auto; padding: 4rem 1.25rem 6rem; }
+
+  header h1 { font-family: var(--mono); font-size: 1.55rem; font-weight: 600;
+              margin: 0 0 0.6rem; letter-spacing: -0.02em; }
+  header p.lede { margin: 0 0 1rem; max-width: 40rem; color: var(--fg); }
+  header p.links { margin: 0; font-size: 0.9rem; color: var(--muted); }
+  header p.links a { margin-right: 1rem; }
+
+  section { margin-top: 3.5rem; }
+  section > h2 { font-size: 1.15rem; margin: 0 0 0.35rem; padding-bottom: 0.4rem;
+                 border-bottom: 1px solid var(--line); }
+  section > p.note { margin: 0.7rem 0 1.2rem; color: var(--muted); font-size: 0.9rem;
+                     max-width: 44rem; }
+
+  .values { list-style: none; margin: 1.2rem 0 0; padding: 0; }
+  .values li { display: grid; grid-template-columns: 2.5rem 1fr; gap: 0.75rem;
+               padding: 0.55rem 0; border-bottom: 1px solid var(--line); align-items: baseline; }
+  .values li:last-child { border-bottom: 0; }
+  .values .vid { font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+  .values .vname { text-decoration: none; }
+  .values .vname:hover { text-decoration: underline; }
+  .values .vdesc { display: block; color: var(--muted); font-size: 0.88rem; line-height: 1.5; }
+
+  .group { margin-top: 2.25rem; }
+  .group h3 { font-size: 0.95rem; font-weight: 600; margin: 0 0 0.15rem; }
+  .group h3 .gid { font-family: var(--mono); color: var(--muted); font-weight: 400;
+                   margin-right: 0.5rem; text-decoration: none; }
+  .group h3 .gid:hover { text-decoration: underline; }
+  .group p.gnote { margin: 0.2rem 0 0.8rem; color: var(--muted); font-size: 0.85rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+  th, td { text-align: left; padding: 0.45rem 0.6rem 0.45rem 0; border-bottom: 1px solid var(--line);
+           vertical-align: baseline; }
+  th { font-weight: 500; color: var(--muted); font-size: 0.8rem; padding-bottom: 0.3rem; }
+  td.tool { font-family: var(--mono); font-size: 0.85rem; word-break: break-all; }
+  td.docs a { margin-right: 0.9rem; white-space: nowrap; }
+  td.vals { text-align: right; padding-right: 0; white-space: nowrap; }
+  td.vals a { font-family: var(--mono); font-size: 0.78rem; color: var(--muted);
+              text-decoration: none; margin-left: 0.35rem; }
+  td.vals a:hover { color: var(--fg); text-decoration: underline; }
+  @media (max-width: 34rem) {
+    th:nth-child(3), td.vals { display: none; }
+    td.docs a { display: inline-block; margin-bottom: 0.15rem; }
+  }
+
+  footer { margin-top: 4.5rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+           color: var(--muted); font-size: 0.85rem; }
+  footer p { margin: 0.5rem 0; max-width: 44rem; }
+  footer code { font-family: var(--mono); font-size: 0.85em; background: var(--soft);
+                padding: 0.1em 0.35em; border-radius: 3px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>homelab-k3s-mcp</h1>
+  <p class="lede">
+    홈랩 k3s 클러스터와 연결된 클라우드 리소스를 AI 어시스턴트로 운영하는 MCP 서버.
+    이 사이트는 그 제품 가치와, 가치에서 내려온 도구별 PRD·테스트 문서의 진입점입니다.
+  </p>
+  <p class="links">
+    <a href="https://github.com/dlddu/homelab-k3s-mcp" rel="noopener">레포지토리</a>
+    <a href="https://github.com/dlddu/homelab-k3s-mcp#readme" rel="noopener">README (설치·인증)</a>
+    <a href="reader.html?doc=doc-tracker.md">문서 체계 상태</a>
+  </p>
+</header>
+
+<section id="values">
+  <h2>제품 가치</h2>
+  <p class="note">
+    모든 문서의 최상위 판단 기준. PRD와 테스트 문서는 각각 자신이 어떤 가치를 달성하고
+    검증하는지를 이 다섯 가지로 밝힙니다.
+    <a href="reader.html?doc=values.md">가치 문서 전문 읽기</a>
+  </p>
+  <ul class="values">
+    <li>
+      <span class="vid">V1</span>
+      <span>
+        <a class="vname" href="reader.html?doc=values.md#V1">자연어로 클러스터 운영</a>
+        <span class="vdesc">kubectl을 직접 쓰지 않고 조회·진단·재시작·스케일을 의도만으로 수행한다.</span>
+      </span>
+    </li>
+    <li>
+      <span class="vid">V2</span>
+      <span>
+        <a class="vname" href="reader.html?doc=values.md#V2">단명·최소권한 자격증명</a>
+        <span class="vdesc">장수 키를 들고 다니지 않고, 필요한 순간에 짧은 수명의 스코프된 자격증명을 받는다.</span>
+      </span>
+    </li>
+    <li>
+      <span class="vid">V3</span>
+      <span>
+        <a class="vname" href="reader.html?doc=values.md#V3">안전한 운영 (Safe-by-default)</a>
+        <span class="vdesc">무인증 접근·의도치 않은 파괴적 동작·미설정으로 인한 서버 다운이 기본적으로 막힌다.</span>
+      </span>
+    </li>
+    <li>
+      <span class="vid">V4</span>
+      <span>
+        <a class="vname" href="reader.html?doc=values.md#V4">운영 지식의 축적·검색</a>
+        <span class="vdesc">흩어진 운영 지식을 한 곳에 모아 같은 문제를 두 번 풀지 않게 한다.</span>
+      </span>
+    </li>
+    <li>
+      <span class="vid">V5</span>
+      <span>
+        <a class="vname" href="reader.html?doc=values.md#V5">클러스터 내부 앱 기능의 도구화</a>
+        <span class="vdesc">앱을 외부에 열지 않고, 도구로 명시한 동작만 좁게 연다.</span>
+      </span>
+    </li>
+  </ul>
+</section>
+
+<section id="tools">
+  <h2>도구 문서</h2>
+  <p class="note">
+    도구 하나에 PRD 하나, 그 PRD의 Acceptance Criteria를 검증하는 테스트 문서 하나가 붙습니다.
+    아래는 각 도구를 존재하게 한 가치별로 묶은 것이고, 오른쪽 식별자는 그 도구가 달성하는 가치 전부입니다.
+  </p>
+
+  <div class="group">
+    <h3><a class="gid" href="reader.html?doc=values.md#V1">V1</a>자연어로 클러스터 운영</h3>
+    <table>
+      <thead><tr><th>도구</th><th>문서</th><th>가치</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="tool">namespace_list</td>
+          <td class="docs"><a href="reader.html?doc=prd-namespace-list.md">PRD</a><a href="reader.html?doc=test-namespace-list.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V1">V1</a></td>
+        </tr>
+        <tr>
+          <td class="tool">workload_list</td>
+          <td class="docs"><a href="reader.html?doc=prd-workload-list.md">PRD</a><a href="reader.html?doc=test-workload-list.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V1">V1</a></td>
+        </tr>
+        <tr>
+          <td class="tool">workload_logs</td>
+          <td class="docs"><a href="reader.html?doc=prd-workload-logs.md">PRD</a><a href="reader.html?doc=test-workload-logs.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V1">V1</a></td>
+        </tr>
+        <tr>
+          <td class="tool">pod_describe</td>
+          <td class="docs"><a href="reader.html?doc=prd-pod-describe.md">PRD</a><a href="reader.html?doc=test-pod-describe.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V1">V1</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">workload_restart</td>
+          <td class="docs"><a href="reader.html?doc=prd-workload-restart.md">PRD</a><a href="reader.html?doc=test-workload-restart.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V1">V1</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">workload_scale</td>
+          <td class="docs"><a href="reader.html?doc=prd-workload-scale.md">PRD</a><a href="reader.html?doc=test-workload-scale.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V1">V1</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="group">
+    <h3><a class="gid" href="reader.html?doc=values.md#V2">V2</a>단명·최소권한 자격증명</h3>
+    <table>
+      <thead><tr><th>도구</th><th>문서</th><th>가치</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="tool">github_app_installation_token</td>
+          <td class="docs"><a href="reader.html?doc=prd-github-app-installation-token.md">PRD</a><a href="reader.html?doc=test-github-app-installation-token.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V2">V2</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">grafana_token</td>
+          <td class="docs"><a href="reader.html?doc=prd-grafana-token.md">PRD</a><a href="reader.html?doc=test-grafana-token.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V2">V2</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">aws_config_get</td>
+          <td class="docs"><a href="reader.html?doc=prd-aws-config-get.md">PRD</a><a href="reader.html?doc=test-aws-config-get.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V2">V2</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="group">
+    <h3><a class="gid" href="reader.html?doc=values.md#V4">V4</a>운영 지식의 축적·검색</h3>
+    <table>
+      <thead><tr><th>도구</th><th>문서</th><th>가치</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="tool">opensearch_search</td>
+          <td class="docs"><a href="reader.html?doc=prd-opensearch-search.md">PRD</a><a href="reader.html?doc=test-opensearch-search.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V4">V4</a><a href="reader.html?doc=values.md#V2">V2</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">opensearch_document_put</td>
+          <td class="docs"><a href="reader.html?doc=prd-opensearch-document-put.md">PRD</a><a href="reader.html?doc=test-opensearch-document-put.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V4">V4</a><a href="reader.html?doc=values.md#V2">V2</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">opensearch_document_delete</td>
+          <td class="docs"><a href="reader.html?doc=prd-opensearch-document-delete.md">PRD</a><a href="reader.html?doc=test-opensearch-document-delete.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V4">V4</a><a href="reader.html?doc=values.md#V2">V2</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="group">
+    <h3><a class="gid" href="reader.html?doc=values.md#V5">V5</a>클러스터 내부 앱 기능의 도구화</h3>
+    <p class="gnote">session 3종은 문서가 구현을 앞서 있습니다 — 현재 배선 상태는 문서 체계 상태에서 확인하세요.</p>
+    <table>
+      <thead><tr><th>도구</th><th>문서</th><th>가치</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="tool">dear_baby_reset_user</td>
+          <td class="docs"><a href="reader.html?doc=prd-dear-baby-reset-user.md">PRD</a><a href="reader.html?doc=test-dear-baby-reset-user.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V5">V5</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">session_list</td>
+          <td class="docs"><a href="reader.html?doc=prd-session-list.md">PRD</a><a href="reader.html?doc=test-session-list.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V5">V5</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">session_read</td>
+          <td class="docs"><a href="reader.html?doc=prd-session-read.md">PRD</a><a href="reader.html?doc=test-session-read.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V5">V5</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">session_write</td>
+          <td class="docs"><a href="reader.html?doc=prd-session-write.md">PRD</a><a href="reader.html?doc=test-session-write.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V5">V5</a><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="group">
+    <h3><a class="gid" href="reader.html?doc=values.md#V3">V3</a>안전한 운영 (Safe-by-default)</h3>
+    <p class="gnote">개별 도구가 아니라 전 도구에 공통으로 걸리는 인증·권한 경계와, 그 경계를 확인하는 최소 도구.</p>
+    <table>
+      <thead><tr><th>도구</th><th>문서</th><th>가치</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="tool">platform (인증·안전 공통)</td>
+          <td class="docs"><a href="reader.html?doc=prd-platform-auth-safety.md">PRD</a><a href="reader.html?doc=test-platform-auth-safety.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+        <tr>
+          <td class="tool">ping</td>
+          <td class="docs"><a href="reader.html?doc=prd-ping.md">PRD</a><a href="reader.html?doc=test-ping.md">테스트</a></td>
+          <td class="vals"><a href="reader.html?doc=values.md#V3">V3</a></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<section id="state">
+  <h2>문서 체계 상태</h2>
+  <p class="note">
+    가치 → PRD → Acceptance Criteria → 테스트의 연결이 끊긴 곳이 없는지,
+    각 AC가 실제 자동화로 검증되고 있는지를 추적합니다. 문서를 만들거나 고칠 때 함께 갱신합니다.
+    <a href="reader.html?doc=doc-tracker.md">상태 추적 문서 읽기</a>
+  </p>
+</section>
+
+<footer>
+  <p>
+    이 사이트는 <code>main</code> 브랜치의 <code>docs/</code> 를 GitHub Pages로 그대로 서빙합니다.
+    문서를 추가하면 이 페이지에 한 줄을 함께 추가해야 진입점에서 도달할 수 있습니다.
+  </p>
+  <p>
+    로컬에서 확인할 때는 <code>cd docs &amp;&amp; python3 -m http.server</code> 로 띄웁니다
+    (뷰어가 <code>fetch</code>를 쓰므로 <code>file://</code>로 직접 열면 열리지 않습니다).
+  </p>
+</footer>
+
+</div>
+</body>
+</html>
