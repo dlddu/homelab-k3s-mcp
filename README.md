@@ -4,6 +4,18 @@ An MCP (Model Context Protocol) server for operating a homelab k3s cluster and
 its connected cloud resources through an AI assistant. It exposes tools over a
 single HTTP `POST /mcp` endpoint.
 
+## Documentation
+
+**<https://dlddu.github.io/homelab-k3s-mcp/>** — the docs hub. Product values,
+one PRD per tool with its acceptance criteria, and the test document that
+verifies each criterion.
+
+The sources live in [`docs/`](docs/) and are readable on GitHub as plain
+Markdown; the hub renders them and adds the map between them. Start with
+[`docs/values.md`](docs/values.md) for what this server promises, and
+[`docs/doc-tracker.md`](docs/doc-tracker.md) for which criteria are actually
+covered by automated tests.
+
 ## Authentication
 
 The `/mcp` endpoint is protected by default. Two credential paths gate it and

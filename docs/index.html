@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<!--
+  docs/index.html — 문서 허브 (GitHub Pages 진입점)
+
+  손으로 관리한다. 문서를 추가·삭제하거나 AC 수·달성 가치가 바뀌면 이 파일도 같은 PR 에서 고친다.
+  숫자의 단일 진실 원천은 docs/doc-tracker.md 이고, 이 허브는 그 반영물이다 — 둘이 어긋나면
+  doc-tracker 쪽이 맞다.
+
+  마크다운 문서는 reader.html?doc=<파일명> 으로 연다 (.nojekyll 때문에 .md 를 직접 열면
+  렌더링되지 않고 평문으로 내려간다).
+
+  로컬 확인: cd docs && python3 -m http.server  →  http://localhost:8000/
+-->
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>homelab-k3s-mcp 문서</title>
+<style>
+  /* 이 레포에는 디자인 시스템이 없다. reader.html 이 쓰는 무채색 토큰을 그대로 받아
+     허브와 뷰어가 한 사이트로 보이게 한다. 브랜드 색을 새로 고르지 않는다. */
+  :root {
+    --bg: #ffffff; --fg: #1f2328; --muted: #656d76; --line: #d1d9e0;
+    --accent: #0969da; --code-bg: #f6f8fa;
+    --maxw: 900px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #30363d;
+      --accent: #4493f8; --code-bg: #161b22;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+          "Noto Sans KR", Roboto, sans-serif;
+  }
+  a { color: var(--accent); }
+  code {
+    background: var(--code-bg); padding: .15em .4em; border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .9em;
+  }
+  main { max-width: var(--maxw); margin: 0 auto; padding: 40px 20px 120px; }
+
+  header.hero { border-bottom: 1px solid var(--line); padding-bottom: 24px; margin-bottom: 8px; }
+  header.hero h1 { font-size: 1.9em; margin: 0 0 .35em; }
+  header.hero p { margin: 0; color: var(--muted); }
+  header.hero .repo { margin-top: 14px; font-size: 14px; }
+
+  h2 { font-size: 1.3em; margin: 2.4em 0 .2em; }
+  h2 + .lede { margin: 0 0 1.1em; color: var(--muted); font-size: 14px; }
+
+  .chain {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center;
+    margin: 18px 0 0; font-size: 14px; color: var(--muted);
+  }
+  .chain span.node {
+    border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; color: var(--fg);
+  }
+
+  ul.plain { list-style: none; padding: 0; margin: 0; }
+  ul.plain > li {
+    border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .row-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .row-title .name { font-weight: 600; }
+  .row-note { color: var(--muted); font-size: 14px; margin: .35em 0 .6em; }
+  .links { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 14px; }
+  .links a { white-space: nowrap; }
+  .links .absent { color: var(--muted); }
+
+  .badge {
+    display: inline-block; border: 1px solid var(--line); border-radius: 999px;
+    padding: 1px 9px; font-size: 12px; color: var(--muted); white-space: nowrap;
+  }
+
+  .values { display: grid; gap: 10px; }
+  .values .v { border-left: 3px solid var(--line); padding: 2px 0 2px 14px; }
+  .values .v b { display: block; }
+  .values .v span { color: var(--muted); font-size: 14px; }
+
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<main>
+
+<header class="hero">
+  <h1>homelab-k3s-mcp 문서</h1>
+  <p>홈랩 k3s 클러스터와 연결된 클라우드 리소스를 AI 어시스턴트로 운영하는 MCP 서버의 제품 문서.</p>
+  <div class="chain">
+    <span class="node">제품 가치</span> →
+    <span class="node">PRD</span> →
+    <span class="node">Acceptance Criteria</span> →
+    <span class="node">테스트</span>
+  </div>
+  <p class="repo">
+    <a href="https://github.com/dlddu/homelab-k3s-mcp">GitHub 레포</a> ·
+    <a href="https://github.com/dlddu/homelab-k3s-mcp#readme">README (배포·인증 설정)</a>
+  </p>
+</header>
+
+<h2>여기서 시작</h2>
+<p class="lede">처음 온 사람은 위에서 아래 순서로 읽으면 된다.</p>
+<ul class="plain">
+  <li>
+    <div class="row-title"><span class="name">제품 가치 문서</span><span class="badge">가치 5개 · V1–V5</span></div>
+    <p class="row-note">이 제품이 무엇을 약속하는지. 모든 PRD·AC·테스트가 되돌아가 참조하는 최상위 판단 기준이다.</p>
+    <div class="links"><a href="reader.html?doc=values.md">values.md 읽기 →</a></div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name">문서 체계 상태 추적</span><span class="badge">건강 상태 · 자동화 커버리지</span></div>
+    <p class="row-note">
+      가치 → PRD → AC → 테스트의 연결이 끊긴 곳이 있는지, AC 하나하나가 실제 e2e 로 검증되는지를
+      기록한다. 문서를 고칠 때 함께 갱신하며, CI 가 이 문서의 레지스트리와 레포의 실제 상태를 대조한다.
+    </p>
+    <div class="links"><a href="reader.html?doc=doc-tracker.md">doc-tracker.md 읽기 →</a></div>
+  </li>
+</ul>
+
+<h2>제품 가치</h2>
+<p class="lede">각 가치의 전체 정의와 경계는 <a href="reader.html?doc=values.md">values.md</a>에 있다.</p>
+<div class="values">
+  <div class="v"><b>V1 · 자연어로 클러스터 운영</b><span>kubectl 을 직접 쓰지 않고 조회·진단·재시작·스케일을 의도만으로 수행한다.</span></div>
+  <div class="v"><b>V2 · 단명·최소권한 자격증명</b><span>장수 키를 들고 다니지 않고 필요한 순간에 짧은 수명의 스코프된 자격증명을 받는다.</span></div>
+  <div class="v"><b>V3 · 안전한 운영 (Safe-by-default)</b><span>무인증 접근·의도치 않은 파괴·미설정으로 인한 서버 다운이 기본값으로 막힌다.</span></div>
+  <div class="v"><b>V4 · 운영 지식의 축적·검색</b><span>운영하며 알게 된 것을 쌓고 다시 찾아 쓴다.</span></div>
+  <div class="v"><b>V5 · 클러스터 내부 앱 기능의 도구화</b><span>앱을 외부에 열지 않고, 도구로 명시한 동작만 좁게 연다.</span></div>
+</div>
+
+<h2>도구 문서</h2>
+<p class="lede">
+  도구 하나가 PRD 하나이고, PRD 의 각 AC 는 대응하는 테스트 문서가 검증한다. 총 18개 PRD · 64개 AC.
+</p>
+
+<h3>클러스터 운영 (V1)</h3>
+<ul class="plain">
+  <li>
+    <div class="row-title"><span class="name"><code>namespace_list</code></span><span class="badge">V1</span><span class="badge">AC 1</span></div>
+    <p class="row-note">클러스터의 네임스페이스를 조회한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-namespace-list.md">PRD</a>
+      <a href="reader.html?doc=test-namespace-list.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>workload_list</code></span><span class="badge">V1</span><span class="badge">AC 2</span></div>
+    <p class="row-note">Deployment·StatefulSet·DaemonSet 을 종류별·네임스페이스별로 조회한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-workload-list.md">PRD</a>
+      <a href="reader.html?doc=test-workload-list.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>workload_logs</code></span><span class="badge">V1</span><span class="badge">AC 4</span></div>
+    <p class="row-note">워크로드를 뒷받침하는 파드의 컨테이너 로그를 tail·컨테이너 선택과 함께 조회한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-workload-logs.md">PRD</a>
+      <a href="reader.html?doc=test-workload-logs.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>pod_describe</code></span><span class="badge">V1 · V3</span><span class="badge">AC 3</span></div>
+    <p class="row-note">단일 파드의 <code>kubectl describe</code> 형식 스냅샷을 반환한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-pod-describe.md">PRD</a>
+      <a href="reader.html?doc=test-pod-describe.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>workload_restart</code></span><span class="badge">V1 · V3</span><span class="badge">AC 2</span><span class="badge">파괴적</span></div>
+    <p class="row-note">워크로드를 무중단 롤링 재시작한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-workload-restart.md">PRD</a>
+      <a href="reader.html?doc=test-workload-restart.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>workload_scale</code></span><span class="badge">V1 · V3</span><span class="badge">AC 3</span><span class="badge">파괴적</span></div>
+    <p class="row-note">워크로드의 레플리카 수를 조정한다. DaemonSet 은 거부한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-workload-scale.md">PRD</a>
+      <a href="reader.html?doc=test-workload-scale.md">테스트</a>
+    </div>
+  </li>
+</ul>
+
+<h3>단명 자격증명 (V2)</h3>
+<ul class="plain">
+  <li>
+    <div class="row-title"><span class="name"><code>github_app_installation_token</code></span><span class="badge">V2 · V3</span><span class="badge">AC 4</span></div>
+    <p class="row-note">GitHub App 설치 토큰을 약 1시간 수명·레포/권한 스코프로 발급한다. 개인키는 서버에 머문다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-github-app-installation-token.md">PRD</a>
+      <a href="reader.html?doc=test-github-app-installation-token.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>grafana_token</code></span><span class="badge">V2 · V3</span><span class="badge">AC 4</span></div>
+    <p class="row-note">Grafana Cloud 의 read-only 단명 토큰을 쿼리 엔드포인트·인스턴스 ID 와 함께 발급한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-grafana-token.md">PRD</a>
+      <a href="reader.html?doc=test-grafana-token.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>aws_config_get</code></span><span class="badge">V2 · V3</span><span class="badge">AC 3</span></div>
+    <p class="row-note">정적 키 없이 AssumeRole 경로로 고정된 단일 S3 객체(AWS config)만 조회한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-aws-config-get.md">PRD</a>
+      <a href="reader.html?doc=test-aws-config-get.md">테스트</a>
+    </div>
+  </li>
+</ul>
+
+<h3>운영 지식 (V4)</h3>
+<ul class="plain">
+  <li>
+    <div class="row-title"><span class="name"><code>opensearch_search</code></span><span class="badge">V4 · V2 · V3</span><span class="badge">AC 4</span></div>
+    <p class="row-note">OpenSearch Serverless 컬렉션에서 문서를 전문 검색한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-opensearch-search.md">PRD</a>
+      <a href="reader.html?doc=test-opensearch-search.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>opensearch_document_put</code></span><span class="badge">V4 · V2 · V3</span><span class="badge">AC 5</span><span class="badge">파괴적</span></div>
+    <p class="row-note">JSON 문서를 색인·업서트한다. 인덱스가 없으면 자동 생성한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-opensearch-document-put.md">PRD</a>
+      <a href="reader.html?doc=test-opensearch-document-put.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>opensearch_document_delete</code></span><span class="badge">V4 · V2 · V3</span><span class="badge">AC 5</span><span class="badge">파괴적</span></div>
+    <p class="row-note">인덱스에서 지정 id 의 문서를 삭제한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-opensearch-document-delete.md">PRD</a>
+      <a href="reader.html?doc=test-opensearch-document-delete.md">테스트</a>
+    </div>
+  </li>
+</ul>
+
+<h3>앱 기능의 도구화 (V5)</h3>
+<ul class="plain">
+  <li>
+    <div class="row-title"><span class="name"><code>dear_baby_reset_user</code></span><span class="badge">V5 · V3</span><span class="badge">AC 3</span><span class="badge">파괴적</span></div>
+    <p class="row-note">dear-baby 백엔드 파드에서 특정 사용자의 온보딩을 리셋한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-dear-baby-reset-user.md">PRD</a>
+      <a href="reader.html?doc=test-dear-baby-reset-user.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>session_list</code></span><span class="badge">V5 · V3</span><span class="badge">AC 3</span><span class="badge">구현 선행</span></div>
+    <p class="row-note">session-platform 제어면의 세션 목록을 조회한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-session-list.md">PRD</a>
+      <a href="reader.html?doc=test-session-list.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>session_read</code></span><span class="badge">V5 · V3</span><span class="badge">AC 4</span><span class="badge">구현 선행</span></div>
+    <p class="row-note">세션의 누적 워크로드 출력을 오프셋 커서로 읽는다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-session-read.md">PRD</a>
+      <a href="reader.html?doc=test-session-read.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name"><code>session_write</code></span><span class="badge">V5 · V3</span><span class="badge">AC 5</span><span class="badge">파괴적</span><span class="badge">구현 선행</span></div>
+    <p class="row-note">세션의 워크로드에 입력을 주입한다.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-session-write.md">PRD</a>
+      <a href="reader.html?doc=test-session-write.md">테스트</a>
+    </div>
+  </li>
+</ul>
+<p class="row-note">
+  <span class="badge">구현 선행</span> 은 문서가 코드보다 먼저 쓰인 상태를 뜻한다 — session 3종은 도구가 아직
+  구현되지 않았고, 배선 순서와 잔여 작업은 <a href="reader.html?doc=doc-tracker.md">doc-tracker.md</a> 의
+  자동화 커버리지 절에 적혀 있다.
+</p>
+
+<h3>공통 기반 (V3)</h3>
+<ul class="plain">
+  <li>
+    <div class="row-title"><span class="name"><code>ping</code></span><span class="badge">V3</span><span class="badge">AC 1</span></div>
+    <p class="row-note">서버 가용성을 확인하는 최소 헬스체크 도구.</p>
+    <div class="links">
+      <a href="reader.html?doc=prd-ping.md">PRD</a>
+      <a href="reader.html?doc=test-ping.md">테스트</a>
+    </div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name">플랫폼 인증·안전</span><span class="badge">V3</span><span class="badge">AC 8</span></div>
+    <p class="row-note">
+      특정 도구가 아니라 모든 도구에 공통으로 걸리는 요구사항 — 인증 게이트(OAuth·API 키), RBAC 경계,
+      런타임 하드닝, 통합 미설정 시 graceful degradation, 헬스·레디니스.
+    </p>
+    <div class="links">
+      <a href="reader.html?doc=prd-platform-auth-safety.md">PRD</a>
+      <a href="reader.html?doc=test-platform-auth-safety.md">테스트</a>
+    </div>
+  </li>
+</ul>
+
+<h2>레포 안에서만 보는 것</h2>
+<p class="lede">문서가 아니라 코드·매니페스트라 이 사이트에 올리지 않는다.</p>
+<ul class="plain">
+  <li>
+    <div class="row-title"><span class="name">README</span></div>
+    <p class="row-note">인증 구성(<code>MCP_API_KEYS</code>·OAuth)과 운영 시 주의사항.</p>
+    <div class="links"><a href="https://github.com/dlddu/homelab-k3s-mcp#readme">GitHub 에서 보기 →</a></div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name">통합 e2e 테스트</span></div>
+    <p class="row-note">
+      테스트 문서의 시나리오를 실제로 도는 코드. 파일 하나가 AC 하나를 검증하며,
+      그 1:1 대응은 CI 의 <code>check_ac_mapping.py</code> 가 강제한다.
+    </p>
+    <div class="links"><a href="https://github.com/dlddu/homelab-k3s-mcp/tree/main/tests/integration">tests/integration/ →</a></div>
+  </li>
+  <li>
+    <div class="row-title"><span class="name">배포 매니페스트</span></div>
+    <p class="row-note">RBAC 경계와 런타임 하드닝의 실물. platform PRD 의 AC3·AC4 가 이 파일들을 근거로 삼는다.</p>
+    <div class="links"><a href="https://github.com/dlddu/homelab-k3s-mcp/tree/main/k8s">k8s/ →</a></div>
+  </li>
+</ul>
+
+<footer>
+  이 허브는 손으로 관리한다. 문서를 추가·삭제하거나 AC 수·달성 가치가 바뀌면
+  <code>docs/index.html</code> 과 <code>docs/doc-tracker.md</code> 를 같은 PR 에서 함께 고친다.
+  숫자가 어긋나면 doc-tracker 쪽이 맞다.
+</footer>
+
+</main>
+</body>
+</html>

@@ -33,6 +33,28 @@
 | PRD (공통) | `prd-platform-auth-safety.md` |
 | 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (18개) |
 | 상태 추적 | `doc-tracker.md` |
+| 공개 계층 | `index.html`(허브) · `reader.html`(마크다운 뷰어) · `.nojekyll` |
+
+### 공개 계층 (GitHub Pages)
+
+`docs/` 아래 마크다운 38개는 <https://dlddu.github.io/homelab-k3s-mcp/> 에서 읽을 수 있다.
+git을 쓰지 않는 사람에게 링크 하나로 가치 → PRD → AC → 테스트를 건네기 위한 계층이다.
+
+- `index.html` — 진입점. 가치 5개와 도구 18종을 PRD·테스트 링크와 함께 나열한다.
+  **손으로 관리한다** — 문서를 추가·삭제하거나 AC 수·달성 가치가 바뀌면 같은 PR에서 함께 고친다.
+  숫자의 단일 진실 원천은 이 문서(`doc-tracker.md`)이고 허브는 그 반영물이다.
+- `reader.html` — 마크다운을 클라이언트에서 렌더링하는 단일 파일 뷰어(외부 CDN 의존 없음).
+  문서는 `reader.html?doc=<파일명>` 으로 연다. `.nojekyll` 이 있으면 Pages가 `.md` 를
+  렌더링하지 않고 평문으로 내보내므로 이 뷰어가 필요하다. Jekyll에 맡기지 않는 이유는
+  문서마다 front matter를 요구하고 본문의 `{{ }}` 를 Liquid로 오인하기 때문이다.
+- 루트 `README.md` 는 Pages 배포 루트(`docs/`) 밖이라 사이트에 올라가지 않는다 — 허브는 이를
+  GitHub 링크로 건다.
+- 이 계층은 AC·테스트 자동화와 무관하다. `check_ac_mapping.py` 는 `prd-*.md` 와 아래 e2e
+  레지스트리만 읽으므로 여기의 파일 추가는 집계에 영향을 주지 않는다.
+
+> **최초 1회 사용자 설정**: Settings → Pages → Build and deployment → Source 를
+> `Deploy from a branch`, Branch 를 `main` + `/docs` 로 지정해야 사이트가 뜬다.
+> 로컬 확인은 `cd docs && python3 -m http.server` (뷰어가 `fetch()` 를 써서 `file://` 로는 열리지 않는다).
 
 ## PRD ↔ 가치 ↔ AC ↔ 테스트 매트릭스
 
@@ -277,6 +299,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-31 | **문서 공개 계층(GitHub Pages) 신설.** `docs/` 의 마크다운 38개에 진입점이 없어 레포를 클론하지 않은 사람은 어디서부터 읽을지 알 수 없었고, 상태 추적 문서가 사실상의 목차 역할을 하고 있었다(추적용이라 탐색에 맞지 않는다). 배포 골격 3개를 추가했다 — `index.html`(허브: 가치 5개 · 도구 18종을 PRD·테스트 링크와 함께 나열), `reader.html`(단일 파일 마크다운 뷰어, 외부 CDN 의존 없음), `.nojekyll`. Jekyll 렌더링에 맡기지 않은 이유는 문서마다 front matter를 요구해 기존 38개를 전부 고쳐야 하고 본문의 중괄호가 Liquid로 오인되기 때문이다. 허브는 손으로 관리하며 숫자의 원천은 이 문서다. 문서·AC·테스트 내용은 불변이고 `check_ac_mapping.py` 가 읽는 범위(`prd-*.md` + e2e 레지스트리) 밖이라 집계에 영향이 없다. Pages Source 설정(`main` + `/docs`)은 사용자 1회 작업으로 남는다. | 마크다운 38개 · 진입점 없음 · 공개 계층 없음 | 마크다운 38개 · 허브 1 · 뷰어 1 (전 문서가 링크에서 도달 가능) |
 | 2026-08-30 | 분할 대기 6개 파일 중 `opensearch.py`(11 AC)·`aws_config.py`(2 AC)를 **AC별 전용 파일 13개**로 분할했다(`opensearch_{search,document_put,document_delete}_ac*.py` · `aws_config_get_ac{1,2}.py`). 이 둘을 고른 근거는 **선결 판단이 없는 유일한 후보**라는 것이다 — 케이스가 이미 케이스별 전용 인덱스·유일 질의 토큰으로 서로 격리돼 있어 순서 의존이 없다(남은 4개는 순서 의존·`auth-variant` 배차 증가·규칙 3 재분류라는 미결 판단을 각각 안고 있다). 공유 표면은 매칭 단위에서 제외되는 `_opensearch.py`·`_aws_config.py`로 내렸고, 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **32개 정의 전부가 원본과 AST 동일**함을 대조로 확인했다(재작성은 파일별 `run()`과 모듈 docstring뿐, 단언 무변경). 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 변경은 삭제된 파일명을 가리키던 주석 2줄뿐이다. `추가 인자: trace` 신고는 http-trace를 실제로 읽는 4개 파일로 좁혀졌다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | **판정 단위를 케이스 → 파일로 옮긴 개정(모델 `tbm_homelab-k3s-mcp-ac-e2e`, reconciler `7529b609`)에 맞춰 e2e 렌즈를 재작성했다.** ① 매칭 단위 파일 9개 전부에 모듈 docstring `검증 AC:`·`실행 대상:` 선언을 도입(개정 전에는 확인 지점이 레포에 0건이라 파일 단위 매핑을 기계로 확인할 방법 자체가 없었다). ② 체커 `tests/integration/check_ac_mapping.py` 신설 — AC 전집(PRD)·선언·레지스트리를 각각 재도출해 규칙 1·2·3·5·6과 집계 일치를 lint 잡에서 강제한다. ③ 러너 `tests/integration/run_all.py` 신설 — 파일을 자동 발견해 `실행 대상`별로 실행하고, `ci.yml`의 파일별 9개 스텝을 배포 대상별 2스텝으로 대체했다(앞으로 분할해도 CI 수정 불필요, 배차 누락은 체커가 차단). ④ **3개 도메인 9 AC를 전용 파일로 분할**(grafana-token AC1·AC2·AC4 · github-app-installation-token AC1·AC2·AC4 · dear-baby-reset-user AC1·AC2·AC3) — 케이스 함수·상수를 한 글자도 바꾸지 않은 순수 이동이며 AST 대조로 26개 정의가 원본과 동일함을 확인했다. ⑤ 레지스트리 64행을 파일 단위 표기(전용 파일 / 분할 대기 / 공백 / 예외)로 재작성하고 집계 블록을 기계 판독 가능하게 만들었다. PRD(AC 본문)는 불변. | 케이스 단위: ✅49(전용 케이스)·⬜14·🚫1 (파일 단위로는 매칭 파일 0 · 규칙 1 위반 63) | 파일 단위: ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | AssumeRole·SigV4 계열 4건(aws-config-get/AC2 · opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4)을 **관측 수단 신설 후** per-AC 전용 케이스로 승격. 신규 픽스처 `tests/k8s/kind/http-trace.yaml` — MinIO(S3+STS)와 OpenSearch 양쪽 앞단에 서는 기록 리버스 프록시 1개(ConfigMap + `python:3.12-alpine`, 신규 이미지 없음)로, `AWS_CONFIG_S3_ENDPOINT`·`OPENSEARCH_STS_ENDPOINT`·`OPENSEARCH_ENDPOINT`를 프록시로 재배선하고 트레이스를 `:8081`로 노출(기존 스텝 2개에 포트포워드만 추가, 신규 검증 스텝 없음). backlog가 든 MinIO 단독 trace 후보는 데이터 플레인 서명이 OpenSearch로 가 관측 범위 밖이라 채택하지 않았다. 단정은 AssumeRole 발급 키 = 데이터 플레인 서명 키 대조 + 베이스 키 배제 + 세션 토큰 + 서명 스코프(`s3`/`aoss`)로, 무서명·베이스 키 서명·STS 미호출을 각각 falsify한다. 프록시의 Host 보존 전제는 SigV4를 재계산하는 가짜 업스트림과 Host 재작성 음성 대조로 검증. tests/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅45(전용 45)·⬜18·🚫1 | ✅49(전용 49)·⬜14·🚫1 |
