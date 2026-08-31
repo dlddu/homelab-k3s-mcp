@@ -10,6 +10,6 @@
 - **실행 단계**: 인자 없이 `ping` 호출
 - **기대 결과**: 에러 없이 `pong` 반환
 - **검증 AC**: AC1
-- **자동화**: 통합 `tests/integration/smoke.py::test_ping_ac1_always_pong` — 배포 서버에
+- **자동화**: 통합 `tests/integration/ping_ac1.py::test_ping_ac1_always_pong` — 배포 서버에
   인자 없이 `ping`을 호출해 `pong` 텍스트를 단언. Go 단위
   `internal/server/mcp_test.go::TestPingToolReturnsPong`.

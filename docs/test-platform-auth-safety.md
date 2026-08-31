@@ -17,7 +17,7 @@
 - **실행 단계**: (a) 토큰 없이 `/mcp` 요청, (b) 무효 토큰 요청, (c) 유효 토큰 요청
 - **기대 결과**: (a)(b) 401 + `WWW-Authenticate`가 보호 리소스 메타데이터를 가리킴, (c) 정상 처리
 - **검증 AC**: AC1
-- **자동화**: 배포 서버 통합 e2e `tests/integration/auth.py::test_platform_auth_safety_ac1_gate`
+- **자동화**: 배포 서버 통합 e2e `tests/integration/platform_auth_safety_ac1.py::test_platform_auth_safety_ac1_gate`
   (인증 켠 배포 변형 `tests/k8s/kind/auth-fixture.yaml`에서 무Authorization `/mcp` 호출 →
   401 `missing_token` + `WWW-Authenticate: Bearer`). Go 단위 `internal/auth/auth_test.go`의
   RequireBearer 게이트 단언과 병행.
@@ -54,10 +54,10 @@
 - **기대 결과**: 서버 정상 기동, `tools/list` 정상 응답(전 도구 광고), 미설정 도구만 unavailable
   도구 에러
 - **검증 AC**: AC5
-- **자동화**: 통합 `tests/integration/no_config.py::test_platform_auth_safety_ac5_graceful_degradation`
+- **자동화**: 통합 `tests/integration/platform_auth_safety_ac5.py::test_platform_auth_safety_ac5_graceful_degradation`
   — 자격증명 시크릿을 하나도 붙이지 않은 배포 변형(`auth-fixture.yaml`)에서 `/healthz` 정상 +
   `tools/list`가 전체 도구 표면을 그대로 반환함을 단언. 자격증명이 모두 배선된 주 배포에서는
-  이 AC의 전제가 성립하지 않아 `smoke.py`로는 관측 불가. Go 단위
+  이 AC의 전제가 성립하지 않아 주 배포에서 도는 파일로는 관측 불가. Go 단위
   `mcp_test.go::TestToolsListIncludesAllTools`, `TestToolsListAdvertisesAnnotations`,
   각 `*UnavailableReturnsToolError`.
 
@@ -66,7 +66,7 @@
 - **실행 단계**: `/healthz`, `/readyz`, 루트, 미존재 경로 요청
 - **기대 결과**: `/healthz` status=ok, `/readyz` status=ready, 루트는 서비스명, 미존재 경로는 404
 - **검증 AC**: AC6
-- **자동화**: 통합 `tests/integration/smoke.py::test_platform_auth_safety_ac6_health_readiness`
+- **자동화**: 통합 `tests/integration/platform_auth_safety_ac6.py::test_platform_auth_safety_ac6_health_readiness`
   — 배포 서버의 `/healthz`(status=ok)·`/readyz`(status=ready)를 단언(비정상 측면은 e2e로
   강제할 수단이 없어 미커버). Go 단위 `internal/server/health_test.go::TestHealthzReturnsOK`,
   `TestReadyzReturnsReady`, `TestRootReturnsServiceName`, `TestUnknownRouteReturns404`.
@@ -82,7 +82,7 @@
   `TestRequireBearerAcceptsAPIKey`, `TestRequireBearerRejectsUnknownKeyInKeyOnlyMode`,
   `TestRequireBearerRejectsJWTInKeyOnlyMode`, `TestRequireBearerAcceptsAPIKeyAndJWT`
   — 유효/무효/부재 키 게이트, JWT 병행 시 양쪽 통과, 상수시간 대조 경로, 키 비노출 단언.
-  배포 서버 통합 e2e `tests/integration/auth.py::test_platform_auth_safety_ac7_api_key`
+  배포 서버 통합 e2e `tests/integration/platform_auth_safety_ac7.py::test_platform_auth_safety_ac7_api_key`
   (인증 켠 변형에서 무효 키 → 401 `invalid_token`, 유효 키 → tools/list 인가, 응답에 키 미노출).
 
 ### 시나리오 8: 인증 방식 구성 유연성 (env 게이팅)

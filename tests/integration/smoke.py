@@ -1,95 +1,37 @@
-"""Smoke checks against the primary kind deployment: /healthz, /readyz, tools/list.
+"""primary 배포의 도구 표면 확인 (규칙 3 비-AC 파일 — AC를 주검증하지 않는다).
 
-검증 AC: ping/AC1, platform-auth-safety/AC6
+검증 AC: 없음 (스모크/인프라)
 실행 대상: primary
 실행 순서: 0
 
-**분할 대기(2 AC 겸용)** — 모델 `tbm_homelab-k3s-mcp-ac-e2e`의 파일 단위 규칙 2는
-파일 하나가 AC 하나만 주검증할 것을 요구하므로, 이 파일은 AC별 전용 파일로 쪼개질 대상이다.
-위 선언은 현재 겸용 상태를 있는 그대로 신고하는 것이고,
-`tests/integration/check_ac_mapping.py`가 이를 규칙 2 위반으로 계수해 `docs/doc-tracker.md`와 대조한다.
+모델 `tbm_homelab-k3s-mcp-ac-e2e` 의 규칙 3은 AC 대신 **스모크/인프라 확인(서버 기동·
+`/healthz`·도구 표면 존재)** 을 주검증하는 파일을 허용하되 `docs/doc-tracker.md` 의
+「비-AC 파일」 절에 등재할 것을 요구한다. 이 파일이 그 등재분이다.
 
-Per-AC case names + docstrings declare the AC they verify (registry rule 3);
-``docs/doc-tracker.md`` is the AC<->case mapping SSOT.
+여기서 확인하는 것은 **뒤따르는 AC 파일들의 공유 선행 조건**이다: primary 그룹의 케이스들이
+구동하는 도구가 실제로 광고되고 있는지. `실행 순서: 0` 으로 그룹 맨 앞에서 돌기 때문에,
+배포가 깨졌을 때 파일 24개가 차례로 모호하게 죽는 대신 여기서 한 번에 원인을 말한다.
+
+이것은 platform-auth-safety/AC5(서버 수준 graceful degradation)가 **아니다**. 이 배포는
+모든 통합이 구성돼 있어 정상적인 tools/list 가 degradation 에 대해 아무것도 말해 주지
+않는다 — AC5 는 자격증명이 없는 배포에서만 관측되므로 그 전용 파일
+(`platform_auth_safety_ac5.py`)은 auth-variant 에서 돈다. 두 파일이 같은
+`_helpers.EXPECTED_TOOLS` 를 읽는 것은 의도한 것이다: 도구 표면은 구성과 무관하게
+`internal/mcp/toolslist.go` 가 정적으로 선언하므로 두 배포에서 같아야 한다.
 """
 
 from __future__ import annotations
 
 import asyncio
 
-from mcp import ClientSession
-
-from _helpers import base_url, get_json, open_session, wait_for_healthz
-
-# The full tool surface this deployment advertises. run() asserts it as a shared
-# precondition for the cases below rather than as an AC case of its own: every
-# integration IS configured here, so a healthy tools/list on this deployment does
-# not demonstrate platform-auth-safety/AC5 (server-level graceful degradation).
-# AC5 is only observable where credentials are absent, so its dedicated case
-# lives in no_config.py, against the credential-less deployment variant.
-EXPECTED_TOOLS = {
-    "ping",
-    "namespace_list",
-    "workload_list",
-    "workload_restart",
-    "workload_scale",
-    "workload_logs",
-    "pod_describe",
-    "dear_baby_reset_user",
-    "grafana_token",
-}
-
-
-def test_platform_auth_safety_ac6_health_readiness(url: str) -> None:
-    """AC: platform-auth-safety/AC6 — liveness and readiness probes report state.
-
-    Asserts the two probe paths the orchestrator is pointed at (see the
-    livenessProbe/readinessProbe/startupProbe in k8s/deployment.yaml) answer 200
-    with their own status vocabulary on a healthy server: ``/healthz`` reports
-    ``status=ok`` (liveness) and ``/readyz`` reports ``status=ready``
-    (readiness). ``get_json`` raises on any non-2xx, so a probe path that
-    disappeared or started erroring fails here.
-
-    The unhealthy side of the criterion ("비정상 상태를 올바르게 반영") is not
-    asserted: the deployed server offers no e2e-reachable way to force itself
-    unready, and faking it would require a fixture that breaks the very
-    deployment the other cases in this run share.
-    """
-    healthz = get_json(url, "/healthz")
-    assert healthz.get("status") == "ok", f"unexpected /healthz: {healthz!r}"
-
-    readyz = get_json(url, "/readyz")
-    assert readyz.get("status") == "ready", f"unexpected /readyz: {readyz!r}"
-
-
-async def test_ping_ac1_always_pong(session: ClientSession) -> None:
-    """AC: ping/AC1 — an argument-less call always succeeds with ``pong``.
-
-    Calls the deployed ``ping`` tool with no arguments and asserts the result is
-    a non-error MCP tool result whose single content block is the text ``pong``
-    exactly — the AC's stated verification method. This promotes the in-process
-    assertion in ``internal/server/mcp_test.go`` (``TestPingToolReturnsPong``) to
-    the deployed-server e2e layer.
-    """
-    result = await session.call_tool("ping", {})
-    assert result.isError is False, result
-    assert result.content, result
-    block = result.content[0]
-    assert block.type == "text", block
-    assert block.text == "pong", block.text
+from _helpers import EXPECTED_TOOLS, base_url, open_session, wait_for_healthz
 
 
 async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
 
-    print("--- health/readiness probes (AC: platform-auth-safety/AC6) ---")
-    test_platform_auth_safety_ac6_health_readiness(url)
-    print("probes ok")
-
     async with open_session(url) as session:
-        # Shared precondition (not an AC case): the tools the cases below drive
-        # must actually be advertised by this deployment.
         tools = await session.list_tools()
         names = {tool.name for tool in tools.tools}
         missing = EXPECTED_TOOLS - names
@@ -97,10 +39,6 @@ async def run() -> None:
             f"missing tools: {sorted(missing)} (got {sorted(names)})"
         )
         print("tools/list ok:", sorted(names))
-
-        print("--- ping (AC: ping/AC1) ---")
-        await test_ping_ac1_always_pong(session)
-        print("ping ok")
 
 
 if __name__ == "__main__":

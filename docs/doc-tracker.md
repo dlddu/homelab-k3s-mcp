@@ -127,62 +127,64 @@
 - **규칙 3 (식별)**: 매칭 단위 파일은 **모듈 docstring**에 `검증 AC: <domain>/AC<n>` 을 선언한다. AC 대신 스모크/인프라를 검증하는 파일은 `검증 AC: 없음 (스모크/인프라)` 을 선언하고 아래 "비-AC 파일" 목록에 등재한다. 어디에도 매핑되지 않은 파일은 고아다.
 - **매칭 단위**: `tests/integration/` 최상위 `*.py`. 단 공유 헬퍼 `_helpers.py` 와 하네스 자신(`run_all.py` · `check_ac_mapping.py`)은 매칭 단위가 아니다.
 - **기계 검사**: `python3 tests/integration/check_ac_mapping.py` 가 위 규칙과 아래 집계를 CI(`fmt + vet` 잡)에서 강제한다. 이 표의 행별 상태·집계 숫자가 실측과 **정확히** 같아야 통과하므로, 파일을 쪼개거나 AC를 추가한 PR은 같은 PR에서 이 절을 갱신해야 한다.
-- **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"를 검사해 **만들어 놓고 실행되지 않는 파일**을 구조적으로 막는다.
+- **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
 <!-- ac-e2e-집계 -->
 - AC 전집: 64
 - 예외 등재: 1
 - 1:1 대상: 63
-- 매칭 파일(전용): 22
-- 분할 대기 파일(규칙 2 위반): 4
-- 공백 AC: 41
+- 매칭 파일(전용): 33
+- 분할 대기 파일(규칙 2 위반): 1
+- 공백 AC: 30
 <!-- /ac-e2e-집계 -->
 
-> 공백 41건의 내역: **27건**은 분할 대기 파일 4개(`workload.py` 16 · `no_config.py` 7 · `auth.py` 2 · `smoke.py` 2)가 겸용으로 커버하고 있어 분할만 하면 ✅가 되고, **14건**은 케이스 자체가 없다(아래 backlog). 진행 방향은 매칭 파일 ↑ / 분할 대기 ↓ / 공백 ↓ 이다.
+> 공백 30건의 내역: **16건**은 분할 대기 파일 1개(`workload.py` 16)가 겸용으로 커버하고 있어 분할만 하면 ✅가 되고, **14건**은 케이스 자체가 없다(아래 backlog). 진행 방향은 매칭 파일 ↑ / 분할 대기 ↓ / 공백 ↓ 이다.
 >
-> 남은 4개는 각각 **분할 전에 정할 것이 하나씩 있다** — `workload.py`는 케이스가 공유 픽스처 상태에 순서 의존적이고(러너가 파일별 프로세스로 돌리므로 순서 의존을 먼저 끊어야 한다), `no_config.py`·`auth.py`는 `auth-variant` 배포 그룹이라 그 그룹의 배차가 2 → 8·2 → 4로 늘며, `smoke.py`는 두 AC를 떼고 남는 도구 표면 확인을 규칙 3의 **비-AC 파일**로 등재할지가 미결이다. 이번 슬라이스가 `opensearch.py`·`aws_config.py`를 고른 것은 그 둘만 **선결 판단 없이 순수 이동으로 끝나기** 때문이다.
+> 남은 것은 `workload.py` 하나이고 **분할 전에 정할 것도 하나뿐이다** — 이 파일의 케이스는 공유 픽스처 상태에 **순서 의존적**이다(`run()` 주석이 그 순서를 명시한다: 읽기 전용 조회 → restart → scale(레플리카를 1로 되돌리고 기다린다) → 그 레플리카를 필요로 하는 logs·pod_describe). 러너가 파일별 프로세스로 돌리므로, 쪼개려면 **각 파일이 자기 선행 조건을 스스로 성립시키게 만들어 순서 의존을 끊는 것**이 선행되어야 한다. 러너의 `실행 순서:` 로 파일 간 순서를 고정하는 길도 있지만, 그것은 결합을 파일 단위로 옮길 뿐 없애지 않는다.
+>
+> 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### AC 레지스트리 (64) — ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1
+### AC 레지스트리 (64) — ✅ 전용 파일 33 · ⬜ 분할 대기 16 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
 | aws-config-get/AC1 | 고정 객체 조회 | ✅ 전용 파일 `aws_config_get_ac1.py` |
 | aws-config-get/AC2 | 정적 키 미사용 | ✅ 전용 파일 `aws_config_get_ac2.py` |
-| aws-config-get/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| aws-config-get/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `aws_config_get_ac3.py` |
 | dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 전용 파일 `dear_baby_reset_user_ac1.py` |
 | dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 전용 파일 `dear_baby_reset_user_ac2.py` |
 | dear-baby-reset-user/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `dear_baby_reset_user_ac3.py` |
 | github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 전용 파일 `github_app_installation_token_ac1.py` |
 | github-app-installation-token/AC2 | 스코프 제한 | ✅ 전용 파일 `github_app_installation_token_ac2.py` |
-| github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `github_app_installation_token_ac3.py` |
 | github-app-installation-token/AC4 | 베이스 키 비노출 | ✅ 전용 파일 `github_app_installation_token_ac4.py` |
 | grafana-token/AC1 | read-only 토큰 발급 | ✅ 전용 파일 `grafana_token_ac1.py` |
 | grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 전용 파일 `grafana_token_ac2.py` |
-| grafana-token/AC3 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| grafana-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `grafana_token_ac3.py` |
 | grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 파일 `grafana_token_ac4.py` |
 | namespace-list/AC1 | 네임스페이스 열거 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
 | opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 전용 파일 `opensearch_document_delete_ac1.py` |
 | opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 전용 파일 `opensearch_document_delete_ac2.py` |
 | opensearch-document-delete/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `opensearch_document_delete_ac3.py` |
 | opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_document_delete_ac4.py` |
-| opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ✅ 전용 파일 `opensearch_document_delete_ac5.py` |
 | opensearch-document-put/AC1 | 문서 색인·업서트 | ✅ 전용 파일 `opensearch_document_put_ac1.py` |
 | opensearch-document-put/AC2 | 인덱스 자동 생성 | ✅ 전용 파일 `opensearch_document_put_ac2.py` |
 | opensearch-document-put/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `opensearch_document_put_ac3.py` |
 | opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_document_put_ac4.py` |
-| opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
+| opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ✅ 전용 파일 `opensearch_document_put_ac5.py` |
 | opensearch-search/AC1 | 질의 검색 | ✅ 전용 파일 `opensearch_search_ac1.py` |
 | opensearch-search/AC2 | 결과 상한 | ✅ 전용 파일 `opensearch_search_ac2.py` |
 | opensearch-search/AC3 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_search_ac3.py` |
-| opensearch-search/AC4 | 미설정 시 graceful 거부 | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
-| ping/AC1 | 항상 pong 응답 | ⬜ 분할 대기 — `smoke.py`(2 AC 겸용) |
-| platform-auth-safety/AC1 | 인증 게이트 | ⬜ 분할 대기 — `auth.py`(2 AC 겸용) |
+| opensearch-search/AC4 | 미설정 시 graceful 거부 | ✅ 전용 파일 `opensearch_search_ac4.py` |
+| ping/AC1 | 항상 pong 응답 | ✅ 전용 파일 `ping_ac1.py` |
+| platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 파일 `platform_auth_safety_ac1.py` |
 | platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 공백 — 케이스 없음 |
 | platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
 | platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 예외 |
-| platform-auth-safety/AC5 | 서버 수준 graceful degradation | ⬜ 분할 대기 — `no_config.py`(7 AC 겸용) |
-| platform-auth-safety/AC6 | 헬스·레디니스 | ⬜ 분할 대기 — `smoke.py`(2 AC 겸용) |
-| platform-auth-safety/AC7 | API 키 인증 | ⬜ 분할 대기 — `auth.py`(2 AC 겸용) |
+| platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 전용 파일 `platform_auth_safety_ac5.py` |
+| platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 전용 파일 `platform_auth_safety_ac6.py` |
+| platform-auth-safety/AC7 | API 키 인증 | ✅ 전용 파일 `platform_auth_safety_ac7.py` |
 | platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ⬜ 공백 — 케이스 없음 |
 | pod-describe/AC1 | 파드 상세 스냅샷 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
 | pod-describe/AC2 | 대상 지정 방식 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
@@ -217,7 +219,25 @@
 
 - **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/platform_auth_safety_ac2.py`(신규 전용 파일): 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/platform_auth_safety_ac8.py`(신규 전용 파일): env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
-- **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → AC별 전용 파일 12개(신규, 파일 단위 규칙 2) + 미설정 거부 3건은 기존 `no_config.py`(port 8088, 자격증명 미부착 변형). **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
+- **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → AC별 전용 파일 12개(신규, 파일 단위 규칙 2). 미설정 거부 3건(`session-list/AC3` · `session-read/AC4` · `session-write/AC5`)도 각자의 전용 파일 `session_{list_ac3,read_ac4,write_ac5}.py`가 되며, `실행 대상: auth-variant`(port 8088, 자격증명 미부착 변형)를 선언해 다른 "미설정 거부" 파일들과 같은 배포에서 돈다 — 2026-08-31 분할 전에는 이 셋을 겸용 파일 `no_config.py`에 얹는 것으로 적혀 있었으나 그 파일은 더 이상 없다. **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
+
+> **`no_config.py`(7) · `auth.py`(2) · `smoke.py`(2) → AC별 전용 파일 11개 + 비-AC 파일 1개 — ✅ 완료(2026-08-31)**: 분할 대기 4개 파일 중 **공유 가변 상태가 없어 프로세스가 갈라져도 관측이 바뀌지 않는 셋**을 골라 쪼갰다(`platform_auth_safety_ac{1,5,6,7}.py` · `ping_ac1.py` · `aws_config_get_ac3.py` · `github_app_installation_token_ac3.py` · `grafana_token_ac3.py` · `opensearch_{search_ac4,document_put_ac5,document_delete_ac5}.py`). 매칭 파일 **22 → 33**, 규칙 2 위반 **4 → 1**, 규칙 1 위반(공백) **41 → 30**(겸용 커버 27 → 16, 케이스 없음 14는 불변). 비-AC 파일 **0 → 1**.
+>
+> **왜 이 셋인가**: 세 파일의 케이스는 전부 읽기 전용이다 — 인증 없는/잘못된 `POST /mcp`의 401, `/healthz`·`/readyz`, `tools/list`, 그리고 "미설정 거부 + 직후 `ping`이 여전히 `pong`". 어느 것도 클러스터나 서버 상태를 변형하지 않으므로 파일이 나뉘어 프로세스가 갈라져도 서로를 관측할 수 없다. 직전 슬라이스의 기준("선결 판단 없이 순수 이동")과 다른 기준을 쓴 것은 이 셋에는 선결 판단이 **있었기** 때문이고, 그 둘을 아래처럼 확정했다. 남은 `workload.py`(16)는 restart → scale → logs/pod_describe가 실제로 공유 픽스처를 변형하므로 섞지 않았다.
+>
+> **확정한 선결 판단 ①(`no_config.py`·`auth.py`) — `auth-variant` 배차 증가를 수용한다.** 그룹 배차가 2 → 9로 늘지만 `ci.yml`은 그룹당 스텝 하나로 러너를 부르고 포트포워드를 **재시도 루프로 그룹 내내 유지**하며 각 파일이 `wait_for_healthz`로 시작하므로, 프로세스가 늘어도 배선·픽스처·롤아웃 대기는 한 줄도 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동과 MCP 세션 개설뿐이고, 그 대가로 실패가 어느 AC의 것인지 파일 이름으로 즉시 드러난다.
+>
+> **확정한 선결 판단 ②(`smoke.py`) — 잔여 도구 표면 확인을 규칙 3의 비-AC 파일로 등재한다.** 규칙 3이 허용 유형으로 "도구 표면 존재 확인"을 문자 그대로 지목하고, 이 확인은 `실행 순서: 0`으로 primary 그룹 맨 앞에서 돌아 배포가 깨졌을 때 26개 파일이 차례로 모호하게 죽는 대신 한 번에 원인을 말한다. **등재 0건이던 규칙 3 경로가 이번에 처음 양성 사례를 갖는다** — 체커는 등재 누락(고아 파일)과 고아 등재를 양방향으로 검사하는데, 지금까지 그 코드가 참인 경우로 실행된 적이 없었다.
+>
+> **순수 이동임을 주장하지 않고 증명했다**: 케이스 함수·상수를 손으로 옮기지 않고 원본의 ast 소스 세그먼트를 떠서 생성한 뒤, 원본(`HEAD`)과 신규 파일의 top-level 정의를 `ast.dump`로 대조해 **19개 정의 전부가 정확히 한 파일에 동일하게 착지**함을 확인했다. 재작성이 허용된 것은 파일별 `run()` 디스패처 3개와 아래 도구 표면 상수 1개뿐이며, 단언은 한 줄도 바뀌지 않았다.
+>
+> **공유 표면은 `_` 접두 모듈로 내렸다**: `_auth_variant.py`(`API_KEY` + 거부 텍스트 4개 + `assert_unavailable_refusal`). `run_all.py::matching_unit_paths()`가 `_` 접두를 걸러내므로 매칭 단위가 아니고 `검증 AC:` 선언을 갖지 않는다. `API_KEY`는 분할 전 `auth.py`·`no_config.py`에 같은 리터럴로 중복돼 있던 것을 한 벌로 합친 것이다.
+>
+> **stale 상수 하나를 정정했다(유일한 단언 변경)**: `smoke.py`의 도구 표면 상수는 14개 중 **9개짜리 부분집합**이라, primary 그룹의 케이스들이 실제로 구동하는 `github_app_installation_token`·`aws_config_get`·`opensearch_*`가 빠져 있었다. 도구 표면은 `internal/mcp/toolslist.go`가 구성과 무관하게 정적으로 선언하므로 두 배포에서 같아야 한다 — `_helpers.EXPECTED_TOOLS`(14개, `no_config.py` 원본과 AST 동일) 한 벌로 합쳐 `platform_auth_safety_ac5.py`(변형)와 `smoke.py`(주 배포)가 함께 읽는다.
+>
+> **체커에 하네스 검사 하나를 더했다(유일한 게이트 확장)**: 파일 하나에 케이스 하나인 구조가 되면 디스패처가 케이스를 부르는 줄을 빠뜨려도 그 파일은 여전히 exit 0 이라 CI가 초록으로 통과하고, 그 AC는 레지스트리에서 ✅ 로 세지면서 실제로는 아무것도 단언하지 않는다. `check_ac_mapping.py::check_cases_are_run()` 이 각 파일의 `run()` 이 그 파일의 `test_*` 를 전부 호출하는지 AST로 확인한다(표준 라이브러리만, 클러스터 불필요). 분할이 늘어날수록 값이 커지는 검사다.
+>
+> **신규 픽스처·신규 CI 스텝·`ci.yml` 변경 없음** — 러너가 파일을 자동 발견해 배차하므로 분할은 파일을 더하고 빼는 것으로 끝난다(배차 누락은 체커가 막는다). 이번 PR은 `ci.yml`을 한 글자도 건드리지 않는다.
 
 > **`opensearch.py`(11) · `aws_config.py`(2) → AC별 전용 파일 13개 — ✅ 완료(2026-08-30)**: 분할 대기 6개 파일 중 **선결 판단 없이 순수 이동으로 끝나는 둘**을 골라 13개 전용 파일로 쪼갰다(`opensearch_{search,document_put,document_delete}_ac*.py` 11 · `aws_config_get_ac{1,2}.py` 2). 매칭 파일 **9 → 22**, 규칙 2 위반 **6 → 4**, 규칙 1 위반(공백) **54 → 41**(겸용 커버 40 → 27, 케이스 없음 14는 불변).
 >
@@ -259,11 +279,14 @@
 
 > **파괴적 작업 표기(5) — ✅ 완료(2026-07-21)**: 파괴 동작을 실제로 실행하지 않고 배포 서버 `tools/list`의 `annotations.destructiveHint == true`(및 `readOnlyHint == false`)를 e2e로 단언하는 per-AC 전용 케이스를 신설해 위 레지스트리에서 ✅로 승격했다(`internal/server/mcp_test.go`의 in-process 단언을 배포 서버 통합 e2e로 승격). 케이스: `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint`, `opensearch.py::test_opensearch_document_{put,delete}_ac3_destructive_hint`, `workload.py::test_workload_{restart_ac2,scale_ac3}_destructive_hint`. 남은 backlog 14건은 no-config 배포 변형·신규 픽스처가 필요한 후속 슬라이스.
 
-### 비-AC 파일 (스모크·인프라) (0)
+### 비-AC 파일 (스모크·인프라) (1)
 
-> AC 대신 스모크/인프라 확인(서버 기동·`/healthz`·도구 표면 존재)을 주검증한다고 선언한 매칭 단위 파일의 등재 자리다(규칙 3). 현재 0건이다 — smoke.py 는 ping/AC1 과 platform-auth-safety/AC6 을 선언하고 있어 비-AC 파일이 아니라 **분할 대기** 파일이다. 그 둘을 전용 파일로 떼어내는 후속 슬라이스에서, 남는 도구 표면 확인(공유 선행 조건)을 비-AC 파일로 등재할지 판단한다.
+> AC 대신 스모크/인프라 확인(서버 기동·`/healthz`·도구 표면 존재)을 주검증한다고 선언한 매칭 단위 파일의 등재 자리다(규칙 3). 이 목록에 없는 비-AC 파일은 고아이고, 여기 등재됐는데 실재하지 않거나 AC를 선언하는 파일도 고아 등재다 — 체커가 양방향으로 검사한다.
 
-- (없음)
+- **`smoke.py`** — primary 배포의 **도구 표면 존재 확인**(`_helpers.EXPECTED_TOOLS` 14개가 `tools/list`에 광고되는지). `실행 순서: 0`으로 primary 그룹 맨 앞에서 돌아, 배포가 깨졌을 때 뒤따르는 25개 AC 파일이 차례로 모호하게 죽는 대신 한 번에 원인을 말하는 **공유 선행 조건**이다. 2026-08-31 분할 전에는 이 확인이 ping/AC1·platform-auth-safety/AC6과 한 파일에 섞여 있었고(= 분할 대기), 두 AC를 각자의 전용 파일(위 레지스트리 참조)로 떼어낸 뒤 남은 것이 이 파일이다.
+  - **이것은 platform-auth-safety/AC5가 아니다**: 주 배포는 모든 통합이 구성돼 있어 정상적인 `tools/list`가 degradation에 대해 아무것도 말해 주지 않는다. AC5는 자격증명이 없는 배포에서만 관측되므로 그 전용 파일이 `auth-variant`에서 같은 상수를 단언한다.
+
+> 이 절의 백틱 파일명은 체커가 **등재 목록으로 읽는다**(`FILE_REF_RE`). 다른 파일을 예로 들 때는 백틱을 쓰지 말 것 — 고아 등재로 잡힌다.
 
 ### 🚫 e2e 예외 (1) — 규칙 4 등재 (1:1 계수에서 제외)
 
@@ -277,6 +300,7 @@
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-08-31 | 분할 대기 4개 파일 중 `no_config.py`(7 AC)·`auth.py`(2 AC)·`smoke.py`(2 AC)를 **AC별 전용 파일 11개 + 규칙 3 비-AC 파일 1개**로 분할했다(`platform_auth_safety_ac{1,5,6,7}.py` · `ping_ac1.py` · `aws_config_get_ac3.py` · `github_app_installation_token_ac3.py` · `grafana_token_ac3.py` · `opensearch_{search_ac4,document_put_ac5,document_delete_ac5}.py`). 이 셋을 고른 근거는 **케이스가 전부 읽기 전용이라 프로세스가 갈라져도 서로를 관측하지 못한다**는 것이다(401 응답 · `/healthz`·`/readyz` · `tools/list` · 미설정 거부 + 직후 `ping`). 세 파일이 안고 있던 선결 판단 둘을 확정했다 — ① `auth-variant` 배차 증가(2 → 9) 수용(포트포워드가 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz`로 시작하므로 배선 무변경, 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐) ② `smoke.py`의 잔여 도구 표면 확인을 **비-AC 파일로 등재**(등재 0건이던 규칙 3 경로의 첫 양성 사례). 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **19개 정의 전부가 원본과 AST 동일**함을 대조로 확인했고(재작성은 파일별 `run()` 3개 + 도구 표면 상수 1개뿐), 공유 표면은 매칭 단위 밖 `_auth_variant.py`로 내렸다. 유일한 단언 변경은 `smoke.py`가 들고 있던 **9개짜리 stale 도구 표면 부분집합**을 `_helpers.EXPECTED_TOOLS`(14개)로 정정한 것이다 — 빠져 있던 `github_app_installation_token`·`aws_config_get`·`opensearch_*`는 primary 그룹 케이스가 실제로 구동하는 도구다. 체커에는 하네스 검사 하나를 더했다 — `check_cases_are_run()` 이 각 파일의 `run()` 이 그 파일의 `test_*` 를 전부 호출하는지 AST로 확인해, 파일 하나에 케이스 하나인 구조에서 디스패처가 케이스를 빠뜨려도 초록으로 통과하는 구멍을 막는다. 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 무변경. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 0 | ✅ 전용 파일 33 · ⬜ 분할 대기 16 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 |
 | 2026-08-30 | 분할 대기 6개 파일 중 `opensearch.py`(11 AC)·`aws_config.py`(2 AC)를 **AC별 전용 파일 13개**로 분할했다(`opensearch_{search,document_put,document_delete}_ac*.py` · `aws_config_get_ac{1,2}.py`). 이 둘을 고른 근거는 **선결 판단이 없는 유일한 후보**라는 것이다 — 케이스가 이미 케이스별 전용 인덱스·유일 질의 토큰으로 서로 격리돼 있어 순서 의존이 없다(남은 4개는 순서 의존·`auth-variant` 배차 증가·규칙 3 재분류라는 미결 판단을 각각 안고 있다). 공유 표면은 매칭 단위에서 제외되는 `_opensearch.py`·`_aws_config.py`로 내렸고, 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **32개 정의 전부가 원본과 AST 동일**함을 대조로 확인했다(재작성은 파일별 `run()`과 모듈 docstring뿐, 단언 무변경). 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 변경은 삭제된 파일명을 가리키던 주석 2줄뿐이다. `추가 인자: trace` 신고는 http-trace를 실제로 읽는 4개 파일로 좁혀졌다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | **판정 단위를 케이스 → 파일로 옮긴 개정(모델 `tbm_homelab-k3s-mcp-ac-e2e`, reconciler `7529b609`)에 맞춰 e2e 렌즈를 재작성했다.** ① 매칭 단위 파일 9개 전부에 모듈 docstring `검증 AC:`·`실행 대상:` 선언을 도입(개정 전에는 확인 지점이 레포에 0건이라 파일 단위 매핑을 기계로 확인할 방법 자체가 없었다). ② 체커 `tests/integration/check_ac_mapping.py` 신설 — AC 전집(PRD)·선언·레지스트리를 각각 재도출해 규칙 1·2·3·5·6과 집계 일치를 lint 잡에서 강제한다. ③ 러너 `tests/integration/run_all.py` 신설 — 파일을 자동 발견해 `실행 대상`별로 실행하고, `ci.yml`의 파일별 9개 스텝을 배포 대상별 2스텝으로 대체했다(앞으로 분할해도 CI 수정 불필요, 배차 누락은 체커가 차단). ④ **3개 도메인 9 AC를 전용 파일로 분할**(grafana-token AC1·AC2·AC4 · github-app-installation-token AC1·AC2·AC4 · dear-baby-reset-user AC1·AC2·AC3) — 케이스 함수·상수를 한 글자도 바꾸지 않은 순수 이동이며 AST 대조로 26개 정의가 원본과 동일함을 확인했다. ⑤ 레지스트리 64행을 파일 단위 표기(전용 파일 / 분할 대기 / 공백 / 예외)로 재작성하고 집계 블록을 기계 판독 가능하게 만들었다. PRD(AC 본문)는 불변. | 케이스 단위: ✅49(전용 케이스)·⬜14·🚫1 (파일 단위로는 매칭 파일 0 · 규칙 1 위반 63) | 파일 단위: ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | AssumeRole·SigV4 계열 4건(aws-config-get/AC2 · opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4)을 **관측 수단 신설 후** per-AC 전용 케이스로 승격. 신규 픽스처 `tests/k8s/kind/http-trace.yaml` — MinIO(S3+STS)와 OpenSearch 양쪽 앞단에 서는 기록 리버스 프록시 1개(ConfigMap + `python:3.12-alpine`, 신규 이미지 없음)로, `AWS_CONFIG_S3_ENDPOINT`·`OPENSEARCH_STS_ENDPOINT`·`OPENSEARCH_ENDPOINT`를 프록시로 재배선하고 트레이스를 `:8081`로 노출(기존 스텝 2개에 포트포워드만 추가, 신규 검증 스텝 없음). backlog가 든 MinIO 단독 trace 후보는 데이터 플레인 서명이 OpenSearch로 가 관측 범위 밖이라 채택하지 않았다. 단정은 AssumeRole 발급 키 = 데이터 플레인 서명 키 대조 + 베이스 키 배제 + 세션 토큰 + 서명 스코프(`s3`/`aoss`)로, 무서명·베이스 키 서명·STS 미호출을 각각 falsify한다. 프록시의 Host 보존 전제는 SigV4를 재계산하는 가짜 업스트림과 Host 재작성 음성 대조로 검증. tests/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅45(전용 45)·⬜18·🚫1 | ✅49(전용 49)·⬜14·🚫1 |

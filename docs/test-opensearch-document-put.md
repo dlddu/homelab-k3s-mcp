@@ -62,5 +62,5 @@
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestUnavailableFailsEveryCall`, `TestFromEnvUnsetEndpointReturnsNil`) +
   `internal/server/mcp_test.go` (`TestOpenSearchUnavailableReturnsToolError`) + 통합
-  `tests/integration/no_config.py::test_opensearch_document_put_ac5_unconfigured_refusal`
+  `tests/integration/opensearch_document_put_ac5.py::test_opensearch_document_put_ac5_unconfigured_refusal`
   (자격증명 미부착 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).
