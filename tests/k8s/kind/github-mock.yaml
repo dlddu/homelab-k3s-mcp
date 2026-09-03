@@ -1,6 +1,8 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  # 등재: docs/e2e-mocking-policy.md
+  # mock-exception: UPS — 실 상류가 GitHub 공개 SaaS 라 kind 안에서 구동할 수 없다.
   name: github-mock
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests

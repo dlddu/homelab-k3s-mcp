@@ -4,16 +4,21 @@
 # configMapGenerator), so its /mcp endpoint is ungated and the auth gate cannot
 # be observed there. This standalone variant runs the same homelab-k3s-mcp:ci
 # image with auth ENABLED — MCP_AUTH_DISABLED is left unset and MCP_API_KEYS
-# carries a single static key — so tests/integration/auth.py can assert that
+# carries a single static key — so tests/integration/platform_auth_safety_ac1.py
+# and platform_auth_safety_ac7.py can assert that
 # unauthenticated / unknown-key requests are rejected (401) and the configured
 # key authorizes. No credential secrets are attached: main.go's buildXService
 # helpers degrade to an "unavailable" service when a secret is absent and the
 # server still starts, which is all the auth-gate assertions need.
 #
 # That absence is now a contract, not just a convenience:
-# tests/integration/no_config.py asserts the "미설정 시 graceful 거부" ACs against
-# this same variant (aws-config-get/AC3, github-app-installation-token/AC3,
-# grafana-token/AC3, opensearch-{search/AC4,document-put/AC5,document-delete/AC5}).
+# The per-AC "미설정 시 graceful 거부" files -- aws_config_get_ac3.py,
+# github_app_installation_token_ac3.py, grafana_token_ac3.py and
+# opensearch_{search_ac4,document_put_ac5,document_delete_ac5}.py -- assert
+# those ACs against this same variant (aws-config-get/AC3,
+# github-app-installation-token/AC3, grafana-token/AC3,
+# opensearch-{search/AC4,document-put/AC5,document-delete/AC5}), and
+# platform_auth_safety_ac5.py asserts server-level graceful degradation here.
 # Do not attach credential secrets or credential env here — wire them into the
 # primary kind deployment instead.
 apiVersion: v1
@@ -72,7 +77,7 @@ spec:
               value: info
             # Auth ENABLED: MCP_AUTH_DISABLED is deliberately unset and a single
             # static API key gates /mcp. The value is a throwaway CI credential
-            # and must match API_KEY in tests/integration/auth.py.
+            # and must match API_KEY in tests/integration/_auth_variant.py.
             - name: MCP_API_KEYS
               value: ci-e2e-key
           startupProbe:

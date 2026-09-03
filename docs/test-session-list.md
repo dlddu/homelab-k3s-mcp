@@ -46,5 +46,5 @@
   (`TestUnavailableFailsEveryCall`, `TestFromEnv`) + MCP 표면
   `internal/server/mcp_test.go::TestSessionListUnavailableReturnsToolError`
   (거부 직후 `ping`이 여전히 `pong`임까지 단언) + (미작성) 통합
-  `tests/integration/no_config.py::test_session_list_ac3_unconfigured_refusal`
+  `tests/integration/session_list_ac3.py::test_session_list_ac3_unconfigured_refusal`
   (자격증명 미부착 배포 변형 `auth-fixture.yaml` 재사용)

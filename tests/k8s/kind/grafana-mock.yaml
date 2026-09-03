@@ -1,6 +1,8 @@
 apiVersion: v1
 kind: Namespace
 metadata:
+  # 등재: docs/e2e-mocking-policy.md
+  # mock-exception: UPS — 실 상류가 Grafana Cloud(유료 계정·발급자 토큰)라 구동 불가.
   name: grafana-mock
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests

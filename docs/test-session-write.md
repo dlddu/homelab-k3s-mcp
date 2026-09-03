@@ -61,4 +61,4 @@
 - **기대 결과**: 서버 정상, 호출만 unavailable 도구 에러. 직후 `ping`은 여전히 `pong`.
 - **검증 AC**: AC5
 - **자동화**: (미작성) 통합
-  `tests/integration/no_config.py::test_session_write_ac5_unconfigured_refusal`
+  `tests/integration/session_write_ac5.py::test_session_write_ac5_unconfigured_refusal`
