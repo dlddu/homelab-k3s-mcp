@@ -38,5 +38,5 @@
 - **검증 AC**: AC3
 - **자동화**: (미작성) Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestUnavailableFailsEveryCall`) + 통합
-  `tests/integration/no_config.py::test_session_list_ac3_unconfigured_refusal`
+  `tests/integration/session_list_ac3.py::test_session_list_ac3_unconfigured_refusal`
   (자격증명 미부착 배포 변형 `auth-fixture.yaml` 재사용)

@@ -23,8 +23,10 @@
 * **규칙 3** 비-AC 파일은 `검증 AC: 없음`을 선언하고 doc-tracker에 등재돼야 한다
 * **규칙 5** 참조 무결성 — 선언·레지스트리·예외 목록이 실재하지 않는 AC를 가리키지 않는다
 * **규칙 6** 집계 일치 — 레지스트리의 행별 상태와 집계 숫자가 실측과 정확히 같다
-* **하네스 무결성** — 매칭 단위 파일 전부가 `run_all.py`에 정확히 한 번 배차된다
-  (파일을 만들어 놓고 CI가 실행하지 않는 상태를 구조적으로 막는다)
+* **하네스 무결성** — 매칭 단위 파일 전부가 `run_all.py`에 정확히 한 번 배차되고,
+  각 파일의 `run()`이 그 파일이 정의한 `test_*` 케이스를 **전부 호출한다**
+  (만들어 놓고 CI가 실행하지 않는 파일, 그리고 배차는 되지만 자기 케이스를 부르지 않아
+  **조용히 통과하는 파일**을 둘 다 구조적으로 막는다)
 
 집계가 실측과 다르면 실패하므로, 파일을 쪼개거나 AC를 추가한 PR은 **같은 PR에서**
 레지스트리를 갱신해야 한다. 그것이 이 모델이 요구하는 "집계 일치"다.
@@ -32,6 +34,7 @@
 
 from __future__ import annotations
 
+import ast
 import pathlib
 import re
 import sys
@@ -163,6 +166,45 @@ def check_dispatch(decls) -> list[str]:
     return problems
 
 
+def check_cases_are_run(decls) -> list[str]:
+    """각 파일의 ``run()`` 이 그 파일이 정의한 ``test_*`` 케이스를 전부 호출하는지.
+
+    배차만으로는 부족하다 — 파일 하나에 케이스 하나인 구조에서는 디스패처가 케이스를
+    부르는 줄을 빠뜨려도 그 파일은 여전히 exit 0 이라 CI가 초록으로 통과한다. 그 파일이
+    선언한 AC는 레지스트리에서 ✅ 로 세지지만 실제로는 아무것도 단언하지 않는다.
+    AST 만 보므로 클러스터도 서드파티 임포트도 필요 없다.
+    """
+    problems = []
+    for decl in decls:
+        tree = ast.parse(decl.path.read_text(encoding="utf-8"))
+        top = [
+            n
+            for n in tree.body
+            if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+        ]
+        cases = [n.name for n in top if n.name.startswith("test_")]
+        if not cases:
+            continue
+        run = next((n for n in top if n.name == "run"), None)
+        if run is None:
+            problems.append(
+                f"하네스 위반 — {decl.name} 은 케이스 {cases} 를 정의하는데 run() 이 없다"
+            )
+            continue
+        called = {
+            n.func.id
+            for n in ast.walk(run)
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)
+        }
+        missing = [case for case in cases if case not in called]
+        if missing:
+            problems.append(
+                f"하네스 위반 — {decl.name} 의 run() 이 호출하지 않는 케이스: {missing} "
+                f"(배차돼도 아무것도 단언하지 않고 통과한다)"
+            )
+    return problems
+
+
 def main() -> int:
     acs = ac_universe()
     ac_set = set(acs)
@@ -246,6 +288,7 @@ def main() -> int:
 
     # --- 하네스 무결성 -------------------------------------------------------
     problems += check_dispatch(decls)
+    problems += check_cases_are_run(decls)
 
     # --- 집계 ---------------------------------------------------------------
     exceptions = len(tracker.exceptions)
@@ -282,7 +325,7 @@ def main() -> int:
             print(f"FAIL: {problem}")
         return 1
 
-    print("\nOK: 규칙 1(중복 전용)·2·3·5·6 위반 없음, 러너 배차 누락 없음")
+    print("\nOK: 규칙 1(중복 전용)·2·3·5·6 위반 없음, 러너 배차 누락·케이스 미호출 없음")
     return 0
 
 

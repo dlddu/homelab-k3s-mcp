@@ -37,7 +37,7 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `mcp_test.go::TestGrafanaTokenUnavailableReturnsToolError`. 구성 검증은
   `internal/grafana/grafana_test.go::TestFromEnv*`. 통합
-  `tests/integration/no_config.py::test_grafana_token_ac3_unconfigured_refusal`
+  `tests/integration/grafana_token_ac3.py::test_grafana_token_ac3_unconfigured_refusal`
   (자격증명 미부착 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).
 
 ### 시나리오 4: 발급자 토큰 비노출
