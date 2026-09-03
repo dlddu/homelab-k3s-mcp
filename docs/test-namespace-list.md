@@ -12,7 +12,7 @@
   `kube-system` 포함
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestNamespaceListDispatchesToService`. 통합
-  `workload.py`(namespace_list 블록: workload-test=Active, kube-system 존재).
+  `namespace_list_ac1.py`(workload-test=Active, kube-system 존재).
 
 ### 시나리오 2: 통합 미설정 시 도구 에러
 - **사전 조건**: k8s 통합 미구성
