@@ -37,6 +37,8 @@ spec:
           env:
             - name: discovery.type
               value: single-node
+            # 등재: docs/e2e-mocking-policy.md — 대체 검증은 http-trace.yaml(접근 경로 관측)
+            # mock-exception: GATE — 이 플러그인은 SigV4 를 검증하지 못한다(프로덕션은 AWS 관리형 front door). 켜면 basic auth 로 갈아타야 해서 충실도가 오히려 내려간다.
             - name: DISABLE_SECURITY_PLUGIN
               value: "true"
             - name: DISABLE_INSTALL_DEMO_CONFIG

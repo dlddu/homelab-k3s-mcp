@@ -14,6 +14,8 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
+  # 등재: docs/e2e-mocking-policy.md
+  # mock-exception: IMG — 실 백엔드 이미지가 비공개라 CI 에서 당길 수 없다.
   name: dear-baby-fixture
   namespace: dear-baby-test
   labels:
