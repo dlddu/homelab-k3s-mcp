@@ -14,7 +14,7 @@
   이벤트를 포함한 스냅샷 반환
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestPodDescribeRendersStructuredPayload` +
-  배포 서버 통합 e2e `tests/integration/workload.py::test_pod_describe_ac1_snapshot`
+  배포 서버 통합 e2e `tests/integration/pod_describe_ac1.py::test_pod_describe_ac1_snapshot`
   (workload-fixture 러닝 파드 스냅샷 필드 단언).
 
 ### 시나리오 2: 대상 지정과 상호배타
@@ -27,7 +27,7 @@
 - **자동화**: Go 단위 `mcp_test.go::TestPodDescribeAcceptsSelectorTarget`,
   `TestPodDescribeAcceptsWorkloadTarget`, `TestPodDescribeRejectsMutuallyExclusiveTargets`,
   `TestPodDescribeRejectsPartialWorkloadTarget`, `TestPodDescribeRequiresTarget` +
-  배포 서버 통합 e2e `tests/integration/workload.py::test_pod_describe_ac2_target_resolution`
+  배포 서버 통합 e2e `tests/integration/pod_describe_ac2.py::test_pod_describe_ac2_target_resolution`
   (name/selector/workload 3경로 해석 + name+selector 상호배타 McpError 거부).
 
 ### 시나리오 3: 이벤트 best-effort / 에러 처리
@@ -37,5 +37,5 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `mcp_test.go::TestPodDescribeNoEventsPlaceholder`,
   `TestPodDescribeSurfacesK8sErrorAsToolError` +
-  배포 서버 통합 e2e `tests/integration/workload.py::test_pod_describe_ac3_events_best_effort`
+  배포 서버 통합 e2e `tests/integration/pod_describe_ac3.py::test_pod_describe_ac3_events_best_effort`
   (events 필드가 list로 best-effort present, 호출 성공).

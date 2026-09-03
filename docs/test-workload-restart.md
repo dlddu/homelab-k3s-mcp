@@ -13,7 +13,7 @@
   설정되고 롤아웃이 새로 시작됨(delete 미사용). ns/name 누락 시 거부.
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestWorkloadRestartDispatchesToService`,
-  `TestWorkloadRestartRequiresNamespaceAndName`. 통합 `workload.py`(restartedAt + kubectl
+  `TestWorkloadRestartRequiresNamespaceAndName`. 통합 `workload_restart_ac1.py`(restartedAt + kubectl
   annotation 확인 + rollout status).
 
 ### 시나리오 2: 파괴적 어노테이션 광고

@@ -177,7 +177,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **규칙 1 (AC→파일)**: 예외 목록에 없는 모든 AC는 자신을 주검증하는 파일을 **정확히 하나** 가진다. 여러 AC를 겸하는 파일은 그 AC의 전용 파일이 아니므로, 겸용 상태의 AC는 여전히 **공백**으로 계수한다.
 - **규칙 2 (파일→AC)**: 모든 매칭 단위 파일은 **정확히 하나의 AC**만 주검증 대상으로 선언한다. 2개 이상을 선언한 파일은 **분할 대기**(규칙 2 위반)다.
 - **규칙 3 (식별)**: 매칭 단위 파일은 **모듈 docstring**에 `검증 AC: <domain>/AC<n>` 을 선언한다. AC 대신 스모크/인프라를 검증하는 파일은 `검증 AC: 없음 (스모크/인프라)` 을 선언하고 아래 "비-AC 파일" 목록에 등재한다. 어디에도 매핑되지 않은 파일은 고아다.
-- **매칭 단위**: `tests/integration/` 최상위 `*.py`. 단 공유 헬퍼 `_helpers.py` 와 하네스 자신(`run_all.py` · `check_ac_mapping.py`)은 매칭 단위가 아니다.
+- **매칭 단위**: `tests/integration/` 최상위 `*.py`. 단 **`_` 접두 공유 모듈**(`_helpers.py` · `_workload.py` · `_auth_variant.py` · `_opensearch.py` · `_aws_config.py`)과 하네스 자신(`run_all.py` · `check_ac_mapping.py`)은 매칭 단위가 아니다 — 제외 판정은 러너와 체커가 `run_all.py::matching_unit_paths()` 하나로 공유한다.
 - **기계 검사**: `python3 tests/integration/check_ac_mapping.py` 가 위 규칙과 아래 집계를 CI(`fmt + vet` 잡)에서 강제한다. 이 표의 행별 상태·집계 숫자가 실측과 **정확히** 같아야 통과하므로, 파일을 쪼개거나 AC를 추가한 PR은 같은 PR에서 이 절을 갱신해야 한다.
 - **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
@@ -185,18 +185,18 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - AC 전집: 64
 - 예외 등재: 1
 - 1:1 대상: 63
-- 매칭 파일(전용): 33
-- 분할 대기 파일(규칙 2 위반): 1
-- 공백 AC: 30
+- 매칭 파일(전용): 49
+- 분할 대기 파일(규칙 2 위반): 0
+- 공백 AC: 14
 <!-- /ac-e2e-집계 -->
 
-> 공백 30건의 내역: **16건**은 분할 대기 파일 1개(`workload.py` 16)가 겸용으로 커버하고 있어 분할만 하면 ✅가 되고, **14건**은 케이스 자체가 없다(아래 backlog). 진행 방향은 매칭 파일 ↑ / 분할 대기 ↓ / 공백 ↓ 이다.
+> 공백 14건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 14건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
 >
-> 남은 것은 `workload.py` 하나이고 **분할 전에 정할 것도 하나뿐이다** — 이 파일의 케이스는 공유 픽스처 상태에 **순서 의존적**이다(`run()` 주석이 그 순서를 명시한다: 읽기 전용 조회 → restart → scale(레플리카를 1로 되돌리고 기다린다) → 그 레플리카를 필요로 하는 logs·pod_describe). 러너가 파일별 프로세스로 돌리므로, 쪼개려면 **각 파일이 자기 선행 조건을 스스로 성립시키게 만들어 순서 의존을 끊는 것**이 선행되어야 한다. 러너의 `실행 순서:` 로 파일 간 순서를 고정하는 길도 있지만, 그것은 결합을 파일 단위로 옮길 뿐 없애지 않는다.
+> **분할 대기 0 달성(2026-09-03)** — 마지막 겸용 파일 `workload.py`(16 AC)의 선결 판단이었던 「케이스가 공유 픽스처 상태에 순서 의존적」은 이 원장이 지목한 방식, 즉 **각 파일이 자기 선행 조건을 스스로 성립시키는 것**으로 해소했다(아래 완료 노트). 러너의 `실행 순서:` 로 파일 간 순서를 고정하는 길은 결합을 파일 단위로 옮길 뿐 없애지 않으므로 채택하지 않았고, 그 증거로 신규 16개 파일 중 **어느 것도 `실행 순서:` 를 선언하지 않는다**.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### AC 레지스트리 (64) — ✅ 전용 파일 33 · ⬜ 분할 대기 16 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1
+### AC 레지스트리 (64) — ✅ 전용 파일 49 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -214,7 +214,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 전용 파일 `grafana_token_ac2.py` |
 | grafana-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `grafana_token_ac3.py` |
 | grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 파일 `grafana_token_ac4.py` |
-| namespace-list/AC1 | 네임스페이스 열거 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| namespace-list/AC1 | 네임스페이스 열거 | ✅ 전용 파일 `namespace_list_ac1.py` |
 | opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 전용 파일 `opensearch_document_delete_ac1.py` |
 | opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 전용 파일 `opensearch_document_delete_ac2.py` |
 | opensearch-document-delete/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `opensearch_document_delete_ac3.py` |
@@ -232,15 +232,15 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | ping/AC1 | 항상 pong 응답 | ✅ 전용 파일 `ping_ac1.py` |
 | platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 파일 `platform_auth_safety_ac1.py` |
 | platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 공백 — 케이스 없음 |
-| platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 전용 파일 `platform_auth_safety_ac3.py` |
 | platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 예외 |
 | platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 전용 파일 `platform_auth_safety_ac5.py` |
 | platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 전용 파일 `platform_auth_safety_ac6.py` |
 | platform-auth-safety/AC7 | API 키 인증 | ✅ 전용 파일 `platform_auth_safety_ac7.py` |
 | platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ⬜ 공백 — 케이스 없음 |
-| pod-describe/AC1 | 파드 상세 스냅샷 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| pod-describe/AC2 | 대상 지정 방식 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| pod-describe/AC3 | 이벤트 best-effort | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| pod-describe/AC1 | 파드 상세 스냅샷 | ✅ 전용 파일 `pod_describe_ac1.py` |
+| pod-describe/AC2 | 대상 지정 방식 | ✅ 전용 파일 `pod_describe_ac2.py` |
+| pod-describe/AC3 | 이벤트 best-effort | ✅ 전용 파일 `pod_describe_ac3.py` |
 | session-list/AC1 | 세션 열거 | ⬜ 공백 — 케이스 없음 |
 | session-list/AC2 | 상태를 바꾸지 않는 조회 | ⬜ 공백 — 케이스 없음 |
 | session-list/AC3 | 미설정 시 graceful 거부 | ⬜ 공백 — 케이스 없음 |
@@ -253,17 +253,17 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | session-write/AC3 | 파괴적 작업 표기 | ⬜ 공백 — 케이스 없음 |
 | session-write/AC4 | 거부 응답의 구분 전달 | ⬜ 공백 — 케이스 없음 |
 | session-write/AC5 | 미설정 시 graceful 거부 | ⬜ 공백 — 케이스 없음 |
-| workload-list/AC1 | 종류별 워크로드 조회 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-list/AC2 | 네임스페이스 스코프 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-logs/AC1 | 워크로드 기준 로그 조회 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-logs/AC2 | tail 라인 제어 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-logs/AC3 | 크래시 루프 후 직전 로그 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-logs/AC4 | 컨테이너 선택과 필터 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-restart/AC1 | 롤링 재시작 트리거 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-restart/AC2 | 파괴적 작업 표기 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-scale/AC1 | 레플리카 설정 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-scale/AC2 | DaemonSet 거부 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
-| workload-scale/AC3 | 파괴적 작업 표기 | ⬜ 분할 대기 — `workload.py`(16 AC 겸용) |
+| workload-list/AC1 | 종류별 워크로드 조회 | ✅ 전용 파일 `workload_list_ac1.py` |
+| workload-list/AC2 | 네임스페이스 스코프 | ✅ 전용 파일 `workload_list_ac2.py` |
+| workload-logs/AC1 | 워크로드 기준 로그 조회 | ✅ 전용 파일 `workload_logs_ac1.py` |
+| workload-logs/AC2 | tail 라인 제어 | ✅ 전용 파일 `workload_logs_ac2.py` |
+| workload-logs/AC3 | 크래시 루프 후 직전 로그 | ✅ 전용 파일 `workload_logs_ac3.py` |
+| workload-logs/AC4 | 컨테이너 선택과 필터 | ✅ 전용 파일 `workload_logs_ac4.py` |
+| workload-restart/AC1 | 롤링 재시작 트리거 | ✅ 전용 파일 `workload_restart_ac1.py` |
+| workload-restart/AC2 | 파괴적 작업 표기 | ✅ 전용 파일 `workload_restart_ac2.py` |
+| workload-scale/AC1 | 레플리카 설정 | ✅ 전용 파일 `workload_scale_ac1.py` |
+| workload-scale/AC2 | DaemonSet 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
+| workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `workload_scale_ac3.py` |
 
 ### ⬜ 공백 backlog (14) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
 
@@ -272,6 +272,18 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/platform_auth_safety_ac2.py`(신규 전용 파일): 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/platform_auth_safety_ac8.py`(신규 전용 파일): env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
 - **session-list/AC1·AC2·AC3 · session-read/AC1~AC4 · session-write/AC1~AC5 (12)** → AC별 전용 파일 12개(신규, 파일 단위 규칙 2). 미설정 거부 3건(`session-list/AC3` · `session-read/AC4` · `session-write/AC5`)도 각자의 전용 파일 `session_{list_ac3,read_ac4,write_ac5}.py`가 되며, `실행 대상: auth-variant`(port 8088, 자격증명 미부착 변형)를 선언해 다른 "미설정 거부" 파일들과 같은 배포에서 돈다 — 2026-08-31 분할 전에는 이 셋을 겸용 파일 `no_config.py`에 얹는 것으로 적혀 있었으나 그 파일은 더 이상 없다. **선행 조건이 다르다**: 위 platform 2건과 달리 이쪽은 e2e 이전에 **도구 자체가 미구현**이고 session-platform 배포도 제거된 상태다. 순서는 앱 재배포 → env 배선 → `internal/sessionplatform` 구현 → 단위 → e2e. e2e 픽스처는 kind에 제어면을 띄우는 방식과 제어면 스텁 중 택일이며, AC2(상태 분기 노출)·write/AC4(거부 사유 구분)는 `idle`/`snapshot` 전이와 429/507을 재현해야 해서 스텁 쪽이 현실적이다.
+
+> **`workload.py`(16 AC) → AC별 전용 파일 16개 — ✅ 완료(2026-09-03)**: 마지막 분할 대기 파일을 쪼개 **규칙 2 위반을 0으로** 만들었다(`namespace_list_ac1.py` · `platform_auth_safety_ac3.py` · `pod_describe_ac{1,2,3}.py` · `workload_list_ac{1,2}.py` · `workload_logs_ac{1,2,3,4}.py` · `workload_restart_ac{1,2}.py` · `workload_scale_ac{1,2,3}.py`). 매칭 파일 **33 → 49**, 규칙 2 위반 **1 → 0**, 공백 **30 → 14**(겸용 커버 16 → 0, 케이스 없음 14는 불변). 이로써 잔여 공백 14건은 전부 backlog(platform 2 · session 12)이고, 이 렌즈에서 **분할로 닫을 수 있는 gap은 남아 있지 않다**.
+>
+> **선결 판단(순서 의존)을 어떻게 끊었는가**: 겸용 시절 `run()` 은 케이스를 고정된 순서로 불렀다 — 읽기 전용 조회 → restart → scale(레플리카를 1로 되돌리고 기다린다) → 그 레플리카를 필요로 하는 logs·pod_describe. 러너가 파일별 프로세스로 돌리므로 그 순서를 파일 경계 너머로 옮길 수는 없고, `실행 순서:` 로 고정하는 것은 결합을 옮길 뿐이다. 그래서 **픽스처를 읽거나 변형하는 파일이 자기 선행 조건을 스스로 성립시킨다**: `_workload.py::ensure_workload_fixture_baseline()` 이 `deploy/workload-fixture` 를 매니페스트가 선언한 기준선으로 멱등하게 되돌린다(`.spec.replicas` 가 1이 아니면 `kubectl scale`, 그다음 `rollout status`, 그다음 **셀렉터에 매칭되는 파드가 정확히 하나이고 Ready** 가 될 때까지 폴링). 마지막 조건이 이 슬라이스의 **유일한 신규 로직**이고 필요한 이유는 `rollout status` 가 구 파드의 Terminating 을 기다려 주지 않는 반면 `pod_describe` 는 셀렉터로 파드 **하나**를 고른다는 것이다 — 죽어 가는 파드를 골라 `Running`·`ready` 단정이 flake 할 수 있다. 이 헬퍼는 `workload_scale` 도구가 아니라 kubectl 로 되돌린다(시험 대상 도구로 세운 선행 조건은 그 도구의 오동작을 감춘다).
+>
+> **어느 파일이 무엇을 선행 조건으로 갖는지**: ① 픽스처 기준선을 요구하는 **9개** — `workload_list_ac{1,2}` · `workload_restart_ac1` · `workload_scale_ac1` · `workload_logs_ac{2,4}` · `pod_describe_ac{1,2,3}`. ② 서버만 필요한 **6개** — `namespace_list_ac1`(네임스페이스 오브젝트는 레플리카와 무관) · `workload_scale_ac2`(DaemonSet 거부) · `workload_restart_ac2` · `workload_scale_ac3`(둘 다 `tools/list` 메타데이터만) · `workload_logs_ac{1,3}`(크래시루프 픽스처의 전제를 `wait_for_crashloop_*` 멱등 폴링으로 스스로 성립시킨다 — 이 결합은 처음부터 없었다). ③ 서버도 필요 없는 **1개** — `platform_auth_safety_ac3`(실제로 바인딩된 ClusterRole + apiserver SubjectAccessReview 만 읽어 세션을 열지 않는다). 선행 조건은 컨텍스트 매니저에 숨기지 않고 각 파일 `run()` 에 한 줄로 드러나 있어, 9라는 수를 grep 으로 셀 수 있다.
+>
+> **순수 이동임을 주장하지 않고 증명했다**: 케이스 함수·상수를 손으로 옮기지 않고 원본의 ast 소스 세그먼트(선행 주석 블록 포함)를 떠서 생성한 뒤, 원본(`HEAD`)과 신규 파일의 top-level 정의를 `ast.dump` 로 대조해 **정의 39개 중 36개가 정확히 한 파일에 AST 동일하게** 착지함을 확인했다. 나머지 셋은 각각 선언된 예외다 — (a) `run` 1개는 파일별 디스패처 16개로 재작성, (b) `test_workload_scale_ac1_replica_count` 의 docstring 한 문장(“the log and pod_describe cases later in run()”)은 분할 후 거짓이 되므로 고쳤고 **docstring 노드를 제거한 AST 는 동일**함을 따로 대조했다(단언 무변경), (c) 죽은 상수 `EXEC_NAMESPACE`(정의만 있고 참조 0건) 1개는 제거했다. 신규 정의는 `FIXTURE_REPLICAS` · `wait_for_single_ready_pod` · `ensure_workload_fixture_baseline` 셋뿐이다.
+>
+> **공유 표면은 `_workload.py` 로 내렸다**: 픽스처 이름·마커 계약(`NAMESPACE` · `WORKLOAD` · `STS_WORKLOAD` · `DS_WORKLOAD` · `CRASHLOOP_WORKLOAD` · `CRASHLOOP_MARKER` · `RECOVERED_MARKER` · `SERVER_NAMESPACE`)과 kubectl·롤아웃 관측 헬퍼 5개, 그리고 위 선행 조건 헬퍼. RBAC 경계 단위(`EXPECTED_GRANT` · `FORBIDDEN_PROBES` · `live_cluster_role_grant` · `can_i` + 신원 상수 2개)는 소비자가 하나라 `platform_auth_safety_ac3.py` 에 함께 두었고, 케이스 국소 상수(`RESTART_ANNOTATION_PATH` · `LOG_TIMESTAMP_RE`)도 각자의 파일에 남겼다.
+>
+> **신규 픽스처·신규 CI 스텝·`ci.yml` 변경 없음** — 러너가 파일을 자동 발견해 배차하므로 분할은 파일을 더하고 빼는 것으로 끝난다. primary 그룹 배차는 **26 → 41**, auth-variant 는 **9 불변**. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설 + (9개 파일에서) kubectl 조회 두 번이다.
 
 > **`no_config.py`(7) · `auth.py`(2) · `smoke.py`(2) → AC별 전용 파일 11개 + 비-AC 파일 1개 — ✅ 완료(2026-08-31)**: 분할 대기 4개 파일 중 **공유 가변 상태가 없어 프로세스가 갈라져도 관측이 바뀌지 않는 셋**을 골라 쪼갰다(`platform_auth_safety_ac{1,5,6,7}.py` · `ping_ac1.py` · `aws_config_get_ac3.py` · `github_app_installation_token_ac3.py` · `grafana_token_ac3.py` · `opensearch_{search_ac4,document_put_ac5,document_delete_ac5}.py`). 매칭 파일 **22 → 33**, 규칙 2 위반 **4 → 1**, 규칙 1 위반(공백) **41 → 30**(겸용 커버 27 → 16, 케이스 없음 14는 불변). 비-AC 파일 **0 → 1**.
 >
@@ -315,7 +327,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 **잔여**: `workload-logs/AC4`의 부분 단정과 backlog 14건(platform 2 · session 12)은 그대로다.
 
-> **부분 단정 잔여(계수 밖, ✅ 유지)**: `workload-logs/AC4`의 "파드에 컨테이너가 둘 이상이면 `container`가 필요하다" 절은 아직 단정되지 않는다 — 이 배포의 픽스처 파드가 전부 단일 컨테이너라 거부를 관측할 대상이 없다. 러닝 멀티컨테이너 픽스처 + 롤아웃 대기(= `ci.yml` 스텝 추가)가 필요해 후속 슬라이스로 남긴다. 케이스 docstring에 "단언하지 않는 것"으로 명시돼 있다(2026-08-07).
+> **부분 단정 잔여(계수 밖, ✅ 유지)**: `workload-logs/AC4`의 "파드에 컨테이너가 둘 이상이면 `container`가 필요하다" 절은 아직 단정되지 않는다 — 이 배포의 픽스처 파드가 전부 단일 컨테이너라 거부를 관측할 대상이 없다. 러닝 멀티컨테이너 워크로드가 필요해 후속 슬라이스로 남긴다. **2026-09-03 분할로 blocker 절반이 사라졌다**: 롤아웃 대기가 `ci.yml` 스텝이 아니라 파일 안의 선행 조건 헬퍼(`_workload.py::wait_for_single_ready_pod`)로 처리되므로 워크플로 변경은 필요 없고, 남은 것은 `test-deployment.yaml` 에 **별도 멀티컨테이너 워크로드를 신설**하는 것뿐이다 — 기존 `workload-fixture` 에 컨테이너를 더하는 경로는 `workload_logs_ac2.py` 가 단정하는 「`container` 없이 성공」을 깨뜨리므로 막혀 있다. 케이스 docstring에 "단언하지 않는 것"으로 명시돼 있다(2026-08-07).
 
 > **잔여 파일 수준 커버 13건 정리 — ✅ 완료(2026-08-13)**: `opensearch.py`(9) · `aws_config.py`(2) · `dear_baby.py`(2)를 마지막으로 `✅ 통합` 행이 0이 됐다. **9건은 per-AC 전용 케이스로 승격**(opensearch-document-put/AC1·AC2 · opensearch-search/AC1·AC2 · opensearch-document-delete/AC1·AC2 · aws-config-get/AC1 · dear-baby-reset-user/AC1·AC2), **4건은 관측 불가를 근거로 ⬜로 정정**(위 backlog 참조). 신규 픽스처·신규 CI 스텝·신규 롤아웃 대기 없음 — 이미 도는 스텁(`dear_baby.py` 8082 · `aws_config.py` 8084 · `opensearch.py` 8086) 안에서 평면 `run()`을 케이스 디스패처로 재구성했다. opensearch 쪽 공유 상태(put→search→delete 한 파이프라인)는 **케이스별 전용 인덱스 `ci-<case>-<RUN_ID>` + 케이스별 유일 질의 토큰**으로 없앴다(put이 인덱스를 자동 생성하므로 픽스처 추가가 필요 없고, 컬렉션 전체 검색도 다른 케이스의 문서와 겹치지 않는다). 분리하며 **AC 문언 대비 비어 있던 단정 4건을 채웠다**: (1) opensearch-search/AC2의 "기본값 10"은 한 번도 관측된 적이 없었다(문서 3건뿐이라 기본값과 무제한이 구분되지 않음) → 12건 시드 후 `len(hits)==10` · `total==12`; (2) opensearch-document-put/AC2의 "자동 생성"은 색인 전 상태를 보지 않아 성립하지 않았다 → 색인 전 해당 인덱스 검색이 404 `index_not_found_exception`으로 거부되는 것을 선행 관측; (3) dear-baby-reset-user/AC2의 "`email` 누락 거부"는 **단언이 0개**였다 → `McpError: email is required` 단언 신설, `container` 재정의도 관측(무시되면 성공해버리므로 실패 자체가 판별자); (4) aws-config-get/AC1의 메타데이터는 size만 봤다 → contentType·ETag(따옴표 제거된 다이제스트 모양)·lastModified(RFC3339 파싱, 미래 아님)까지 단정. tests/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변).
 
@@ -335,7 +347,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 > AC 대신 스모크/인프라 확인(서버 기동·`/healthz`·도구 표면 존재)을 주검증한다고 선언한 매칭 단위 파일의 등재 자리다(규칙 3). 이 목록에 없는 비-AC 파일은 고아이고, 여기 등재됐는데 실재하지 않거나 AC를 선언하는 파일도 고아 등재다 — 체커가 양방향으로 검사한다.
 
-- **`smoke.py`** — primary 배포의 **도구 표면 존재 확인**(`_helpers.EXPECTED_TOOLS` 14개가 `tools/list`에 광고되는지). `실행 순서: 0`으로 primary 그룹 맨 앞에서 돌아, 배포가 깨졌을 때 뒤따르는 25개 AC 파일이 차례로 모호하게 죽는 대신 한 번에 원인을 말하는 **공유 선행 조건**이다. 2026-08-31 분할 전에는 이 확인이 ping/AC1·platform-auth-safety/AC6과 한 파일에 섞여 있었고(= 분할 대기), 두 AC를 각자의 전용 파일(위 레지스트리 참조)로 떼어낸 뒤 남은 것이 이 파일이다.
+- **`smoke.py`** — primary 배포의 **도구 표면 존재 확인**(`_helpers.EXPECTED_TOOLS` 14개가 `tools/list`에 광고되는지). `실행 순서: 0`으로 primary 그룹 맨 앞에서 돌아, 배포가 깨졌을 때 뒤따르는 AC 파일들이 차례로 모호하게 죽는 대신 한 번에 원인을 말하는 **공유 선행 조건**이다(파일 수는 분할이 진행될수록 늘어나므로 여기 적지 않는다 — 세는 것은 러너와 체커의 몫이다). 2026-08-31 분할 전에는 이 확인이 ping/AC1·platform-auth-safety/AC6과 한 파일에 섞여 있었고(= 분할 대기), 두 AC를 각자의 전용 파일(위 레지스트리 참조)로 떼어낸 뒤 남은 것이 이 파일이다.
   - **이것은 platform-auth-safety/AC5가 아니다**: 주 배포는 모든 통합이 구성돼 있어 정상적인 `tools/list`가 degradation에 대해 아무것도 말해 주지 않는다. AC5는 자격증명이 없는 배포에서만 관측되므로 그 전용 파일이 `auth-variant`에서 같은 상수를 단언한다.
 
 > 이 절의 백틱 파일명은 체커가 **등재 목록으로 읽는다**(`FILE_REF_RE`). 다른 파일을 예로 들 때는 백틱을 쓰지 말 것 — 고아 등재로 잡힌다.
@@ -353,6 +365,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
 | 2026-09-03 | **`session_list` 구현 착지** — `internal/sessionplatform`(제어면 `GET /api/v1/sessions` 클라이언트 + `Unavailable` 대체)과 `internal/mcp` 도구 등록으로 session-list/AC1·AC2·AC3을 구현으로 닫고, `k8s/deployment.yaml`에 `SESSION_PLATFORM_ENDPOINT`를 배선했다. 문서 쪽 변경은 **상태 기술의 교정뿐**이다: 자동화 커버리지의 🔴 항목이 "session-platform 배포가 클러스터에서 제거돼 검증 불가"라는 **이미 사실이 아닌 전제**로 12 AC 전체를 묶어 두고 있었다(제어면은 재배포돼 `session-platform` 네임스페이스에서 `control-plane` 1/1로 동작 중). 남은 공백을 read/write 9건과 통합 e2e로 좁혔다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건.** | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변 — e2e 렌즈 레지스트리·집계도 불변) |
+| 2026-09-03 | 마지막 분할 대기 파일 `workload.py`(16 AC 겸용)를 **AC별 전용 파일 16개**로 분할해 **규칙 2 위반을 0**으로 만들었다. 선결 판단이었던 「케이스가 공유 픽스처 상태에 순서 의존적」은 원장이 지목한 방식대로 **각 파일이 자기 선행 조건을 스스로 성립시키는 것**으로 해소했다 — `_workload.py::ensure_workload_fixture_baseline()` 이 `deploy/workload-fixture` 를 매니페스트 기준선(Ready 파드 정확히 1개)으로 멱등하게 되돌리고, 픽스처를 읽거나 변형하는 9개 파일이 각자 `run()` 에서 그것을 부른다. `실행 순서:` 로 파일 간 순서를 고정하는 길은 결합을 옮길 뿐이라 채택하지 않았고, 그 증거로 신규 16개 파일 중 어느 것도 `실행 순서:` 를 선언하지 않는다. 유일한 신규 로직은 `wait_for_single_ready_pod()`(`rollout status` 는 구 파드의 Terminating 을 기다리지 않는데 `pod_describe` 는 셀렉터로 파드 하나를 고른다)이며, 선행 조건은 시험 대상 도구가 아니라 kubectl 로 세운다. 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **정의 39개 중 36개가 원본과 AST 동일**함을 대조로 확인했다(예외 셋은 선언됨 — `run` 1개는 파일별 디스패처 16개로 재작성, `workload-scale/AC1` 케이스는 분할 후 거짓이 되는 docstring 한 문장만 고쳐 body AST 동일을 따로 대조, 죽은 상수 `EXEC_NAMESPACE` 1개 제거 — 단언 무변경). 공유 표면은 매칭 단위 밖 `_workload.py` 로 내렸다. 러너가 파일을 자동 발견하므로 신규 픽스처·신규 CI 스텝 없음 — `ci.yml` 무변경(primary 배차 26 → 41, auth-variant 9 불변). `docs/test-*.md` 6종의 자동화 필드에서 `workload.py` 참조를 전용 파일로 재조준했고, 그중 platform AC3 필드의 「정적 검증 + delete/secret 부재 단언 자동화 추가 권장」은 2026-08-07 이후 실제로 e2e 단언이 존재하므로 함께 교정했다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 33 · ⬜ 분할 대기 16 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 49 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 |
 | 2026-08-31 | 분할 대기 4개 파일 중 `no_config.py`(7 AC)·`auth.py`(2 AC)·`smoke.py`(2 AC)를 **AC별 전용 파일 11개 + 규칙 3 비-AC 파일 1개**로 분할했다(`platform_auth_safety_ac{1,5,6,7}.py` · `ping_ac1.py` · `aws_config_get_ac3.py` · `github_app_installation_token_ac3.py` · `grafana_token_ac3.py` · `opensearch_{search_ac4,document_put_ac5,document_delete_ac5}.py`). 이 셋을 고른 근거는 **케이스가 전부 읽기 전용이라 프로세스가 갈라져도 서로를 관측하지 못한다**는 것이다(401 응답 · `/healthz`·`/readyz` · `tools/list` · 미설정 거부 + 직후 `ping`). 세 파일이 안고 있던 선결 판단 둘을 확정했다 — ① `auth-variant` 배차 증가(2 → 9) 수용(포트포워드가 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz`로 시작하므로 배선 무변경, 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐) ② `smoke.py`의 잔여 도구 표면 확인을 **비-AC 파일로 등재**(등재 0건이던 규칙 3 경로의 첫 양성 사례). 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **19개 정의 전부가 원본과 AST 동일**함을 대조로 확인했고(재작성은 파일별 `run()` 3개 + 도구 표면 상수 1개뿐), 공유 표면은 매칭 단위 밖 `_auth_variant.py`로 내렸다. 유일한 단언 변경은 `smoke.py`가 들고 있던 **9개짜리 stale 도구 표면 부분집합**을 `_helpers.EXPECTED_TOOLS`(14개)로 정정한 것이다 — 빠져 있던 `github_app_installation_token`·`aws_config_get`·`opensearch_*`는 primary 그룹 케이스가 실제로 구동하는 도구다. 체커에는 하네스 검사 하나를 더했다 — `check_cases_are_run()` 이 각 파일의 `run()` 이 그 파일의 `test_*` 를 전부 호출하는지 AST로 확인해, 파일 하나에 케이스 하나인 구조에서 디스패처가 케이스를 빠뜨려도 초록으로 통과하는 구멍을 막는다. 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 무변경. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 0 | ✅ 전용 파일 33 · ⬜ 분할 대기 16 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 |
 | 2026-08-31 | **문서 허브 신설** — `docs/`의 마크다운 38개에 진입점이 없어 레포를 클론하지 않으면 읽을 수 없던 상태를 해소했다. 배포 골격 3개(`index.html` 허브 · `reader.html` 뷰어 · `.nojekyll`)를 추가하고, 허브는 도구 목록이 아니라 **가치별로 묶은 목차**로 구성해 각 도구 행에 PRD·테스트 두 링크와 달성 가치 식별자를 나란히 뒀다. 뷰어는 외부 CDN 의존 없는 단일 파일이며, 제목 앵커를 `AC1`·`V3` 같은 이 레포의 식별자로 만들어 특정 AC를 URL로 가리킬 수 있게 했다(`?doc=` 경로 가드 + `.md` 상대 링크 재작성 포함). 문서 38개 전부에 대해 렌더링과 링크 도달을 대조 확인했다. 문서 내용·PRD·AC는 불변이고, Pages 활성화(Settings → Pages)만 사용자 작업으로 남는다. | 문서 38개 · 진입점 없음(클론 또는 GitHub 파일 뷰로만 열람) | 문서 38개 · 허브에서 38/38 도달 · Pages 설정 대기 |
 | 2026-08-30 | 분할 대기 6개 파일 중 `opensearch.py`(11 AC)·`aws_config.py`(2 AC)를 **AC별 전용 파일 13개**로 분할했다(`opensearch_{search,document_put,document_delete}_ac*.py` · `aws_config_get_ac{1,2}.py`). 이 둘을 고른 근거는 **선결 판단이 없는 유일한 후보**라는 것이다 — 케이스가 이미 케이스별 전용 인덱스·유일 질의 토큰으로 서로 격리돼 있어 순서 의존이 없다(남은 4개는 순서 의존·`auth-variant` 배차 증가·규칙 3 재분류라는 미결 판단을 각각 안고 있다). 공유 표면은 매칭 단위에서 제외되는 `_opensearch.py`·`_aws_config.py`로 내렸고, 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **32개 정의 전부가 원본과 AST 동일**함을 대조로 확인했다(재작성은 파일별 `run()`과 모듈 docstring뿐, 단언 무변경). 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 변경은 삭제된 파일명을 가리키던 주석 2줄뿐이다. `추가 인자: trace` 신고는 http-trace를 실제로 읽는 4개 파일로 좁혀졌다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |

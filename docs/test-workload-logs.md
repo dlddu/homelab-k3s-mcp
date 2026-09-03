@@ -15,7 +15,8 @@
   존재하지 않는 워크로드는 도구 에러.
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestWorkloadLogsDispatchesWithDefaults`,
-  `TestWorkloadLogsRequiresNamespaceAndName`. 통합 `workload.py`(defaults / missing-workload).
+  `TestWorkloadLogsRequiresNamespaceAndName`. 통합 `workload_logs_ac1.py`
+  (crashloop-fixture 마커 회수 / missing-workload 거부).
 
 ### 시나리오 2: 기본 200, 초과 시 거부
 - **사전 조건**: 동일
@@ -23,7 +24,8 @@
 - **기대 결과**: (a) tailLines=200으로 동작, (b) `tail_lines` 관련 거부 에러(클램프하지 않음)
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `mcp_test.go::TestWorkloadLogsRejectsTailLinesOverMax`,
-  `TestWorkloadLogsEmptyOutputPlaceholder`. 통합 `workload.py`(defaults / over-max 거부).
+  `TestWorkloadLogsEmptyOutputPlaceholder`. 통합 `workload_logs_ac2.py`
+  (defaults / over-max 거부).
 
 ### 시나리오 3: 직전 컨테이너 로그
 - **사전 조건**: 재시작(크래시) 이력이 있는 파드
@@ -31,7 +33,7 @@
 - **기대 결과**: 종료된 직전 인스턴스의 로그 반환(Running 파드 없어도 매칭 파드 사용)
 - **검증 AC**: AC3
 - **자동화**: 옵션 전달은 Go 단위 `mcp_test.go::TestWorkloadLogsHonoursOverrides`로 검증.
-  실제 previous 로그 **내용**은 e2e `tests/integration/workload.py`가 crash-once 픽스처
+  실제 previous 로그 **내용**은 e2e `tests/integration/workload_logs_ac3.py`가 crash-once 픽스처
   (`crashloop-fixture` — busybox가 마커 출력 후 1회만 exit 1, 이후 안정 Running으로
   lastState 고정, restartCount ≥ 1 대기)로 검증.
 
@@ -41,4 +43,6 @@
 - **기대 결과**: 각 옵션이 payload에 반영(container, tailLines, timestamps, sinceSeconds)
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `mcp_test.go::TestWorkloadLogsHonoursOverrides`. 통합
-  `workload.py`(explicit options).
+  `workload_logs_ac4.py`(explicit options + timestamps/since_seconds 출력 반영).
+  단 AC 문언의 「컨테이너가 둘 이상이면 `container` 필요」 절은 아직 단정되지 않는다
+  (러닝 멀티컨테이너 워크로드 신설이 선행 — `doc-tracker.md` e2e backlog).
