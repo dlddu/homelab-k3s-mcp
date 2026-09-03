@@ -12,7 +12,7 @@
 - **기대 결과**: payload에 kind/namespace 반영, items에 `workload-fixture` 포함
 - **검증 AC**: AC1, AC2
 - **자동화**: Go 단위 `mcp_test.go::TestWorkloadListDispatchesToService`. 통합
-  `workload.py`(namespace 지정 블록).
+  `workload_list_ac1.py`(3 enum 종류 + kind별 레플리카 요약).
 
 ### 시나리오 2: 전체 네임스페이스 조회
 - **사전 조건**: 위와 동일 + 다른 네임스페이스에도 워크로드 존재
@@ -21,4 +21,4 @@
   workload-fixture), (homelab-k3s-mcp, homelab-k3s-mcp))
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `mcp_test.go::TestWorkloadListWithoutNamespaceListsAll`. 통합
-  `workload.py`(all-namespaces 블록).
+  `workload_list_ac2.py`(scoped / all-namespaces 대조).

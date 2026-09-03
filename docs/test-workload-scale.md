@@ -14,15 +14,16 @@
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestWorkloadScaleDispatchesToService`,
   `TestWorkloadScaleSupportsZeroReplicas`, `TestWorkloadScaleRejectsNegativeReplicas`,
-  `TestWorkloadScaleRequiresReplicas`. 통합 `workload.py`(scale up 3 / down 1 + kubectl 확인).
+  `TestWorkloadScaleRequiresReplicas`. 통합 `workload_scale_ac1.py`
+  (3 → 0 → 1 + kubectl 확인).
 
 ### 시나리오 2: DaemonSet/미지원 종류 거부
 - **사전 조건**: 동일
 - **실행 단계**: kind=DaemonSet으로 `workload_scale` 호출
 - **기대 결과**: 도구 에러, 메시지 "DaemonSet does not have replicas"
 - **검증 AC**: AC2
-- **자동화**: Go 단위 `mcp_test.go::TestWorkloadRejectsUnknownKind`. 통합 `workload.py`
-  (DaemonSet rejection).
+- **자동화**: Go 단위 `mcp_test.go::TestWorkloadRejectsUnknownKind`. 통합
+  `workload_scale_ac2.py`(DaemonSet rejection).
 
 ### 시나리오 3: 파괴적 어노테이션 광고
 - **사전 조건**: 서버 기동
