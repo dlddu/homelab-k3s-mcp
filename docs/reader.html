@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>문서 — homelab-k3s-mcp</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1b1b1b;
+    --muted: #6a6a6a;
+    --line: #e2e2e2;
+    --soft: #f5f5f5;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo",
+            "Noto Sans KR", "Malgun Gothic", Roboto, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#161616; --fg:#e6e6e6; --muted:#9a9a9a; --line:#2f2f2f; --soft:#1f1f1f; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--sans); font-size: 16px; line-height: 1.75;
+  }
+  a { color: inherit; text-decoration: underline; text-underline-offset: 2px;
+      text-decoration-color: var(--line); }
+  a:hover { text-decoration-color: currentColor; }
+  a:focus-visible, button:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+
+  header.bar {
+    border-bottom: 1px solid var(--line); position: sticky; top: 0;
+    background: var(--bg); z-index: 5;
+  }
+  .bar-inner {
+    max-width: 62rem; margin: 0 auto; padding: 0.7rem 1.25rem;
+    display: flex; gap: 0.75rem; align-items: baseline; flex-wrap: wrap;
+    font-size: 0.85rem; color: var(--muted);
+  }
+  .bar-inner .path { font-family: var(--mono); color: var(--fg); }
+  .bar-inner .spacer { margin-left: auto; }
+
+  .layout { max-width: 62rem; margin: 0 auto; padding: 2.5rem 1.25rem 6rem;
+            display: grid; grid-template-columns: 1fr; gap: 2.5rem; }
+  @media (min-width: 60rem) {
+    .layout { grid-template-columns: minmax(0,1fr) 14rem; align-items: start; }
+    nav.outline { position: sticky; top: 4rem; order: 2; }
+  }
+
+  nav.outline { font-size: 0.85rem; line-height: 1.6; border-left: 1px solid var(--line);
+                padding-left: 1rem; }
+  nav.outline p { margin: 0 0 0.5rem; color: var(--muted); }
+  nav.outline ol { list-style: none; margin: 0; padding: 0; }
+  nav.outline li { margin: 0.25rem 0; }
+  nav.outline li.lvl3 { padding-left: 0.85rem; }
+  nav.outline a { text-decoration: none; color: var(--muted); }
+  nav.outline a:hover { color: var(--fg); }
+
+  article { min-width: 0; max-width: 46rem; }
+  article h1 { font-size: 1.7rem; line-height: 1.3; margin: 0 0 1.5rem; letter-spacing: -0.01em; }
+  article h2 { font-size: 1.25rem; margin: 2.75rem 0 0.85rem; padding-bottom: 0.35rem;
+               border-bottom: 1px solid var(--line); }
+  article h3 { font-size: 1.05rem; margin: 2rem 0 0.6rem; }
+  article h4, article h5, article h6 { font-size: 0.95rem; margin: 1.5rem 0 0.5rem; }
+  article p { margin: 0.85rem 0; }
+  article ul, article ol { margin: 0.85rem 0; padding-left: 1.4rem; }
+  article li { margin: 0.3rem 0; }
+  article li > p { margin: 0.25rem 0; }
+  article li > p:first-child { margin-top: 0; }
+  article code { font-family: var(--mono); font-size: 0.875em; background: var(--soft);
+                 padding: 0.1em 0.35em; border-radius: 3px; word-break: break-word; }
+  article pre { background: var(--soft); border: 1px solid var(--line); border-radius: 4px;
+                padding: 0.9rem 1rem; overflow-x: auto; margin: 1.2rem 0; }
+  article pre code { background: none; padding: 0; font-size: 0.85rem; line-height: 1.6; }
+  article blockquote { margin: 1.2rem 0; padding: 0.1rem 0 0.1rem 1rem;
+                       border-left: 3px solid var(--line); color: var(--muted); }
+  article hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
+  article table { border-collapse: collapse; margin: 1.2rem 0; font-size: 0.9rem;
+                  display: block; overflow-x: auto; max-width: 100%; }
+  article th, article td { border: 1px solid var(--line); padding: 0.4rem 0.7rem;
+                           text-align: left; vertical-align: top; }
+  article th { background: var(--soft); font-weight: 600; white-space: nowrap; }
+  article img { max-width: 100%; }
+
+  .anchor { float: left; margin-left: -1.1rem; width: 1.1rem; text-align: left;
+            color: var(--line); text-decoration: none; opacity: 0; font-weight: 400; }
+  h2:hover .anchor, h3:hover .anchor, h4:hover .anchor,
+  .anchor:focus-visible { opacity: 1; }
+  @media (max-width: 40rem) { .anchor { display: none; } }
+  :target { scroll-margin-top: 4.5rem; }
+
+  .notice { border: 1px solid var(--line); background: var(--soft); border-radius: 4px;
+            padding: 1rem 1.15rem; margin: 0 0 2rem; font-size: 0.9rem; }
+  .notice p { margin: 0.4rem 0; }
+  .notice p:first-child { margin-top: 0; }
+  .notice p:last-child { margin-bottom: 0; }
+  .notice code { font-family: var(--mono); font-size: 0.85em; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="bar-inner">
+    <a href="./">문서 허브</a>
+    <span aria-hidden="true">/</span>
+    <span class="path" id="crumb">…</span>
+    <span class="spacer"></span>
+    <a id="source-link" href="https://github.com/dlddu/homelab-k3s-mcp/tree/main/docs" rel="noopener">GitHub 원문</a>
+  </div>
+</header>
+
+<div class="layout">
+  <article id="content"><p>불러오는 중…</p></article>
+  <nav class="outline" id="outline" hidden>
+    <p>이 문서 안에서</p>
+    <ol id="outline-list"></ol>
+  </nav>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var REPO_BLOB = 'https://github.com/dlddu/homelab-k3s-mcp/blob/main/docs/';
+  var content = document.getElementById('content');
+  var crumb = document.getElementById('crumb');
+  var sourceLink = document.getElementById('source-link');
+
+  /* ---------- 경로 가드 ---------- */
+
+  function isSafeDocPath(p) {
+    if (!p) return false;
+    if (p.indexOf('\\') !== -1) return false;
+    if (p.charAt(0) === '/') return false;
+    if (/^[a-zA-Z][a-zA-Z0-9+.\-]*:/.test(p)) return false;   // http:, file:, javascript: …
+    if (!/\.md$/i.test(p)) return false;
+    var segs = p.split('/');
+    for (var i = 0; i < segs.length; i++) {
+      if (segs[i] === '..') return false;
+    }
+    return true;
+  }
+
+  function resolvePath(baseDoc, href) {
+    var parts = baseDoc.indexOf('/') !== -1
+      ? baseDoc.slice(0, baseDoc.lastIndexOf('/')).split('/')
+      : [];
+    var segs = href.split('/');
+    for (var i = 0; i < segs.length; i++) {
+      var s = segs[i];
+      if (s === '' || s === '.') continue;
+      if (s === '..') parts.pop();
+      else parts.push(s);
+    }
+    return parts.join('/');
+  }
+
+  /* ---------- 인라인 ---------- */
+
+  function escapeHtml(s) {
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  }
+
+  function rewriteHref(href, baseDoc) {
+    if (/^[a-zA-Z][a-zA-Z0-9+.\-]*:/.test(href) || href.charAt(0) === '/') return null; // 외부/절대
+    if (href.charAt(0) === '#') return href;                                            // 같은 문서 앵커
+    var hash = '';
+    var hi = href.indexOf('#');
+    if (hi !== -1) { hash = href.slice(hi); href = href.slice(0, hi); }
+    if (!/\.md$/i.test(href)) return null;
+    return 'reader.html?doc=' + encodeURIComponent(resolvePath(baseDoc, href)) + hash;
+  }
+
+  function inline(src, baseDoc) {
+    var codes = [];
+    var s = src.replace(/(`+)([\s\S]*?)\1/g, function (m, ticks, code) {
+      codes.push(code);
+      return '\u0000' + (codes.length - 1) + '\u0000';
+    });
+    s = escapeHtml(s);
+    s = s.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, function (m, alt, src2) {
+      if (/^[a-zA-Z][a-zA-Z0-9+.\-]*:/.test(src2) && !/^https?:/.test(src2)) return m;
+      return '<img src="' + src2 + '" alt="' + alt + '">';
+    });
+    s = s.replace(/\[([^\]]*)\]\(([^)\s]+)(?:\s+&quot;[^&]*&quot;)?\)/g, function (m, text, href) {
+      var rewritten = rewriteHref(href, baseDoc);
+      if (rewritten !== null) return '<a href="' + rewritten + '">' + text + '</a>';
+      if (/^https?:/.test(href)) {
+        return '<a href="' + href + '" target="_blank" rel="noopener">' + text + '</a>';
+      }
+      return text;
+    });
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^*\w])\*([^*\n]+)\*(?!\w)/g, '$1<em>$2</em>');
+    s = s.replace(/~~([^~]+)~~/g, '<del>$1</del>');
+    s = s.replace(/\u0000(\d+)\u0000/g, function (m, i) {
+      return '<code>' + escapeHtml(codes[+i]) + '</code>';
+    });
+    return s;
+  }
+
+  /* ---------- 제목 식별자 ----------
+     1) 인라인 코드로 시작하는 제목 → 백틱 안 문자열을 그대로 id로
+     2) 이 레포 규약: AC1 / V3 같은 식별자로 시작하면 그 식별자를 id로
+        (doc-tracker와 허브가 #AC1, #V3 로 딥링크한다)
+     3) 그 외에는 일반 슬러그 */
+
+  function headingId(raw) {
+    var m = raw.match(/^`([^`]+)`/);
+    if (m) return m[1];
+    m = raw.match(/^(AC\d+|V\d+)(?=[:.\s])/);
+    if (m) return m[1];
+    return raw.replace(/`/g, '').replace(/\*\*/g, '').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .trim().toLowerCase()
+      .replace(/[^0-9a-z\u00c0-\uffff]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'section';
+  }
+
+  /* ---------- 블록 ---------- */
+
+  function splitRow(row) {
+    var cells = [];
+    var buf = '';
+    var ticks = false;
+    for (var i = 0; i < row.length; i++) {
+      var c = row.charAt(i);
+      if (c === '`') ticks = !ticks;
+      if (c === '\\' && row.charAt(i + 1) === '|') { buf += '|'; i++; continue; }
+      if (c === '|' && !ticks) { cells.push(buf); buf = ''; continue; }
+      buf += c;
+    }
+    cells.push(buf);
+    if (cells.length && cells[0].trim() === '') cells.shift();
+    if (cells.length && cells[cells.length - 1].trim() === '') cells.pop();
+    return cells;
+  }
+
+  function isTableDelim(line) {
+    return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line);
+  }
+
+  function indentOf(line) { return line.match(/^\s*/)[0].length; }
+
+  function renderBlocks(lines, ctx) {
+    var out = [];
+    var i = 0;
+
+    while (i < lines.length) {
+      var line = lines[i];
+
+      if (line.trim() === '') { i++; continue; }
+
+      // 코드 펜스
+      var fence = line.match(/^\s*(```+|~~~+)\s*([^\s`]*)/);
+      if (fence) {
+        var marker = fence[1].charAt(0);
+        var body = [];
+        i++;
+        while (i < lines.length && !new RegExp('^\\s*' + marker + '{3,}\\s*$').test(lines[i])) {
+          body.push(lines[i]); i++;
+        }
+        i++; // 닫는 펜스
+        out.push('<pre><code>' + escapeHtml(body.join('\n')) + '</code></pre>');
+        continue;
+      }
+
+      // 제목
+      var h = line.match(/^\s{0,3}(#{1,6})\s+(.*?)\s*#*\s*$/);
+      if (h) {
+        var level = h[1].length;
+        var raw = h[2];
+        var id = ctx.uniqueId(headingId(raw));
+        var html = inline(raw, ctx.doc);
+        if (level === 1) {
+          out.push('<h1 id="' + id + '">' + html + '</h1>');
+        } else {
+          out.push('<h' + level + ' id="' + id + '">' +
+                   '<a class="anchor" href="#' + encodeURIComponent(id) + '" aria-hidden="true">#</a>' +
+                   html + '</h' + level + '>');
+          if (level === 2 || level === 3) ctx.outline.push({ level: level, id: id, text: raw });
+        }
+        i++; continue;
+      }
+
+      // 수평선
+      if (/^\s{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(line)) { out.push('<hr>'); i++; continue; }
+
+      // 인용
+      if (/^\s{0,3}>/.test(line)) {
+        var quoted = [];
+        while (i < lines.length && (/^\s{0,3}>/.test(lines[i]) ||
+               (quoted.length && lines[i].trim() !== ''))) {
+          quoted.push(lines[i].replace(/^\s{0,3}>\s?/, ''));
+          i++;
+        }
+        out.push('<blockquote>' + renderBlocks(quoted, ctx) + '</blockquote>');
+        continue;
+      }
+
+      // 표
+      if (line.indexOf('|') !== -1 && i + 1 < lines.length && isTableDelim(lines[i + 1])) {
+        var head = splitRow(line);
+        var aligns = splitRow(lines[i + 1]).map(function (c) {
+          c = c.trim();
+          if (/^:.*:$/.test(c)) return 'center';
+          if (/:$/.test(c)) return 'right';
+          return '';
+        });
+        i += 2;
+        var rows = [];
+        while (i < lines.length && lines[i].indexOf('|') !== -1 && lines[i].trim() !== '') {
+          rows.push(splitRow(lines[i])); i++;
+        }
+        var t = '<table><thead><tr>';
+        head.forEach(function (c, n) {
+          t += '<th' + (aligns[n] ? ' style="text-align:' + aligns[n] + '"' : '') + '>' +
+               inline(c.trim(), ctx.doc) + '</th>';
+        });
+        t += '</tr></thead><tbody>';
+        rows.forEach(function (r) {
+          t += '<tr>';
+          for (var n = 0; n < head.length; n++) {
+            t += '<td' + (aligns[n] ? ' style="text-align:' + aligns[n] + '"' : '') + '>' +
+                 inline((r[n] || '').trim(), ctx.doc) + '</td>';
+          }
+          t += '</tr>';
+        });
+        out.push(t + '</tbody></table>');
+        continue;
+      }
+
+      // 목록
+      if (/^\s*([-*+]|\d+[.)])\s+/.test(line)) {
+        var base = indentOf(line);
+        var ordered = /^\s*\d+[.)]\s+/.test(line);
+        var items = [];
+        while (i < lines.length) {
+          var l = lines[i];
+          if (l.trim() === '') {
+            var j = i + 1;
+            while (j < lines.length && lines[j].trim() === '') j++;
+            if (j < lines.length && indentOf(lines[j]) > base) {
+              if (items.length) items[items.length - 1].push('');
+              i = j; continue;
+            }
+            if (j < lines.length && indentOf(lines[j]) === base &&
+                /^\s*([-*+]|\d+[.)])\s+/.test(lines[j])) {
+              if (items.length) items[items.length - 1].push('');
+              i = j; continue;
+            }
+            break;
+          }
+          var ind = indentOf(l);
+          var isItem = /^\s*([-*+]|\d+[.)])\s+/.test(l);
+          if (isItem && ind === base) {
+            items.push([l.replace(/^\s*([-*+]|\d+[.)])\s+/, '')]);
+            i++;
+          } else if (ind > base && items.length) {
+            items[items.length - 1].push(l.slice(Math.min(ind, base + 2)));
+            i++;
+          } else {
+            break;
+          }
+        }
+        var listHtml = items.map(function (item) {
+          var inner = renderBlocks(item, ctx);
+          var only = inner.match(/^<p>([\s\S]*)<\/p>$/);
+          return '<li>' + (only && only[1].indexOf('<p>') === -1 ? only[1] : inner) + '</li>';
+        }).join('');
+        out.push(ordered ? '<ol>' + listHtml + '</ol>' : '<ul>' + listHtml + '</ul>');
+        continue;
+      }
+
+      // 문단
+      var para = [];
+      while (i < lines.length && lines[i].trim() !== '' &&
+             !/^\s{0,3}#{1,6}\s/.test(lines[i]) &&
+             !/^\s{0,3}(```|~~~)/.test(lines[i]) &&
+             !/^\s{0,3}>/.test(lines[i]) &&
+             !/^\s{0,3}(-{3,}|\*{3,}|_{3,})\s*$/.test(lines[i]) &&
+             !/^\s*([-*+]|\d+[.)])\s+/.test(lines[i])) {
+        para.push(lines[i].trim());
+        i++;
+      }
+      if (para.length) out.push('<p>' + inline(para.join(' '), ctx.doc) + '</p>');
+      else i++;
+    }
+
+    return out.join('\n');
+  }
+
+  function render(md, doc) {
+    var used = Object.create(null);
+    var ctx = {
+      doc: doc,
+      outline: [],
+      uniqueId: function (id) {
+        if (!(id in used)) { used[id] = 1; return id; }
+        used[id] += 1;
+        return id + '-' + used[id];
+      }
+    };
+    var html = renderBlocks(md.replace(/\r\n?/g, '\n').split('\n'), ctx);
+    return { html: html, outline: ctx.outline };
+  }
+
+  /* ---------- 부트스트랩 ---------- */
+
+  function fail(title, detail) {
+    content.innerHTML = '<h1>' + title + '</h1><div class="notice">' + detail + '</div>' +
+      '<p><a href="./">문서 허브로 돌아가기</a></p>';
+  }
+
+  var doc = new URLSearchParams(location.search).get('doc');
+
+  if (!isSafeDocPath(doc)) {
+    crumb.textContent = '(경로 없음)';
+    fail('문서를 찾을 수 없습니다',
+      '<p><code>?doc=</code> 에는 <code>docs/</code> 기준 상대경로의 <code>.md</code> 파일만 올 수 있습니다.</p>' +
+      '<p>예: <code>reader.html?doc=values.md</code></p>');
+    document.title = '문서를 찾을 수 없습니다 — homelab-k3s-mcp';
+  } else {
+    crumb.textContent = doc;
+    sourceLink.href = REPO_BLOB + doc;
+    document.title = doc + ' — homelab-k3s-mcp';
+
+    fetch(doc).then(function (res) {
+      if (!res.ok) throw new Error(res.status + ' ' + res.statusText);
+      return res.text();
+    }).then(function (md) {
+      var result = render(md, doc);
+      content.innerHTML = result.html;
+
+      var firstH1 = content.querySelector('h1');
+      if (firstH1) document.title = firstH1.textContent + ' — homelab-k3s-mcp';
+
+      if (result.outline.length > 2) {
+        var list = document.getElementById('outline-list');
+        list.innerHTML = result.outline.map(function (h) {
+          return '<li class="lvl' + h.level + '"><a href="#' + encodeURIComponent(h.id) + '">' +
+                 h.text.replace(/`/g, '').replace(/\*\*/g, '')
+                       .replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</a></li>';
+        }).join('');
+        document.getElementById('outline').hidden = false;
+      }
+
+      if (location.hash.length > 1) {
+        var target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+        if (target) target.scrollIntoView();
+      }
+    }).catch(function (err) {
+      var hint = location.protocol === 'file:'
+        ? '<p>브라우저가 <code>file://</code>에서 로컬 파일 읽기를 막고 있습니다. ' +
+          '로컬에서 볼 때는 <code>cd docs &amp;&amp; python3 -m http.server</code> 로 띄운 뒤 ' +
+          '<code>http://localhost:8000/</code> 에서 여세요.</p>'
+        : '<p><code>' + doc.replace(/</g, '&lt;') + '</code> 를 읽지 못했습니다 (' +
+          String(err.message).replace(/</g, '&lt;') + ').</p>';
+      fail('문서를 불러오지 못했습니다', hint);
+    });
+  }
+})();
+</script>
+</body>
+</html>

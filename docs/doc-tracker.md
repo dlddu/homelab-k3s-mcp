@@ -33,6 +33,42 @@
 | PRD (공통) | `prd-platform-auth-safety.md` |
 | 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (18개) |
 | 상태 추적 | `doc-tracker.md` |
+| 배포 골격 | `index.html`(허브), `reader.html`(마크다운 뷰어), `.nojekyll` |
+
+## 문서 공개 (GitHub Pages)
+
+문서가 서로 연결되어 있어도 레포 안에서만 읽히면 git을 쓰지 않는 사람에게는 없는 것과 같다.
+`docs/`를 Pages 배포 루트로 삼아 허브 하나로 전 문서에 도달하게 한다.
+
+| 항목 | 상태 |
+|------|------|
+| 공개 URL | `https://dlddu.github.io/homelab-k3s-mcp/` |
+| Pages 설정 | ⬜ **사용자 작업 대기** — Settings → Pages → Source `Deploy from a branch` → `main` + `/docs` |
+| 배포 골격 | ✅ `index.html`(허브) · `reader.html`(뷰어) · `.nojekyll` |
+| 허브 도달 가능 문서 | ✅ **38 / 38** (가치 1 + PRD 18 + 테스트 18 + 상태 추적 1), 끊긴 링크 0 |
+| 공개 범위 | 레포가 **public** — `docs/`의 마크다운은 이미 GitHub에서 공개 상태였고, Pages는 그것을 읽기 좋게 서빙할 뿐이다. 새로 공개되는 문서 없음 |
+| 비공개 유지 문서 | (없음) |
+
+### 이 레포에 맞춘 뷰어 규약
+
+`reader.html`은 `?doc=<docs 기준 상대경로>.md`를 받아 클라이언트에서 렌더링한다.
+절대경로·스킴·`..`·비-`.md` 경로는 거부하고, 문서 안의 `.md` 상대 링크는 `reader.html?doc=`로 재작성한다.
+
+제목 앵커는 **식별자를 그대로 id로 쓴다** — `### AC1: 레플리카 설정` → `#AC1`,
+`### V3: 안전한 운영` → `#V3`. 그래서 이 문서와 허브가 특정 AC·가치를 링크로 가리킬 수 있다
+(예: `reader.html?doc=prd-workload-scale.md#AC1`). 인라인 코드로 시작하는 제목은 백틱 안 문자열이
+id가 되고, 나머지는 일반 슬러그로 떨어진다.
+
+여정 문서·mockup은 이 레포에 없으므로(백엔드 MCP 서버) 뷰어의 "여정 mockup 열기" 요건은 해당 없음.
+
+### 대기·주의 항목
+
+- ⬜ **디자인 시스템 도입 시 허브 재적용** — 이 레포에는 디자인 시스템이 없어 허브·뷰어를
+  무채색 최소 구성(시스템 폰트, 명도만 쓰는 토큰)으로 두었다. 브랜드 색을 임의로 고르지 않았다.
+- ⚠️ **문서를 추가하면 허브에 한 줄을 함께 추가한다.** 이 단계를 빼먹는 것이 허브 불일치의
+  유일한 원인이다. 위 "허브 도달 가능 문서" 수치가 문서 수와 어긋나면 그 자체가 신호다.
+- 뷰어는 `fetch`를 쓰므로 `file://`로 직접 열면 동작하지 않는다. 로컬 확인은
+  `cd docs && python3 -m http.server` 후 `http://localhost:8000/`.
 
 ## PRD ↔ 가치 ↔ AC ↔ 테스트 매트릭스
 
@@ -301,6 +337,7 @@
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
 | 2026-08-31 | 분할 대기 4개 파일 중 `no_config.py`(7 AC)·`auth.py`(2 AC)·`smoke.py`(2 AC)를 **AC별 전용 파일 11개 + 규칙 3 비-AC 파일 1개**로 분할했다(`platform_auth_safety_ac{1,5,6,7}.py` · `ping_ac1.py` · `aws_config_get_ac3.py` · `github_app_installation_token_ac3.py` · `grafana_token_ac3.py` · `opensearch_{search_ac4,document_put_ac5,document_delete_ac5}.py`). 이 셋을 고른 근거는 **케이스가 전부 읽기 전용이라 프로세스가 갈라져도 서로를 관측하지 못한다**는 것이다(401 응답 · `/healthz`·`/readyz` · `tools/list` · 미설정 거부 + 직후 `ping`). 세 파일이 안고 있던 선결 판단 둘을 확정했다 — ① `auth-variant` 배차 증가(2 → 9) 수용(포트포워드가 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz`로 시작하므로 배선 무변경, 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐) ② `smoke.py`의 잔여 도구 표면 확인을 **비-AC 파일로 등재**(등재 0건이던 규칙 3 경로의 첫 양성 사례). 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **19개 정의 전부가 원본과 AST 동일**함을 대조로 확인했고(재작성은 파일별 `run()` 3개 + 도구 표면 상수 1개뿐), 공유 표면은 매칭 단위 밖 `_auth_variant.py`로 내렸다. 유일한 단언 변경은 `smoke.py`가 들고 있던 **9개짜리 stale 도구 표면 부분집합**을 `_helpers.EXPECTED_TOOLS`(14개)로 정정한 것이다 — 빠져 있던 `github_app_installation_token`·`aws_config_get`·`opensearch_*`는 primary 그룹 케이스가 실제로 구동하는 도구다. 체커에는 하네스 검사 하나를 더했다 — `check_cases_are_run()` 이 각 파일의 `run()` 이 그 파일의 `test_*` 를 전부 호출하는지 AST로 확인해, 파일 하나에 케이스 하나인 구조에서 디스패처가 케이스를 빠뜨려도 초록으로 통과하는 구멍을 막는다. 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 무변경. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 0 | ✅ 전용 파일 33 · ⬜ 분할 대기 16 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 |
+| 2026-08-31 | **문서 허브 신설** — `docs/`의 마크다운 38개에 진입점이 없어 레포를 클론하지 않으면 읽을 수 없던 상태를 해소했다. 배포 골격 3개(`index.html` 허브 · `reader.html` 뷰어 · `.nojekyll`)를 추가하고, 허브는 도구 목록이 아니라 **가치별로 묶은 목차**로 구성해 각 도구 행에 PRD·테스트 두 링크와 달성 가치 식별자를 나란히 뒀다. 뷰어는 외부 CDN 의존 없는 단일 파일이며, 제목 앵커를 `AC1`·`V3` 같은 이 레포의 식별자로 만들어 특정 AC를 URL로 가리킬 수 있게 했다(`?doc=` 경로 가드 + `.md` 상대 링크 재작성 포함). 문서 38개 전부에 대해 렌더링과 링크 도달을 대조 확인했다. 문서 내용·PRD·AC는 불변이고, Pages 활성화(Settings → Pages)만 사용자 작업으로 남는다. | 문서 38개 · 진입점 없음(클론 또는 GitHub 파일 뷰로만 열람) | 문서 38개 · 허브에서 38/38 도달 · Pages 설정 대기 |
 | 2026-08-30 | 분할 대기 6개 파일 중 `opensearch.py`(11 AC)·`aws_config.py`(2 AC)를 **AC별 전용 파일 13개**로 분할했다(`opensearch_{search,document_put,document_delete}_ac*.py` · `aws_config_get_ac{1,2}.py`). 이 둘을 고른 근거는 **선결 판단이 없는 유일한 후보**라는 것이다 — 케이스가 이미 케이스별 전용 인덱스·유일 질의 토큰으로 서로 격리돼 있어 순서 의존이 없다(남은 4개는 순서 의존·`auth-variant` 배차 증가·규칙 3 재분류라는 미결 판단을 각각 안고 있다). 공유 표면은 매칭 단위에서 제외되는 `_opensearch.py`·`_aws_config.py`로 내렸고, 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **32개 정의 전부가 원본과 AST 동일**함을 대조로 확인했다(재작성은 파일별 `run()`과 모듈 docstring뿐, 단언 무변경). 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 변경은 삭제된 파일명을 가리키던 주석 2줄뿐이다. `추가 인자: trace` 신고는 http-trace를 실제로 읽는 4개 파일로 좁혀졌다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | **판정 단위를 케이스 → 파일로 옮긴 개정(모델 `tbm_homelab-k3s-mcp-ac-e2e`, reconciler `7529b609`)에 맞춰 e2e 렌즈를 재작성했다.** ① 매칭 단위 파일 9개 전부에 모듈 docstring `검증 AC:`·`실행 대상:` 선언을 도입(개정 전에는 확인 지점이 레포에 0건이라 파일 단위 매핑을 기계로 확인할 방법 자체가 없었다). ② 체커 `tests/integration/check_ac_mapping.py` 신설 — AC 전집(PRD)·선언·레지스트리를 각각 재도출해 규칙 1·2·3·5·6과 집계 일치를 lint 잡에서 강제한다. ③ 러너 `tests/integration/run_all.py` 신설 — 파일을 자동 발견해 `실행 대상`별로 실행하고, `ci.yml`의 파일별 9개 스텝을 배포 대상별 2스텝으로 대체했다(앞으로 분할해도 CI 수정 불필요, 배차 누락은 체커가 차단). ④ **3개 도메인 9 AC를 전용 파일로 분할**(grafana-token AC1·AC2·AC4 · github-app-installation-token AC1·AC2·AC4 · dear-baby-reset-user AC1·AC2·AC3) — 케이스 함수·상수를 한 글자도 바꾸지 않은 순수 이동이며 AST 대조로 26개 정의가 원본과 동일함을 확인했다. ⑤ 레지스트리 64행을 파일 단위 표기(전용 파일 / 분할 대기 / 공백 / 예외)로 재작성하고 집계 블록을 기계 판독 가능하게 만들었다. PRD(AC 본문)는 불변. | 케이스 단위: ✅49(전용 케이스)·⬜14·🚫1 (파일 단위로는 매칭 파일 0 · 규칙 1 위반 63) | 파일 단위: ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | AssumeRole·SigV4 계열 4건(aws-config-get/AC2 · opensearch-search/AC3 · opensearch-document-put/AC4 · opensearch-document-delete/AC4)을 **관측 수단 신설 후** per-AC 전용 케이스로 승격. 신규 픽스처 `tests/k8s/kind/http-trace.yaml` — MinIO(S3+STS)와 OpenSearch 양쪽 앞단에 서는 기록 리버스 프록시 1개(ConfigMap + `python:3.12-alpine`, 신규 이미지 없음)로, `AWS_CONFIG_S3_ENDPOINT`·`OPENSEARCH_STS_ENDPOINT`·`OPENSEARCH_ENDPOINT`를 프록시로 재배선하고 트레이스를 `:8081`로 노출(기존 스텝 2개에 포트포워드만 추가, 신규 검증 스텝 없음). backlog가 든 MinIO 단독 trace 후보는 데이터 플레인 서명이 OpenSearch로 가 관측 범위 밖이라 채택하지 않았다. 단정은 AssumeRole 발급 키 = 데이터 플레인 서명 키 대조 + 베이스 키 배제 + 세션 토큰 + 서명 스코프(`s3`/`aoss`)로, 무서명·베이스 키 서명·STS 미호출을 각각 falsify한다. 프록시의 Host 보존 전제는 SigV4를 재계산하는 가짜 업스트림과 Host 재작성 음성 대조로 검증. tests/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅45(전용 45)·⬜18·🚫1 | ✅49(전용 49)·⬜14·🚫1 |
