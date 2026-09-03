@@ -24,6 +24,12 @@ jobs:
       # 실측과 어긋나거나, 매칭 단위 파일이 run_all.py 에 배차되지 않으면 실패한다.
       - name: AC <-> e2e file mapping
         run: python3 tests/integration/check_ac_mapping.py
+
+      # docs/e2e-mocking-policy.md 의 허용목록 <-> tests/·.github/workflows/ 의 실제 모킹
+      # 지점 양방향 1:1. 이것도 표준 라이브러리 전용에 클러스터가 필요 없어 여기서 돈다.
+      # 미등재 모킹·고아 등재·표기 주석 누락·GATE 의 대체 검증 부재가 전부 실패다.
+      - name: E2E mocking policy
+        run: python3 scripts/check_mock_policy.py
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
