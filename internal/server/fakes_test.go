@@ -9,6 +9,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
+	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
 )
 
 type execCall struct {
@@ -283,11 +284,31 @@ func (f *fakeOpenSearch) DeleteDocument(_ context.Context, index, id string) (*o
 	return &opensearch.DeleteResult{Index: index, ID: id, Result: "deleted"}, nil
 }
 
+type fakeSessionPlatform struct {
+	mu sync.Mutex
+
+	listCalls int
+
+	listResponse func() ([]sessionplatform.Session, error)
+}
+
+func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.listCalls++
+	if f.listResponse != nil {
+		return f.listResponse()
+	}
+	return []sessionplatform.Session{}, nil
+}
+
 func unavailableK8s() k8s.Service         { return k8s.NewUnavailable("") }
 func unavailableGitHub() github.Service   { return github.NewUnavailable("") }
 func unavailableAWS() awsconfig.Service   { return awsconfig.NewUnavailable("") }
 func unavailableGrafana() grafana.Service { return grafana.NewUnavailable("") }
 
 func unavailableOpenSearch() opensearch.Service { return opensearch.NewUnavailable("") }
+
+func unavailableSessionPlatform() sessionplatform.Service { return sessionplatform.NewUnavailable("") }
 
 func int32Ptr(v int32) *int32 { return &v }

@@ -19,9 +19,11 @@ session-platform 제어면(control plane)이 보유한 세션 목록을 조회�
 - 어노테이션: `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`,
   `openWorldHint=true`
 
-> **구현 선행 문서**: 이 PRD 작성 시점(2026-08-12)에 session-platform 배포는 클러스터에서
-> 제거된 상태이며(레포는 유지), 도구도 미구현이다. 배선 순서는 앱 재배포 → env 배선 →
-> 도구 구현이다.
+> **구현 상태**: 이 PRD는 구현에 선행해 작성됐다(2026-08-12 — 그 시점에는 session-platform
+> 배포가 클러스터에서 제거돼 있었고 도구도 없었다). 2026-09-03 기준 제어면은 재배포됐고
+> (`session-platform` 네임스페이스, Service `control-plane`), `SESSION_PLATFORM_ENDPOINT`
+> 배선과 도구 구현(`internal/sessionplatform` + `internal/mcp`)이 끝났다. 자동화 현황은
+> `doc-tracker.md`가 SSOT다.
 
 ## Acceptance Criteria
 

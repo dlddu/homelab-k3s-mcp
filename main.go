@@ -19,6 +19,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
+	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
 )
 
 func main() {
@@ -53,10 +54,11 @@ func main() {
 	awsSvc := buildAWSService(ctx)
 	grafanaSvc := buildGrafanaService()
 	osSvc := buildOpenSearchService(ctx)
+	sessionSvc := buildSessionPlatformService()
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc),
+		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc),
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -141,6 +143,20 @@ func buildOpenSearchService(ctx context.Context) opensearch.Service {
 		return opensearch.NewUnavailable("")
 	}
 	slog.Info("opensearch integration loaded")
+	return client
+}
+
+func buildSessionPlatformService() sessionplatform.Service {
+	client, err := sessionplatform.FromEnv()
+	if err != nil {
+		slog.Error("failed to initialize session platform client; tool will return errors", "error", err)
+		return sessionplatform.NewUnavailable(err.Error())
+	}
+	if client == nil {
+		slog.Warn("SESSION_PLATFORM_ENDPOINT not set: session_list tool will return errors")
+		return sessionplatform.NewUnavailable("")
+	}
+	slog.Info("session platform integration loaded")
 	return client
 }
 

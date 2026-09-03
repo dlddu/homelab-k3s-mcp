@@ -14,6 +14,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/mcp"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
+	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
 
@@ -26,13 +27,13 @@ type health struct {
 // endpoint is served without authentication. The OAuth protected-resource
 // discovery document is registered only when OAuth is configured; in
 // API-key-only mode there is no OAuth metadata to advertise.
-func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service) http.Handler {
+func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", root)
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz)
 
-	mcpHandler := mcp.NewHandler(k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc)
+	mcpHandler := mcp.NewHandler(k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc)
 	if authCfg != nil {
 		if authCfg.OAuthConfigured() {
 			mux.Handle("GET /.well-known/oauth-protected-resource", auth.MetadataHandler(authCfg))

@@ -88,7 +88,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | opensearch_search | V4, V2, V3 | 4 | test-opensearch-search | ✅ 완전 |
 | opensearch_document_put | V4, V2, V3 | 5 | test-opensearch-document-put | ✅ 완전 |
 | opensearch_document_delete | V4, V2, V3 | 5 | test-opensearch-document-delete | ✅ 완전 |
-| session_list | V5, V3 | 3 | test-session-list | ✅ 완전 (구현 선행) |
+| session_list | V5, V3 | 3 | test-session-list | ✅ 완전 |
 | session_read | V5, V3 | 4 | test-session-read | ✅ 완전 (구현 선행) |
 | session_write | V5, V3 | 5 | test-session-write | ✅ 완전 (구현 선행) |
 | platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
@@ -129,7 +129,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 - 🟢 **자동 검증됨** (Go 단위 `internal/server/mcp_test.go`·`health_test.go`·
   `internal/auth/auth_test.go`, `internal/awsconfig`·`internal/github`·`internal/grafana`·
-  `internal/opensearch` 단위 테스트 + Python 통합 `tests/integration/`):
+  `internal/opensearch`·`internal/sessionplatform` 단위 테스트 + Python 통합
+  `tests/integration/`):
   ping, namespace_list, workload_list, workload_logs(전체 — AC3 크래시 루프 previous
   내용은 e2e `crashloop-fixture`), pod_describe(전체),
   workload_restart, workload_scale, dear_baby_reset_user, 자격증명 3종의 발급/스코프/
@@ -138,14 +139,29 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
   픽스처는 security off 단일노드 OpenSearch + MinIO STS + 접근 경로 관측용
   `http-trace` 기록 프록시),
   platform AC1·AC2(인증 게이트·디스커버리)·AC5·AC6·AC7·AC8(API 키 게이트·구성 유연성·
-  디스커버리 조건부 — `internal/auth/auth_test.go`·`internal/server/auth_routing_test.go`).
+  디스커버리 조건부 — `internal/auth/auth_test.go`·`internal/server/auth_routing_test.go`),
+  session_list 전 AC(3 — `internal/sessionplatform/sessionplatform_test.go`의 열거·빈 목록·
+  수동적 조회(요청은 `GET /api/v1/sessions` 뿐)·unavailable + `internal/server/mcp_test.go`의
+  도구 표면·미설정 거부).
 - 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
   platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
-  - **session 3종 12 AC — 도구 미구현(구현 선행 문서)**. session-platform 배포가
-    2026-08-06에 클러스터에서 제거된 상태라(레포 `dlddu/session-platform`은 유지) 실제
-    제어면 대상 검증이 불가능하다. 배선 순서: 앱 재배포 → `SESSION_PLATFORM_ENDPOINT`
-    배선 → `internal/sessionplatform` 구현 → 단위·통합 테스트 작성.
+  - **session_read·session_write 9 AC — 도구 미구현**. `session_list`는 구현됐고
+    (`internal/sessionplatform` + `internal/mcp`), 나머지 두 도구는 아직 코드가 없다.
+    남은 순서: `internal/sessionplatform`에 read/write 추가 → 단위 → 통합.
+    read/write는 "접근=active화" 부수 효과(유휴 승격·스냅샷 복원)를 가지므로 상태 전이를
+    재현하는 픽스처가 필요하다.
+  - **session 3종의 통합 e2e — 미작성**. `session_list`는 Go 단위로 검증되지만
+    `tests/integration/`에는 아직 케이스가 없다(아래 e2e 렌즈 레지스트리에서 공백으로
+    계수된다). 제어면 스텁 또는 kind에 띄운 제어면 중 택일은 그 렌즈의 몫이다.
+    <!-- 이 항목의 선행 조건이던 "제어면이 클러스터에 없다"는 2026-09-03 해소됐다:
+         제어면은 `session-platform` 네임스페이스에 재배포돼 Deployment `control-plane`
+         1/1 · Service `control-plane:80`(→ 8080)으로 떠 있고,
+         `SESSION_PLATFORM_ENDPOINT`가 `k8s/deployment.yaml`에 배선됐다. -->
+
+    > 이 문단이 2026-08-06~09-03 사이 담고 있던 "session-platform 배포가 클러스터에서
+    > 제거돼 제어면 대상 검증이 불가능하다"는 서술은 더 이상 사실이 아니다. 재배포된 뒤에도
+    > 문장이 남아 12 AC 전체를 "검증 불가"로 묶어 두고 있었다.
   - opensearch 3종 — **프로덕션 스모크 미수행**(env 배선이 infrastructure/flux-cd-apps
     반영에 걸려 있음). CI 자동화는 완료; 실제 `kubernetes-docs` 컬렉션 대상
     put→search→delete 확인은 배선 완료 후 수행.
@@ -313,6 +329,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-03 | **`session_list` 구현 착지** — `internal/sessionplatform`(제어면 `GET /api/v1/sessions` 클라이언트 + `Unavailable` 대체)과 `internal/mcp` 도구 등록으로 session-list/AC1·AC2·AC3을 구현으로 닫고, `k8s/deployment.yaml`에 `SESSION_PLATFORM_ENDPOINT`를 배선했다. 문서 쪽 변경은 **상태 기술의 교정뿐**이다: 자동화 커버리지의 🔴 항목이 "session-platform 배포가 클러스터에서 제거돼 검증 불가"라는 **이미 사실이 아닌 전제**로 12 AC 전체를 묶어 두고 있었다(제어면은 재배포돼 `session-platform` 네임스페이스에서 `control-plane` 1/1로 동작 중). 남은 공백을 read/write 9건과 통합 e2e로 좁혔다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건.** | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변 — e2e 렌즈 레지스트리·집계도 불변) |
 | 2026-08-31 | **문서 허브 신설** — `docs/`의 마크다운 38개에 진입점이 없어 레포를 클론하지 않으면 읽을 수 없던 상태를 해소했다. 배포 골격 3개(`index.html` 허브 · `reader.html` 뷰어 · `.nojekyll`)를 추가하고, 허브는 도구 목록이 아니라 **가치별로 묶은 목차**로 구성해 각 도구 행에 PRD·테스트 두 링크와 달성 가치 식별자를 나란히 뒀다. 뷰어는 외부 CDN 의존 없는 단일 파일이며, 제목 앵커를 `AC1`·`V3` 같은 이 레포의 식별자로 만들어 특정 AC를 URL로 가리킬 수 있게 했다(`?doc=` 경로 가드 + `.md` 상대 링크 재작성 포함). 문서 38개 전부에 대해 렌더링과 링크 도달을 대조 확인했다. 문서 내용·PRD·AC는 불변이고, Pages 활성화(Settings → Pages)만 사용자 작업으로 남는다. | 문서 38개 · 진입점 없음(클론 또는 GitHub 파일 뷰로만 열람) | 문서 38개 · 허브에서 38/38 도달 · Pages 설정 대기 |
 | 2026-08-30 | 분할 대기 6개 파일 중 `opensearch.py`(11 AC)·`aws_config.py`(2 AC)를 **AC별 전용 파일 13개**로 분할했다(`opensearch_{search,document_put,document_delete}_ac*.py` · `aws_config_get_ac{1,2}.py`). 이 둘을 고른 근거는 **선결 판단이 없는 유일한 후보**라는 것이다 — 케이스가 이미 케이스별 전용 인덱스·유일 질의 토큰으로 서로 격리돼 있어 순서 의존이 없다(남은 4개는 순서 의존·`auth-variant` 배차 증가·규칙 3 재분류라는 미결 판단을 각각 안고 있다). 공유 표면은 매칭 단위에서 제외되는 `_opensearch.py`·`_aws_config.py`로 내렸고, 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **32개 정의 전부가 원본과 AST 동일**함을 대조로 확인했다(재작성은 파일별 `run()`과 모듈 docstring뿐, 단언 무변경). 러너가 파일을 자동 발견하므로 신규 CI 스텝·픽스처·롤아웃 대기 없음 — `ci.yml` 변경은 삭제된 파일명을 가리키던 주석 2줄뿐이다. `추가 인자: trace` 신고는 http-trace를 실제로 읽는 4개 파일로 좁혀졌다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 | ✅ 전용 파일 22 · ⬜ 분할 대기 27 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
 | 2026-08-14 | **판정 단위를 케이스 → 파일로 옮긴 개정(모델 `tbm_homelab-k3s-mcp-ac-e2e`, reconciler `7529b609`)에 맞춰 e2e 렌즈를 재작성했다.** ① 매칭 단위 파일 9개 전부에 모듈 docstring `검증 AC:`·`실행 대상:` 선언을 도입(개정 전에는 확인 지점이 레포에 0건이라 파일 단위 매핑을 기계로 확인할 방법 자체가 없었다). ② 체커 `tests/integration/check_ac_mapping.py` 신설 — AC 전집(PRD)·선언·레지스트리를 각각 재도출해 규칙 1·2·3·5·6과 집계 일치를 lint 잡에서 강제한다. ③ 러너 `tests/integration/run_all.py` 신설 — 파일을 자동 발견해 `실행 대상`별로 실행하고, `ci.yml`의 파일별 9개 스텝을 배포 대상별 2스텝으로 대체했다(앞으로 분할해도 CI 수정 불필요, 배차 누락은 체커가 차단). ④ **3개 도메인 9 AC를 전용 파일로 분할**(grafana-token AC1·AC2·AC4 · github-app-installation-token AC1·AC2·AC4 · dear-baby-reset-user AC1·AC2·AC3) — 케이스 함수·상수를 한 글자도 바꾸지 않은 순수 이동이며 AST 대조로 26개 정의가 원본과 동일함을 확인했다. ⑤ 레지스트리 64행을 파일 단위 표기(전용 파일 / 분할 대기 / 공백 / 예외)로 재작성하고 집계 블록을 기계 판독 가능하게 만들었다. PRD(AC 본문)는 불변. | 케이스 단위: ✅49(전용 케이스)·⬜14·🚫1 (파일 단위로는 매칭 파일 0 · 규칙 1 위반 63) | 파일 단위: ✅ 전용 파일 9 · ⬜ 분할 대기 40 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 |
