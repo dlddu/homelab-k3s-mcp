@@ -15,14 +15,17 @@ docstring에 신고한 실행 대상(`실행 대상:`)별로 골라 차례로 �
 
 ```
 검증 AC: <domain>/AC<n>[, <domain>/AC<m> ...]   # 또는  검증 AC: 없음 (스모크/인프라)
-실행 대상: primary | auth-variant
+실행 대상: primary | auth-variant | oauth-variant
 추가 인자: trace                                # 선택 — http-trace 프록시 URL을 argv[2]로 받는다
 실행 순서: <정수>                                # 선택 — 기본 50, 작을수록 먼저
 ```
 
 `실행 대상`은 그 파일이 어느 배포를 상대로 도는지다. `primary`는 모든 자격증명이
 배선된 주 배포(`homelab-k3s-mcp` 네임스페이스), `auth-variant`는 인증을 켜고 자격증명을
-하나도 붙이지 않은 변형(`tests/k8s/kind/auth-fixture.yaml`)이다.
+하나도 붙이지 않은 변형(`tests/k8s/kind/auth-fixture.yaml`), `oauth-variant`는 실 OIDC
+발급자(dex)를 가리키도록 `MCP_OAUTH_*`를 세팅한 변형(`tests/k8s/kind/oidc-fixture.yaml`의
+`homelab-k3s-mcp-oauth`)이다. 디스커버리 라우트는 OAuth가 구성된 경우에만 걸리므로
+`platform-auth-safety/AC2`는 마지막 것에서만 관측된다.
 
 ## 사용
 
@@ -30,6 +33,7 @@ docstring에 신고한 실행 대상(`실행 대상:`)별로 골라 차례로 �
 python tests/integration/run_all.py --group primary \
     --base-url http://127.0.0.1:8080 --trace-url http://127.0.0.1:8090
 python tests/integration/run_all.py --group auth-variant --base-url http://127.0.0.1:8088
+python tests/integration/run_all.py --group oauth-variant --base-url http://127.0.0.1:8089
 python tests/integration/run_all.py --group primary --list      # 드라이런(배차 목록만)
 ```
 """
@@ -48,7 +52,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 #: 매칭 단위가 아닌 파일 — 공유 헬퍼와 이 하네스 자신.
 NOT_MATCHING_UNIT = {"_helpers.py", "run_all.py", "check_ac_mapping.py"}
 
-GROUPS = ("primary", "auth-variant")
+GROUPS = ("primary", "auth-variant", "oauth-variant")
 
 DEFAULT_ORDER = 50
 

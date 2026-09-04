@@ -28,7 +28,18 @@
   조회
 - **기대 결과**: 보호 리소스 메타데이터가 발급자/리소스 반환, OIDC discovery로 JWKS 로드 가능
 - **검증 AC**: AC2
-- **자동화**: ❌ 현재 자동화 없음 → 디스커버리 엔드포인트 자동화 추가 권장.
+- **자동화**: 배포 서버 통합 e2e `tests/integration/platform_auth_safety_ac2.py`
+  (`실행 대상: oauth-variant` — `tests/k8s/kind/oidc-fixture.yaml`이 실 OIDC 발급자 dex와
+  `MCP_OAUTH_*`를 세팅한 서버 변형을 띄운다. 디스커버리 라우트는 OAuth가 구성된 배포에만
+  걸리므로 주 배포·auth-variant에서는 관측되지 않는다). 세 케이스가 클라이언트의 자동 구성
+  경로를 **연결된 사슬로** 걷는다 — ① 인증 없는 `/mcp` 401의 `WWW-Authenticate`가
+  `resource_metadata`로 문서 주소를 광고, ② 그 문서가 `resource`·`authorization_servers`·
+  `bearer_methods_supported`를 배포된 구성대로 반환(`MCP_OAUTH_RESOURCE`를 audience와 다른
+  값으로 두어 폴백과 구분), ③ 광고된 발급자의 `/.well-known/openid-configuration`이 준
+  `jwks_uri`에서 쓸 수 있는 RSA 키를 읽는다. 서버 쪽 JWKS 동적 로드는 그 배포가 Available
+  하다는 사실이 증거이며(실패 시 `auth.FromEnv` → `os.Exit(1)`), 그 경로가 실제로 치명적임은
+  시나리오 8의 (d)가 관측한다. Go 단위 `internal/auth/auth_test.go::TestMetadataHandlerServesProtectedResource`와
+  `internal/server/auth_routing_test.go`의 라우팅 단언과 병행.
 
 ### 시나리오 3: 최소권한 RBAC 경계
 - **사전 조건**: 배포된 RBAC(`k8s/rbac.yaml`)
@@ -96,7 +107,17 @@
 - **기대 결과**: (a) 인증 활성 + 디스커버리 엔드포인트 미제공, (b) 기존 동작(디스커버리 제공),
   (c) 둘 다 동작, (d) 기동 실패(무방비 노출 차단)
 - **검증 AC**: AC8
-- **자동화**: Go 단위 `internal/auth/auth_test.go::TestFromEnvAPIKeysOnly`, `TestFromEnvOAuthGating`,
+- **자동화**: 배포 서버 통합 e2e `tests/integration/platform_auth_safety_ac8.py`
+  (`실행 대상: auth-variant` — 러너가 준 base URL이 구성 (a)인 `auth-fixture.yaml` 배포이고,
+  (b)(c)(d)는 `tests/k8s/kind/oidc-fixture.yaml`의 세 변형에 `_oidc.port_forward`·kubectl로
+  닿는다). 네 케이스가 AC의 네 구성을 그대로 대조한다 — (a) 401 + 챌린지에 `resource_metadata`
+  없음 + 디스커버리 404, (b) `MCP_API_KEYS`가 전혀 없는 배포가 Available + 디스커버리 제공,
+  (c) API 키로 `tools/list` 인가 + 디스커버리 제공 + 챌린지가 그것을 광고,
+  (d) 어느 경로도 구성되지 않은 배포가 `availableReplicas` 0 · 종료 코드 1 · 로그
+  `no authentication configured`로 **기동 실패**. env 게이팅 자체는 아래 Go 단위가 덮고,
+  e2e가 더하는 것은 그것이 **배포된 서버의 라우팅과 기동 여부로 나타나는가**다(단위 테스트는
+  파드가 뜨지 않는 것을 보지 못한다). 함께:
+  Go 단위 `internal/auth/auth_test.go::TestFromEnvAPIKeysOnly`, `TestFromEnvOAuthGating`,
   `TestFromEnvNoAuthConfiguredErrors`, `TestFromEnvRequiresIssuerWhenOAuthRequested`,
   `TestFromEnvRequiresAudienceWhenOAuthRequested`(`FromEnv` env 게이팅 4조합 — 기존
   issuer/audience 필수 테스트를 "API 키 미설정 시에만 OAuth 필수"로 갱신). 디스커버리 조건부
