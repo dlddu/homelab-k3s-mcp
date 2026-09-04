@@ -21,21 +21,15 @@
 ``sessionWrite``가 그 두 키만 넣는다). 반환 즉시 출력이 있는지를 시간으로 재는 대신 **응답의
 모양**으로 재는 이유는 그것이 구현이 약속한 계약이고 타이밍은 CI 부하에 흔들리기 때문이다.
 
-**claude-code 절도 이제 단정한다(2026-09-04, 두 번째 session 슬라이스).** AC 본문의 두 번째
-문장(프롬프트 1회 실행이 큐에 적재된다)은 `workloadType=claude-code` 세션을 요구하고, 그 타입은
-직전 판이 쓰일 때는 이 하네스에 없었다. 픽스처가 ``DATA_PLANE_CLAUDE_CODE_IMAGE``와 자리표시자
-``claude-code-credentials`` Secret 을 갖춘 지금은 뜬다.
+**claude-code 절은 범위 밖이다.** AC 본문의 두 번째 문장(프롬프트 1회 실행이 큐에 적재된다)은
+`workloadType=claude-code` 세션을 요구하는데, 이 하네스의 제어면은
+``DATA_PLANE_CLAUDE_CODE_IMAGE``를 갖지 않아 그 타입을 배포할 수 없다(그 파드는
+claude-code-credentials Secret 과 credential-proxy 사이드카를 필요로 한다). shell 절만으로
+「입력이 워크로드에 전달되어 실행되고 산출물이 누적 출력에 나타난다」는 AC의 관측 가능한
+핵심이 성립하며, claude-code 절은 `docs/doc-tracker.md`의 backlog 에 후속으로 적혀 있다.
 
-**단정하는 것은 「수락이 비블로킹이다」까지이고, 「응답 텍스트가 누적된다」는 아니다.** 후자는
-에이전트가 상류 Claude 를 실제로 호출해야 성립하는데 픽스처의 자격증명은 자리표시자다. 이
-경계는 임의로 그은 것이 아니라 AC 가 스스로 나눠 놓은 것이다 — 「호출은 실행 완료를 기다리지
-않고 반환하며, 산출물은 `session_read`의 누적 출력으로 관측된다」에서, **전자는 플랫폼의 약속**
-(제어면이 에이전트의 큐 적재를 확인하고 곧바로 반환한다)이고 후자는 워크로드가 무엇을
-만들어 내느냐다. shell 절이 그 후자를 실 워크로드로 이미 단정하므로, claude-code 쪽은 두 타입이
-갈라지는 지점 — **비블로킹 수락** — 만 다시 잰다.
-
-세션은 이 파일이 만들고 이 파일이 지운다(`_session_platform`의 `live_shell_session` ·
-`live_claude_code_session`) — 다른 파일이 무엇을 남겨 놨든 무관하고, 나갈 때 파드까지 회수된다.
+세션은 이 파일이 만들고 이 파일이 지운다(`_session_platform.live_shell_session`) — 다른 파일이
+무엇을 남겨 놨든 무관하고, 나갈 때 파드까지 회수된다.
 """
 
 from __future__ import annotations
@@ -44,17 +38,10 @@ import asyncio
 import time
 
 from _helpers import base_url, open_session, wait_for_healthz
-from _session_platform import live_claude_code_session, live_shell_session
+from _session_platform import live_shell_session
 
 #: 제어면에 만들 세션 이름. 진단 로그에서 어느 파일의 세션인지 드러나야 한다.
 SESSION_NAME = "e2e write ac1"
-
-#: claude-code 절이 쓰는 세션 이름. shell 세션과 수명이 겹치지 않는다.
-CLAUDE_SESSION_NAME = "e2e write ac1 claude-code"
-
-#: claude-code 세션에 넣을 프롬프트. 내용은 무관하다 — 이 절이 재는 것은 **수락의
-#: 모양**이고, 그 판정은 에이전트가 프롬프트를 큐에 넣기 전에 끝난다.
-PROMPT = "Summarise nothing; this prompt is never expected to complete.\n"
 
 #: 주입할 명령. 개행이 있어야 PTY 가 명령을 실행한다 — 도구 설명이 "include a
 #: trailing newline to submit a command" 라고 적은 그대로다.
@@ -140,41 +127,6 @@ async def test_session_write_ac1_payload_reaches_the_workload(
     print("workload output ok: echo and result both present")
 
 
-async def test_session_write_ac1_claude_code_prompt_is_queued_without_blocking(
-    session, session_id: str
-) -> None:
-    """AC: session-write/AC1 — a claude-code prompt is accepted without running.
-
-    This is the AC's second clause, and the type is where the two workloads
-    genuinely differ: a shell write lands as PTY stdin, a claude-code write is
-    admitted to the agent's bounded prompt queue and drained by a serial worker
-    later. What the platform promises at call time is the same in both --
-    acceptance, not completion -- so the same *shape* assertion applies, and it
-    is the one that would break if the control plane ever waited for the
-    invocation.
-
-    The prompt is not expected to produce an answer: the fixture's provider
-    credentials are placeholders. That is deliberate and does not weaken the
-    case, because nothing here asserts an answer; the accumulated-output half
-    of AC1 is asserted against a real shell workload above.
-    """
-    result = await session.call_tool(
-        "session_write", {"id": session_id, "payload": PROMPT}
-    )
-
-    assert result.isError is False, result
-    body = result.structuredContent
-    assert set(body) == {"path", "session"}, (
-        f"a claude-code write result must carry only the branch and the "
-        f"session, never the invocation's output: {body}"
-    )
-    assert body["path"] == "active", body
-    assert body["session"]["id"] == session_id, body
-    assert body["session"]["workloadType"] == "claude-code", body
-    assert body["session"]["state"] == "active", body
-    print("claude-code prompt queued ok:", body["path"])
-
-
 async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
@@ -195,21 +147,7 @@ async def run() -> None:
             await test_session_write_ac1_payload_reaches_the_workload(
                 session, session_id
             )
-
-    with live_claude_code_session(CLAUDE_SESSION_NAME) as (_url, claude_created):
-        claude_id = claude_created["id"]
-        print(
-            "--- session-write/AC1 (claude-code) --- session",
-            claude_id,
-            "pod",
-            claude_created["pod"],
-        )
-
-        async with open_session(url) as session:
-            await test_session_write_ac1_claude_code_prompt_is_queued_without_blocking(
-                session, claude_id
-            )
-    print("ok: session-write/AC1")
+            print("ok: session-write/AC1")
 
 
 if __name__ == "__main__":

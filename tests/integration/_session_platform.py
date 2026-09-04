@@ -187,25 +187,17 @@ def sessions_from(result) -> list[dict]:
 # --- real sessions, created through the control plane's product API ----------
 #
 # Seeded ConfigMaps are enough for session_list, which never leaves the store.
-# session-read/AC1, session-write/AC1 and session-write/AC4 do: the control
-# plane resolves the session's stored pod name to a pod IP and dials that pod's
-# agent, so those ACs need a session whose pod actually exists and answers. The
-# only supported way to get one is the product API, which provisions the pod
-# and waits for it (ClientOrchestrator.Start), so that is what these helpers
-# drive.
+# session-read/AC1 and session-write/AC1 do: the control plane resolves the
+# session's stored pod name to a pod IP and dials that pod's agent, so those
+# ACs need a session whose pod actually exists and answers. The only supported
+# way to get one is the product API, which provisions the pod and waits for it
+# (ClientOrchestrator.Start), so that is what these helpers drive.
 #
-# Creating a session is *setup*, not the thing under test: none of those ACs is
-# about session creation, and the MCP tool surface has no create tool, so this
-# reaches the control plane directly over a short port-forward the way the
-# OAuth files reach dex. What the ACs are about -- reading a cursor, injecting
-# input, telling four refusals apart -- goes through the MCP tools, on the
-# deployed server, as usual.
-#
-# Two workload types stand up here. `shell` is a PTY the agent forks; the
-# `claude-code` pod additionally carries the loopback credential proxy sidecar
-# and projects the placeholder Secret the fixture defines. Which one a file
-# needs is decided by its AC: the payload ceiling and the prompt queue that
-# session-write/AC4 asks about exist only for the agent type.
+# Creating a session is *setup*, not the thing under test: neither AC is about
+# session creation, and the MCP tool surface has no create tool, so this reaches
+# the control plane directly over a short port-forward the way the OAuth files
+# reach dex. What the ACs are about -- reading a cursor, injecting input -- goes
+# through the MCP tools, on the deployed server, as usual.
 
 #: 제어면 Service 와 그 포트 (이 파일 위쪽 픽스처가 세운다).
 CONTROL_PLANE_SERVICE = "control-plane"
@@ -223,17 +215,9 @@ SESSIONS_PATH = "/api/v1/sessions"
 #: 클라이언트가 먼저 포기해 세션을 고아로 남기지 않는다.
 CREATE_TIMEOUT = 300.0
 
-#: 워크로드 타입. 픽스처가 `DATA_PLANE_IMAGE` 와 `DATA_PLANE_CLAUDE_CODE_IMAGE` 를
-#: 둘 다 주므로 두 타입 모두 여기서 뜬다. `approval-gated` 는 세션 헬퍼 파드(승인
-#: 게이트웨이·세션 MCP)를 더 요구하므로 이 픽스처의 대상이 아니다.
+#: 워크로드 타입. 이 픽스처는 `DATA_PLANE_CLAUDE_CODE_IMAGE` 를 주지 않으므로
+#: `claude-code` 세션은 만들 수 없다 — shell 만이 여기서 뜬다.
 SHELL_WORKLOAD = "shell"
-CLAUDE_CODE_WORKLOAD = "claude-code"
-
-#: 제어면이 `workloadType=claude-code` 에 강제하는 프롬프트 상한(바이트).
-#: session-platform 의 `session.MaxClaudePromptBytes` 와 같은 값이며, 제어면은
-#: 이 상한을 **파드에 닿기 전에** 잰다(`Service.Write` 가 `activate` 보다 먼저
-#: `WorkloadType == claude-code && len(payload) > MaxClaudePromptBytes` 를 본다).
-MAX_CLAUDE_PROMPT_BYTES = 1 << 20
 
 #: 세션 삭제 뒤 파드가 실제로 사라질 때까지의 예산. 기본 종료 유예가 30초이므로
 #: 그보다 넉넉해야 한다.
@@ -250,46 +234,6 @@ def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
     stays valid for the body: a caller that needs to make the workload produce
     output can post to it without going through the tool under test.
     """
-    with _live_session(name, SHELL_WORKLOAD) as pair:
-        yield pair
-
-
-@contextlib.contextmanager
-def live_claude_code_session(name: str) -> Iterator[tuple[str, dict]]:
-    """Create one real claude-code session, yield ``(control_plane_url, session)``.
-
-    Same lifecycle as :func:`live_shell_session`; only the workload type
-    differs. The pod this provisions carries two containers -- the agent
-    running its serial one-shot Claude runner, and the loopback credential
-    proxy sidecar the control plane attaches for this type -- and both must
-    report Ready before the control plane answers 201, so a session yielded
-    here is evidence that the claude-code data plane stands up in kind.
-
-    ``model`` is deliberately omitted from the create request: the control
-    plane normalizes an empty model to ``platform-default`` for the agent
-    types (``session.NormalizeModel``), which is the same value the pod would
-    resolve from the Secret's optional ``model`` key -- and that key is absent
-    from the fixture on purpose.
-
-    No case built on this asserts a *completed* invocation. The fixture's
-    credentials are placeholders, so a prompt the agent's worker drains will
-    fail upstream; every assertion here is about what the platform decides
-    before an invocation runs (acceptance, the payload ceiling, the bounded
-    queue), which is exactly what session-write/AC1's claude-code clause and
-    session-write/AC4 are about.
-    """
-    with _live_session(name, CLAUDE_CODE_WORKLOAD) as pair:
-        yield pair
-
-
-@contextlib.contextmanager
-def _live_session(name: str, workload_type: str) -> Iterator[tuple[str, dict]]:
-    """The shared body of the two lifecycle helpers above.
-
-    The request and response shapes are session-platform's, read from
-    ``control-plane/internal/api/api.go`` (``createReq``, and the ``Session``
-    the create handler writes back) rather than invented here.
-    """
     with port_forward(
         NAMESPACE,
         CONTROL_PLANE_SERVICE,
@@ -299,12 +243,12 @@ def _live_session(name: str, workload_type: str) -> Iterator[tuple[str, dict]]:
     ) as url:
         response = httpx.post(
             f"{url}{SESSIONS_PATH}",
-            json={"name": name, "workloadType": workload_type},
+            json={"name": name, "workloadType": SHELL_WORKLOAD},
             timeout=CREATE_TIMEOUT,
         )
         assert response.status_code == 201, (
-            f"creating a {workload_type} session returned "
-            f"{response.status_code}: {response.text.strip()}"
+            f"creating a shell session returned {response.status_code}: "
+            f"{response.text.strip()}"
         )
         session = response.json()
         assert session.get("state") == "active", session

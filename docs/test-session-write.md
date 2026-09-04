@@ -67,12 +67,8 @@
   직후에도 기존 출력이 read로 조회된다. `TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse`
   — 네 상태코드에 **같은 오류 본문**을 물려 놓고도 네 메시지가 쌍쌍이 달라야 한다: 제어면이
   문구를 달리 써 줘서 구별되는 것이 아님을 못박는다) + `internal/server/mcp_test.go`
-  (`TestSessionWriteSurfacesRefusalsDistinctly`) + 통합
-  `tests/integration/session_write_ac4.py` — 실 claude-code 세션에서 **관측 가능한 세 거부**
-  (404 · 413 · 429)와 「거부 뒤에도 기존 출력이 읽힌다」를 단정하고, 네 사유 접두의 쌍쌍
-  구별까지 함께 본다. **출력 쿼터 소진(507)은 통합 e2e로 도달할 수 없어 단정하지 않는다** —
-  그 상한(256 MiB)이 데이터 플레인의 컴파일 시점 상수이고 그것을 낮출 설정 표면이 없다.
-  근거·대체 검증(위 Go 단위 둘)·해제 조건은 `docs/doc-tracker.md`의 e2e 렌즈가 적는다
+  (`TestSessionWriteSurfacesRefusalsDistinctly`) + 통합 (미작성)
+  `tests/integration/session_write_ac4.py`
 
 ### 시나리오 5: 미설정 시 도구 에러
 - **사전 조건**: `SESSION_PLATFORM_ENDPOINT` 미설정

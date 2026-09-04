@@ -358,18 +358,12 @@ jobs:
           kubectl -n session-platform describe deploy/control-plane || true
           kubectl -n session-platform logs deploy/control-plane --tail=200 || true
           kubectl -n session-platform get configmaps --show-labels || true
-          # Session pods the control plane provisioned for session-read/AC1,
-          # session-write/AC1 and session-write/AC4. A pod that never went Ready
-          # fails inside the control plane's create call, so its events are
-          # where the reason is.
+          # Session pods the control plane provisioned for session-read/AC1 and
+          # session-write/AC1. A pod that never went Ready fails inside the
+          # control plane's create call, so its events are where the reason is.
           kubectl -n session-platform get pods -l session-platform.dev/pod-role=workload -o wide || true
           kubectl -n session-platform describe pods -l session-platform.dev/pod-role=workload || true
-          kubectl -n session-platform logs -l session-platform.dev/pod-role=workload -c session --tail=200 || true
-          # A claude-code session pod carries a second container: the loopback
-          # credential proxy. It has its own readiness probe, so the pod can
-          # hang on the sidecar rather than on the agent -- dumping only the
-          # agent's log would leave that case unexplained.
-          kubectl -n session-platform logs -l session-platform.dev/pod-role=workload -c claude-credentials --tail=200 || true
+          kubectl -n session-platform logs -l session-platform.dev/pod-role=workload --tail=200 || true
           kubectl -n dex get all -o wide || true
           kubectl -n dex describe deploy/dex || true
           kubectl -n dex logs deploy/dex --tail=200 || true
