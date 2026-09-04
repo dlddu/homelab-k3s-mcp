@@ -160,22 +160,13 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
   platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
-  - **session 3종(read 4 · write 5 = 9 AC)의 통합 e2e — 미작성**. 세 도구 모두 구현됐고
-    (`internal/sessionplatform` + `internal/mcp`, 도구 표면 17종) Go 단위로 검증되지만,
-    `tests/integration/`에 **read·write의 전용 파일이 아직 없다**(아래 e2e 렌즈 레지스트리에서
-    9건이 공백으로 계수된다). 이 축의 소유자는 자매 모델 `tbm_homelab-k3s-mcp-ac-e2e`이고,
-    남은 것은 파일 저작뿐이다 — **선행 조건은 모두 해소됐다**:
-    - 「도구 미구현」은 2026-09-03(`session_list`)·2026-09-04(`session_read`·`session_write`)로
-      닫혔다.
-    - 「제어면이 클러스터에 없다」는 2026-09-03에 닫혔다: 제어면은 `session-platform`
-      네임스페이스에 재배포돼 Deployment `control-plane` 1/1 · Service `control-plane:80`
-      (→ 8080)으로 떠 있고, `SESSION_PLATFORM_ENDPOINT`가 `k8s/deployment.yaml`에 배선됐다.
-    - 「제어면 스텁이냐 kind의 실 제어면이냐」의 **택일도 이미 내려졌다** — 모킹 정책의 `IMG`
-      조항에 따라 **실 제어면**이며, 픽스처 `tests/k8s/kind/session-platform.yaml`이 그것이다
-      (근거는 아래 e2e 렌즈 절의 2026-09-04 항목). session-list 3건이 그 결론 위에서
-      `session_list_ac{1,2,3}.py`로 이미 저작됐다.
-    - 다만 read/write는 목록과 달리 **제어면이 파드를 실제로 프로비저닝하는 경로**(접근=active화,
-      스냅샷 복원)를 타므로, 저작 시 픽스처에 `DATA_PLANE_IMAGE` 배선이 필요한지 먼저 판단할 것.
+  - **session 3종의 통합 e2e — 일부 공백**. 도구 계층은 셋 다 구현·검증됐다
+    (`internal/sessionplatform` + `internal/mcp`, 도구 표면 17종). 통합 e2e 쪽의 **현황·잔여·
+    선행 조건은 아래 "AC ↔ e2e 1:1 정합성" 절이 단일 사실 원천**이고(집계 블록 · 레지스트리 표 ·
+    공백 backlog), 그 축의 소유자는 자매 모델 `tbm_homelab-k3s-mcp-ac-e2e`다.
+    **여기에 숫자나 파일 목록을 다시 적지 않는다** — 이 절은 어느 게이트도 파싱하지 않으므로
+    사본을 두면 조용히 낡는다. 실제로 그 사본이 「전용 파일이 아직 없다 / 선행은 모두 해소됐다」로
+    남아 같은 파일의 집계 블록과 서로 모순한 채 세 번의 감지를 통과했다(2026-09-04 변경 이력 참조).
   - opensearch 3종 — **프로덕션 스모크 미수행**(env 배선이 infrastructure/flux-cd-apps
     반영에 걸려 있음). CI 자동화는 완료; 실제 `kubernetes-docs` 컬렉션 대상
     put→search→delete 확인은 배선 완료 후 수행.
@@ -188,7 +179,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 > **렌즈 차이**: reconciler 정합성 모델(`tbm_homelab-k3s-mcp-ac-e2e`)은 **`tests/integration/`의 통합 e2e만** 검증으로 인정한다 — `internal/`의 Go 단위 테스트는 정의상 e2e가 아니다. 따라서 위 "자동화 커버리지"에서 🟢로 세는 다수 AC가 이 e2e 렌즈에서는 **e2e 공백**으로 계수된다. 이 섹션은 그 e2e-전용 렌즈의 레지스트리다.
 
-### 파일 식별 규약 (규칙 1·2·3·5·6)
+### 파일 식별 규약 (규칙 1·2·3·5·6·7)
 
 > **2026-08-14 개정 — 매칭 단위가 "테스트 케이스"에서 "파일"로 바뀌었다.** 모델 정의(`tbm_homelab-k3s-mcp-ac-e2e`)가 `ac-e2e` 템플릿 고정부에 맞춰 판정 단위를 파일로 옮겼다. 파일 안에서 케이스가 몇 개로 쪼개져 있는지는 이제 판정과 **무관**하다. 케이스 단위 시절에 쌓인 per-AC 케이스는 그대로 자산이며, 분할은 "새 검증 작성"이 아니라 **케이스를 파일로 승격**하는 작업이다.
 
@@ -197,6 +188,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **규칙 3 (식별)**: 매칭 단위 파일은 **모듈 docstring**에 `검증 AC: <domain>/AC<n>` 을 선언한다. AC 대신 스모크/인프라를 검증하는 파일은 `검증 AC: 없음 (스모크/인프라)` 을 선언하고 아래 "비-AC 파일" 목록에 등재한다. 어디에도 매핑되지 않은 파일은 고아다.
 - **매칭 단위**: `tests/integration/` 최상위 `*.py`. 단 **`_` 접두 공유 모듈**(`_helpers.py` · `_workload.py` · `_auth_variant.py` · `_opensearch.py` · `_aws_config.py`)과 하네스 자신(`run_all.py` · `check_ac_mapping.py`)은 매칭 단위가 아니다 — 제외 판정은 러너와 체커가 `run_all.py::matching_unit_paths()` 하나로 공유한다.
 - **기계 검사**: `python3 tests/integration/check_ac_mapping.py` 가 위 규칙과 아래 집계를 CI(`fmt + vet` 잡)에서 강제한다. 이 표의 행별 상태·집계 숫자가 실측과 **정확히** 같아야 통과하므로, 파일을 쪼개거나 AC를 추가한 PR은 같은 PR에서 이 절을 갱신해야 한다.
+- **규칙 7 (테스트 문서 상태 일치)**: 같은 체커가 `docs/test-<domain>.md` 의 시나리오별 `자동화` 필드도 실측 파일 집합과 대조한다 — 전용 e2e 파일이 실재하는데 `(미작성)` 이 남아 있거나, 전용 파일이 없는데 `(미작성)` 없이 `tests/integration/*.py` 를 참조하면 위반이다. **e2e 파일을 새로 만든 PR은 그 AC 의 테스트 문서에서 `(미작성)` 을 같은 PR에서 지워야 한다.** 이 규칙이 생기기 전에는 `docs/test-*.md` 를 읽는 게이트가 하나도 없어, 문서가 "아직 미작성" 이라고 말하는 동안 파일이 실재하는 어긋남이 세 번의 감지를 통과했다(아래 변경 이력의 2026-09-04 항목).
 - **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
 <!-- ac-e2e-집계 -->

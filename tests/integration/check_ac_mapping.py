@@ -23,13 +23,18 @@
 * **규칙 3** 비-AC 파일은 `검증 AC: 없음`을 선언하고 doc-tracker에 등재돼야 한다
 * **규칙 5** 참조 무결성 — 선언·레지스트리·예외 목록이 실재하지 않는 AC를 가리키지 않는다
 * **규칙 6** 집계 일치 — 레지스트리의 행별 상태와 집계 숫자가 실측과 정확히 같다
+* **규칙 7** 테스트 문서 상태 일치 — `docs/test-<domain>.md` 시나리오의 `자동화` 필드가 말하는
+  통합 e2e 현황이 실측 파일 집합과 같다(전용 파일이 실재하는데 `(미작성)`이 남아 있거나,
+  전용 파일이 없는데 `(미작성)` 없이 파일을 참조하면 위반)
 * **하네스 무결성** — 매칭 단위 파일 전부가 `run_all.py`에 정확히 한 번 배차되고,
   각 파일의 `run()`이 그 파일이 정의한 `test_*` 케이스를 **전부 호출한다**
   (만들어 놓고 CI가 실행하지 않는 파일, 그리고 배차는 되지만 자기 케이스를 부르지 않아
   **조용히 통과하는 파일**을 둘 다 구조적으로 막는다)
 
 집계가 실측과 다르면 실패하므로, 파일을 쪼개거나 AC를 추가한 PR은 **같은 PR에서**
-레지스트리를 갱신해야 한다. 그것이 이 모델이 요구하는 "집계 일치"다.
+레지스트리를 갱신해야 한다. 그것이 이 모델이 요구하는 "집계 일치"다. 같은 이유로 규칙 7이
+있다 — e2e 파일을 새로 만든 PR은 그 AC의 테스트 문서에서 `(미작성)` 표기를 같은 PR에서
+지워야 한다.
 """
 
 from __future__ import annotations
@@ -53,6 +58,12 @@ AGGREGATE_RE = re.compile(
 )
 AGGREGATE_LINE_RE = re.compile(r"^- (.+): (\d+)$", re.MULTILINE)
 FILE_REF_RE = re.compile(r"`([a-z_0-9]+\.py)`")
+
+# --- 규칙 7: 테스트 문서(`docs/test-<domain>.md`)의 자동화 필드 -------------------
+SCENARIO_RE = re.compile(r"^### 시나리오 .*$", re.MULTILINE)
+DOC_FIELD_RE = re.compile(r"^- \*\*(검증 AC|자동화)\*\*:")
+INTEGRATION_REF_RE = re.compile(r"`tests/integration/([a-z_0-9]+\.py)")
+UNWRITTEN_MARK = "(미작성)"
 
 AGGREGATE_KEYS = (
     "AC 전집",
@@ -205,6 +216,85 @@ def check_cases_are_run(decls) -> list[str]:
     return problems
 
 
+def _scenario_automation(text: str) -> list[tuple[str, list[str]]]:
+    """테스트 문서의 시나리오별 ``(자동화 필드 본문, 검증 AC 번호들)``.
+
+    필드는 여러 줄로 이어질 수 있으므로 다음 ``- **`` 불릿까지를 한 필드로 본다.
+    """
+    blocks: list[tuple[str, list[str]]] = []
+    for body in SCENARIO_RE.split(text)[1:]:
+        fields: dict[str, str] = {}
+        current: str | None = None
+        buffer: list[str] = []
+        for line in body.splitlines():
+            match = DOC_FIELD_RE.match(line)
+            if match:
+                if current:
+                    fields[current] = "\n".join(buffer)
+                current, buffer = match.group(1), [line]
+            elif line.startswith("- **"):
+                if current:
+                    fields[current] = "\n".join(buffer)
+                current, buffer = None, []
+            elif current is not None:
+                buffer.append(line)
+        if current:
+            fields[current] = "\n".join(buffer)
+        blocks.append(
+            (fields.get("자동화", ""), re.findall(r"AC\d+", fields.get("검증 AC", "")))
+        )
+    return blocks
+
+
+def check_test_docs(acs: list[str], dedicated: dict[str, str]) -> list[str]:
+    """규칙 7 — 테스트 문서가 말하는 통합 e2e 현황이 실측 파일 집합과 같은지.
+
+    `docs/test-*.md` 를 읽는 게이트가 하나도 없어서, e2e 파일을 만든 PR 이 그 AC 의 테스트
+    문서를 갱신하지 않아도 CI 가 초록이었다. 그 사이 문서는 "아직 (미작성)" 이라고 말하고
+    파일은 실재하는 상태로 벌어진다 — 2026-09-04 에 그 어긋남이 세 번의 감지를 통과했다.
+    이 검사는 그 자리를 기계로 옮긴다. 판정은 **문서의 자기신고가 아니라 실측 파일 집합**
+    (`dedicated`) 기준이다.
+    """
+    problems = []
+    for ac in acs:
+        domain, number = ac.split("/")
+        doc = DOCS / f"test-{domain}.md"
+        if not doc.exists():
+            problems.append(f"규칙 7 위반 — {ac} 의 테스트 문서 test-{domain}.md 가 없다")
+            continue
+        blocks = [
+            automation
+            for automation, declared in _scenario_automation(
+                doc.read_text(encoding="utf-8")
+            )
+            if number in declared
+        ]
+        if not blocks:
+            problems.append(
+                f"규칙 7 위반 — test-{domain}.md 에 {ac} 를 검증하는 시나리오가 없다"
+            )
+            continue
+        have = dedicated.get(ac)
+        for automation in blocks:
+            if have and UNWRITTEN_MARK in automation:
+                problems.append(
+                    f"규칙 7 위반 — {ac} 의 전용 파일 {have} 이 실재하는데 "
+                    f"test-{domain}.md 의 자동화 필드가 아직 {UNWRITTEN_MARK} 이라고 한다"
+                )
+            if (
+                not have
+                and INTEGRATION_REF_RE.search(automation)
+                and UNWRITTEN_MARK not in automation
+            ):
+                refs = sorted(set(INTEGRATION_REF_RE.findall(automation)))
+                problems.append(
+                    f"규칙 7 위반 — {ac} 의 전용 파일이 실측되지 않는데 "
+                    f"test-{domain}.md 의 자동화 필드가 {refs} 를 작성된 것처럼 적는다 "
+                    f"({UNWRITTEN_MARK} 표기가 빠졌다)"
+                )
+    return problems
+
+
 def main() -> int:
     acs = ac_universe()
     ac_set = set(acs)
@@ -286,6 +376,9 @@ def main() -> int:
         else:
             problems.append(f"규칙 6 위반 — {ac} 의 상태 표기를 해석할 수 없다: {status!r}")
 
+    # --- 규칙 7: 테스트 문서의 e2e 현황이 실측과 같은가 -----------------------
+    problems += check_test_docs(acs, dedicated)
+
     # --- 하네스 무결성 -------------------------------------------------------
     problems += check_dispatch(decls)
     problems += check_cases_are_run(decls)
@@ -325,7 +418,9 @@ def main() -> int:
             print(f"FAIL: {problem}")
         return 1
 
-    print("\nOK: 규칙 1(중복 전용)·2·3·5·6 위반 없음, 러너 배차 누락·케이스 미호출 없음")
+    print(
+        "\nOK: 규칙 1(중복 전용)·2·3·5·6·7 위반 없음, 러너 배차 누락·케이스 미호출 없음"
+    )
     return 0
 
 
