@@ -396,6 +396,22 @@ const toolsListJSON = `{
         "idempotentHint": false,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "session_list",
+      "description": "List the sessions the session-platform control plane holds. The control plane is reachable only from inside the cluster, so this tool is the way to see the inventory without an ingress or a port-forward. Takes no arguments. Returns each session's id, name, workloadType (shell | claude-code), state (active | idle | snapshot), pod (absent while a session is snapshotted and its pods are reclaimed), createdAt and lastAccess. Listing is passive: it does not promote an idle session, restore a snapshot, or refresh lastAccess. An empty control plane returns an empty list, not an error. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "List Sessions",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     }
   ]
 }`

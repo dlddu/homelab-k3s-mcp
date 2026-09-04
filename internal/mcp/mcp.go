@@ -16,6 +16,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
+	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
 
@@ -32,16 +33,24 @@ const (
 
 // Handler serves the MCP JSON-RPC endpoint.
 type Handler struct {
-	k8s        k8s.Service
-	github     github.Service
-	aws        awsconfig.Service
-	grafana    grafana.Service
-	opensearch opensearch.Service
+	k8s             k8s.Service
+	github          github.Service
+	aws             awsconfig.Service
+	grafana         grafana.Service
+	opensearch      opensearch.Service
+	sessionPlatform sessionplatform.Service
 }
 
 // NewHandler builds an MCP handler backed by the given services.
-func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service) *Handler {
-	return &Handler{k8s: k8sSvc, github: ghSvc, aws: awsSvc, grafana: grafanaSvc, opensearch: osSvc}
+func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service) *Handler {
+	return &Handler{
+		k8s:             k8sSvc,
+		github:          ghSvc,
+		aws:             awsSvc,
+		grafana:         grafanaSvc,
+		opensearch:      osSvc,
+		sessionPlatform: sessionSvc,
+	}
 }
 
 type rpcRequest struct {
@@ -171,6 +180,8 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		return h.opensearchDocumentPut(ctx, rawArgs)
 	case "opensearch_document_delete":
 		return h.opensearchDocumentDelete(ctx, rawArgs)
+	case "session_list":
+		return h.sessionList(ctx)
 	default:
 		return nil, errf(-32602, "unknown tool: %s", name)
 	}
@@ -607,6 +618,35 @@ func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
 		"structuredContent": payload,
 		"isError":           false,
 	}, nil
+}
+
+// sessionList enumerates the control plane's sessions. An empty inventory is a
+// successful empty list, not an error, so a caller can tell "no sessions" from
+// "the control plane is unreachable".
+func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
+	sessions, err := h.sessionPlatform.ListSessions(ctx)
+	if err != nil {
+		return toolError(err), nil
+	}
+	items := make([]any, 0, len(sessions))
+	for _, s := range sessions {
+		item := map[string]any{
+			"id":           s.ID,
+			"name":         s.Name,
+			"workloadType": s.WorkloadType,
+			"state":        s.State,
+			"createdAt":    s.CreatedAt,
+			"lastAccess":   s.LastAccess,
+		}
+		// A snapshotted session has had its pods reclaimed, so the control
+		// plane omits `pod`; keep it omitted rather than reporting an empty
+		// name as if a pod existed.
+		if s.Pod != "" {
+			item["pod"] = s.Pod
+		}
+		items = append(items, item)
+	}
+	return successResult(map[string]any{"sessions": items}), nil
 }
 
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {

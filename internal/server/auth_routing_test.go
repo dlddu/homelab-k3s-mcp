@@ -14,7 +14,7 @@ import (
 // configured. In API-key-only mode the route is absent.
 
 func appWith(authCfg *auth.Config) http.Handler {
-	return server.App(authCfg, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch())
+	return server.App(authCfg, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 }
 
 func TestDiscoveryServedWhenOAuthConfigured(t *testing.T) {
