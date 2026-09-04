@@ -28,7 +28,7 @@
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestWriteThenReadRecoversOutput` — 페이로드가 바이트 그대로 전달되고, 그 산출물은 write
   응답이 아니라 **뒤이은 read**로만 관측된다. 출력을 담을 필드가 `WriteResult`에 아예 없는
-  것이 "완료를 기다리지 않는다"의 구조적 표현이다) + 통합 (미작성)
+  것이 "완료를 기다리지 않는다"의 구조적 표현이다) + 통합
   `tests/integration/session_write_ac1.py` — 실 워크로드가 명령을 실제로 실행하는지는 여기서만
   관측된다
 

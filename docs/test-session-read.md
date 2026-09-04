@@ -24,8 +24,8 @@
   네 번째는 첫 호출과 같은 구간을 반환(비파괴).
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
-  (`TestReadFullThenIncremental`, `TestReadIsNonDestructive`) + (미작성) 통합
-  `tests/integration/session.py::test_session_read_ac1_offset_cursor`
+  (`TestReadFullThenIncremental`, `TestReadIsNonDestructive`) + 통합
+  `tests/integration/session_read_ac1.py`
 
 ### 시나리오 2: 상태 분기와 그 노출
 - **사전 조건**: `active`·`idle`·`snapshot` 세션 각 1개
