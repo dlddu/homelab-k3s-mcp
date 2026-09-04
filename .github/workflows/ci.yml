@@ -198,6 +198,14 @@ jobs:
       - name: Apply auth-variant fixture
         run: kubectl apply -f tests/k8s/kind/auth-fixture.yaml
 
+      # The real session-platform control plane (public image, pinned to the SHA
+      # its repo declares for production). session_list talks to it over the
+      # cluster-internal address the base deployment already carries, so this
+      # needs no overlay change -- only the namespace and Service names to match
+      # production, which they do.
+      - name: Apply session-platform control plane fixture
+        run: kubectl apply -f tests/k8s/kind/session-platform.yaml
+
       - name: Wait for github-mock rollout
         run: kubectl -n github-mock rollout status deploy/github-mock --timeout=180s
 
@@ -230,6 +238,12 @@ jobs:
 
       - name: Wait for auth-variant rollout
         run: kubectl -n homelab-k3s-mcp-auth rollout status deploy/homelab-k3s-mcp-auth --timeout=120s
+
+      # Ready before the primary group runs: session_list_ac{1,2}.py seed and
+      # read this control plane. The image is pulled from GHCR (not kind-loaded),
+      # so allow for the pull.
+      - name: Wait for session-platform control plane rollout
+        run: kubectl -n session-platform rollout status deploy/control-plane --timeout=300s
 
       # 파일별 스텝을 나열하지 않는다. tests/integration/run_all.py 가 매칭 단위 파일을
       # 자동 발견해 각 파일이 모듈 docstring에 신고한 `실행 대상`(primary / auth-variant)
@@ -288,6 +302,10 @@ jobs:
           kubectl -n homelab-k3s-mcp-auth get all -o wide || true
           kubectl -n homelab-k3s-mcp-auth describe deploy/homelab-k3s-mcp-auth || true
           kubectl -n homelab-k3s-mcp-auth logs deploy/homelab-k3s-mcp-auth --tail=200 || true
+          kubectl -n session-platform get all -o wide || true
+          kubectl -n session-platform describe deploy/control-plane || true
+          kubectl -n session-platform logs deploy/control-plane --tail=200 || true
+          kubectl -n session-platform get configmaps --show-labels || true
 
   docker:
     name: docker build & push
