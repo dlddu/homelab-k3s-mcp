@@ -439,6 +439,32 @@ const toolsListJSON = `{
         "idempotentHint": true,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "session_write",
+      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive: like session_read it activates its target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) rather than refused. The branch that served the call is reported as 'path' ('active', 'idle->active->write' or 'snapshot->restore->write') and the session is returned as it stands after the write, so a write that revived a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list."
+          },
+          "payload": {
+            "type": "string",
+            "description": "Raw workload input. For a 'shell' session this goes to the PTY stdin, so include a trailing newline to submit a command. For a 'claude-code' session this is one prompt, limited to 1 MiB of UTF-8 bytes."
+          }
+        },
+        "required": ["id", "payload"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Write to Session",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     }
   ]
 }`

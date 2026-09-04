@@ -91,7 +91,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | opensearch_document_delete | V4, V2, V3 | 5 | test-opensearch-document-delete | ✅ 완전 |
 | session_list | V5, V3 | 3 | test-session-list | ✅ 완전 |
 | session_read | V5, V3 | 4 | test-session-read | ✅ 완전 |
-| session_write | V5, V3 | 5 | test-session-write | ✅ 완전 (구현 선행) |
+| session_write | V5, V3 | 5 | test-session-write | ✅ 완전 |
 | platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
 
 ## 가치 커버리지
@@ -148,35 +148,41 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
   (`internal/sessionplatform/sessionplatform_test.go`의 커서 전체→증분→재읽기·비파괴·
   음수 커서 사전 거부(요청 0건)·404 구분·분기 3종(`active`/`idle->active->read`/
   `snapshot->restore->read`) 노출·unavailable +
-  `internal/server/mcp_test.go`의 도구 표면(`readOnlyHint=false`)·인자 검증·not found·미설정 거부).
+  `internal/server/mcp_test.go`의 도구 표면(`readOnlyHint=false`)·인자 검증·not found·미설정 거부),
+  session_write AC3·AC5와 AC1·AC2·AC4의 **도구 계층 절반**
+  (`internal/sessionplatform/sessionplatform_test.go`의 write→read 왕복(페이로드 바이트 그대로
+  전달 + 증분은 **뒤이은 read로만** 관측 = 응답에 출력이 없다는 비블로킹 계약)·분기 3종
+  (`active`/`idle->active->write`/`snapshot->restore->write`) 노출·거부 4종 매핑
+  (404/413/429/507)과 **제어면 문구를 고정했을 때의 쌍쌍 구별**·거부 후에도 기존 출력 조회 가능·
+  빈 id 사전 거부(요청 0건)·unavailable +
+  `internal/server/mcp_test.go`의 도구 표면(`destructiveHint=true`·`idempotentHint=false`)·
+  인자 검증(거부 시 write 호출 0건)·거부 4종·미설정 거부).
 - 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
   platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
-  - **session_write 5 AC — 도구 미구현**. `session_list`·`session_read`는 구현됐고
-    (`internal/sessionplatform` + `internal/mcp`), 남은 것은 `session_write` 하나다.
-    남은 순서: `internal/sessionplatform`에 `WriteSession` 추가 → `internal/mcp` 등록 →
-    단위 → 통합. `session_read`가 그 골격(제어면 클라이언트 메서드 + `Unavailable` 대체 +
-    도구 등록 + 단위)을 이미 증명했으므로 새 판단은 **거부 응답 매핑**에 집중된다 —
-    AC4가 요구하는 not found(404) / 페이로드 상한(413, `claude-code` 프롬프트 1 MiB) /
-    프롬프트 큐 포화(429, 재시도 유의미) / 출력 쿼터 소진(507, 기존 출력은 계속 읽힘)을
-    서로 구별되게 전달해야 한다. `errKind`에는 이미 `kindNotFound`·`kindInvalidArgument`가
-    있으므로 재시도 가능/불가 두 종류를 더하는 것이 남은 설계다.
-    write는 read와 같은 "접근=active화" 부수 효과(유휴 승격·스냅샷 복원)를 가지므로
-    상태 전이를 재현하는 픽스처가 필요하다.
-  - **session 3종의 통합 e2e — 미작성**. `session_list`는 Go 단위로 검증되지만
-    `tests/integration/`에는 아직 케이스가 없다(아래 e2e 렌즈 레지스트리에서 공백으로
-    계수된다). 제어면 스텁 또는 kind에 띄운 제어면 중 택일은 그 렌즈의 몫이다.
-    <!-- 이 항목의 선행 조건이던 "제어면이 클러스터에 없다"는 2026-09-03 해소됐다:
-         제어면은 `session-platform` 네임스페이스에 재배포돼 Deployment `control-plane`
-         1/1 · Service `control-plane:80`(→ 8080)으로 떠 있고,
-         `SESSION_PLATFORM_ENDPOINT`가 `k8s/deployment.yaml`에 배선됐다. -->
-
-    > 이 문단이 2026-08-06~09-03 사이 담고 있던 "session-platform 배포가 클러스터에서
-    > 제거돼 제어면 대상 검증이 불가능하다"는 서술은 더 이상 사실이 아니다. 재배포된 뒤에도
-    > 문장이 남아 12 AC 전체를 "검증 불가"로 묶어 두고 있었다.
+  - **session 3종(read 4 · write 5 = 9 AC)의 통합 e2e — 미작성**. 세 도구 모두 구현됐고
+    (`internal/sessionplatform` + `internal/mcp`, 도구 표면 17종) Go 단위로 검증되지만,
+    `tests/integration/`에 **read·write의 전용 파일이 아직 없다**(아래 e2e 렌즈 레지스트리에서
+    9건이 공백으로 계수된다). 이 축의 소유자는 자매 모델 `tbm_homelab-k3s-mcp-ac-e2e`이고,
+    남은 것은 파일 저작뿐이다 — **선행 조건은 모두 해소됐다**:
+    - 「도구 미구현」은 2026-09-03(`session_list`)·2026-09-04(`session_read`·`session_write`)로
+      닫혔다.
+    - 「제어면이 클러스터에 없다」는 2026-09-03에 닫혔다: 제어면은 `session-platform`
+      네임스페이스에 재배포돼 Deployment `control-plane` 1/1 · Service `control-plane:80`
+      (→ 8080)으로 떠 있고, `SESSION_PLATFORM_ENDPOINT`가 `k8s/deployment.yaml`에 배선됐다.
+    - 「제어면 스텁이냐 kind의 실 제어면이냐」의 **택일도 이미 내려졌다** — 모킹 정책의 `IMG`
+      조항에 따라 **실 제어면**이며, 픽스처 `tests/k8s/kind/session-platform.yaml`이 그것이다
+      (근거는 아래 e2e 렌즈 절의 2026-09-04 항목). session-list 3건이 그 결론 위에서
+      `session_list_ac{1,2,3}.py`로 이미 저작됐다.
+    - 다만 read/write는 목록과 달리 **제어면이 파드를 실제로 프로비저닝하는 경로**(접근=active화,
+      스냅샷 복원)를 타므로, 저작 시 픽스처에 `DATA_PLANE_IMAGE` 배선이 필요한지 먼저 판단할 것.
   - opensearch 3종 — **프로덕션 스모크 미수행**(env 배선이 infrastructure/flux-cd-apps
     반영에 걸려 있음). CI 자동화는 완료; 실제 `kubernetes-docs` 컬렉션 대상
     put→search→delete 확인은 배선 완료 후 수행.
+  - session_write — **프로덕션 스모크는 수행하지 않는다**(공백이 아니라 의도적 제외).
+    `destructiveHint=true`이고 접근만으로 스냅샷 세션을 복원하므로, 프로덕션의 임의 세션을
+    대상으로 시험 호출하면 남의 워크로드에 입력을 주입하고 파드를 되살린다. 이 축의 대체
+    검증은 위 통합 e2e(자매 렌즈)가 kind의 실 제어면에서 닫는다.
 
 ## AC ↔ e2e 1:1 정합성 (reconciler 렌즈)
 
@@ -283,9 +289,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 - **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/platform_auth_safety_ac2.py`(신규 전용 파일): 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
 - **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/platform_auth_safety_ac8.py`(신규 전용 파일): env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
-- **session-read/AC1~AC4 · session-write/AC1~AC5 (9)** → AC별 전용 파일 9개(신규, 파일 단위 규칙 2). 미설정 거부 2건(`session-read/AC4` · `session-write/AC5`)은 각자의 전용 파일 `session_{read_ac4,write_ac5}.py`가 되며, `실행 대상: auth-variant`(port 8088, 자격증명 미부착 변형)를 선언해 다른 "미설정 거부" 파일들과 같은 배포에서 돈다 — `session_list_ac3.py`가 그 자리의 선례다. **선행 조건은 e2e가 아니라 구현이다**: `session_read`·`session_write` 도구 자체가 아직 없고(2026-09-03의 `session_list` 구현은 그 하나만 다뤘다), 그 해소는 자매 모델 `tbm_homelab-k3s-mcp-docs-impl`의 몫이다 — 규칙 4가 "도구·기능 미구현은 예외 사유가 아니다"라고 못박으므로 계수에서는 빠지지 않고 여기 공백으로 남는다. 구현이 착지하면 e2e 픽스처는 이미 서 있다: `tests/k8s/kind/session-platform.yaml`이 실 제어면을 띄우고 `tests/integration/_session_platform.py`가 그 상태 저장소를 시드한다. 다만 read/write는 목록과 달리 **제어면이 파드를 실제로 프로비저닝하는 경로**(접근=active화, 스냅샷 복원)를 타므로, 그 시점에 픽스처에 `DATA_PLANE_IMAGE` 배선이 필요한지를 먼저 판단할 것 — 지금은 세션 생성 경로를 쓰지 않아 일부러 비워 두었다.
+- **session-read/AC1~AC4 · session-write/AC1~AC5 (9)** → AC별 전용 파일 9개(신규, 파일 단위 규칙 2). 미설정 거부 2건(`session-read/AC4` · `session-write/AC5`)은 각자의 전용 파일 `session_{read_ac4,write_ac5}.py`가 되며, `실행 대상: auth-variant`(port 8088, 자격증명 미부착 변형)를 선언해 다른 "미설정 거부" 파일들과 같은 배포에서 돈다 — `session_list_ac3.py`가 그 자리의 선례다. **선행 조건이던 구현은 2026-09-04로 전부 해소됐다**: `session_read`(PR #51)에 이어 `session_write`도 착지해 자매 모델 `tbm_homelab-k3s-mcp-docs-impl`이 자기 몫을 닫았고(도구 표면 17종), 이제 남은 것은 **이 렌즈의 파일 저작뿐**이다 — 규칙 4가 "도구·기능 미구현은 예외 사유가 아니다"라고 못박으므로 그동안에도 계수에서 빠지지 않고 여기 공백으로 남아 있었다. e2e 픽스처도 이미 서 있다: `tests/k8s/kind/session-platform.yaml`이 실 제어면을 띄우고 `tests/integration/_session_platform.py`가 그 상태 저장소를 시드한다. 다만 read/write는 목록과 달리 **제어면이 파드를 실제로 프로비저닝하는 경로**(접근=active화, 스냅샷 복원)를 타므로, 저작 시 픽스처에 `DATA_PLANE_IMAGE` 배선이 필요한지를 먼저 판단할 것 — 지금은 세션 생성 경로를 쓰지 않아 일부러 비워 두었다.
 
-> **session-list 3건 → AC별 전용 파일 3개 — ✅ 완료(2026-09-04)**: backlog 14건 중 **선행 조건이 이번에 해소된 3건**(session-list/AC1·AC2·AC3)을 전용 파일로 저작했다(`session_list_ac{1,2,3}.py`). 매칭 파일 **49 → 52**, 공백 **14 → 11**, 규칙 2 위반 **0 유지**. 남은 11건은 platform 2(AC2 디스커버리·AC8 구성 유연성) + session-read/write 9(도구 미구현 — 자매 모델 소관)다.
+> **session-list 3건 → AC별 전용 파일 3개 — ✅ 완료(2026-09-04)**: backlog 14건 중 **선행 조건이 이번에 해소된 3건**(session-list/AC1·AC2·AC3)을 전용 파일로 저작했다(`session_list_ac{1,2,3}.py`). 매칭 파일 **49 → 52**, 공백 **14 → 11**, 규칙 2 위반 **0 유지**. 남은 11건은 platform 2(AC2 디스커버리·AC8 구성 유연성) + session-read/write 9다. 후자의 선행이던 「도구 미구현」은 같은 날 자매 모델이 `session_read`·`session_write`를 착지시켜 닫혔으므로, 9건에 남은 것은 이 렌즈의 파일 저작뿐이다.
 >
 > **왜 지금인가**: 원장이 적어 둔 두 선행(「도구 미구현」·「session-platform 배포가 클러스터에서 제거됨」)을 2026-09-03의 `session_list` 구현 PR이 각각 구현과 정정으로 닫았고, 같은 PR이 「제어면 스텁 또는 kind에 띄운 제어면 중 택일은 **그 렌즈의 몫이다**」라며 이 셋의 e2e 저작을 여기에 이름으로 배정했다.
 >
@@ -392,6 +398,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-04 | **`session_write` 구현 착지 — 이 모델의 마지막 미구현 도구가 닫혔다** — `internal/sessionplatform`에 `WriteSession`(제어면 `POST /api/v1/sessions/{id}/write` 클라이언트)을, `internal/mcp`에 `session_write` 도구 등록·디스패치를 더해 session-write/AC1~AC5의 **도구 계층**을 구현으로 닫았다(도구 표면 16 → 17). 새 설계 판단은 **거부 응답 매핑 하나**였고, 원장이 적어 둔 「재시도 가능/불가 **두** 종류를 더한다」 대신 **세 종류**(`kindBusy` 429 · `kindTooLarge` 413 · `kindQuotaExhausted` 507)를 더했다 — 두 종류면 413과 507이 한 kind로 접혀 둘의 구별이 제어면이 보내는 산문에만 의존하는데, AC4가 요구하는 것은 네 거부가 서로 구별되는 것이라 그 의존을 구조로 바꿔야 했다. 그 차이를 지키는 것이 `TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse`다: 네 상태코드에 **같은 오류 본문**을 물려 놓고도 메시지가 쌍쌍이 달라야 통과한다(본문을 다르게 두면 두 kind로 접어도 통과해 버려 단정이 공허해진다 — 실제로 첫 판에서 이 구멍이 뮤테이션으로 드러나 테스트를 고쳤다). 페이로드 1 MiB 상한은 **클라이언트에서 선제 거부하지 않는다**: `claude-code`에만 걸리는 워크로드 타입별 규칙이라 조회 없이는 판정할 수 없고, 판정은 제어면에 남기고 413만 구별해 전달하는 것이 맞다. 빈 id는 HTTP 이전에 거부해 「거부된 호출은 세션을 건드리지 못한다」를 요청 0건으로 증명한다 — write는 도착만으로 스냅샷을 복원시키므로 read보다 이 보장이 더 필요하다. 함께 **원장의 살아 있는 어긋남 3건**을 교정했다: 「session 3종의 통합 e2e — 미작성」 항목의 세 단정(「`tests/integration/`에 아직 케이스가 없다」·「e2e 렌즈에서 공백으로 계수된다」·「스텁이냐 실 제어면이냐의 택일은 그 렌즈의 몫이다」)이 모두 거짓이었고 반례가 **같은 파일 안**에 있었다(session-list 3파일 실재 · 레지스트리 ✅ 3행 · 실 제어면 확정 기록). 문서 매트릭스의 `session_write` 행에 남아 있던 `(구현 선행)`과, e2e 렌즈 절 두 곳의 「도구 미구현」 서술도 이 PR이 거짓으로 만드는 자리라 함께 고쳤다. 곁가지로 `_helpers.EXPECTED_TOOLS`를 15 → **17**로 정정했다(`session_read` 누락 + 신규 `session_write` — 단정이 부분집합이라 **깨진 게 아니라 조용히 약해져** 있었고, 이번이 두 번째 재발이라 주석에 「도구를 더하는 PR이 같은 커밋에서 갱신한다」를 규칙으로 명시했다). **AC·PRD·테스트 문서의 신설·삭제·개정 0건**이고 e2e 렌즈 레지스트리 표·집계도 불변이다 — session_write의 통합 e2e는 그 렌즈 소관으로 남는다(공백 11 유지). | 가치 5 / PRD 18 / AC 64 / 테스트 18 · 도구 표면 16 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변) · 도구 표면 17 |
 | 2026-09-04 | **`session_read` 구현 착지 + 원장 어긋남 2곳 교정** — `internal/sessionplatform`에 `ReadSession`(제어면 `POST /api/v1/sessions/{id}/read`, 커서 규약·`path` 분기 노출·404/400 구분)을, `internal/mcp`에 `session_read` 도구 등록·디스패치를 더해 session-read/AC1~AC4의 **도구 계층**을 구현으로 닫았다(도구 표면 15 → 16). 음수 커서·빈 id는 HTTP 이전에 거부해 "상태 불변"을 요청 0건으로 증명한다. 함께 **원장의 살아 있는 어긋남 2곳**을 교정했다 — 「허브 도달 가능 문서」가 실측 39와 어긋난 **38 / 38**로 남아 있었고(분해 괄호에 정책 문서 범주가 없었다), 「문서 인벤토리」 표에 `e2e-mocking-policy.md` 행이 없어 그 파일명이 이 문서에 **0회** 등장했다(#47이 문서를 신설하며 허브 링크만 넣었다). 두 곳 모두 레포 체커의 파싱 범위 밖이라 게이트가 영원히 초록이었다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건**이고 e2e 렌즈 레지스트리·집계도 불변이다 — session_read의 통합 e2e는 그 렌즈 소관으로 남는다. | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변) |
 | 2026-09-04 | **session-list 3건의 통합 e2e 저작** — backlog 14건 중 선행 조건이 해소된 `session-list/AC1·AC2·AC3`을 전용 파일 3개(`session_list_ac{1,2,3}.py`)로 닫았다. 핵심 판단은 「제어면 스텁 vs 실 제어면」이었고 **모킹 정책이 답을 이미 정해 두었다**: `IMG` 예외는 실 구성요소의 이미지를 CI에서 확보할 수 없을 때만 쓸 수 있는데 `ghcr.io/dlddu/session-platform`은 공개 패키지에 arm64 매니페스트를 갖고 있어 러너의 kind가 그대로 당긴다 → 신규 픽스처 `tests/k8s/kind/session-platform.yaml`은 **실 제어면**이고 **모킹 허용목록은 5건·상한 5로 불변**이다. 세션은 제어면의 실 상태 저장소(소유 라벨이 붙은 `session-<id>` ConfigMap)에 시드한다 — `List`가 파드를 조회하지 않으므로 실 API·실 디코딩 경로가 그대로 돌고, MinIO를 `minio-seed`로 시드하는 선례와 같은 자리다. 시드 JSON 필드는 `session.Session`의 구조체 태그에서 확인했다. AC1은 한 파일 안에서 재고를 비워 빈 목록을 관측한 뒤 세션 둘(active·snapshot)을 시드해 열거를 관측하고(파일 간 순서 의존 0, `실행 순서:` 선언 0건), AC2는 파드 집합을 첫 호출 전에 떠서 3회 호출 뒤와 대조한다 — **실 제어면이라 이 단정이 vacuous하지 않다**(스텁이면 만들 파드가 없다). AC3는 `auth-fixture.yaml` 변형에서 도는 7번째 「미설정 거부」 파일이다. homelab 쪽 배선은 무변경 — base `k8s/deployment.yaml`이 이미 `SESSION_PLATFORM_ENDPOINT`를 클러스터 내부 주소로 박아 두었고 픽스처가 프로덕션과 같은 이름(ns `session-platform` · Service `control-plane`)을 쓴다. `ci.yml`은 배포·롤아웃 대기·진단 덤프 3자리만 늘었다(러너 배차 primary 41→43 · auth-variant 9→10). 곁가지로 `_helpers.EXPECTED_TOOLS`를 14 → 15로 정정했다(`session_list` 누락 — 단정이 부분집합이라 **깨진 게 아니라 조용히 약해져** 있었다). tests/·docs/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 49 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 52 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 11 · 🚫 예외 1 · 비-AC 1 |
 | 2026-09-03 | **`session_list` 구현 착지** — `internal/sessionplatform`(제어면 `GET /api/v1/sessions` 클라이언트 + `Unavailable` 대체)과 `internal/mcp` 도구 등록으로 session-list/AC1·AC2·AC3을 구현으로 닫고, `k8s/deployment.yaml`에 `SESSION_PLATFORM_ENDPOINT`를 배선했다. 문서 쪽 변경은 **상태 기술의 교정뿐**이다: 자동화 커버리지의 🔴 항목이 "session-platform 배포가 클러스터에서 제거돼 검증 불가"라는 **이미 사실이 아닌 전제**로 12 AC 전체를 묶어 두고 있었다(제어면은 재배포돼 `session-platform` 네임스페이스에서 `control-plane` 1/1로 동작 중). 남은 공백을 read/write 9건과 통합 e2e로 좁혔다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건.** | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변 — e2e 렌즈 레지스트리·집계도 불변) |

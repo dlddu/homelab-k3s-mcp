@@ -21,8 +21,12 @@ session-platform 세션의 워크로드에 입력을 주입하는 도구.
   (destructive=true: 주입된 입력이 세션 안에서 임의의 명령·프롬프트로 실행된다.
   idempotent=false: 같은 payload 재전송은 같은 동작을 한 번 더 실행한다)
 
-> **구현 선행 문서**: 이 PRD 작성 시점(2026-08-12)에 session-platform 배포는 클러스터에서
-> 제거된 상태이며(레포는 유지), 도구도 미구현이다.
+> **구현 상태(2026-09-04)**: 도구 계층은 구현됐다 — `internal/sessionplatform`의
+> `WriteSession`(제어면 `POST /api/v1/sessions/{id}/write` 클라이언트)과 `internal/mcp`의
+> `session_write` 등록·디스패치이며, AC1~AC5가 Go 단위로 검증된다. 이 PRD 작성 시점
+> (2026-08-12)에 클러스터에서 제거돼 있던 session-platform 배포도 2026-09-03에 복구됐다.
+> 통합 e2e(`tests/integration/`)는 아직 미작성이며, 그 축의 소유자는 AC ↔ e2e 1:1 렌즈다
+> (`docs/doc-tracker.md`의 e2e 렌즈 절).
 
 ## Acceptance Criteria
 

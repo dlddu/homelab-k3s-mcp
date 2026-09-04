@@ -289,14 +289,21 @@ type readCall struct {
 	offset int64
 }
 
+type writeCall struct {
+	id      string
+	payload string
+}
+
 type fakeSessionPlatform struct {
 	mu sync.Mutex
 
-	listCalls int
-	readCalls []readCall
+	listCalls  int
+	readCalls  []readCall
+	writeCalls []writeCall
 
-	listResponse func() ([]sessionplatform.Session, error)
-	readResponse func(id string, offset int64) (*sessionplatform.ReadResult, error)
+	listResponse  func() ([]sessionplatform.Session, error)
+	readResponse  func(id string, offset int64) (*sessionplatform.ReadResult, error)
+	writeResponse func(id, payload string) (*sessionplatform.WriteResult, error)
 }
 
 func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {
@@ -317,6 +324,19 @@ func (f *fakeSessionPlatform) ReadSession(_ context.Context, id string, offset i
 		return f.readResponse(id, offset)
 	}
 	return &sessionplatform.ReadResult{
+		Session: sessionplatform.Session{ID: id, State: "active"},
+		Path:    "active",
+	}, nil
+}
+
+func (f *fakeSessionPlatform) WriteSession(_ context.Context, id, payload string) (*sessionplatform.WriteResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.writeCalls = append(f.writeCalls, writeCall{id: id, payload: payload})
+	if f.writeResponse != nil {
+		return f.writeResponse(id, payload)
+	}
+	return &sessionplatform.WriteResult{
 		Session: sessionplatform.Session{ID: id, State: "active"},
 		Path:    "active",
 	}, nil
