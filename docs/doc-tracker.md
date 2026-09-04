@@ -203,18 +203,18 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - AC 전집: 64
 - 예외 등재: 1
 - 1:1 대상: 63
-- 매칭 파일(전용): 60
+- 매칭 파일(전용): 61
 - 분할 대기 파일(규칙 2 위반): 0
-- 공백 AC: 3
+- 공백 AC: 2
 <!-- /ac-e2e-집계 -->
 
-> 공백 3건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 3건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
+> 공백 2건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 2건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
 >
 > **분할 대기 0 달성(2026-09-03)** — 마지막 겸용 파일 `workload.py`(16 AC)의 선결 판단이었던 「케이스가 공유 픽스처 상태에 순서 의존적」은 이 원장이 지목한 방식, 즉 **각 파일이 자기 선행 조건을 스스로 성립시키는 것**으로 해소했다(아래 완료 노트). 러너의 `실행 순서:` 로 파일 간 순서를 고정하는 길은 결합을 파일 단위로 옮길 뿐 없애지 않으므로 채택하지 않았고, 그 증거로 신규 16개 파일 중 **어느 것도 `실행 순서:` 를 선언하지 않는다**.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### AC 레지스트리 (64) — ✅ 전용 파일 60 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 3 · 🚫 예외 1
+### AC 레지스트리 (64) — ✅ 전용 파일 61 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 2 · 🚫 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -269,7 +269,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | session-write/AC1 | 워크로드 입력 주입 | ✅ 전용 파일 `session_write_ac1.py` |
 | session-write/AC2 | 상태 분기 처리와 노출 | ⬜ 공백 — 케이스 없음 |
 | session-write/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `session_write_ac3.py` |
-| session-write/AC4 | 거부 응답의 구분 전달 | ⬜ 공백 — 케이스 없음 |
+| session-write/AC4 | 거부 응답의 구분 전달 | ✅ 전용 파일 `session_write_ac4.py` |
 | session-write/AC5 | 미설정 시 graceful 거부 | ✅ 전용 파일 `session_write_ac5.py` |
 | workload-list/AC1 | 종류별 워크로드 조회 | ✅ 전용 파일 `workload_list_ac1.py` |
 | workload-list/AC2 | 네임스페이스 스코프 | ✅ 전용 파일 `workload_list_ac2.py` |
@@ -283,17 +283,30 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `workload_scale_ac3.py` |
 
-### ⬜ 공백 backlog (3) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
+### ⬜ 공백 backlog (2) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
 - **session-read/AC2 · session-write/AC2 (2)** → AC별 전용 파일 2개(신규). 둘은 **같은 벽** 하나를 공유한다: `active`·`idle`·`snapshot` 세 분기를 모두 요구하는데, `snapshot` 분기는 `activate → Service.Restore → checkpointerFor(workload)`를 타고 그 함수는 **체크포인터가 `Enabled()`가 아니면 `session.ErrCheckpointDisabled`로 거부한다**("Never reclaim a pod behind synthetic checkpoint metadata"). 픽스처는 `CRIU_ENABLED`를 켜지 않으므로 `main.go`가 `criu.NewStubCheckpointer(false)`를 주입하고 → **복원도 스냅샷 생성도 실패한다.** 그래서 `snapshot` 상태에 도달하는 길도, 그 상태에서 읽거나 쓰는 길도 현재 픽스처엔 없다. 해소하려면 CRIU 런타임·특권 파드·체크포인트 저장소를 kind에 세워야 한다(session-platform 자신도 `deploy/` 오버레이에서만 켠다). **2026-09-04의 데이터 플레인 슬라이스가 이 둘을 닫지 못한 이유가 정확히 이것이다** — 그 슬라이스는 shell 파드를 세웠지만 CRIU 게이트는 건드리지 않았다. `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 **「반쪽 단정」**이므로 하지 않는다.
-- **session-write/AC4 (1) — 거부 응답의 구분 전달** → 전용 파일 1개(신규). ⚠️ **이 항목의 선행 서술은 2026-09-04에 두 번 고쳐졌다.** 처음에는 「선행에 걸리지 않을 가능성이 높다」였고, 같은 날 「AC1과 같은 데이터 플레인 선행을 공유한다」로 고쳐졌으며, 데이터 플레인 슬라이스가 소스를 읽고 **한 번 더** 좁혔다:
-  - **선행은 「데이터 플레인」이 아니라 「claude-code 데이터 플레인」이다.** AC가 요구하는 네 거부 중 **큐 포화(429)와 쿼터 소진(507)은 `data-plane/cmd/agent/claude.go`에서만 나온다** — shell 에이전트의 `POST /write`는 그 두 상태코드를 낼 수 있는 경로 자체가 없다(`no live shell`의 503, 본문 읽기 실패의 400, stdin 쓰기 실패의 500이 전부다). 페이로드 상한(413)도 제어면이 `WorkloadType == claude-code`일 때만 재고, 나머지 하나(없는 세션 404)만 워크로드 타입과 무관하다.
-  - 따라서 이 AC를 열려면 픽스처가 `DATA_PLANE_CLAUDE_CODE_IMAGE`와 `claude-code-credentials` Secret(파드의 `secretEnv`가 **필수** SecretKeyRef다)과 loopback credential-proxy 사이드카까지 갖춰야 한다 — 2026-09-04 슬라이스가 세운 shell 데이터 플레인보다 **엄격히 큰 게이트**이고, 그래서 그 슬라이스는 AC1 둘만 닫고 이 항목을 남겼다.
-  - 네 갈래 중 없는 세션(not found) 하나만 떼어 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤다고 스스로 적은 **「반쪽 단정」**이므로 여전히 하지 않는다.
-  - 이 절은 `check_ac_mapping.py`의 파싱 범위 밖(산문)이라 기계 검증이 없다. 다음 계획은 위 근거를 소스에서 다시 확인한 뒤 착수할 것.
-- **범위 밖으로 함께 남은 것**: `docs/prd-session-write.md` AC1의 **claude-code 절**(「프롬프트 1회 실행이 큐에 적재된다」). 위와 같은 게이트라 `session_write_ac1.py`는 shell 절만 단정하고 그 사실을 자기 docstring에 적었다. AC1 자체는 ✅이며 이 잔여는 **공백이 아니라 강화 후속**이다 — 위 AC4 슬라이스가 claude-code 픽스처를 세우면 같은 PR에서 함께 닫는 것이 자연스럽다.
+> **AC2 둘의 「같은 벽」 서술은 shell 에만 참이다 — claude-code 는 CRIU 를 타지 않는다(2026-09-04 실측, 리드).** `checkpointerFor` 는 **워크로드 타입별로** 체크포인터를 고르고(`s.ckpts[workload]`), 위 문단이 말하는 `NewStubCheckpointer(false)` 는 그중 **shell 의 것**이다. claude-code 는 `CLAUDE_CODE_ARCHIVE_ENABLED` 가 켜지면 CRIU 가 아니라 `criu.NewAgentArchiveCheckpointer`(파일시스템 아카이브)를 받는다 — 제어면 `main.go` 가 그 env 를 보고 `service.WithWorkloadCheckpointer(claude-code, ...)` 를 붙인다. 즉 「특권 파드·CRIU 런타임」은 **shell 로 AC2 를 열려 할 때의** 선행이지 AC2 자체의 선행이 아니다.
+>
+> **다만 이것은 리드이고 아직 검증되지 않았다.** 다음 계획이 착수 전에 확인해야 할 것 셋: (1) 그 게이트가 요구하는 **체크포인트 스토어**(`checkpointStoreDesc`)를 이 하네스에서 어떻게 세우는가 — 켜지지 않으면 제어면이 「checkpoint store misconfigured」로 죽는다, (2) `CLAUDE_CODE_ARCHIVE_ENABLED` 는 `snapshotEnabled` 의 나머지 절반이라 **유휴 리퍼가 함께 살아난다** — 픽스처 머리말이 적은 「시드 세션이 드리프트한다」가 그때 실제 문제가 된다, (3) `idle` 상태에 도달하는 경로가 리퍼 말고 제품 API 에 있는가. 2026-09-04 의 claude-code 슬라이스는 이 셋을 확인하지 않았으므로 게이트를 켜지 않았다.
+
+> **session-write/AC4(거부 응답의 구분 전달) → 전용 파일 `session_write_ac4.py` — ✅ 완료(2026-09-04, claude-code 슬라이스), 단 507 분기는 카브아웃**: 매칭 파일 **60 → 61**, 공백 **3 → 2**, 규칙 2 위반 **0 유지**. 픽스처가 `DATA_PLANE_CLAUDE_CODE_IMAGE` 와 자리표시자 `claude-code-credentials` Secret 을 갖춰 `workloadType=claude-code` 가 이 하네스에서 뜬다.
+>
+> **직전 판이 「네 거부를 전부 단정하라」고 적어 둔 것을 지킬 수 없었고, 그 이유는 「아직 안 했다」가 아니라 「도달 불가」다.** 직전 판은 429·507 을 한 덩어리로 「claude-code 데이터 플레인이면 열린다」고 적었는데, 그것은 **오류가 어디서 나는가**의 답일 뿐 **e2e 가 그 상태에 도달할 수 있는가**의 답이 아니었다. 소스로 갈라 보면 둘의 층이 다르다:
+> - **429(큐 포화)는 도달 가능하다.** `enqueue` 가 `queuedBytes + len(prompt) > maxClaudeQueuedBytes`(**8 MiB**)에서 거부하고, 워커는 프롬프트마다 node 기반 Claude CLI 를 새로 띄우므로 배출이 주입보다 느리다. 상한(1 MiB)짜리 프롬프트 몇 발이면 찬다.
+> - **507(출력 쿼터 소진)은 도달 불가다.** 발화 조건이 `c.out.claudeFullAt(c.scrollbackLimit, ...)`, 즉 `len(buf) > scrollbackLimit − marker` 인데 `scrollbackLimit` 은 `claudeConfig.ScrollbackLimit` 이 0 이면 `maxClaudeScrollbackBytes`(**256 MiB**)로 고정되고, **그 필드를 채우는 env·플래그가 데이터 플레인에 없다** — 에이전트 `main.go` 의 `newClaudeWorkload(claudeConfig{...})` 는 `StateDir`·`Model`·`Binary`·`RunTimeout` 만 env 에서 읽는다(그 필드를 세우는 코드는 아카이브 단위 테스트뿐이다). 우회로였던 「이미 상한을 소진한 아카이브를 복원한다」도 막혀 있다: `claude_archive.go` 가 생성 시와 복원 시 양쪽에서 256 MiB 초과를 거부하므로 제품 경로로는 그런 아카이브가 만들어지지 않는다.
+>
+> **그래서 507 분기를 명시적으로 도려내고, 그 자리를 은폐하지 않았다.** ① 파일 docstring 이 위 근거를 소스 좌표와 함께 적는다. ② 대체 검증은 Go 단위다 — `internal/sessionplatform` 의 `TestWriteMapsControlPlaneRefusals` 와 `TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse`(네 상태코드에 **같은 본문**을 물려도 네 메시지가 쌍쌍이 달라야 한다), 그리고 `internal/server` 의 `TestSessionWriteSurfacesRefusalsDistinctly`. ③ e2e 파일도 **네 접두 상수 전부**에 대해 쌍쌍 구별과 재시도 의미 분리를 단정하므로, 507 문구가 구현에서 떠내려가면 이 파일이 함께 깨진다. ④ **해제 조건**: session-platform 데이터 플레인이 `ScrollbackLimit` 을 설정 표면(env)으로 노출하는 것 — **다른 레포·다른 모델의 몫**이며 이 루프가 열 수 있는 작업이 아니다(이 모델의 산출물은 e2e 테스트와 등재 문서뿐이다).
+>
+> **이것은 08-07·08-13 에 되돌아와 고쳤던 「반쪽 단정」과 형태가 다르다.** 그때의 유예 사유는 「저작하지 않았다」였고 지금은 **구조적 불가**다. 그리고 남긴 자리가 산문 한 줄이 아니라 (근거 · 대체 검증 · 해제 조건 · 소유)의 네 항목이다. 관측 가능한 세 거부를 함께 버리는 선택지(AC4 를 규칙 4 예외로 등재)는 커버리지를 잃으므로 기각했고, 규칙 7(구현 대기)은 기능이 이미 구현됐으므로 해당하지 않는다.
+>
+> **파일이 단정하는 것**: 404(타입 무관, 제어면이 `Get` 에서 막는다) · 413(**파드에 닿지 않는다** — `Service.Write` 가 `activate` **전에** `WorkloadType == claude-code && len(payload) > MaxClaudePromptBytes` 를 본다. 정확히 1 MiB 는 통과하고 +1 바이트가 거부되는 **경계**까지 잰다) · 429(상한 있는 루프로 큐를 채운다) · **429 직후 기존 출력이 `session_read` 로 계속 읽힌다**(AC 가 그 절을 명시한다) · 네 접두의 쌍쌍 구별.
+>
+> **더미 Secret 은 모킹이 아니다 — 모킹 허용목록·상한 5 는 불변이다.** `UPS` 는 CI 클러스터에서 돌릴 수 없는 상류를 **대체**할 때의 항목인데, 여기서 대체된 것은 없다. 도는 것은 실 데이터 플레인이고, 이 파일이 단정하는 세 거부는 **어느 것도 상류를 타지 않는다** — 404·413 은 제어면에서, 429 는 에이전트 자신의 유계 큐에서 결정된다. Secret 의 키 셋(`base-url`·`auth-token`·`k3s-mcp-token`)은 **필수 SecretKeyRef 를 충족시키는 자리표시자**일 뿐이며, 그것이 없으면 파드가 아예 서지 않는다.
+>
+> **`docs/prd-session-write.md` AC1 의 claude-code 절을 같은 PR 에서 닫았다** — 직전 슬라이스가 「AC4 슬라이스가 claude-code 픽스처를 세우면 같은 PR 에서 함께 닫는 것이 자연스럽다」고 적은 그대로다. `session_write_ac1.py` 가 claude-code 세션에 프롬프트를 넣어 **비블로킹 수락**(`{path, session}` 만, 출력 필드 없음)을 단정하고, 「shell 절만 단정한다」는 docstring 서술을 지웠다. **응답 텍스트의 누적은 단정하지 않는다** — 그것은 유효한 상류 자격증명을 요구하고, AC 본문이 「수락」과 「산출물」을 이미 두 문장으로 갈라 놓았으며, 후자는 실 shell 워크로드로 같은 파일이 이미 단정한다.
 
 > **session 2건(session-read/AC1 오프셋 커서 읽기 · session-write/AC1 워크로드 입력 주입) → AC별 전용 파일 2개 — ✅ 완료(2026-09-04)**: backlog 5건 중 **shell 데이터 플레인 하나로 닫히는 2건**을 전용 파일로 저작했다(`session_read_ac1.py` · `session_write_ac1.py`). 매칭 파일 **58 → 60**, 공백 **5 → 3**, 규칙 2 위반 **0 유지**. 이 슬라이스는 **픽스처를 바꾼 첫 session 슬라이스**다 — 앞의 셋은 전부 `ci.yml`·픽스처 무변경이었다.
 >

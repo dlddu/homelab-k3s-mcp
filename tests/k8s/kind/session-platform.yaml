@@ -26,12 +26,37 @@
 #     idle reaper (cmd/control-plane/main.go) -- so seeded session state does
 #     not drift under the tests. Neither is an auth or security layer, so this
 #     is not a `GATE` relaxation.
-#   * DATA_PLANE_CLAUDE_CODE_IMAGE stays unset, so `workloadType=claude-code`
-#     is not deployable here: such a pod needs the claude-code-credentials
-#     Secret through a required SecretKeyRef plus the loopback credential
-#     proxy sidecar. Only `shell` sessions can be created in this harness,
-#     which is what session-read/AC1 and session-write/AC1 need and no more.
-# No env here reads a Secret, so this fixture needs none.
+#   * CLAUDE_CODE_ARCHIVE_ENABLED stays unset for the same reason CRIU does:
+#     it is the *other* half of `snapshotEnabled`, and turning it on would
+#     start the idle reaper. It is also the claude-code checkpoint gate --
+#     `checkpointerFor` picks a checkpointer per workload type, and this
+#     variable is what swaps claude-code's from the disabled stub to
+#     `NewAgentArchiveCheckpointer` (cmd/control-plane/main.go). That makes it
+#     the lead for session-read/AC2 and session-write/AC2, whose `snapshot`
+#     branch is blocked on the *shell* CRIU gate; see the backlog note in
+#     docs/doc-tracker.md. It stays off here because this slice does not need
+#     it and turning it on would need a checkpoint store and a reaper that
+#     does not disturb seeded sessions.
+#
+# DATA_PLANE_CLAUDE_CODE_IMAGE **is** set, and that is what changed on
+# 2026-09-04 (second session slice). session-write/AC4 asks that four control
+# plane refusals reach the caller distinguishably, and three of the four --
+# payload over the limit (413), prompt queue full (429), and the "existing
+# output is still readable afterwards" clause -- exist only for
+# `workloadType=claude-code`: the payload ceiling is measured only when
+# `WorkloadType == claude-code` (control-plane/internal/service/manager.go) and
+# the queue lives in the Claude agent's own `enqueue` (data-plane
+# cmd/agent/claude.go). The same PRD's AC1 has a claude-code clause that was
+# left unasserted for the same reason.
+#
+# Standing that type up needs exactly two things beyond the shell case, and
+# both are here: this image variable, and the claude-code-credentials Secret
+# below. The image is the *same published package and commit tag* as
+# DATA_PLANE_IMAGE -- session-platform publishes one multi-workload data plane
+# image, not a separate claude-code one, and `DATA_PLANE_WORKLOAD` selects the
+# workload inside it (data-plane/Dockerfile). So this adds no pull: the
+# ci.yml preload step already puts that exact tag on the kind node, and the
+# credential-proxy sidecar the control plane attaches runs the same image too.
 #
 # DATA_PLANE_IMAGE **is** set, and that is what changed on 2026-09-04.
 # session-list only ever needed the control plane's own state store, so the
@@ -84,6 +109,43 @@ metadata:
   namespace: session-platform
   labels:
     app: control-plane
+---
+# The Secret a claude-code session pod projects. Every key here is a
+# **placeholder that satisfies a required SecretKeyRef**, not a stand-in for an
+# upstream: the control plane wires `k3s-mcp-token` into the workload container
+# and `base-url`/`auth-token` into the credential-proxy sidecar as non-optional
+# SecretKeyRefs (ClientOrchestrator), so the pod is unschedulable without them.
+# The optional keys (model, k3s-mcp-url, plugin-marketplace-url, ca-cert) are
+# deliberately absent -- an omitted `model` is what makes the agent resolve
+# `platform-default`, which is the value an omitted create-request model
+# normalizes to anyway.
+#
+# This is not an e2e-mocking-policy exception and adds no allowlist entry. The
+# policy's `UPS` category is for an upstream that cannot run in the CI cluster
+# and is therefore *replaced*; nothing is replaced here. What runs is the real
+# data plane, and the three refusals session-write/AC4 asserts never reach
+# Anthropic at all: 404 and 413 are decided by the control plane before the pod
+# is touched, and 429 is decided by the agent's own bounded queue in `enqueue`
+# before any invocation starts. A prompt that the worker does drain will fail
+# against these values, which is fine -- no case here asserts a completed
+# invocation, and session-write/AC1's claude-code clause is about acceptance
+# being non-blocking, not about the model answering.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: claude-code-credentials
+  namespace: session-platform
+  labels:
+    app: data-plane
+type: Opaque
+stringData:
+  # The proxy parses this as its upstream URL and forwards with the token
+  # below; it validates the shape at startup, never the credential.
+  base-url: https://api.anthropic.com
+  auth-token: e2e-placeholder-not-a-credential
+  # Required by the workload container (K3S_MCP_TOKEN). The marketplace plugin
+  # bootstrap that would use it is a runtime concern, not a startup one.
+  k3s-mcp-token: e2e-placeholder-not-a-credential
 ---
 # The identity every session pod is provisioned with. The control plane names
 # it in the pod spec it builds, so the pod is unschedulable without it; see the
@@ -170,6 +232,13 @@ spec:
             # Same commit tag as the control plane image above: one workflow
             # publishes the pair, so they speak the same agent contract.
             - name: DATA_PLANE_IMAGE
+              value: ghcr.io/dlddu/session-platform-data-plane:5f60249f8381d5cfecbe093bb77fc30d874697f4
+            # The same package and tag again: one multi-workload image serves
+            # shell, claude-code and the credential proxy, so this variable is
+            # what makes `workloadType=claude-code` deployable, not a second
+            # image to fetch. Keeping the two values identical also keeps the
+            # ci.yml preload step (which greps this file for one tag) correct.
+            - name: DATA_PLANE_CLAUDE_CODE_IMAGE
               value: ghcr.io/dlddu/session-platform-data-plane:5f60249f8381d5cfecbe093bb77fc30d874697f4
           readinessProbe:
             httpGet:
