@@ -59,8 +59,8 @@ COMMAND = f"printf '%s\\n' {MARKER}\n"
 INCREMENT_TIMEOUT = 30.0
 INCREMENT_POLL = 0.5
 
-#: 갓 뜬 PTY 쉘이 프롬프트를 다 쓸 때까지 기다리는 예산 — "새 출력이 없다"는
-#: 전제를 이 파일이 스스로 성립시키기 위한 것이다(``_settled_cursor``).
+#: 쉘이 프롬프트를 다 쓸 때까지 기다리는 예산 — "새 출력이 없다"와 "같은 구간이
+#: 돌아온다"는 두 전제를 이 파일이 스스로 성립시키기 위한 것이다(``_quiet_end``).
 SETTLE_TIMEOUT = 30.0
 SETTLE_POLL = 0.5
 SETTLE_STABLE_POLLS = 3
@@ -76,32 +76,34 @@ async def _read(session, session_id: str, offset: int | None = None) -> dict:
     return result.structuredContent
 
 
-async def _settled_cursor(session, session_id: str, cursor: int) -> int:
-    """Advance ``cursor`` until the shell has stopped writing, then return it.
+async def _quiet_end(session, session_id: str, offset: int) -> int:
+    """Poll from ``offset`` until the record stops growing; return its end.
 
-    A freshly started PTY bash writes its prompt asynchronously, so the first
-    read can land mid-prompt and the next one would then return the rest. That
-    would make "no new output yields an empty payload" fail for a reason the AC
-    is not about. Reading until the cursor holds still for several consecutive
-    polls establishes the quiet precondition this file needs; the reads
-    themselves are non-consuming, so settling cannot hide output from the cases
-    below.
+    Two cases here need a *quiet* shell, and for the same underlying reason:
+    the shell writes on its own schedule (the prompt when it starts, another
+    prompt after each command finishes), so a read taken mid-write would make
+    "no new output" or "the same span" fail for a reason the AC is not about.
+    Every read reports the record's current end regardless of the offset it was
+    given, so polling until that end holds still for several consecutive tries
+    establishes quiescence. The polls are ordinary non-consuming reads, so
+    settling cannot hide output from the cases below.
     """
+    end = -1
     stable = 0
     deadline = time.monotonic() + SETTLE_TIMEOUT
     while stable < SETTLE_STABLE_POLLS and time.monotonic() < deadline:
-        current = await _read(session, session_id, cursor)
-        if current["nextOffset"] == cursor:
+        current = await _read(session, session_id, offset)
+        if current["nextOffset"] == end:
             stable += 1
         else:
-            cursor = current["nextOffset"]
+            end = current["nextOffset"]
             stable = 0
         await asyncio.sleep(SETTLE_POLL)
     assert stable >= SETTLE_STABLE_POLLS, (
         f"the shell never stopped writing within {SETTLE_TIMEOUT:.0f}s "
-        f"(cursor {cursor})"
+        f"(last end {end})"
     )
-    return cursor
+    return end
 
 
 async def test_session_read_ac1_offset_zero_returns_everything(
@@ -182,21 +184,33 @@ async def test_session_read_ac1_cursor_returns_only_the_increment(
 
 
 async def test_session_read_ac1_repeating_a_cursor_replays_the_span(
-    session, session_id: str, cursor: int, expected: str
+    session, session_id: str, cursor: int, observed: str
 ) -> None:
     """AC: session-read/AC1 — the same cursor always returns the same span.
 
-    Reading is non-consuming, so a caller that lost its copy can re-read. The
-    span compared here is the one the previous case observed, so a control
-    plane that consumed output would return something shorter and fail.
+    Two assertions, because "the same span" has two halves. *Repeatable*: two
+    reads at one cursor return byte-identical spans -- settled first, since the
+    shell prints a fresh prompt after the command finishes and comparing across
+    that append would fail for a reason the AC is not about. *Non-consuming*:
+    what the increment case already received is still there, as a prefix of
+    what the record now holds from that cursor. A control plane that consumed
+    output would return something shorter and fail the second one.
     """
-    again = await _read(session, session_id, cursor)
+    await _quiet_end(session, session_id, cursor)
 
-    assert again["payload"] == expected, (
-        f"re-reading cursor {cursor} returned a different span: "
-        f"{again['payload']!r} != {expected!r}"
+    again = await _read(session, session_id, cursor)
+    once_more = await _read(session, session_id, cursor)
+
+    assert again["payload"] == once_more["payload"], (
+        f"two reads at cursor {cursor} returned different spans: "
+        f"{again['payload']!r} != {once_more['payload']!r}"
     )
-    print("replay ok:", cursor)
+    assert again["nextOffset"] == once_more["nextOffset"], (again, once_more)
+    assert again["payload"].startswith(observed), (
+        f"re-reading cursor {cursor} no longer replays what it already "
+        f"returned: {again['payload']!r} does not start with {observed!r}"
+    )
+    print("replay ok:", cursor, "->", again["nextOffset"])
 
 
 async def run() -> None:
@@ -211,7 +225,7 @@ async def run() -> None:
             first = await test_session_read_ac1_offset_zero_returns_everything(
                 session, session_id
             )
-            cursor = await _settled_cursor(session, session_id, first["nextOffset"])
+            cursor = await _quiet_end(session, session_id, first["nextOffset"])
 
             await test_session_read_ac1_cursor_is_empty_without_new_output(
                 session, session_id, cursor
