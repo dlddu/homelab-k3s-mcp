@@ -412,6 +412,33 @@ const toolsListJSON = `{
         "idempotentHint": true,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "session_read",
+      "description": "Read a session-platform session's accumulated workload output from a byte-offset cursor. Pass 'offset' 0 (or omit it) for everything since the session started, then pass the returned 'nextOffset' to get only what has accumulated since; the same cursor always returns the same span, so reading never consumes output. What the output is depends on the session's workloadType: for 'shell' it is merged PTY stdout/stderr, for 'claude-code' it is the assistant text deltas plus diagnostic stderr. Reading is NOT passive: the control plane activates the target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) before the read. The branch that served the call is reported as 'path' ('active', 'idle->active->read' or 'snapshot->restore->read') and the session is returned as it stands after the read, so that side effect is never silent. An unknown id is a not-found error and a negative offset is an argument error; neither touches the session. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list."
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Server-issued byte cursor from a previous read's nextOffset. Defaults to 0, which returns the full output accumulated since session start. Use the server's cursor rather than a computed string length."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Read Session Output",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
     }
   ]
 }`
