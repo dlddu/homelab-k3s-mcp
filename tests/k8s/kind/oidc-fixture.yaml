@@ -1,0 +1,442 @@
+# OIDC issuer + the auth-configuration deployment variants that
+# platform-auth-safety/AC2 (인증 디스커버리) and /AC8 (인증 방식 구성 유연성) need.
+#
+# Neither AC is observable on the deployments this repo already stands up. The
+# primary kind deployment runs with MCP_AUTH_DISABLED=1, and the auth-variant
+# (tests/k8s/kind/auth-fixture.yaml) is API-key-only, so no deployment here has
+# ever had MCP_OAUTH_* set -- and OAuth is exactly what advertises the discovery
+# document. This file adds the missing half.
+#
+# The issuer is a REAL OpenID Connect provider (dex), not a stub that serves two
+# static JSON files. docs/e2e-mocking-policy.md counts real implementations as
+# harness, not mocking (MinIO stands in for S3 and single-node OpenSearch for
+# Serverless on exactly that basis), and its two candidate categories both
+# exclude a stub here: `UPS` requires that the real upstream cannot be run in the
+# CI cluster, and `IMG` requires that the image cannot be pulled. ghcr.io/dexidp/dex
+# is a public image with a linux/arm64 manifest, so neither holds and a stub
+# issuer would be an unregistrable mocking point. The 2026-09-04 session-list
+# slice reached the same conclusion about the session-platform control plane.
+# => 허용목록·상한은 이 파일 때문에 변하지 않는다 (등재 5 · 상한 5 그대로).
+#
+# What runs here, and which AC8 configuration each one is:
+#
+#   dex                          -- the issuer. Serves OIDC discovery + JWKS.
+#   homelab-k3s-mcp-oauth        -- (c) MCP_OAUTH_* and MCP_API_KEYS both set.
+#                                   Also the `oauth-variant` runner group target.
+#   homelab-k3s-mcp-oauth-only   -- (b) MCP_OAUTH_* only.
+#   homelab-k3s-mcp-no-auth      -- (d) neither, and MCP_AUTH_DISABLED unset.
+#                                   This one is MEANT to fail to start.
+#
+# Configuration (a) -- MCP_API_KEYS only -- is the existing auth-fixture.yaml
+# deployment; platform_auth_safety_ac8.py runs against it directly and reaches
+# the three variants here over short-lived port-forwards.
+#
+# No credential secrets are attached to any of the servers, for the same reason
+# auth-fixture.yaml attaches none: main.go's buildXService helpers degrade to an
+# unavailable service and the server still starts, which is all these ACs need.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dex
+  labels:
+    app.kubernetes.io/name: dex
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# Minimal dex configuration. cmd/dex/config.go::Validate() requires exactly
+# three things -- issuer, storage and a web listen address -- and v2.44.0 has no
+# "at least one connector" check, so a discovery-only issuer needs nothing else.
+# Memory storage keeps the signing keys in-process; dex creates the initial RSA
+# key set at startup, which is what makes /keys non-empty on the first fetch.
+#
+# The issuer value must equal MCP_OAUTH_ISSUER on the servers below and ISSUER in
+# tests/integration/_oidc.py. It carries no path component, so discovery is at
+# /.well-known/openid-configuration and the key set at /keys.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dex-config
+  namespace: dex
+data:
+  config.yaml: |
+    issuer: http://dex.dex.svc.cluster.local:5556
+    storage:
+      type: memory
+    web:
+      http: 0.0.0.0:5556
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dex
+  namespace: dex
+  labels:
+    app.kubernetes.io/name: dex
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dex
+  template:
+    metadata:
+      labels:
+        app: dex
+    spec:
+      containers:
+        - name: dex
+          # Pinned by digest: the tag alone would let the issuer change under a
+          # rerun, and these ACs assert what it serves.
+          image: ghcr.io/dexidp/dex:v2.44.0@sha256:5d0656fce7d453c0e3b2706abf40c0d0ce5b371fb0b73b3cf714d05f35fa5f86
+          args: ["dex", "serve", "/etc/dex/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 5556
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dex
+              readOnly: true
+          # Readiness is the discovery document rather than /healthz: a server
+          # that answers /healthz but has not published its key set yet would let
+          # the MCP variants below start their OIDC discovery too early.
+          readinessProbe:
+            httpGet:
+              path: /.well-known/openid-configuration
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: config
+          configMap:
+            name: dex-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dex
+  namespace: dex
+  labels:
+    app.kubernetes.io/name: dex
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app: dex
+  ports:
+    - name: http
+      port: 5556
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-oauth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-oauth
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# (c) Both credential paths configured. MCP_OAUTH_RESOURCE is deliberately set to
+# something other than the audience so the Resource != Audience branch of
+# auth.configureOAuth is the one actually exercised, and so the resource_metadata
+# URL in the WWW-Authenticate challenge is derived from a value the test can tell
+# apart from the audience.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-oauth
+  namespace: homelab-k3s-mcp-oauth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-oauth
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-oauth
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-oauth
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # Must match ISSUER/AUDIENCE/RESOURCE in tests/integration/_oidc.py.
+            - name: MCP_OAUTH_ISSUER
+              value: http://dex.dex.svc.cluster.local:5556
+            - name: MCP_OAUTH_AUDIENCE
+              value: homelab-k3s-mcp
+            - name: MCP_OAUTH_RESOURCE
+              value: http://homelab-k3s-mcp-oauth.homelab-k3s-mcp-oauth.svc.cluster.local
+            # Throwaway CI credential; must match API_KEY in _oidc.py. Distinct
+            # from the auth-variant's key so a test cannot pass by presenting the
+            # wrong deployment's key.
+            - name: MCP_API_KEYS
+              value: ci-oauth-e2e-key
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-oauth
+  namespace: homelab-k3s-mcp-oauth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-oauth
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-oauth
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# (b) OAuth only. No MCP_API_KEYS at all: this is the "IdP-only" deployment shape
+# AC8 says must keep working exactly as before API keys existed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-oauth-only
+  namespace: homelab-k3s-mcp-oauth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-oauth-only
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-oauth-only
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-oauth-only
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            - name: MCP_OAUTH_ISSUER
+              value: http://dex.dex.svc.cluster.local:5556
+            - name: MCP_OAUTH_AUDIENCE
+              value: homelab-k3s-mcp
+            - name: MCP_OAUTH_RESOURCE
+              value: http://homelab-k3s-mcp-oauth-only.homelab-k3s-mcp-oauth.svc.cluster.local
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-oauth-only
+  namespace: homelab-k3s-mcp-oauth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-oauth-only
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-oauth-only
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+# (d) Neither credential path configured, and MCP_AUTH_DISABLED is NOT set.
+#
+# This deployment is expected to CRASHLOOP, and that is the assertion: main.go
+# calls auth.FromEnv, which refuses to build a config when nothing gates /mcp,
+# and exits 1 rather than serve the endpoint undefended. It carries no probes and
+# no Service because it never serves, and .github/workflows/ci.yml deliberately
+# does NOT wait for its rollout -- waiting would block CI on a pod that is
+# supposed to never become Available.
+#
+# It is also what keeps the AC2 argument honest: "the OAuth deployments are
+# Available, therefore they completed OIDC discovery and the JWKS fetch at
+# startup" only means something because a server that fails that path really does
+# stay down, and this is where that is observed.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-no-auth
+  namespace: homelab-k3s-mcp-oauth
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-no-auth
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-no-auth
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-no-auth
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
