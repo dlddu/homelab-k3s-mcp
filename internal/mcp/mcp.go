@@ -182,6 +182,8 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		return h.opensearchDocumentDelete(ctx, rawArgs)
 	case "session_list":
 		return h.sessionList(ctx)
+	case "session_read":
+		return h.sessionRead(ctx, rawArgs)
 	default:
 		return nil, errf(-32602, "unknown tool: %s", name)
 	}
@@ -647,6 +649,61 @@ func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 		items = append(items, item)
 	}
 	return successResult(map[string]any{"sessions": items}), nil
+}
+
+// sessionRead reads one session's accumulated output from a byte cursor. Unlike
+// sessionList this is not a passive call: the control plane activates the target
+// first, so the result carries both the branch it took and the session as it
+// stands afterwards. A caller that reads a snapshotted session has just brought
+// its pod back, and must be able to see that from the response alone.
+func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	// offset is optional and defaults to 0, "everything since session start".
+	var offset int64
+	if ov, present := obj["offset"]; present && ov != nil {
+		oi, ok := intValue(ov)
+		if !ok {
+			return nil, errf(-32602, "offset must be an integer")
+		}
+		if oi < 0 {
+			return nil, errf(-32602, "offset must be >= 0")
+		}
+		offset = oi
+	}
+
+	result, err := h.sessionPlatform.ReadSession(ctx, *id, offset)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	session := map[string]any{
+		"id":           result.Session.ID,
+		"name":         result.Session.Name,
+		"workloadType": result.Session.WorkloadType,
+		"state":        result.Session.State,
+		"createdAt":    result.Session.CreatedAt,
+		"lastAccess":   result.Session.LastAccess,
+	}
+	// Same rule as sessionList: a reclaimed pod is an absent field, not an
+	// empty name. After a restoring read the pod is normally back.
+	if result.Session.Pod != "" {
+		session["pod"] = result.Session.Pod
+	}
+
+	return successResult(map[string]any{
+		"payload":    result.Payload,
+		"nextOffset": result.NextOffset,
+		"path":       result.Path,
+		"session":    session,
+	}), nil
 }
 
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {

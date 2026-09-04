@@ -33,6 +33,7 @@
 | PRD (공통) | `prd-platform-auth-safety.md` |
 | 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (18개) |
 | 상태 추적 | `doc-tracker.md` |
+| 정책 | `e2e-mocking-policy.md` (E2E 모킹 최소화 정책의 SSOT — 등재·예외의 단일 출처) |
 | 배포 골격 | `index.html`(허브), `reader.html`(마크다운 뷰어), `.nojekyll` |
 
 ## 문서 공개 (GitHub Pages)
@@ -45,7 +46,7 @@
 | 공개 URL | `https://dlddu.github.io/homelab-k3s-mcp/` |
 | Pages 설정 | ⬜ **사용자 작업 대기** — Settings → Pages → Source `Deploy from a branch` → `main` + `/docs` |
 | 배포 골격 | ✅ `index.html`(허브) · `reader.html`(뷰어) · `.nojekyll` |
-| 허브 도달 가능 문서 | ✅ **38 / 38** (가치 1 + PRD 18 + 테스트 18 + 상태 추적 1), 끊긴 링크 0 |
+| 허브 도달 가능 문서 | ✅ **39 / 39** (가치 1 + PRD 18 + 테스트 18 + 상태 추적 1 + 정책 1), 끊긴 링크 0 |
 | 공개 범위 | 레포가 **public** — `docs/`의 마크다운은 이미 GitHub에서 공개 상태였고, Pages는 그것을 읽기 좋게 서빙할 뿐이다. 새로 공개되는 문서 없음 |
 | 비공개 유지 문서 | (없음) |
 
@@ -89,7 +90,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | opensearch_document_put | V4, V2, V3 | 5 | test-opensearch-document-put | ✅ 완전 |
 | opensearch_document_delete | V4, V2, V3 | 5 | test-opensearch-document-delete | ✅ 완전 |
 | session_list | V5, V3 | 3 | test-session-list | ✅ 완전 |
-| session_read | V5, V3 | 4 | test-session-read | ✅ 완전 (구현 선행) |
+| session_read | V5, V3 | 4 | test-session-read | ✅ 완전 |
 | session_write | V5, V3 | 5 | test-session-write | ✅ 완전 (구현 선행) |
 | platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
 
@@ -142,15 +143,26 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
   디스커버리 조건부 — `internal/auth/auth_test.go`·`internal/server/auth_routing_test.go`),
   session_list 전 AC(3 — `internal/sessionplatform/sessionplatform_test.go`의 열거·빈 목록·
   수동적 조회(요청은 `GET /api/v1/sessions` 뿐)·unavailable + `internal/server/mcp_test.go`의
-  도구 표면·미설정 거부).
+  도구 표면·미설정 거부),
+  session_read AC1·AC3·AC4와 AC2의 **도구 계층 절반**
+  (`internal/sessionplatform/sessionplatform_test.go`의 커서 전체→증분→재읽기·비파괴·
+  음수 커서 사전 거부(요청 0건)·404 구분·분기 3종(`active`/`idle->active->read`/
+  `snapshot->restore->read`) 노출·unavailable +
+  `internal/server/mcp_test.go`의 도구 표면(`readOnlyHint=false`)·인자 검증·not found·미설정 거부).
 - 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
   platform AC4(하드닝 — `k8s/deployment.yaml`).
 - 🔴 **자동화 공백 — 추가 권장**:
-  - **session_read·session_write 9 AC — 도구 미구현**. `session_list`는 구현됐고
-    (`internal/sessionplatform` + `internal/mcp`), 나머지 두 도구는 아직 코드가 없다.
-    남은 순서: `internal/sessionplatform`에 read/write 추가 → 단위 → 통합.
-    read/write는 "접근=active화" 부수 효과(유휴 승격·스냅샷 복원)를 가지므로 상태 전이를
-    재현하는 픽스처가 필요하다.
+  - **session_write 5 AC — 도구 미구현**. `session_list`·`session_read`는 구현됐고
+    (`internal/sessionplatform` + `internal/mcp`), 남은 것은 `session_write` 하나다.
+    남은 순서: `internal/sessionplatform`에 `WriteSession` 추가 → `internal/mcp` 등록 →
+    단위 → 통합. `session_read`가 그 골격(제어면 클라이언트 메서드 + `Unavailable` 대체 +
+    도구 등록 + 단위)을 이미 증명했으므로 새 판단은 **거부 응답 매핑**에 집중된다 —
+    AC4가 요구하는 not found(404) / 페이로드 상한(413, `claude-code` 프롬프트 1 MiB) /
+    프롬프트 큐 포화(429, 재시도 유의미) / 출력 쿼터 소진(507, 기존 출력은 계속 읽힘)을
+    서로 구별되게 전달해야 한다. `errKind`에는 이미 `kindNotFound`·`kindInvalidArgument`가
+    있으므로 재시도 가능/불가 두 종류를 더하는 것이 남은 설계다.
+    write는 read와 같은 "접근=active화" 부수 효과(유휴 승격·스냅샷 복원)를 가지므로
+    상태 전이를 재현하는 픽스처가 필요하다.
   - **session 3종의 통합 e2e — 미작성**. `session_list`는 Go 단위로 검증되지만
     `tests/integration/`에는 아직 케이스가 없다(아래 e2e 렌즈 레지스트리에서 공백으로
     계수된다). 제어면 스텁 또는 kind에 띄운 제어면 중 택일은 그 렌즈의 몫이다.
@@ -380,6 +392,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-04 | **`session_read` 구현 착지 + 원장 어긋남 2곳 교정** — `internal/sessionplatform`에 `ReadSession`(제어면 `POST /api/v1/sessions/{id}/read`, 커서 규약·`path` 분기 노출·404/400 구분)을, `internal/mcp`에 `session_read` 도구 등록·디스패치를 더해 session-read/AC1~AC4의 **도구 계층**을 구현으로 닫았다(도구 표면 15 → 16). 음수 커서·빈 id는 HTTP 이전에 거부해 "상태 불변"을 요청 0건으로 증명한다. 함께 **원장의 살아 있는 어긋남 2곳**을 교정했다 — 「허브 도달 가능 문서」가 실측 39와 어긋난 **38 / 38**로 남아 있었고(분해 괄호에 정책 문서 범주가 없었다), 「문서 인벤토리」 표에 `e2e-mocking-policy.md` 행이 없어 그 파일명이 이 문서에 **0회** 등장했다(#47이 문서를 신설하며 허브 링크만 넣었다). 두 곳 모두 레포 체커의 파싱 범위 밖이라 게이트가 영원히 초록이었다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건**이고 e2e 렌즈 레지스트리·집계도 불변이다 — session_read의 통합 e2e는 그 렌즈 소관으로 남는다. | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변) |
 | 2026-09-04 | **session-list 3건의 통합 e2e 저작** — backlog 14건 중 선행 조건이 해소된 `session-list/AC1·AC2·AC3`을 전용 파일 3개(`session_list_ac{1,2,3}.py`)로 닫았다. 핵심 판단은 「제어면 스텁 vs 실 제어면」이었고 **모킹 정책이 답을 이미 정해 두었다**: `IMG` 예외는 실 구성요소의 이미지를 CI에서 확보할 수 없을 때만 쓸 수 있는데 `ghcr.io/dlddu/session-platform`은 공개 패키지에 arm64 매니페스트를 갖고 있어 러너의 kind가 그대로 당긴다 → 신규 픽스처 `tests/k8s/kind/session-platform.yaml`은 **실 제어면**이고 **모킹 허용목록은 5건·상한 5로 불변**이다. 세션은 제어면의 실 상태 저장소(소유 라벨이 붙은 `session-<id>` ConfigMap)에 시드한다 — `List`가 파드를 조회하지 않으므로 실 API·실 디코딩 경로가 그대로 돌고, MinIO를 `minio-seed`로 시드하는 선례와 같은 자리다. 시드 JSON 필드는 `session.Session`의 구조체 태그에서 확인했다. AC1은 한 파일 안에서 재고를 비워 빈 목록을 관측한 뒤 세션 둘(active·snapshot)을 시드해 열거를 관측하고(파일 간 순서 의존 0, `실행 순서:` 선언 0건), AC2는 파드 집합을 첫 호출 전에 떠서 3회 호출 뒤와 대조한다 — **실 제어면이라 이 단정이 vacuous하지 않다**(스텁이면 만들 파드가 없다). AC3는 `auth-fixture.yaml` 변형에서 도는 7번째 「미설정 거부」 파일이다. homelab 쪽 배선은 무변경 — base `k8s/deployment.yaml`이 이미 `SESSION_PLATFORM_ENDPOINT`를 클러스터 내부 주소로 박아 두었고 픽스처가 프로덕션과 같은 이름(ns `session-platform` · Service `control-plane`)을 쓴다. `ci.yml`은 배포·롤아웃 대기·진단 덤프 3자리만 늘었다(러너 배차 primary 41→43 · auth-variant 9→10). 곁가지로 `_helpers.EXPECTED_TOOLS`를 14 → 15로 정정했다(`session_list` 누락 — 단정이 부분집합이라 **깨진 게 아니라 조용히 약해져** 있었다). tests/·docs/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 49 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 52 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 11 · 🚫 예외 1 · 비-AC 1 |
 | 2026-09-03 | **`session_list` 구현 착지** — `internal/sessionplatform`(제어면 `GET /api/v1/sessions` 클라이언트 + `Unavailable` 대체)과 `internal/mcp` 도구 등록으로 session-list/AC1·AC2·AC3을 구현으로 닫고, `k8s/deployment.yaml`에 `SESSION_PLATFORM_ENDPOINT`를 배선했다. 문서 쪽 변경은 **상태 기술의 교정뿐**이다: 자동화 커버리지의 🔴 항목이 "session-platform 배포가 클러스터에서 제거돼 검증 불가"라는 **이미 사실이 아닌 전제**로 12 AC 전체를 묶어 두고 있었다(제어면은 재배포돼 `session-platform` 네임스페이스에서 `control-plane` 1/1로 동작 중). 남은 공백을 read/write 9건과 통합 e2e로 좁혔다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건.** | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변 — e2e 렌즈 레지스트리·집계도 불변) |
 | 2026-09-03 | 마지막 분할 대기 파일 `workload.py`(16 AC 겸용)를 **AC별 전용 파일 16개**로 분할해 **규칙 2 위반을 0**으로 만들었다. 선결 판단이었던 「케이스가 공유 픽스처 상태에 순서 의존적」은 원장이 지목한 방식대로 **각 파일이 자기 선행 조건을 스스로 성립시키는 것**으로 해소했다 — `_workload.py::ensure_workload_fixture_baseline()` 이 `deploy/workload-fixture` 를 매니페스트 기준선(Ready 파드 정확히 1개)으로 멱등하게 되돌리고, 픽스처를 읽거나 변형하는 9개 파일이 각자 `run()` 에서 그것을 부른다. `실행 순서:` 로 파일 간 순서를 고정하는 길은 결합을 옮길 뿐이라 채택하지 않았고, 그 증거로 신규 16개 파일 중 어느 것도 `실행 순서:` 를 선언하지 않는다. 유일한 신규 로직은 `wait_for_single_ready_pod()`(`rollout status` 는 구 파드의 Terminating 을 기다리지 않는데 `pod_describe` 는 셀렉터로 파드 하나를 고른다)이며, 선행 조건은 시험 대상 도구가 아니라 kubectl 로 세운다. 케이스 함수·상수는 ast 소스 세그먼트로 옮겨 **정의 39개 중 36개가 원본과 AST 동일**함을 대조로 확인했다(예외 셋은 선언됨 — `run` 1개는 파일별 디스패처 16개로 재작성, `workload-scale/AC1` 케이스는 분할 후 거짓이 되는 docstring 한 문장만 고쳐 body AST 동일을 따로 대조, 죽은 상수 `EXEC_NAMESPACE` 1개 제거 — 단언 무변경). 공유 표면은 매칭 단위 밖 `_workload.py` 로 내렸다. 러너가 파일을 자동 발견하므로 신규 픽스처·신규 CI 스텝 없음 — `ci.yml` 무변경(primary 배차 26 → 41, auth-variant 9 불변). `docs/test-*.md` 6종의 자동화 필드에서 `workload.py` 참조를 전용 파일로 재조준했고, 그중 platform AC3 필드의 「정적 검증 + delete/secret 부재 단언 자동화 추가 권장」은 2026-08-07 이후 실제로 e2e 단언이 존재하므로 함께 교정했다. tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 33 · ⬜ 분할 대기 16 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 49 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 |

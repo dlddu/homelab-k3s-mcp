@@ -284,12 +284,19 @@ func (f *fakeOpenSearch) DeleteDocument(_ context.Context, index, id string) (*o
 	return &opensearch.DeleteResult{Index: index, ID: id, Result: "deleted"}, nil
 }
 
+type readCall struct {
+	id     string
+	offset int64
+}
+
 type fakeSessionPlatform struct {
 	mu sync.Mutex
 
 	listCalls int
+	readCalls []readCall
 
 	listResponse func() ([]sessionplatform.Session, error)
+	readResponse func(id string, offset int64) (*sessionplatform.ReadResult, error)
 }
 
 func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {
@@ -300,6 +307,19 @@ func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.S
 		return f.listResponse()
 	}
 	return []sessionplatform.Session{}, nil
+}
+
+func (f *fakeSessionPlatform) ReadSession(_ context.Context, id string, offset int64) (*sessionplatform.ReadResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.readCalls = append(f.readCalls, readCall{id: id, offset: offset})
+	if f.readResponse != nil {
+		return f.readResponse(id, offset)
+	}
+	return &sessionplatform.ReadResult{
+		Session: sessionplatform.Session{ID: id, State: "active"},
+		Path:    "active",
+	}, nil
 }
 
 func unavailableK8s() k8s.Service         { return k8s.NewUnavailable("") }
