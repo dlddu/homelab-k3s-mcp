@@ -7,8 +7,12 @@
 - AC4: 미설정 시 graceful 거부 (PRD: session_read)
 
 > **자동화 상태(2026-09-04)**: 도구는 구현됐고 **Go 단위는 작성됨**. 통합(`tests/integration/`)은
-> 아직 미작성이라 아래 "자동화" 필드에서 `(미작성)`으로 남는다 — 그 축의 소유자는 AC ↔ e2e 1:1
-> 렌즈(`doc-tracker.md`)다.
+> **시나리오 3·4가 작성됐고**(`session_read_ac{3,4}.py`) 시나리오 1·2는 아직 미작성이라 아래
+> "자동화" 필드에서 `(미작성)`으로 남는다 — 그 축의 소유자는 AC ↔ e2e 1:1 렌즈(`doc-tracker.md`)다.
+> 남은 둘의 선행은 **저작이 아니라 픽스처**다: 읽기는 제어면이 세션 파드의 IP를 해석해 에이전트
+> `:8090/read`를 치므로 실 데이터 플레인 파드가 필요하고(시나리오 1), 시나리오 2의 `snapshot`
+> 분기는 그 위에 CRIU 게이트까지 요구한다(게이트 off면 `Restore`가 `ErrCheckpointDisabled`로
+> 거부된다). 근거와 해소 조건은 `doc-tracker.md`의 공백 backlog에 적혀 있다.
 
 ## 테스트 시나리오
 
@@ -46,10 +50,12 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestReadRejectsNegativeOffset`, `TestReadNotFound`) + `internal/server/mcp_test.go`
-  (`TestSessionReadRejectsBadArguments`, `TestSessionReadSurfacesNotFound`) + (미작성) 통합
-  `tests/integration/session.py::test_session_read_ac3_invalid_target_and_cursor`.
+  (`TestSessionReadRejectsBadArguments`, `TestSessionReadSurfacesNotFound`) + 통합
+  `tests/integration/session_read_ac3.py`.
   "상태가 변하지 않는다"는 **요청이 0건임**으로 증명한다 — 음수 커서·빈 id는 HTTP에 닿기 전에
-  거부되므로 대상 세션을 건드릴 수 없다.
+  거부되므로 대상 세션을 건드릴 수 없다. 통합 쪽은 그 구조를 밖에서 되받는다: 두 실패의 층이
+  서로 다르고(not found는 도구 에러, 잘못된 커서는 `-32602` 프로토콜 에러) 두 호출 뒤 실재
+  세션의 상태·`lastAccess`와 제어면 네임스페이스의 파드 집합이 모두 불변이다.
 
 ### 시나리오 4: 미설정 시 도구 에러
 - **사전 조건**: `SESSION_PLATFORM_ENDPOINT` 미설정
@@ -59,5 +65,6 @@
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestUnavailableRefusesRead`) + `internal/server/mcp_test.go`
   (`TestSessionReadUnavailableReturnsToolError` — 거부가 이 도구에 갇히고 `ping`은 계속 `pong`)
-  + (미작성) 통합
+  + 통합
   `tests/integration/session_read_ac4.py::test_session_read_ac4_unconfigured_refusal`
+  (`실행 대상: auth-variant` — 자격증명을 하나도 붙이지 않은 변형이라 AC의 전제가 여기서만 참이다)
