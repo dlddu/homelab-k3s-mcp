@@ -1,17 +1,27 @@
-"""session-list 파일들이 공유하는 제어면 표면 (매칭 단위가 아니다).
+"""session-* 파일들이 공유하는 제어면 표면 (매칭 단위가 아니다).
 
 `_` 접두라 `run_all.py::matching_unit_paths()` 가 걸러내므로 AC를 주검증하지 않고
 `검증 AC:` 선언도 갖지 않는다 — `_workload.py`·`_auth_variant.py` 와 같은 자리다.
 
 These helpers drive ``tests/k8s/kind/session-platform.yaml``: the **real**
 session-platform control plane, running its published image in the kind
-harness. Sessions are seeded straight into the control plane's own state
-store rather than created through its product API, because creating one
-provisions a data plane pod and only the 60-minute idle path or a CRIU
-checkpoint can put a session into ``idle``/``snapshot`` -- neither of which is
-what session-list/AC1..AC3 are about. Seeding the real store is the same move
-the harness already makes for MinIO (the ``minio-seed`` Job), and it leaves the
-control plane's own API, decoding and normalization on the path under test.
+harness. There are two ways in, and which one a file needs is decided by
+whether its AC leaves the state store.
+
+*Seeding* writes a session straight into the control plane's own store. It is
+what session-list/AC1..AC3 use: ``List`` reads only these ConfigMaps and never
+looks at pods, so a seeded session is a complete one as far as listing is
+concerned, and states like ``idle``/``snapshot`` -- reachable in production
+only through the 60-minute idle path or a CRIU checkpoint -- become
+constructible. Seeding the real store is the same move the harness already
+makes for MinIO (the ``minio-seed`` Job), and it leaves the control plane's own
+API, decoding and normalization on the path under test.
+
+*Creating* goes through the product API and provisions a real data plane pod.
+session-read/AC1 and session-write/AC1 need it: both end in ``agent.Read`` /
+``agent.Write``, which resolve the session's stored pod name to a pod IP and
+dial the agent there, so a seeded name with no pod behind it has nothing to
+read or write. See ``live_shell_session`` at the bottom of this module.
 
 The store's representation is not invented here. session-platform's
 ``control-plane/internal/adapter/configmap`` keeps one ConfigMap per session,
@@ -24,8 +34,15 @@ one as far as listing is concerned.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import subprocess
+import time
+from collections.abc import Iterator
+
+import httpx
+
+from _helpers import port_forward
 
 #: 제어면 픽스처의 네임스페이스. 프로덕션과 같은 이름이라 base 매니페스트의
 #: ``SESSION_PLATFORM_ENDPOINT`` (``k8s/deployment.yaml``) 가 그대로 해석된다.
@@ -165,3 +182,129 @@ def sessions_from(result) -> list[dict]:
     """Pull the session list out of a successful ``session_list`` tool result."""
     assert result.isError is False, result
     return result.structuredContent["sessions"]
+
+
+# --- real sessions, created through the control plane's product API ----------
+#
+# Seeded ConfigMaps are enough for session_list, which never leaves the store.
+# session-read/AC1 and session-write/AC1 do: the control plane resolves the
+# session's stored pod name to a pod IP and dials that pod's agent, so those
+# ACs need a session whose pod actually exists and answers. The only supported
+# way to get one is the product API, which provisions the pod and waits for it
+# (ClientOrchestrator.Start), so that is what these helpers drive.
+#
+# Creating a session is *setup*, not the thing under test: neither AC is about
+# session creation, and the MCP tool surface has no create tool, so this reaches
+# the control plane directly over a short port-forward the way the OAuth files
+# reach dex. What the ACs are about -- reading a cursor, injecting input -- goes
+# through the MCP tools, on the deployed server, as usual.
+
+#: 제어면 Service 와 그 포트 (이 파일 위쪽 픽스처가 세운다).
+CONTROL_PLANE_SERVICE = "control-plane"
+CONTROL_PLANE_PORT = 80
+
+#: 로컬 포워드 포트. 18080·18081·18082 는 platform-auth-safety 파일들이 쓴다.
+CONTROL_PLANE_LOCAL_PORT = 18083
+
+#: 제어면 REST 표면. OpenAPI 문서가 선언한 단일 서버 접두 `/api/v1` 를 포함한다.
+HEALTHZ_PATH = "/api/v1/healthz"
+SESSIONS_PATH = "/api/v1/sessions"
+
+#: 생성 호출의 클라이언트 타임아웃. 제어면은 파드가 Ready 가 될 때까지 기다린 뒤
+#: (기본 2분) attach 스트림까지 열어 보고서야 201 을 낸다 — 그 예산보다 넉넉해야
+#: 클라이언트가 먼저 포기해 세션을 고아로 남기지 않는다.
+CREATE_TIMEOUT = 300.0
+
+#: 워크로드 타입. 이 픽스처는 `DATA_PLANE_CLAUDE_CODE_IMAGE` 를 주지 않으므로
+#: `claude-code` 세션은 만들 수 없다 — shell 만이 여기서 뜬다.
+SHELL_WORKLOAD = "shell"
+
+#: 세션 삭제 뒤 파드가 실제로 사라질 때까지의 예산. 기본 종료 유예가 30초이므로
+#: 그보다 넉넉해야 한다.
+RECLAIM_TIMEOUT = 150.0
+RECLAIM_POLL = 2.0
+
+
+@contextlib.contextmanager
+def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
+    """Create one real shell session, yield ``(control_plane_url, session)``.
+
+    The session is deleted on the way out, which reclaims its pod, so a file
+    that uses this leaves the cluster as it found it. ``control_plane_url``
+    stays valid for the body: a caller that needs to make the workload produce
+    output can post to it without going through the tool under test.
+    """
+    with port_forward(
+        NAMESPACE,
+        CONTROL_PLANE_SERVICE,
+        CONTROL_PLANE_PORT,
+        CONTROL_PLANE_LOCAL_PORT,
+        ready_path=HEALTHZ_PATH,
+    ) as url:
+        response = httpx.post(
+            f"{url}{SESSIONS_PATH}",
+            json={"name": name, "workloadType": SHELL_WORKLOAD},
+            timeout=CREATE_TIMEOUT,
+        )
+        assert response.status_code == 201, (
+            f"creating a shell session returned {response.status_code}: "
+            f"{response.text.strip()}"
+        )
+        session = response.json()
+        assert session.get("state") == "active", session
+        assert session.get("pod"), (
+            f"a created session must name its workload pod: {session}"
+        )
+        try:
+            yield url, session
+        finally:
+            deleted = httpx.delete(
+                f"{url}{SESSIONS_PATH}/{session['id']}", timeout=120.0
+            )
+            assert deleted.status_code in (204, 404), (
+                f"deleting session {session['id']} returned "
+                f"{deleted.status_code}: {deleted.text.strip()}"
+            )
+            _wait_for_pod_gone(session["pod"])
+
+
+def _wait_for_pod_gone(pod: str, timeout: float = RECLAIM_TIMEOUT) -> None:
+    """Block until the session's pod is actually gone from the namespace.
+
+    Deleting a session returns as soon as the control plane has issued the pod
+    deletion, but the pod lingers in ``Terminating`` until its grace period
+    elapses. That matters to the *next* file rather than to this one:
+    ``session_read_ac3.py`` samples the pod set and asserts it is unchanged
+    across its calls, so a pod still draining when that file starts and gone by
+    the time it finishes would fail an assertion about something else entirely.
+    Waiting here keeps the "each file establishes its own precondition" rule
+    from being quietly undermined by a neighbour's leftovers.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if pod not in pod_names():
+            return
+        time.sleep(RECLAIM_POLL)
+    raise RuntimeError(
+        f"session pod {pod} was still present {timeout:.0f}s after its session "
+        f"was deleted"
+    )
+
+
+def inject_through_control_plane(url: str, session_id: str, payload: str) -> None:
+    """Write to a session's workload without going through ``session_write``.
+
+    session-read/AC1 needs new output to appear between two reads. Producing it
+    with the ``session_write`` tool would make the read file's increment case
+    depend on the other AC's tool; posting to the control plane keeps the two
+    files independent, and the setup path is the same one the tool wraps.
+    """
+    response = httpx.post(
+        f"{url}{SESSIONS_PATH}/{session_id}/write",
+        json={"payload": payload},
+        timeout=60.0,
+    )
+    assert response.status_code == 200, (
+        f"writing to session {session_id} returned {response.status_code}: "
+        f"{response.text.strip()}"
+    )
