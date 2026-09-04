@@ -30,6 +30,13 @@ jobs:
       # 미등재 모킹·고아 등재·표기 주석 누락·GATE 의 대체 검증 부재가 전부 실패다.
       - name: E2E mocking policy
         run: python3 scripts/check_mock_policy.py
+
+      # docs/comment-policy.md 의 판정 이력 원장 <-> 실제 주석 상태. 등재된 범위의 주석이
+      # 판정 이후 바뀌었으면(= 그 범위가 다시 판정받아야 하면) 실패한다. 「이 주석이 중복인가」
+      # 자체는 판정하지 않는다 — 그건 정책의 판정 절차대로 사람이 한다. 표준 라이브러리 전용에
+      # 클러스터가 필요 없어 여기서 돈다.
+      - name: Comment policy ledger
+        run: python3 scripts/check_comment_policy.py
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'

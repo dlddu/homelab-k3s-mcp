@@ -11,9 +11,11 @@
 판정하는지를 여기서 정한다. 정합 상태는 **범위 안의 주석 중 복원 가능한 내용을 담은 것이
 없음**이다.
 
-> ⚠️ 이 축을 검사하는 CI 게이트는 **없다**. `check_mock_policy.py`·`check_ac_mapping.py`는
-> 주석을 *파싱해 다른 것을* 검사할 뿐 주석의 중복성을 판정하지 않는다. 집행은 이 문서를
-> 읽는 사람과 리뷰어의 몫이다.
+> ⚠️ **CI 게이트는 「이 주석이 중복인가」를 판정하지 않는다.** 그 판정은 아래 판정 절차대로
+> 사람이 한다. `scripts/check_comment_policy.py`가 보는 것은 **판정 이력 원장의 무결성**이다 —
+> 등재된 범위의 주석이 판정 이후 바뀌지 않았는지, 합계가 행들과 맞는지. 바뀌었다면 그 범위는
+> 재판정 대상이고 게이트가 그것을 막아 세운다. `check_mock_policy.py`·`check_ac_mapping.py`는
+> 주석을 *파싱해 다른 것을* 검사할 뿐이다.
 
 ## 복원 경로는 넷이다
 
@@ -39,13 +41,16 @@
 지우면 CI가 깨지거나 툴체인이 동작을 바꾼다. **판정에서 제외하고, 정합성 모델의 as-is
 지문에서도 제외한다.**
 
-| 토큰 | 현재 수 | 누가 읽는가 |
-| --- | --- | --- |
-| `검증 AC:` | 67건 / 63파일 | `tests/integration/run_all.py`가 모듈 docstring에서 파싱하고, `tests/integration/check_ac_mapping.py`가 AC↔E2E 1:1을 검사한다 |
-| `# mock-exception:` | 9건 / 6파일 | `scripts/check_mock_policy.py`가 `docs/e2e-mocking-policy.md`의 허용목록과 대조한다 |
-| `#!` (shebang) | 4건 | 인터프리터. 3건은 파일 첫 줄, 1건은 `tests/k8s/kind/dear-baby-fixture.yaml`에 임베드된 스크립트 |
-| `# noqa` | 2건 | 린터. 둘 다 `tests/k8s/kind/http-trace.yaml`의 임베드 Python |
-| `//go:` · `nolint` | 현재 0건 | Go 툴체인. 지금은 없지만 생기는 즉시 제외 대상이다 |
+| 토큰 | 누가 읽는가 |
+| --- | --- |
+| `검증 AC:` | `tests/integration/run_all.py`가 모듈 docstring에서 파싱하고, `tests/integration/check_ac_mapping.py`가 AC↔E2E 1:1을 검사한다 |
+| `# mock-exception:` | `scripts/check_mock_policy.py`가 `docs/e2e-mocking-policy.md`의 허용목록과 대조한다 |
+| `#!` (shebang) | 인터프리터. 대부분 파일 첫 줄이고, `tests/k8s/kind/dear-baby-fixture.yaml`에는 임베드된 스크립트의 것이 하나 있다 |
+| `# noqa` | 린터. `tests/k8s/kind/http-trace.yaml`의 임베드 Python에 붙어 있다 |
+| `//go:` · `nolint` | Go 툴체인. 지금은 쓰이지 않지만 생기는 즉시 제외 대상이다 |
+
+건수를 적지 않는 이유는 아래 **범위** 절과 같다 — 파일 하나가 늘면 낡는 수치이고, 최신값이
+필요하면 게이트가 출력한다.
 
 `검증 AC:`는 **Python 모듈 docstring 안**에 있다 — `#` 주석이 아니다. 그 docstring은
 기계 판독 자리이므로 **통째로 유지**하고, 그 안에서 `docs/prd-*.md`·`docs/test-*.md`를
@@ -143,12 +148,17 @@ AC 목록, 테스트 이름을 산문으로 옮긴 doc 주석이 여기 해당�
 
 ## 범위
 
-**대상**: `main.go` · `internal/` · `tests/` · `scripts/` (104파일 / 16.5k LOC).
-2026-09-04 기준 판정 대상 주석은 **848줄 / 64파일**(Go 431 — 소스 305 · 테스트 126,
-YAML 240, Python 177).
+**대상**: `main.go` · `internal/` · `tests/` · `scripts/`.
 
 **범위 밖**: 라이선스 헤더, 생성 코드, `docs/`의 마크다운, `k8s/`의 운영 매니페스트,
 `.github/workflows`.
+
+> **현재 수치는 이 문서에 적지 않는다.** 판정 대상 주석이 지금 몇 줄인지, 언어별로 어떻게
+> 갈리는지는 `python3 scripts/check_comment_policy.py`가 매 CI에서 출력한다. 한때 이 자리에
+> 「2026-09-04 기준 848줄 / 64파일」이라 적혀 있었는데, 그 값은 **이 문서가 머지되기도 전에**
+> 형제 PR 하나로 거짓이 됐다(848 → 963). 아무도 검증하지 않는 자리에 현재형 수치를 두면 그
+> 수치는 낡는다 — 이 정책이 주석에 대해 말하는 것과 정확히 같은 이유다. 낡을 수 있는 수치는
+> 지우고, 기계가 강제하는 수치(아래 판정 이력의 줄 수·지문)만 남긴다.
 
 이 정책이 보지 않는 것:
 
@@ -165,6 +175,9 @@ YAML 240, Python 177).
 - **as-is** = 범위 안에서 주석 줄만 추출·정규화·정렬한 sha256 지문. 트리 해시가 아니므로
   주석과 무관한 코드 변경에는 반응하지 않는다(자매 모델 `tbm_homelab-k3s-mcp-docs-impl`과의
   중복 트리거 회피).
+- **게이트** = `scripts/check_comment_policy.py`(CI `fmt + vet` 잡). 아래 판정 이력의 범위별
+  줄 수·지문을 **as-is와 글자 그대로 같은 추출·정규화**로 재측정해 대조한다. 추출 정의가 모델과
+  갈리면 게이트가 재는 것과 감지가 보는 것이 달라지므로, 고칠 때는 모델 정의와 함께 고칠 것.
 
 ### 지문의 사각지대
 
@@ -182,6 +195,21 @@ as-is 지문은 `^[[:space:]]*(//|#)` 에 걸리는 줄만 본다. 따라서 아
 정책이 실제로 적용된 범위를 여기에 누적한다. 등재되지 않은 범위는 **아직 판정받은 적이
 없다**는 뜻이다.
 
-| 판정일 | 범위 | 결과 |
-| --- | --- | --- |
-| 2026-09-04 | `internal/opensearch/` · `internal/sessionplatform/` (주석 161줄 / 4파일) | 제거 8줄(선언·PRD 재진술과 자기 파일 중복). 나머지 153줄은 유지 — 판정 근거는 `rct_20260904-0001` |
+각 행은 범위와 함께 **그 범위 주석의 줄 수와 지문**을 담는다(지문 = as-is와 같은 방식으로
+추출·정규화·정렬한 `경로:주석` 목록 sha256의 앞 12자리). `scripts/check_comment_policy.py`가
+매 CI에서 재측정해 대조하므로 **등재된 범위의 주석을 바꾼 PR은 같은 PR에서 다시 판정하고 그
+행을 갱신해야 한다.** 범위를 파일 단위로 적는 것도 그래서다 — 한때 이 표는 범위를
+`internal/sessionplatform/`처럼 **패키지 이름으로** 적었고, 그 뒤 그 패키지에 들어온 주석 96줄이
+「판정 완료」로 위장된 채 남았다. 등재는 그 범위를 **그때 그 내용으로** 판정했다는 뜻이지,
+그 이름 아래 앞으로 올 것까지 판정했다는 뜻이 아니다.
+
+<!-- 판정-원장 -->
+
+| 판정일 | 범위 | 주석 줄 | 지문 | 결과 |
+| --- | --- | ---: | --- | --- |
+| 2026-09-04 | `internal/opensearch/opensearch.go` · `internal/opensearch/opensearch_test.go` | 52 | `d9c561b69bcc` | 제거 7줄 — ① 선언 재진술 ② `docs/prd-opensearch-search.md` AC2 재진술 ③ 패키지 주석과의 자기 중복. 판정 근거는 `rct_20260904-0001` |
+| 2026-09-04 | `internal/sessionplatform/sessionplatform.go` · `internal/sessionplatform/sessionplatform_test.go` | 172 | `3bdaa24398db` | 1차 판정(`rct_20260904-0001`, 제거 1줄) 뒤 `session_read`·`session_write` 구현이 들여온 **96줄을 재판정**(`rct_20260904-0004`). 제거 18줄은 전부 ③ 자기 파일 중복 — `ReadSession`·`WriteSession`의 doc 본문이 같은 파일의 `errKind` 상수 doc과 `WriteResult` doc을 되풀이했다. 제거 블록에서 유일하게 복원되지 않던 한 절은 `kindTooLarge` doc으로 접었다(+1줄). 테스트 doc 주석 51줄은 「이 어서션이 왜 이 형태인가」라 전부 유지 |
+<!-- /판정-원장 -->
+
+판정 완료 합계 **<!-- 판정-합계 -->224<!-- /판정-합계 -->줄**. 전체 대비 비율과 미판정 잔량은
+게이트가 출력한다(프로즈에 적으면 낡는다).

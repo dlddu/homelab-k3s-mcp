@@ -59,7 +59,8 @@ const (
 	kindBusy
 	// kindTooLarge is the control plane's 413: the payload exceeds the
 	// per-write limit (1 MiB for claude-code prompts). The limit is
-	// workload-type specific, so it is enforced there rather than here.
+	// workload-type specific and this client would have to look the session up
+	// to know the type, so it is enforced there rather than here.
 	kindTooLarge
 	// kindQuotaExhausted is the control plane's 507: the session's bounded
 	// output history is full, so further writes are refused for good while
@@ -248,12 +249,6 @@ func (c *Client) ListSessions(ctx context.Context) ([]Session, error) {
 
 // ReadSession returns the output this session accumulated after offset, plus
 // the cursor to pass on the next call.
-//
-// The offset is validated here rather than at the control plane: a negative
-// cursor must be reported as a bad argument *and* must leave the session alone,
-// and the only way to guarantee the second half is to issue no request at all.
-// A control plane 404 is surfaced as its own error kind so "no such session"
-// stays distinguishable from "the control plane is broken" (AC3).
 func (c *Client) ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error) {
 	if id == "" {
 		return nil, invalidArgument("session id is required")
@@ -302,19 +297,7 @@ func (c *Client) ReadSession(ctx context.Context, id string, offset int64) (*Rea
 }
 
 // WriteSession injects payload into the session's workload and reports the
-// branch that served it. A shell payload goes to the PTY's stdin, a claude-code
-// payload joins the serial prompt queue; either way the call returns on
-// acceptance rather than on completion, so the result carries no output and the
-// caller recovers it with ReadSession.
-//
-// Every refusal the control plane can raise is mapped to its own error kind
-// (AC4): a missing session, a payload over the per-write limit, a full prompt
-// queue and an exhausted output quota must not read alike, because only one of
-// them — the full queue — is worth retrying unchanged. The 1 MiB prompt limit is
-// deliberately *not* pre-checked here: it applies to claude-code workloads only,
-// and this client would have to look the session up to know the type, so the
-// judgement stays with the control plane and this package only makes its answer
-// legible.
+// branch that served it.
 func (c *Client) WriteSession(ctx context.Context, id, payload string) (*WriteResult, error) {
 	if id == "" {
 		return nil, invalidArgument("session id is required")
