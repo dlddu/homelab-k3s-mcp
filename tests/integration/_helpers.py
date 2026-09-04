@@ -18,9 +18,11 @@ from __future__ import annotations
 
 import contextlib
 import os
+import socket
+import subprocess
 import sys
 import time
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from typing import Any
 
 import httpx
@@ -154,6 +156,96 @@ async def assert_destructive_annotation(
     assert annotations.readOnlyHint is False, (
         f"{tool_name} readOnlyHint = {annotations.readOnlyHint!r}, expected False"
     )
+
+
+# --- reaching a service the runner group's port-forward does not cover -------
+#
+# ci.yml opens one port-forward per runner group, held for as long as that
+# group's step lives. A file that has to reach some *other* service opens its
+# own, briefly, here. This lived in ``_oidc.py`` while dex was its only user;
+# ``_session_platform.py`` is the second (it drives the control plane's product
+# API to create the session its read/write cases need), so it moved to the
+# shared surface rather than being copied. ``_oidc`` re-exports the name, which
+# is why the platform-auth-safety files import it unchanged.
+#
+# The apiserver's service proxy (``kubectl get --raw .../proxy/...``) is not an
+# alternative: it overwrites ``Authorization`` with its own credentials and
+# cannot issue anything but GET.
+
+
+def _free_to_bind(port: int) -> bool:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind(("127.0.0.1", port))
+        except OSError:
+            return False
+    return True
+
+
+@contextlib.contextmanager
+def port_forward(
+    namespace: str,
+    service: str,
+    remote_port: int,
+    local_port: int,
+    ready_path: str,
+    timeout: float = 60.0,
+) -> Iterator[str]:
+    """`svc/<service>` 로 포트포워드를 열고 base URL 을 넘긴다.
+
+    ``kubectl port-forward`` 는 로컬 포트를 **즉시** 열어 두고 파드 연결은 첫 요청에서
+    맺으므로, TCP 연결 성공은 준비 신호가 되지 못한다. 그래서 ``ready_path`` 에 HTTP 요청이
+    (상태 코드와 무관하게) **응답으로** 돌아올 때까지 기다린다 — 그 시점부터 포워드 뒤편에
+    실제로 파드가 있다.
+    """
+    assert _free_to_bind(local_port), (
+        f"local port {local_port} is already in use; another port-forward is live"
+    )
+    proc = subprocess.Popen(
+        [
+            "kubectl",
+            "-n",
+            namespace,
+            "port-forward",
+            f"svc/{service}",
+            f"{local_port}:{remote_port}",
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    url = f"http://127.0.0.1:{local_port}"
+    try:
+        deadline = time.monotonic() + timeout
+        last_exc: Exception | None = None
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                stderr = (proc.stderr.read() if proc.stderr else "") or ""
+                raise RuntimeError(
+                    f"port-forward to svc/{service} in {namespace} exited "
+                    f"({proc.returncode}): {stderr.strip()}"
+                )
+            try:
+                httpx.get(f"{url}{ready_path}", timeout=2.0)
+                break
+            except httpx.HTTPError as exc:
+                last_exc = exc
+            time.sleep(0.5)
+        else:
+            raise RuntimeError(
+                f"port-forward to svc/{service} in {namespace} never answered "
+                f"{ready_path} within {timeout:.0f}s"
+                + (f" (last error: {last_exc})" if last_exc else "")
+            )
+        yield url
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=10)
 
 
 # --- http-trace: asserting the access path, not just its outcome -------------

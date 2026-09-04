@@ -26,11 +26,45 @@
 #     idle reaper (cmd/control-plane/main.go) -- so seeded session state does
 #     not drift under the tests. Neither is an auth or security layer, so this
 #     is not a `GATE` relaxation.
-#   * DATA_PLANE_IMAGE is unset. Creating sessions through the product API is
-#     out of scope for session_list; the tests seed the control plane's own
-#     state store instead (see tests/integration/_session_platform.py), the way
-#     the MinIO seed job seeds the real object store.
+#   * DATA_PLANE_CLAUDE_CODE_IMAGE stays unset, so `workloadType=claude-code`
+#     is not deployable here: such a pod needs the claude-code-credentials
+#     Secret through a required SecretKeyRef plus the loopback credential
+#     proxy sidecar. Only `shell` sessions can be created in this harness,
+#     which is what session-read/AC1 and session-write/AC1 need and no more.
 # No env here reads a Secret, so this fixture needs none.
+#
+# DATA_PLANE_IMAGE **is** set, and that is what changed on 2026-09-04.
+# session-list only ever needed the control plane's own state store, so the
+# first version of this fixture left the variable unset and the tests seeded
+# session ConfigMaps directly. session-read/AC1 and session-write/AC1 cannot be
+# observed that way: `Service.Read` calls `agent.Read(ctx, sess.Pod, offset)`,
+# and the agent client resolves that pod name to an IP through the Kubernetes
+# API before dialling `:8090/read`, so a session whose stored pod name has no
+# live pod behind it has nothing to read. Creating one through the product API
+# is the path under test, not a shortcut around it.
+#
+# The data plane image is the real published component at the *same commit tag*
+# as the control plane above: session-platform's docker-build-push.yaml
+# publishes both from one workflow under the commit SHA, so a matching pair is
+# guaranteed to speak the same agent contract. It is a public GHCR package with
+# a linux/arm64 manifest, exactly like the control plane, so
+# docs/e2e-mocking-policy.md leaves no category open for a stand-in agent here
+# either -- `IMG` applies only while the real image cannot be obtained in CI.
+# This fixture still adds no allowlist entry. Its ~268 MiB of compressed layers
+# are pulled by a ci.yml step and loaded into the kind node *before* any test
+# runs, because the control plane gives a session pod two minutes to become
+# Ready (defaultReadyTimeout) and that budget must not be spent on a pull.
+#
+# Session pods carry `serviceAccountName: data-plane` with an automounted token
+# (ClientOrchestrator.buildPod), so that ServiceAccount must exist here or the
+# pod never starts; it is created below. Production also binds it to the
+# built-in `view` ClusterRole and to a node-reader ClusterRole
+# (k8s/data-plane-rbac.yaml). Those two ClusterRoleBindings are deliberately
+# **not** created here: nothing on the path under test reads the API server
+# from inside a session pod -- the shell agent serves /healthz, /read and
+# /write and builds no Kubernetes client -- so leaving them out narrows what a
+# session pod may do rather than relaxing a gate, and keeps this fixture from
+# granting cluster-wide read in the CI cluster.
 #
 # The image tag is the commit SHA session-platform's main declares as the
 # production pin (k8s/deployment.yaml). SHA tags are immutable there -- no
@@ -50,6 +84,18 @@ metadata:
   namespace: session-platform
   labels:
     app: control-plane
+---
+# The identity every session pod is provisioned with. The control plane names
+# it in the pod spec it builds, so the pod is unschedulable without it; see the
+# note at the top of this file for why its production ClusterRoleBindings are
+# not reproduced.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: data-plane
+  namespace: session-platform
+  labels:
+    app: data-plane
 ---
 # The same permissions session-platform's own k8s/rbac.yaml grants: session
 # pods, the ConfigMap state store, and the per-session Lease locks. Keeping the
@@ -121,6 +167,10 @@ spec:
           env:
             - name: CP_ADDR
               value: ":8080"
+            # Same commit tag as the control plane image above: one workflow
+            # publishes the pair, so they speak the same agent contract.
+            - name: DATA_PLANE_IMAGE
+              value: ghcr.io/dlddu/session-platform-data-plane:5f60249f8381d5cfecbe093bb77fc30d874697f4
           readinessProbe:
             httpGet:
               path: /api/v1/healthz
