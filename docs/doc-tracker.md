@@ -197,18 +197,18 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - AC 전집: 64
 - 예외 등재: 1
 - 1:1 대상: 63
-- 매칭 파일(전용): 52
+- 매칭 파일(전용): 54
 - 분할 대기 파일(규칙 2 위반): 0
-- 공백 AC: 11
+- 공백 AC: 9
 <!-- /ac-e2e-집계 -->
 
-> 공백 11건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 11건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
+> 공백 9건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 9건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
 >
 > **분할 대기 0 달성(2026-09-03)** — 마지막 겸용 파일 `workload.py`(16 AC)의 선결 판단이었던 「케이스가 공유 픽스처 상태에 순서 의존적」은 이 원장이 지목한 방식, 즉 **각 파일이 자기 선행 조건을 스스로 성립시키는 것**으로 해소했다(아래 완료 노트). 러너의 `실행 순서:` 로 파일 간 순서를 고정하는 길은 결합을 파일 단위로 옮길 뿐 없애지 않으므로 채택하지 않았고, 그 증거로 신규 16개 파일 중 **어느 것도 `실행 순서:` 를 선언하지 않는다**.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### AC 레지스트리 (64) — ✅ 전용 파일 52 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 11 · 🚫 예외 1
+### AC 레지스트리 (64) — ✅ 전용 파일 54 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 9 · 🚫 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -243,13 +243,13 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | opensearch-search/AC4 | 미설정 시 graceful 거부 | ✅ 전용 파일 `opensearch_search_ac4.py` |
 | ping/AC1 | 항상 pong 응답 | ✅ 전용 파일 `ping_ac1.py` |
 | platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 파일 `platform_auth_safety_ac1.py` |
-| platform-auth-safety/AC2 | 인증 디스커버리 | ⬜ 공백 — 케이스 없음 |
+| platform-auth-safety/AC2 | 인증 디스커버리 | ✅ 전용 파일 `platform_auth_safety_ac2.py` |
 | platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 전용 파일 `platform_auth_safety_ac3.py` |
 | platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 예외 |
 | platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 전용 파일 `platform_auth_safety_ac5.py` |
 | platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 전용 파일 `platform_auth_safety_ac6.py` |
 | platform-auth-safety/AC7 | API 키 인증 | ✅ 전용 파일 `platform_auth_safety_ac7.py` |
-| platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ⬜ 공백 — 케이스 없음 |
+| platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ✅ 전용 파일 `platform_auth_safety_ac8.py` |
 | pod-describe/AC1 | 파드 상세 스냅샷 | ✅ 전용 파일 `pod_describe_ac1.py` |
 | pod-describe/AC2 | 대상 지정 방식 | ✅ 전용 파일 `pod_describe_ac2.py` |
 | pod-describe/AC3 | 이벤트 best-effort | ✅ 전용 파일 `pod_describe_ac3.py` |
@@ -277,13 +277,27 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `workload_scale_ac3.py` |
 
-### ⬜ 공백 backlog (11) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
+### ⬜ 공백 backlog (9) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
-- **platform-auth-safety/AC2** 인증 디스커버리 → `tests/integration/platform_auth_safety_ac2.py`(신규 전용 파일): 디스커버리 엔드포인트가 인증 방식을 반환하는지 (OAuth/OIDC 발급자 mock 픽스처 필요)
-- **platform-auth-safety/AC8** 인증 방식 구성 유연성 → `tests/integration/platform_auth_safety_ac8.py`(신규 전용 파일): env-게이팅 다중 구성 배포 변형에서 인증 방식 전환
 - **session-read/AC1~AC4 · session-write/AC1~AC5 (9)** → AC별 전용 파일 9개(신규, 파일 단위 규칙 2). 미설정 거부 2건(`session-read/AC4` · `session-write/AC5`)은 각자의 전용 파일 `session_{read_ac4,write_ac5}.py`가 되며, `실행 대상: auth-variant`(port 8088, 자격증명 미부착 변형)를 선언해 다른 "미설정 거부" 파일들과 같은 배포에서 돈다 — `session_list_ac3.py`가 그 자리의 선례다. **선행 조건은 e2e가 아니라 구현이다**: `session_read`·`session_write` 도구 자체가 아직 없고(2026-09-03의 `session_list` 구현은 그 하나만 다뤘다), 그 해소는 자매 모델 `tbm_homelab-k3s-mcp-docs-impl`의 몫이다 — 규칙 4가 "도구·기능 미구현은 예외 사유가 아니다"라고 못박으므로 계수에서는 빠지지 않고 여기 공백으로 남는다. 구현이 착지하면 e2e 픽스처는 이미 서 있다: `tests/k8s/kind/session-platform.yaml`이 실 제어면을 띄우고 `tests/integration/_session_platform.py`가 그 상태 저장소를 시드한다. 다만 read/write는 목록과 달리 **제어면이 파드를 실제로 프로비저닝하는 경로**(접근=active화, 스냅샷 복원)를 타므로, 그 시점에 픽스처에 `DATA_PLANE_IMAGE` 배선이 필요한지를 먼저 판단할 것 — 지금은 세션 생성 경로를 쓰지 않아 일부러 비워 두었다.
+
+> **platform 2건(AC2 디스커버리 · AC8 구성 유연성) → AC별 전용 파일 2개 — ✅ 완료(2026-09-04)**: backlog 11건 중 **선행이 구현이 아니라 저작뿐인 2건**을 전용 파일로 닫았다(`platform_auth_safety_ac{2,8}.py`). 매칭 파일 **52 → 54**, 공백 **11 → 9**, 규칙 2 위반 **0 유지**. 남은 9건은 전부 session-read 4 · session-write 5 — 도구 자체가 미구현이라 자매 모델 `tbm_homelab-k3s-mcp-docs-impl`의 몫이다.
+>
+> **왜 지금인가**: 두 AC의 구현은 오래전부터 있었고(`internal/auth/auth.go`가 `MCP_OAUTH_*`를 처리하고 `internal/server/server.go`가 OAuth 구성 시에만 디스커버리 라우트를 건다) 빠진 것은 e2e 파일뿐이었다. 직전 슬라이스가 이 둘을 범위 밖으로 끊은 사유는 선행 미충족이 아니라 **작업 성격의 차이**였다 — 「한 PR에 섞으면 `ci.yml`을 두 방향으로 동시에 건드린다」. 그 슬라이스가 머지된 지금 그 사유는 소멸했다. 두 AC는 같은 난제(**발급자가 없으면 서버가 기동조차 하지 않는다** — `auth.FromEnv`가 `openid-configuration`을 가져와 `jwks_uri`가 없으면 실패한다)를 공유하므로 한 슬라이스로 묶었다.
+>
+> **발급자는 스텁이 아니라 실 IdP(dex)다 — 모킹 허용목록·상한 5는 불변.** 이것이 이 슬라이스의 핵심 판단이고, 근거는 `docs/e2e-mocking-policy.md`가 자기 카테고리로 스스로 배제한다는 것이다: `UPS`는 「실 상류를 CI에서 띄울 수 있으면 쓸 수 없다」, `IMG`는 「이미지가 공개되면 소멸한다」인데 `ghcr.io/dexidp/dex`는 **공개 이미지에 linux/arm64 매니페스트**를 갖는다. 즉 정적 JSON 스텁 발급자는 **어느 카테고리에도 걸리지 않는 등재 불가 모킹**이 된다. 정책의 「실 구현체를 띄운 것은 모킹이 아니다」(MinIO가 S3를, 단일노드 OpenSearch가 Serverless를 대신하는 자리)와 09-04 session-list 슬라이스가 실 제어면을 고른 선례가 같은 방향을 가리킨다. dex 구성은 `issuer`·`storage`·`web`(`cmd/dex/config.go::Validate`)에 더해 **커넥터 하나**가 필요하다 — `server.NewServer`가 커넥터 0개면 「server: no connectors specified」로 기동을 거부한다. 그래서 `enablePasswordDB: true`로 내장 local 커넥터 하나를 켠다(정적 비밀번호는 두지 않아 실제로 로그인할 수 있는 주체는 없다 — 이 AC들에 필요한 것은 디스커버리와 키 집합뿐이고 대화형 흐름은 아니다). 이미지는 다이제스트로 핀했다.
+>
+> **AC8은 (a)만이 아니라 4구성 전부를 덮는다.** AC 본문이 (a)~(d)를 명시하는데 파일이 4분의 1만 단정하면 이 레포가 08-07·08-13에 되돌아와 고쳤던 「반쪽 단정」이 하나 더 생긴다. 발급자 픽스처를 세우는 이 슬라이스에서 (b)(c)는 배포 변형 하나씩, (d)는 픽스처 없이 관측되므로 **지금이 4구성을 덮는 가장 싼 순간**이었다. 각 구성은 관측 가능한 표면까지 단정한다 — (a) 401 + 챌린지에 `resource_metadata` 없음 + 디스커버리 404, (b) 디스커버리 200 + Available, (c) API 키 인가 + 디스커버리 200 + 챌린지에 `resource_metadata` 있음, (d) `availableReplicas` 0 + 종료 코드 1 + 로그에 `no authentication configured`.
+>
+> **(d)가 AC2의 논증을 떠받친다**: 서버 쪽 「JWKS 동적 로드」는 배포가 Available 하다는 사실이 증거인데(실패하면 `main.go`가 `os.Exit(1)`), 그 추론은 그 경로가 **실제로 치명적일 때만** 공허하지 않다. 자격증명을 하나도 주지 않은 변형이 실제로 기동에 실패하는 것을 같은 PR의 AC8 (d)가 관측하므로, 두 파일은 서로의 근거가 된다.
+>
+> **AC2는 사슬을 실제로 걷는다**: 401 챌린지가 준 `resource_metadata` 주소 → 그 문서가 지목한 `authorization_servers[0]` → 그 발급자의 `openid-configuration`이 준 `jwks_uri` → 쓸 수 있는 RSA 키. 각 칸이 앞 칸이 준 값으로만 이어지므로 중간이 낡으면 그 자리에서 끊긴다. `MCP_OAUTH_RESOURCE`를 audience와 다른 값으로 배포해 `resource == "" → audience` 폴백과 구분되게 했다.
+>
+> **범위 밖(후속)**: dex에서 실 토큰을 받아 「유효 JWT → 인가」까지 단정하는 것. dex에 정적 클라이언트·password DB·bcrypt 해시를 붙여야 하고, AC2의 검증 방법은 「표준 클라이언트가 이 문서로 인증을 **자동 구성**할 수 있다」이지 「인증에 성공한다」가 아니다. 붙이면 AC1의 "유효 토큰 → 정상 처리" 절과 AC8 (c)의 OAuth 절을 함께 강화하는 것이 자연스럽다.
+>
+> **`ci.yml` 변경은 픽스처 배포·롤아웃 대기·그룹 실행·진단 덤프 4자리**다. 러너에 세 번째 그룹 `oauth-variant`(포트 8089)가 생겼고 — 디스커버리 라우트는 OAuth가 구성된 배포에만 걸리므로 기존 두 그룹 어디에서도 AC2를 관측할 수 없다 — `homelab-k3s-mcp-no-auth`에는 **일부러 롤아웃 대기를 걸지 않았다**(기동 실패가 의도라 걸면 CI가 거기서 멈춘다). 네 구성을 대조하는 것이 AC8 자체라 그 파일만은 자기 그룹의 배포 하나로 부족해, 필요한 순간에만 짧게 여는 `kubectl port-forward`를 `_oidc.py`에 두었다(apiserver 서비스 프록시는 `Authorization` 헤더를 덮어써 API 키를 실을 수 없다).
 
 > **session-list 3건 → AC별 전용 파일 3개 — ✅ 완료(2026-09-04)**: backlog 14건 중 **선행 조건이 이번에 해소된 3건**(session-list/AC1·AC2·AC3)을 전용 파일로 저작했다(`session_list_ac{1,2,3}.py`). 매칭 파일 **49 → 52**, 공백 **14 → 11**, 규칙 2 위반 **0 유지**. 남은 11건은 platform 2(AC2 디스커버리·AC8 구성 유연성) + session-read/write 9(도구 미구현 — 자매 모델 소관)다.
 >
@@ -392,6 +406,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-04 | **platform 2건(AC2 인증 디스커버리 · AC8 인증 방식 구성 유연성)의 통합 e2e 저작** — backlog 11건 중 **선행이 저작뿐인 2건**을 전용 파일 2개(`platform_auth_safety_ac{2,8}.py`)로 닫았다. 두 AC는 같은 난제(발급자가 없으면 `auth.FromEnv`가 기동을 막는다)를 공유하므로 한 슬라이스다. 핵심 판단은 「스텁 발급자 vs 실 IdP」였고 **모킹 정책이 스텁을 배제한다**: `UPS`는 실 상류를 CI에서 띄울 수 있으면 못 쓰고 `IMG`는 이미지가 공개되면 소멸하는데 `ghcr.io/dexidp/dex`는 공개·arm64라 스텁은 **등재 불가 모킹**이 된다 → 신규 픽스처 `tests/k8s/kind/oidc-fixture.yaml`은 **실 OIDC 발급자(dex, 다이제스트 핀)**이고 **모킹 허용목록은 5건·상한 5로 불변**이다(MinIO·OpenSearch·session-platform과 같은 자리). AC8은 (a)만으로 끊지 않고 **4구성 전부**를 덮었다 — (a) auth-variant에서 401 + 챌린지에 `resource_metadata` 없음 + 디스커버리 404, (b) OAuth만 세팅한 변형에서 디스커버리 200 + Available, (c) 둘 다 세팅한 변형에서 API 키 인가 + 디스커버리 200, (d) 아무것도 미설정인 변형이 종료 코드 1 + 로그 `no authentication configured`로 **기동 실패**. (d)가 AC2의 「Available ⇒ 기동 시 OIDC 디스커버리·JWKS 로드 성공」 추론을 공허하지 않게 만든다. AC2는 401 챌린지 → 보호 리소스 메타데이터 → 발급자 `openid-configuration` → JWKS의 사슬을 **앞 칸이 준 값으로만** 걷는다. `ci.yml`은 픽스처 배포·롤아웃 대기·신규 그룹 실행(`oauth-variant`, 8089)·진단 덤프 4자리가 늘었고, 기동 실패가 의도인 변형에는 롤아웃 대기를 걸지 않았다. 네 구성 대조가 AC8 자체라 그 파일만 `_oidc.py`의 짧은 `kubectl port-forward`로 다른 배포에 닿는다. **범위 밖(후속)**: dex에서 실 토큰을 받아 「유효 JWT → 인가」까지 단정하는 것. tests/·docs/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 52 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 11 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 54 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 9 · 🚫 예외 1 · 비-AC 1 |
 | 2026-09-04 | **`session_read` 구현 착지 + 원장 어긋남 2곳 교정** — `internal/sessionplatform`에 `ReadSession`(제어면 `POST /api/v1/sessions/{id}/read`, 커서 규약·`path` 분기 노출·404/400 구분)을, `internal/mcp`에 `session_read` 도구 등록·디스패치를 더해 session-read/AC1~AC4의 **도구 계층**을 구현으로 닫았다(도구 표면 15 → 16). 음수 커서·빈 id는 HTTP 이전에 거부해 "상태 불변"을 요청 0건으로 증명한다. 함께 **원장의 살아 있는 어긋남 2곳**을 교정했다 — 「허브 도달 가능 문서」가 실측 39와 어긋난 **38 / 38**로 남아 있었고(분해 괄호에 정책 문서 범주가 없었다), 「문서 인벤토리」 표에 `e2e-mocking-policy.md` 행이 없어 그 파일명이 이 문서에 **0회** 등장했다(#47이 문서를 신설하며 허브 링크만 넣었다). 두 곳 모두 레포 체커의 파싱 범위 밖이라 게이트가 영원히 초록이었다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건**이고 e2e 렌즈 레지스트리·집계도 불변이다 — session_read의 통합 e2e는 그 렌즈 소관으로 남는다. | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변) |
 | 2026-09-04 | **session-list 3건의 통합 e2e 저작** — backlog 14건 중 선행 조건이 해소된 `session-list/AC1·AC2·AC3`을 전용 파일 3개(`session_list_ac{1,2,3}.py`)로 닫았다. 핵심 판단은 「제어면 스텁 vs 실 제어면」이었고 **모킹 정책이 답을 이미 정해 두었다**: `IMG` 예외는 실 구성요소의 이미지를 CI에서 확보할 수 없을 때만 쓸 수 있는데 `ghcr.io/dlddu/session-platform`은 공개 패키지에 arm64 매니페스트를 갖고 있어 러너의 kind가 그대로 당긴다 → 신규 픽스처 `tests/k8s/kind/session-platform.yaml`은 **실 제어면**이고 **모킹 허용목록은 5건·상한 5로 불변**이다. 세션은 제어면의 실 상태 저장소(소유 라벨이 붙은 `session-<id>` ConfigMap)에 시드한다 — `List`가 파드를 조회하지 않으므로 실 API·실 디코딩 경로가 그대로 돌고, MinIO를 `minio-seed`로 시드하는 선례와 같은 자리다. 시드 JSON 필드는 `session.Session`의 구조체 태그에서 확인했다. AC1은 한 파일 안에서 재고를 비워 빈 목록을 관측한 뒤 세션 둘(active·snapshot)을 시드해 열거를 관측하고(파일 간 순서 의존 0, `실행 순서:` 선언 0건), AC2는 파드 집합을 첫 호출 전에 떠서 3회 호출 뒤와 대조한다 — **실 제어면이라 이 단정이 vacuous하지 않다**(스텁이면 만들 파드가 없다). AC3는 `auth-fixture.yaml` 변형에서 도는 7번째 「미설정 거부」 파일이다. homelab 쪽 배선은 무변경 — base `k8s/deployment.yaml`이 이미 `SESSION_PLATFORM_ENDPOINT`를 클러스터 내부 주소로 박아 두었고 픽스처가 프로덕션과 같은 이름(ns `session-platform` · Service `control-plane`)을 쓴다. `ci.yml`은 배포·롤아웃 대기·진단 덤프 3자리만 늘었다(러너 배차 primary 41→43 · auth-variant 9→10). 곁가지로 `_helpers.EXPECTED_TOOLS`를 14 → 15로 정정했다(`session_list` 누락 — 단정이 부분집합이라 **깨진 게 아니라 조용히 약해져** 있었다). tests/·docs/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 49 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 14 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 52 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 11 · 🚫 예외 1 · 비-AC 1 |
 | 2026-09-03 | **`session_list` 구현 착지** — `internal/sessionplatform`(제어면 `GET /api/v1/sessions` 클라이언트 + `Unavailable` 대체)과 `internal/mcp` 도구 등록으로 session-list/AC1·AC2·AC3을 구현으로 닫고, `k8s/deployment.yaml`에 `SESSION_PLATFORM_ENDPOINT`를 배선했다. 문서 쪽 변경은 **상태 기술의 교정뿐**이다: 자동화 커버리지의 🔴 항목이 "session-platform 배포가 클러스터에서 제거돼 검증 불가"라는 **이미 사실이 아닌 전제**로 12 AC 전체를 묶어 두고 있었다(제어면은 재배포돼 `session-platform` 네임스페이스에서 `control-plane` 1/1로 동작 중). 남은 공백을 read/write 9건과 통합 e2e로 좁혔다. **AC·PRD·테스트 문서의 신설·삭제·개정 0건.** | 가치 5 / PRD 18 / AC 64 / 테스트 18 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변 — e2e 렌즈 레지스트리·집계도 불변) |
