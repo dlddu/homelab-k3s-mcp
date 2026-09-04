@@ -194,8 +194,7 @@ type Client struct {
 // base URL (in production the cluster-internal
 // http://control-plane.session-platform.svc.cluster.local). It returns
 // (nil, nil) when the variable is unset, signalling that the session platform
-// integration is simply not configured; a value that is not an absolute http(s)
-// URL is a misconfiguration and returns an error.
+// integration is simply not configured.
 func FromEnv() (*Client, error) {
 	endpoint := strings.TrimSpace(os.Getenv("SESSION_PLATFORM_ENDPOINT"))
 	if endpoint == "" {

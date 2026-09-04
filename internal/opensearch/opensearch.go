@@ -40,8 +40,7 @@ const (
 
 	// DefaultSearchSize is used when a search request does not specify a size.
 	DefaultSearchSize int64 = 10
-	// MaxSearchSize is the hard cap on the search result size. Requests above
-	// it are rejected, not clamped.
+	// MaxSearchSize is the hard cap on the search result size.
 	MaxSearchSize int64 = 50
 )
 
@@ -87,16 +86,14 @@ type SearchResult struct {
 	Hits  []Hit `json:"hits"`
 }
 
-// PutResult is the outcome of a PutDocument call. Result is the OpenSearch
-// index result: "created" or "updated".
+// PutResult is the outcome of a PutDocument call.
 type PutResult struct {
 	Index  string `json:"index"`
 	ID     string `json:"id"`
 	Result string `json:"result"`
 }
 
-// DeleteResult is the outcome of a DeleteDocument call. Result is "deleted"
-// or "not_found".
+// DeleteResult is the outcome of a DeleteDocument call.
 type DeleteResult struct {
 	Index  string `json:"index"`
 	ID     string `json:"id"`
@@ -183,7 +180,6 @@ func FromEnv(ctx context.Context) (*Client, error) {
 		loadOpts = append(loadOpts, sdkconfig.WithRegion(region))
 	}
 
-	// Base credentials: the default chain (instance profile in production).
 	baseCfg, err := sdkconfig.LoadDefaultConfig(ctx, loadOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)
@@ -216,8 +212,7 @@ func FromEnv(ctx context.Context) (*Client, error) {
 	}, nil
 }
 
-// Search runs a simple_query_string full-text query against one index or the
-// whole collection.
+// Search runs a simple_query_string full-text query.
 func (c *Client) Search(ctx context.Context, query string, index *string, size *int64) (*SearchResult, error) {
 	n := DefaultSearchSize
 	if size != nil {
@@ -276,8 +271,7 @@ func (c *Client) Search(ctx context.Context, query string, index *string, size *
 	return result, nil
 }
 
-// PutDocument indexes (upserts) a document, letting OpenSearch generate the
-// id when none is given. The target index is auto-created on first write.
+// PutDocument indexes (upserts) a document.
 func (c *Client) PutDocument(ctx context.Context, index string, id *string, document map[string]any) (*PutResult, error) {
 	body, err := json.Marshal(document)
 	if err != nil {
@@ -329,8 +323,7 @@ func (c *Client) DeleteDocument(ctx context.Context, index, id string) (*DeleteR
 	}
 }
 
-// do signs the request with assumed-role credentials (SigV4, service "aoss")
-// and returns the response status and body.
+// do signs the request with assumed-role credentials (SigV4, service "aoss").
 func (c *Client) do(ctx context.Context, method, path string, body []byte) (int, []byte, *Error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
