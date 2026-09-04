@@ -3,7 +3,9 @@ package server_test
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -99,8 +101,8 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	if len(tools) != 15 {
-		t.Fatalf("len(tools) = %d, want 15", len(tools))
+	if len(tools) != 16 {
+		t.Fatalf("len(tools) = %d, want 16", len(tools))
 	}
 	for _, name := range []string{
 		"ping", "namespace_list", "workload_list", "workload_restart",
@@ -108,7 +110,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
-		"session_list",
+		"session_list", "session_read",
 	} {
 		findTool(t, tools, name)
 	}
@@ -1407,6 +1409,182 @@ func TestSessionListEmptyInventoryIsNotAnError(t *testing.T) {
 	sessions, ok := at(t, body, "result", "structuredContent", "sessions").([]any)
 	if !ok || len(sessions) != 0 {
 		t.Fatalf("sessions = %v, want an empty array", at(t, body, "result", "structuredContent", "sessions"))
+	}
+}
+
+func TestToolsListAdvertisesSessionRead(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	tools := toolsList(t, app)
+	read := findTool(t, tools, "session_read")
+
+	props := at(t, read, "inputSchema", "properties").(map[string]any)
+	if _, ok := props["id"]; !ok {
+		t.Fatalf("inputSchema is missing id: %v", props)
+	}
+	if _, ok := props["offset"]; !ok {
+		t.Fatalf("inputSchema is missing offset: %v", props)
+	}
+	required, _ := at(t, read, "inputSchema", "required").([]any)
+	if len(required) != 1 || required[0] != "id" {
+		t.Fatalf("required = %v, want [id]: offset defaults to 0", required)
+	}
+
+	// The PRD pins every hint, and readOnlyHint=false is the load-bearing one:
+	// a read activates its target, so a client must not treat this as a safe
+	// observation the way it treats session_list.
+	if at(t, read, "annotations", "title") != "Read Session Output" ||
+		at(t, read, "annotations", "readOnlyHint") != false ||
+		at(t, read, "annotations", "destructiveHint") != false ||
+		at(t, read, "annotations", "idempotentHint") != true ||
+		at(t, read, "annotations", "openWorldHint") != true {
+		t.Fatalf("annotations = %v", read["annotations"])
+	}
+}
+
+func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
+	fake := &fakeSessionPlatform{readResponse: func(id string, offset int64) (*sessionplatform.ReadResult, error) {
+		return &sessionplatform.ReadResult{
+			Session: sessionplatform.Session{
+				ID: id, Name: "parked agent", WorkloadType: "claude-code", State: "active",
+				Pod: "session-" + id, CreatedAt: "2026-08-30T09:30:00Z",
+				LastAccess: "2026-09-04T00:00:00Z",
+			},
+			Path: "snapshot->restore->read",
+			// An incremental read: the payload is the 16-byte increment but
+			// the cursor is an absolute offset into the whole output. The two
+			// must never be conflated — the control plane's OpenAPI is
+			// explicit that clients pass back the issued cursor rather than a
+			// computed length.
+			Payload:    "restored output\n",
+			NextOffset: 1024,
+		}, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 170, "session_read", map[string]any{"id": "s-2", "offset": 0})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if at(t, body, "result", "structuredContent", "payload") != "restored output\n" {
+		t.Fatalf("payload = %v", at(t, body, "result", "structuredContent", "payload"))
+	}
+	if fmt.Sprint(at(t, body, "result", "structuredContent", "nextOffset")) != "1024" {
+		t.Fatalf("nextOffset = %v, want the server-issued cursor passed through verbatim",
+			at(t, body, "result", "structuredContent", "nextOffset"))
+	}
+	// AC2: the branch that served the call, and the session as it stands after
+	// it, are both visible — this read brought a reclaimed pod back.
+	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->read" {
+		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
+	}
+	if at(t, body, "result", "structuredContent", "session", "state") != "active" {
+		t.Fatalf("session.state = %v", at(t, body, "result", "structuredContent", "session", "state"))
+	}
+	if at(t, body, "result", "structuredContent", "session", "pod") != "session-s-2" {
+		t.Fatalf("session.pod = %v", at(t, body, "result", "structuredContent", "session", "pod"))
+	}
+
+	if len(fake.readCalls) != 1 || fake.readCalls[0].id != "s-2" || fake.readCalls[0].offset != 0 {
+		t.Fatalf("readCalls = %+v, want one read of s-2 at offset 0", fake.readCalls)
+	}
+}
+
+// TestSessionReadOffsetDefaultsToZero: omitting the cursor means "everything
+// since the session started", so the tool must not require it.
+func TestSessionReadOffsetDefaultsToZero(t *testing.T) {
+	fake := &fakeSessionPlatform{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 171, "session_read", map[string]any{"id": "s-1"})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if len(fake.readCalls) != 1 || fake.readCalls[0].offset != 0 {
+		t.Fatalf("readCalls = %+v, want offset 0", fake.readCalls)
+	}
+}
+
+// TestSessionReadRejectsBadArguments is AC3 at the protocol layer. Each refusal
+// is a JSON-RPC invalid-params error rather than a tool error, and — the part
+// that AC3 actually cares about — none of them reaches the control plane.
+func TestSessionReadRejectsBadArguments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{name: "missing id", args: map[string]any{"offset": 0}, want: "id is required"},
+		{name: "negative offset", args: map[string]any{"id": "s-1", "offset": -1}, want: "offset must be >= 0"},
+		{name: "fractional offset", args: map[string]any{"id": "s-1", "offset": 1.5}, want: "offset must be an integer"},
+		{name: "string offset", args: map[string]any{"id": "s-1", "offset": "12"}, want: "offset must be an integer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeSessionPlatform{}
+			app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+			body := callTool(t, app, 172, "session_read", tc.args)
+			message, _ := at(t, body, "error", "message").(string)
+			if !strings.Contains(message, tc.want) {
+				t.Fatalf("error message = %q, want it to contain %q", message, tc.want)
+			}
+			if len(fake.readCalls) != 0 {
+				t.Fatalf("readCalls = %+v, want none: a rejected call must not touch the session", fake.readCalls)
+			}
+		})
+	}
+}
+
+// TestSessionReadSurfacesNotFound is the other half of AC3, driven through the
+// real client rather than a fake so the 404 mapping is exercised end to end: a
+// missing session must read differently from every other failure the caller can
+// hit.
+func TestSessionReadSurfacesNotFound(t *testing.T) {
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"session not found"}`))
+	}))
+	defer control.Close()
+
+	t.Setenv("SESSION_PLATFORM_ENDPOINT", control.URL)
+	client, err := sessionplatform.FromEnv()
+	if err != nil || client == nil {
+		t.Fatalf("FromEnv() = (%v, %v), want a client", client, err)
+	}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), client)
+
+	body := callTool(t, app, 173, "session_read", map[string]any{"id": "s-missing"})
+	if at(t, body, "result", "isError") != true {
+		t.Fatalf("isError = %v, want a tool error", at(t, body, "result", "isError"))
+	}
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if !strings.Contains(text, "session platform not found") ||
+		!strings.Contains(text, "s-missing") {
+		t.Fatalf("text = %q, want a not-found error naming the session", text)
+	}
+	// Distinct from the unavailable refusal a caller sees with no endpoint.
+	if strings.Contains(text, "unavailable") {
+		t.Fatalf("text = %q, want a missing session to read differently from an unconfigured server", text)
+	}
+}
+
+// TestSessionReadUnavailableReturnsToolError is AC4: with no endpoint wired the
+// tool refuses, and the refusal stays confined to it.
+func TestSessionReadUnavailableReturnsToolError(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 174, "session_read", map[string]any{"id": "s-1"})
+	if at(t, body, "result", "isError") != true {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if !strings.Contains(text, "session platform unavailable") {
+		t.Fatalf("text = %q", text)
+	}
+
+	survivor := callTool(t, app, 175, "ping", map[string]any{})
+	if at(t, survivor, "result", "isError") != false ||
+		at(t, survivor, "result", "content", 0, "text") != "pong" {
+		t.Fatalf("ping did not survive the refusal: %v", survivor)
 	}
 }
 

@@ -22,8 +22,13 @@ session-platform 세션의 누적 워크로드 출력을 오프셋 커서로 읽
   스냅샷 복원이라는 부수 효과가 있다. 다만 기존 출력을 소비·삭제하지 않으므로 파괴적이지는
   않다)
 
-> **구현 선행 문서**: 이 PRD 작성 시점(2026-08-12)에 session-platform 배포는 클러스터에서
-> 제거된 상태이며(레포는 유지), 도구도 미구현이다.
+> **구현 상태(2026-09-04)**: 구현됨. `internal/sessionplatform`의 `ReadSession`(제어면
+> `POST /api/v1/sessions/{id}/read` 클라이언트)과 `internal/mcp`의 도구 등록·디스패치가
+> AC1~AC4의 **도구 계층**을 담당하고, Go 단위 테스트가 이를 검증한다. 작성 시점(2026-08-12)의
+> 선행 조건이던 "session-platform 배포가 클러스터에서 제거된 상태"는 2026-09-03 해소됐다
+> (제어면 재배포 · `SESSION_PLATFORM_ENDPOINT` 배선 완료).
+> AC2의 **실클러스터 절반**(스냅샷 세션이 read 한 번으로 실제 파드를 되살리는지)과 AC1~AC4의
+> 통합 e2e는 아직 없다 — `docs/doc-tracker.md`의 e2e 렌즈가 공백으로 계수한다.
 
 ## Acceptance Criteria
 
