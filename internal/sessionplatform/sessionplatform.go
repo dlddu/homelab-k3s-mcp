@@ -1,8 +1,8 @@
 // Package sessionplatform talks to the session-platform control plane's
-// in-cluster REST API: it reads the session inventory and the accumulated
-// workload output of a single session. The control plane is only reachable from
-// inside the cluster, so this package is what opens it to MCP clients without an
-// ingress or a port-forward.
+// in-cluster REST API: it reads the session inventory, reads the accumulated
+// workload output of a single session, and injects input into one. The control
+// plane is only reachable from inside the cluster, so this package is what opens
+// it to MCP clients without an ingress or a port-forward.
 package sessionplatform
 
 import (
@@ -33,6 +33,10 @@ const (
 // POST /api/v1/sessions/{id}/read.
 func readPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/read" }
 
+// writePath renders the control plane's per-session write endpoint,
+// POST /api/v1/sessions/{id}/write.
+func writePath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/write" }
+
 // errKind separates a "not configured" failure from a control plane error.
 type errKind int
 
@@ -48,6 +52,21 @@ const (
 	// the wire. Rejecting locally is what makes AC3's "the session is left
 	// untouched" structural rather than a promise: no request is issued at all.
 	kindInvalidArgument
+	// kindBusy is the control plane's 429: the workload's prompt queue is
+	// full. It is the one refusal in this package that is worth retrying
+	// unchanged — session_write/AC4 asks precisely that a caller be able to
+	// tell "try again in a moment" from "this will never work".
+	kindBusy
+	// kindTooLarge is the control plane's 413: the payload exceeds the
+	// per-write limit (1 MiB for claude-code prompts). The limit is
+	// workload-type specific, so it is enforced there rather than here.
+	kindTooLarge
+	// kindQuotaExhausted is the control plane's 507: the session's bounded
+	// output history is full, so further writes are refused for good while
+	// the output already accumulated stays readable. Splitting it from
+	// kindTooLarge keeps AC4's four refusals four, instead of letting two of
+	// them collapse onto whatever prose the control plane happens to send.
+	kindQuotaExhausted
 )
 
 // Error is the error type returned by Service.
@@ -64,6 +83,12 @@ func (e *Error) Error() string {
 		return "session platform not found: " + e.msg
 	case kindInvalidArgument:
 		return "session platform invalid argument: " + e.msg
+	case kindBusy:
+		return "session platform busy, retry after a queued prompt finishes: " + e.msg
+	case kindTooLarge:
+		return "session platform payload too large, retrying will not help: " + e.msg
+	case kindQuotaExhausted:
+		return "session platform output quota exhausted, retrying will not help (existing output is still readable): " + e.msg
 	default:
 		return "session platform api error: " + e.msg
 	}
@@ -73,6 +98,9 @@ func unavailable(msg string) *Error     { return &Error{kind: kindUnavailable, m
 func apiError(msg string) *Error        { return &Error{kind: kindAPI, msg: msg} }
 func notFound(msg string) *Error        { return &Error{kind: kindNotFound, msg: msg} }
 func invalidArgument(msg string) *Error { return &Error{kind: kindInvalidArgument, msg: msg} }
+func busy(msg string) *Error            { return &Error{kind: kindBusy, msg: msg} }
+func tooLarge(msg string) *Error        { return &Error{kind: kindTooLarge, msg: msg} }
+func quotaExhausted(msg string) *Error  { return &Error{kind: kindQuotaExhausted, msg: msg} }
 
 // Session is one session as the control plane reports it. The fields mirror the
 // control plane's `Session` schema; only those the session_list PRD exposes are
@@ -102,15 +130,29 @@ type ReadResult struct {
 	NextOffset int64   `json:"nextOffset"`
 }
 
+// WriteResult is one accepted write. Unlike ReadResult it carries no output:
+// the control plane returns as soon as the payload is accepted — a shell write
+// has only been pushed to the PTY, a claude-code write has only been queued —
+// so anything the workload produces in response is recovered later through
+// ReadSession. That absence is the contract, not an omission. Path names the
+// state branch that served the write ("active", "idle->active->write" or
+// "snapshot->restore->write") and Session is the session as it stands
+// afterwards, because a write activates its target exactly as a read does.
+type WriteResult struct {
+	Session Session `json:"session"`
+	Path    string  `json:"path"`
+}
+
 // Service talks to the control plane on behalf of the session tools.
 //
 // ListSessions is a passive read: it never promotes an idle session, restores a
-// snapshot, or refreshes lastAccess. ReadSession is not — the control plane
-// activates the target before reading it, which is why its result carries the
-// branch it took.
+// snapshot, or refreshes lastAccess. ReadSession and WriteSession are not — the
+// control plane activates the target before serving either, which is why their
+// results carry the branch they took.
 type Service interface {
 	ListSessions(ctx context.Context) ([]Session, error)
 	ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error)
+	WriteSession(ctx context.Context, id, payload string) (*WriteResult, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -133,6 +175,11 @@ func (u *Unavailable) ListSessions(context.Context) ([]Session, error) {
 
 // ReadSession always fails with the configured reason.
 func (u *Unavailable) ReadSession(context.Context, string, int64) (*ReadResult, error) {
+	return nil, unavailable(u.reason)
+}
+
+// WriteSession always fails with the configured reason.
+func (u *Unavailable) WriteSession(context.Context, string, string) (*WriteResult, error) {
 	return nil, unavailable(u.reason)
 }
 
@@ -251,6 +298,71 @@ func (c *Client) ReadSession(ctx context.Context, id string, offset int64) (*Rea
 	var parsed ReadResult
 	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, apiError(fmt.Sprintf("parse read result: %v", err))
+	}
+	return &parsed, nil
+}
+
+// WriteSession injects payload into the session's workload and reports the
+// branch that served it. A shell payload goes to the PTY's stdin, a claude-code
+// payload joins the serial prompt queue; either way the call returns on
+// acceptance rather than on completion, so the result carries no output and the
+// caller recovers it with ReadSession.
+//
+// Every refusal the control plane can raise is mapped to its own error kind
+// (AC4): a missing session, a payload over the per-write limit, a full prompt
+// queue and an exhausted output quota must not read alike, because only one of
+// them — the full queue — is worth retrying unchanged. The 1 MiB prompt limit is
+// deliberately *not* pre-checked here: it applies to claude-code workloads only,
+// and this client would have to look the session up to know the type, so the
+// judgement stays with the control plane and this package only makes its answer
+// legible.
+func (c *Client) WriteSession(ctx context.Context, id, payload string) (*WriteResult, error) {
+	if id == "" {
+		return nil, invalidArgument("session id is required")
+	}
+
+	endpoint := c.endpoint + writePath(id)
+	body, err := json.Marshal(struct {
+		Payload string `json:"payload"`
+	}{Payload: payload})
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("post %s: %v", endpoint, err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	message := controlPlaneMessage(respBody, resp.Status)
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, notFound(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusBadRequest:
+		return nil, invalidArgument(message)
+	case resp.StatusCode == http.StatusRequestEntityTooLarge:
+		return nil, tooLarge(message)
+	case resp.StatusCode == http.StatusTooManyRequests:
+		return nil, busy(message)
+	case resp.StatusCode == http.StatusInsufficientStorage:
+		return nil, quotaExhausted(message)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+
+	var parsed WriteResult
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
+		return nil, apiError(fmt.Sprintf("parse write result: %v", err))
 	}
 	return &parsed, nil
 }

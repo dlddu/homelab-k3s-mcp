@@ -184,6 +184,8 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		return h.sessionList(ctx)
 	case "session_read":
 		return h.sessionRead(ctx, rawArgs)
+	case "session_write":
+		return h.sessionWrite(ctx, rawArgs)
 	default:
 		return nil, errf(-32602, "unknown tool: %s", name)
 	}
@@ -632,23 +634,28 @@ func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 	}
 	items := make([]any, 0, len(sessions))
 	for _, s := range sessions {
-		item := map[string]any{
-			"id":           s.ID,
-			"name":         s.Name,
-			"workloadType": s.WorkloadType,
-			"state":        s.State,
-			"createdAt":    s.CreatedAt,
-			"lastAccess":   s.LastAccess,
-		}
-		// A snapshotted session has had its pods reclaimed, so the control
-		// plane omits `pod`; keep it omitted rather than reporting an empty
-		// name as if a pod existed.
-		if s.Pod != "" {
-			item["pod"] = s.Pod
-		}
-		items = append(items, item)
+		items = append(items, sessionFields(s))
 	}
 	return successResult(map[string]any{"sessions": items}), nil
+}
+
+// sessionFields renders one session for a tool result. A snapshotted session has
+// had its pods reclaimed, so the control plane omits `pod`; keep it omitted
+// rather than reporting an empty name as if a pod existed. All three session
+// tools report a session the same way, so they share this.
+func sessionFields(s sessionplatform.Session) map[string]any {
+	fields := map[string]any{
+		"id":           s.ID,
+		"name":         s.Name,
+		"workloadType": s.WorkloadType,
+		"state":        s.State,
+		"createdAt":    s.CreatedAt,
+		"lastAccess":   s.LastAccess,
+	}
+	if s.Pod != "" {
+		fields["pod"] = s.Pod
+	}
+	return fields
 }
 
 // sessionRead reads one session's accumulated output from a byte cursor. Unlike
@@ -684,25 +691,48 @@ func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *r
 		return toolError(err), nil
 	}
 
-	session := map[string]any{
-		"id":           result.Session.ID,
-		"name":         result.Session.Name,
-		"workloadType": result.Session.WorkloadType,
-		"state":        result.Session.State,
-		"createdAt":    result.Session.CreatedAt,
-		"lastAccess":   result.Session.LastAccess,
-	}
-	// Same rule as sessionList: a reclaimed pod is an absent field, not an
-	// empty name. After a restoring read the pod is normally back.
-	if result.Session.Pod != "" {
-		session["pod"] = result.Session.Pod
-	}
-
 	return successResult(map[string]any{
 		"payload":    result.Payload,
 		"nextOffset": result.NextOffset,
 		"path":       result.Path,
-		"session":    session,
+		"session":    sessionFields(result.Session),
+	}), nil
+}
+
+// sessionWrite injects input into one session's workload. Both arguments are
+// validated here so that a malformed call is refused before any request is
+// issued — the same structural guarantee sessionRead makes for a bad cursor:
+// nothing was sent, so the session cannot have been touched. That matters more
+// for a write, whose mere arrival activates the target and can restore a
+// snapshot. The result deliberately carries no output: the control plane returns
+// on acceptance, and whatever the workload produces is recovered with
+// session_read.
+func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+	pv, present := obj["payload"]
+	if !present || pv == nil {
+		return nil, errf(-32602, "payload is required")
+	}
+	payload, ok := pv.(string)
+	if !ok {
+		return nil, errf(-32602, "payload must be a string")
+	}
+
+	result, err := h.sessionPlatform.WriteSession(ctx, *id, payload)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	return successResult(map[string]any{
+		"path":    result.Path,
+		"session": sessionFields(result.Session),
 	}), nil
 }
 

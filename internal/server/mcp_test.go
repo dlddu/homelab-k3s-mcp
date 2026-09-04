@@ -101,8 +101,8 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	if len(tools) != 16 {
-		t.Fatalf("len(tools) = %d, want 16", len(tools))
+	if len(tools) != 17 {
+		t.Fatalf("len(tools) = %d, want 17", len(tools))
 	}
 	for _, name := range []string{
 		"ping", "namespace_list", "workload_list", "workload_restart",
@@ -110,7 +110,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
-		"session_list", "session_read",
+		"session_list", "session_read", "session_write",
 	} {
 		findTool(t, tools, name)
 	}
@@ -1621,3 +1621,196 @@ func contains(s []string, want string) bool {
 
 func strptr(s string) *string { return &s }
 func boolPtr(b bool) *bool    { return &b }
+
+func TestToolsListAdvertisesSessionWrite(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	tools := toolsList(t, app)
+	write := findTool(t, tools, "session_write")
+
+	props := at(t, write, "inputSchema", "properties").(map[string]any)
+	if _, ok := props["id"]; !ok {
+		t.Fatalf("inputSchema is missing id: %v", props)
+	}
+	if _, ok := props["payload"]; !ok {
+		t.Fatalf("inputSchema is missing payload: %v", props)
+	}
+	required, _ := at(t, write, "inputSchema", "required").([]any)
+	if len(required) != 2 || !contains([]string{fmt.Sprint(required[0]), fmt.Sprint(required[1])}, "id") ||
+		!contains([]string{fmt.Sprint(required[0]), fmt.Sprint(required[1])}, "payload") {
+		t.Fatalf("required = %v, want both id and payload", required)
+	}
+
+	// AC3. destructiveHint=true is the load-bearing one: the payload runs as an
+	// arbitrary command or prompt inside the session, so a client must not treat
+	// this the way it treats the two read-shaped session tools. idempotentHint
+	// is false for the same reason — sending the same payload twice runs it
+	// twice.
+	if at(t, write, "annotations", "title") != "Write to Session" ||
+		at(t, write, "annotations", "readOnlyHint") != false ||
+		at(t, write, "annotations", "destructiveHint") != true ||
+		at(t, write, "annotations", "idempotentHint") != false ||
+		at(t, write, "annotations", "openWorldHint") != true {
+		t.Fatalf("annotations = %v", write["annotations"])
+	}
+}
+
+// TestSessionWriteReturnsBranchAndSession is AC2 at the protocol layer: a write
+// that revived a parked session says so, both in the branch it reports and in
+// the session it hands back.
+func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
+	fake := &fakeSessionPlatform{writeResponse: func(id, _ string) (*sessionplatform.WriteResult, error) {
+		return &sessionplatform.WriteResult{
+			Session: sessionplatform.Session{
+				ID: id, Name: "parked agent", WorkloadType: "claude-code", State: "active",
+				Pod: "pod-91ab", CreatedAt: "2026-08-30T09:30:00Z",
+				LastAccess: "2026-09-04T00:00:00Z",
+			},
+			Path: "snapshot->restore->write",
+		}, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 180, "session_write", map[string]any{"id": "s-2", "payload": "summarise the diff\n"})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->write" {
+		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
+	}
+	if at(t, body, "result", "structuredContent", "session", "state") != "active" {
+		t.Fatalf("session.state = %v", at(t, body, "result", "structuredContent", "session", "state"))
+	}
+	if at(t, body, "result", "structuredContent", "session", "pod") != "pod-91ab" {
+		t.Fatalf("session.pod = %v", at(t, body, "result", "structuredContent", "session", "pod"))
+	}
+	// The write is non-blocking, so it reports no output at all: a caller has
+	// to read to see what the prompt produced.
+	sc, _ := at(t, body, "result", "structuredContent").(map[string]any)
+	if _, present := sc["payload"]; present {
+		t.Fatalf("structuredContent = %v, want no output field: output is recovered with session_read", sc)
+	}
+
+	if len(fake.writeCalls) != 1 || fake.writeCalls[0].id != "s-2" ||
+		fake.writeCalls[0].payload != "summarise the diff\n" {
+		t.Fatalf("writeCalls = %+v, want one verbatim write to s-2", fake.writeCalls)
+	}
+}
+
+// TestSessionWriteRejectsBadArguments is the argument half of the tool contract.
+// Each refusal is a JSON-RPC invalid-params error rather than a tool error, and
+// — the part that matters for a destructive tool — none of them reaches the
+// control plane, so a malformed call cannot restore a snapshot as a side effect.
+func TestSessionWriteRejectsBadArguments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{name: "missing id", args: map[string]any{"payload": "ls\n"}, want: "id is required"},
+		{name: "missing payload", args: map[string]any{"id": "s-1"}, want: "payload is required"},
+		{name: "null payload", args: map[string]any{"id": "s-1", "payload": nil}, want: "payload is required"},
+		{name: "numeric payload", args: map[string]any{"id": "s-1", "payload": 12}, want: "payload must be a string"},
+		{name: "object payload", args: map[string]any{"id": "s-1", "payload": map[string]any{}}, want: "payload must be a string"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeSessionPlatform{}
+			app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+			body := callTool(t, app, 181, "session_write", tc.args)
+			message, _ := at(t, body, "error", "message").(string)
+			if !strings.Contains(message, tc.want) {
+				t.Fatalf("error message = %q, want it to contain %q", message, tc.want)
+			}
+			if len(fake.writeCalls) != 0 {
+				t.Fatalf("writeCalls = %+v, want none: a rejected call must not touch the session", fake.writeCalls)
+			}
+		})
+	}
+}
+
+// TestSessionWriteSurfacesRefusalsDistinctly is AC4 driven through the real
+// client, so the whole status-to-tool-error path is exercised. Every status is
+// served with the *same* error body on purpose: with the control plane's own
+// wording held constant, the four tool errors can only differ by what this
+// server adds, so the test cannot be satisfied by upstream prose that happens to
+// vary. It also pins that the retryable refusal is the only one that reads as
+// retryable, and that none of the four can be mistaken for an unconfigured
+// server.
+func TestSessionWriteSurfacesRefusalsDistinctly(t *testing.T) {
+	const sameReason = "refused"
+
+	var status int
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":"` + sameReason + `"}`))
+	}))
+	defer control.Close()
+
+	t.Setenv("SESSION_PLATFORM_ENDPOINT", control.URL)
+	client, err := sessionplatform.FromEnv()
+	if err != nil || client == nil {
+		t.Fatalf("FromEnv() = (%v, %v), want a client", client, err)
+	}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), client)
+
+	seen := map[string]string{}
+	for _, tc := range []struct {
+		name      string
+		status    int
+		retryable bool
+	}{
+		{name: "not found", status: http.StatusNotFound},
+		{name: "too large", status: http.StatusRequestEntityTooLarge},
+		{name: "queue full", status: http.StatusTooManyRequests, retryable: true},
+		{name: "quota full", status: http.StatusInsufficientStorage},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			status = tc.status
+
+			body := callTool(t, app, 182, "session_write", map[string]any{"id": "s-1", "payload": "ls\n"})
+			if at(t, body, "result", "isError") != true {
+				t.Fatalf("isError = %v, want a tool error", at(t, body, "result", "isError"))
+			}
+			text, _ := at(t, body, "result", "content", 0, "text").(string)
+			if !strings.Contains(text, sameReason) {
+				t.Fatalf("text = %q, want the control plane's reason carried through", text)
+			}
+			if strings.Contains(text, "unavailable") {
+				t.Fatalf("text = %q, want a refusal to read differently from an unconfigured server", text)
+			}
+			if tc.retryable != strings.Contains(text, "retry after") {
+				t.Fatalf("text = %q, retryable = %v", text, tc.retryable)
+			}
+			for prior, priorText := range seen {
+				if priorText == text {
+					t.Fatalf("%s and %s produced the same tool error %q", prior, tc.name, text)
+				}
+			}
+			seen[tc.name] = text
+		})
+	}
+	if len(seen) != 4 {
+		t.Fatalf("collected %d distinct refusals, want 4", len(seen))
+	}
+}
+
+// TestSessionWriteUnavailableReturnsToolError is AC5: with no endpoint wired the
+// tool refuses, and the refusal stays confined to it.
+func TestSessionWriteUnavailableReturnsToolError(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 183, "session_write", map[string]any{"id": "s-1", "payload": "ls\n"})
+	if at(t, body, "result", "isError") != true {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if !strings.Contains(text, "session platform unavailable") {
+		t.Fatalf("text = %q", text)
+	}
+
+	survivor := callTool(t, app, 184, "ping", map[string]any{})
+	if at(t, survivor, "result", "isError") != false ||
+		at(t, survivor, "result", "content", 0, "text") != "pong" {
+		t.Fatalf("ping did not survive the refusal: %v", survivor)
+	}
+}

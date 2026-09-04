@@ -32,11 +32,13 @@ from mcp.client.streamable_http import streamablehttp_client
 # configured -- both the primary deployment and the credential-less auth-variant
 # must advertise all of it. Keep it complete: the assertions below subtract this
 # set from what the server returned, so a tool missing *here* is not a failure,
-# it is a silently weaker check (``session_list`` was missing from 2026-09-03,
-# when the tool landed, until the session-list e2e slice noticed; ``session_read``
-# repeated the pattern on 2026-09-04 and the session-read e2e slice caught it the
-# same way -- the gap is structural, so a tool landing without its e2e slice is
-# exactly when this set goes stale). Two files read this: ``platform_auth_safety_ac5.py``
+# it is a silently weaker check. That has now happened twice -- ``session_list``
+# was missing from 2026-09-03 until the session-list e2e slice noticed, and
+# ``session_read`` from 2026-09-04 until the session-write slice did -- so the
+# rule is that the PR adding a tool updates this set in the same commit.
+# ``internal/server/mcp_test.go::TestToolsListIncludesAllTools`` pins the same
+# surface by exact count on the Go side; the two lists must agree. Two files read
+# this: ``platform_auth_safety_ac5.py``
 # asserts it on the variant (that is the AC -- the server keeps advertising every
 # tool with each integration unset) and ``smoke.py`` asserts it on the primary
 # deployment as the shared precondition of the cases that drive those tools.
@@ -57,6 +59,7 @@ EXPECTED_TOOLS = {
     "opensearch_document_delete",
     "session_list",
     "session_read",
+    "session_write",
 }
 
 
