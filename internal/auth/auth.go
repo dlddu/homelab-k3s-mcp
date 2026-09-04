@@ -23,9 +23,7 @@ import (
 
 const httpClientTimeout = 10 * time.Second
 
-// Config holds the credential configuration for the /mcp gate: the optional
-// OAuth verified-issuer settings with a cached JWKS key set, and the optional
-// set of static API keys for non-interactive clients.
+// Config holds the credential configuration for the /mcp gate.
 type Config struct {
 	Issuer   string
 	Audience string
@@ -35,7 +33,6 @@ type Config struct {
 	http    *http.Client
 
 	// apiKeys are static bearer credentials for non-interactive automation.
-	// A request authorizes if it matches any key here or verifies as a JWT.
 	apiKeys []string
 
 	mu   sync.RWMutex
@@ -57,20 +54,7 @@ type jwk struct {
 	E   string `json:"e"`
 }
 
-// FromEnv builds auth configuration from the environment. It returns
-// (nil, nil) when auth is disabled via MCP_AUTH_DISABLED.
-//
-// Two independent, composable credential paths gate /mcp:
-//
-//   - Static API keys, from MCP_API_KEYS (comma-separated), for non-interactive
-//     automation clients that cannot run the interactive OAuth flow.
-//   - OAuth 2.0 bearer JWTs, from MCP_OAUTH_ISSUER / MCP_OAUTH_AUDIENCE /
-//     MCP_OAUTH_RESOURCE. Setting any MCP_OAUTH_* variable enables OAuth and
-//     performs OIDC discovery plus an initial JWKS fetch.
-//
-// At least one path must be configured. With neither set (and auth not
-// explicitly disabled) /mcp would be undefended, so FromEnv returns an error
-// rather than silently serving without authentication.
+// FromEnv builds auth configuration from the environment.
 func FromEnv(ctx context.Context) (*Config, error) {
 	if disabled := os.Getenv("MCP_AUTH_DISABLED"); disabled == "1" || disabled == "true" {
 		return nil, nil
@@ -102,8 +86,7 @@ func FromEnv(ctx context.Context) (*Config, error) {
 }
 
 // configureOAuth validates the OAuth settings, performs OIDC discovery and the
-// initial JWKS fetch, and populates the OAuth fields on c. Partial
-// configuration (issuer or audience missing) is an error.
+// initial JWKS fetch, and populates the OAuth fields on c.
 func (c *Config) configureOAuth(ctx context.Context, issuer, audience, resource string) error {
 	if issuer == "" {
 		return fmt.Errorf("MCP_OAUTH_ISSUER is required when OAuth is enabled")
@@ -134,7 +117,7 @@ func (c *Config) configureOAuth(ctx context.Context, issuer, audience, resource 
 }
 
 // parseAPIKeys splits a comma-separated key list, trimming whitespace and
-// dropping empty entries. It returns nil when no non-empty keys remain.
+// dropping empty entries.
 func parseAPIKeys(raw string) []string {
 	var keys []string
 	for _, part := range strings.Split(raw, ",") {
@@ -199,7 +182,6 @@ func rsaPublicKey(nStr, eStr string) (*rsa.PublicKey, error) {
 		return nil, err
 	}
 
-	// Left-pad the exponent to 8 bytes so it can be read as a big-endian uint64.
 	padded := make([]byte, 8)
 	copy(padded[8-len(eBytes):], eBytes)
 	e := binary.BigEndian.Uint64(padded)
@@ -272,15 +254,12 @@ func MetadataHandler(c *Config) http.Handler {
 	})
 }
 
-// OAuthConfigured reports whether OAuth bearer verification is active. When
-// false, only static API keys authorize requests and no OAuth discovery
-// metadata is advertised.
+// OAuthConfigured reports whether OAuth bearer verification is active.
 func (c *Config) OAuthConfigured() bool {
 	return c.Issuer != ""
 }
 
-// APIKeyCount returns how many static API keys are configured. It exposes only
-// the count, never the key values, for startup logging.
+// APIKeyCount returns how many static API keys are configured.
 func (c *Config) APIKeyCount() int {
 	return len(c.apiKeys)
 }
@@ -300,8 +279,7 @@ func (c *Config) matchAPIKey(raw string) bool {
 }
 
 // RequireBearer wraps next, rejecting requests that present neither a valid
-// static API key nor a valid OAuth bearer JWT. The static key is checked first
-// (constant time); on no match it falls back to JWT verification.
+// static API key nor a valid OAuth bearer JWT.
 func (c *Config) RequireBearer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, authErr := extractBearer(r)
@@ -341,13 +319,11 @@ func extractBearer(r *http.Request) (token string, authErr string) {
 func (c *Config) unauthorized(w http.ResponseWriter, authErr string) {
 	var challenge string
 	if c.OAuthConfigured() {
-		// Point OAuth clients at the protected-resource metadata for discovery.
 		challenge = fmt.Sprintf(
 			`Bearer realm=%q, error=%q, resource_metadata=%q`,
 			c.Resource, authErr, c.Resource+"/.well-known/oauth-protected-resource",
 		)
 	} else {
-		// API-key-only mode: there is no OAuth discovery document to advertise.
 		challenge = fmt.Sprintf(`Bearer error=%q`, authErr)
 	}
 	w.Header().Set("WWW-Authenticate", challenge)

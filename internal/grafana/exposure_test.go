@@ -11,7 +11,7 @@ import (
 // TestCreateTokenNeverEchoesIssuerToken covers grafana_token AC4 (발급자 토큰
 // 비노출). The issuer token is a long-lived secret used only to authenticate the
 // mint request; only the freshly minted short-lived token may leave the
-// process. This previously had no automated coverage.
+// process.
 func TestCreateTokenNeverEchoesIssuerToken(t *testing.T) {
 	const issuerToken = "glsa_super_secret_issuer_do_not_leak"
 

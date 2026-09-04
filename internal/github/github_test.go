@@ -16,7 +16,7 @@ import (
 // github_app_installation_token AC4 (베이스 키 비노출). The RSA private key — and
 // the app JWT minted from it that authenticates the mint request — are
 // long-lived secrets; only the short-lived installation token that GitHub
-// issues may leave the process. This previously had no automated coverage.
+// issues may leave the process.
 func TestCreateInstallationTokenNeverExposesSigningKey(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

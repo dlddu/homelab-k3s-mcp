@@ -7,28 +7,28 @@
 어긋나면 `platform_auth_safety_ac2.py` 와 `platform_auth_safety_ac8.py` 가 **동시에** 거짓을
 단정하게 되므로, 상수는 나뉘지 않는다.
 
-## 왜 포트포워드를 이 파일이 들고 있는가
+## 왜 포트포워드가 필요한가
 
 `ci.yml` 은 그룹당 배포 하나에만 포트포워드를 걸고, 그 포워드는 그룹 스텝이 사는 동안만
 살아 있다. 그런데 platform-auth-safety/AC8 은 **네 가지 구성을 서로 대조하는 것 자체가 AC**라,
-자기 그룹의 배포 하나만으로는 관측할 수 없다. 그래서 필요한 순간에만 짧게 여는
-포트포워드를 여기 둔다 — 배포마다 러너 그룹을 하나씩 늘리는 대안은 `ci.yml` 에 스텝을 셋 더
-만들고 각 파일을 다른 그룹으로 흩어 놓는데, 대조하는 파일이 하나라는 사실과 어긋난다.
+자기 그룹의 배포 하나만으로는 관측할 수 없다. 그래서 필요한 순간에만 짧게 여는 포워드를 쓴다 —
+배포마다 러너 그룹을 하나씩 늘리는 대안은 `ci.yml` 에 스텝을 셋 더 만들고 각 파일을 다른
+그룹으로 흩어 놓는데, 대조하는 파일이 하나라는 사실과 어긋난다.
 
-`Authorization` 헤더가 필요하다는 것이 apiserver 서비스 프록시(`kubectl get --raw
-.../services/<svc>:<port>/proxy/...`)를 쓰지 않은 이유다 — 프록시는 자기 자격증명으로
-헤더를 덮어쓰므로 API 키를 실어 보낼 수 없고, GET 밖으로 나가지도 못한다.
+`port_forward` 자체는 2026-09-04 에 `_helpers.py` 로 옮겼다 — dex 전용이 아니고
+`_session_platform.py` 가 두 번째 소비자가 됐기 때문이다. 여기서 다시 내보내므로
+`platform_auth_safety_ac{2,8}.py` 의 `from _oidc import port_forward` 는 그대로 돈다.
 """
 
 from __future__ import annotations
 
-import contextlib
-import socket
 import subprocess
-import time
-from collections.abc import Iterator
 
 import httpx
+
+# Re-exported, not used here: the two platform-auth-safety files import it from
+# this module and predate the move to _helpers.
+from _helpers import port_forward  # noqa: F401
 
 # --- dex (실 OIDC 발급자) -----------------------------------------------------
 
@@ -115,81 +115,6 @@ def assert_deployment_available(namespace: str, deployment: str) -> None:
     assert replicas >= 1, (
         f"deploy/{deployment} in {namespace} has {replicas} available replicas"
     )
-
-
-def _free_to_bind(port: int) -> bool:
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
-        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            probe.bind(("127.0.0.1", port))
-        except OSError:
-            return False
-    return True
-
-
-@contextlib.contextmanager
-def port_forward(
-    namespace: str,
-    service: str,
-    remote_port: int,
-    local_port: int,
-    ready_path: str,
-    timeout: float = 60.0,
-) -> Iterator[str]:
-    """`svc/<service>` 로 포트포워드를 열고 base URL 을 넘긴다.
-
-    ``kubectl port-forward`` 는 로컬 포트를 **즉시** 열어 두고 파드 연결은 첫 요청에서
-    맺으므로, TCP 연결 성공은 준비 신호가 되지 못한다. 그래서 ``ready_path`` 에 HTTP 요청이
-    (상태 코드와 무관하게) **응답으로** 돌아올 때까지 기다린다 — 그 시점부터 포워드 뒤편에
-    실제로 파드가 있다.
-    """
-    assert _free_to_bind(local_port), (
-        f"local port {local_port} is already in use; another port-forward is live"
-    )
-    proc = subprocess.Popen(
-        [
-            "kubectl",
-            "-n",
-            namespace,
-            "port-forward",
-            f"svc/{service}",
-            f"{local_port}:{remote_port}",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    url = f"http://127.0.0.1:{local_port}"
-    try:
-        deadline = time.monotonic() + timeout
-        last_exc: Exception | None = None
-        while time.monotonic() < deadline:
-            if proc.poll() is not None:
-                stderr = (proc.stderr.read() if proc.stderr else "") or ""
-                raise RuntimeError(
-                    f"port-forward to svc/{service} in {namespace} exited "
-                    f"({proc.returncode}): {stderr.strip()}"
-                )
-            try:
-                httpx.get(f"{url}{ready_path}", timeout=2.0)
-                break
-            except httpx.HTTPError as exc:
-                last_exc = exc
-            time.sleep(0.5)
-        else:
-            raise RuntimeError(
-                f"port-forward to svc/{service} in {namespace} never answered "
-                f"{ready_path} within {timeout:.0f}s"
-                + (f" (last error: {last_exc})" if last_exc else "")
-            )
-        yield url
-    finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=10)
 
 
 def protected_resource_metadata(url: str) -> dict:

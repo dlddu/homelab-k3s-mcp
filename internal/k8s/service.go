@@ -27,8 +27,7 @@ type Service interface {
 	DescribePod(ctx context.Context, namespace string, target PodTarget) (*PodDescription, error)
 }
 
-// Unavailable is a Service that fails every call with the same reason. It is
-// used when the kubernetes client could not be initialised.
+// Unavailable is a Service that fails every call with the same reason.
 type Unavailable struct {
 	reason string
 }

@@ -23,10 +23,7 @@ type health struct {
 	Version string `json:"version"`
 }
 
-// App builds the HTTP handler for the service. When authCfg is nil the /mcp
-// endpoint is served without authentication. The OAuth protected-resource
-// discovery document is registered only when OAuth is configured; in
-// API-key-only mode there is no OAuth metadata to advertise.
+// App builds the HTTP handler for the service.
 func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", root)

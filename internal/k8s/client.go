@@ -265,8 +265,6 @@ func (s *KubeService) workloadPodSelector(ctx context.Context, kind WorkloadKind
 	return s2, nil
 }
 
-// firstPodMatching returns the first Running pod matching selector, falling
-// back to any matching pod when none is Running.
 func (s *KubeService) firstPodMatching(ctx context.Context, namespace, selector string) (*corev1.Pod, error) {
 	list, err := s.clientset.CoreV1().Pods(namespace).
 		List(ctx, metav1.ListOptions{LabelSelector: selector})
