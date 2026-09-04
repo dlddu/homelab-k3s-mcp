@@ -6,13 +6,13 @@
 - AC3: 대상 부재·잘못된 커서의 명확한 처리 (PRD: session_read)
 - AC4: 미설정 시 graceful 거부 (PRD: session_read)
 
-> **자동화 상태(2026-09-04)**: 도구는 구현됐고 **Go 단위는 작성됨**. 통합(`tests/integration/`)은
-> **시나리오 3·4가 작성됐고**(`session_read_ac{3,4}.py`) 시나리오 1·2는 아직 미작성이라 아래
-> "자동화" 필드에서 `(미작성)`으로 남는다 — 그 축의 소유자는 AC ↔ e2e 1:1 렌즈(`doc-tracker.md`)다.
-> 남은 둘의 선행은 **저작이 아니라 픽스처**다: 읽기는 제어면이 세션 파드의 IP를 해석해 에이전트
-> `:8090/read`를 치므로 실 데이터 플레인 파드가 필요하고(시나리오 1), 시나리오 2의 `snapshot`
-> 분기는 그 위에 CRIU 게이트까지 요구한다(게이트 off면 `Restore`가 `ErrCheckpointDisabled`로
-> 거부된다). 근거와 해소 조건은 `doc-tracker.md`의 공백 backlog에 적혀 있다.
+> **자동화 상태**: 도구는 구현됐고 **Go 단위는 작성됨**. 통합 e2e의 시나리오별 현황은 **아래 각
+> "자동화" 필드가 그 자리에서 말한다**(`(미작성)`이면 아직 파일이 없다는 뜻이고, 그 표기는
+> `tests/integration/check_ac_mapping.py` 규칙 7이 실측 파일 집합과 대조해 CI에서 강제한다).
+> 잔여 공백과 그 **선행 조건**은 `docs/doc-tracker.md`의 AC ↔ e2e 1:1 렌즈(공백 backlog)가 단일
+> 사실 원천이며, 그 축의 소유자는 그 렌즈다 — 여기에 개수나 시나리오 번호를 다시 적지 않는다.
+> 남은 공백의 선행이 **저작이 아니라 픽스처**라는 것(실 데이터 플레인 파드, 그리고 `snapshot`
+> 분기에는 CRIU 게이트까지)도 그 backlog가 소스 근거와 함께 적고 있다.
 
 ## 테스트 시나리오
 
@@ -24,8 +24,8 @@
   네 번째는 첫 호출과 같은 구간을 반환(비파괴).
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
-  (`TestReadFullThenIncremental`, `TestReadIsNonDestructive`) + (미작성) 통합
-  `tests/integration/session.py::test_session_read_ac1_offset_cursor`
+  (`TestReadFullThenIncremental`, `TestReadIsNonDestructive`) + 통합
+  `tests/integration/session_read_ac1.py`
 
 ### 시나리오 2: 상태 분기와 그 노출
 - **사전 조건**: `active`·`idle`·`snapshot` 세션 각 1개

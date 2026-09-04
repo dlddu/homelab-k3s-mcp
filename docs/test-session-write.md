@@ -7,11 +7,14 @@
 - AC4: 거부 응답의 구분 전달 (PRD: session_write)
 - AC5: 미설정 시 graceful 거부 (PRD: session_write)
 
-> **자동화 상태(2026-09-04)**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는
-> 실재하는 테스트 이름이다. 통합 e2e는 아직 `(미작성)`이며, 그 축의 소유자는 AC ↔ e2e 1:1
-> 렌즈(`docs/doc-tracker.md`)다. 도구 계층에서 재현할 수 없는 부분 — 실제 워크로드가
-> 명령·프롬프트를 실행하는 것, 유휴 승격·스냅샷 복원이 진짜 파드를 만드는 것 — 이 그 렌즈에
-> 남는다.
+> **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
+> 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
+> (`(미작성)`이면 아직 파일이 없다는 뜻이고, 그 표기는 `tests/integration/check_ac_mapping.py`
+> 규칙 7이 실측 파일 집합과 대조해 CI에서 강제한다). 잔여 공백과 그 **선행 조건**은
+> `docs/doc-tracker.md`의 AC ↔ e2e 1:1 렌즈(공백 backlog)가 단일 사실 원천이며, 그 축의 소유자는
+> 그 렌즈다 — 여기에 개수나 시나리오 번호를 다시 적지 않는다. 도구 계층에서 재현할 수 없는 부분 —
+> 실제 워크로드가 명령·프롬프트를 실행하는 것, 유휴 승격·스냅샷 복원이 진짜 파드를 만드는 것 —
+> 이 그 렌즈에 남는다.
 
 ## 테스트 시나리오
 
@@ -25,7 +28,7 @@
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestWriteThenReadRecoversOutput` — 페이로드가 바이트 그대로 전달되고, 그 산출물은 write
   응답이 아니라 **뒤이은 read**로만 관측된다. 출력을 담을 필드가 `WriteResult`에 아예 없는
-  것이 "완료를 기다리지 않는다"의 구조적 표현이다) + 통합 (미작성)
+  것이 "완료를 기다리지 않는다"의 구조적 표현이다) + 통합
   `tests/integration/session_write_ac1.py` — 실 워크로드가 명령을 실제로 실행하는지는 여기서만
   관측된다
 
@@ -49,7 +52,7 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `internal/server/mcp_test.go`
   (`TestToolsListAdvertisesSessionWrite` — 네 어노테이션 전부와 `required: [id, payload]`) +
-  통합 (미작성) `tests/integration/session_write_ac3.py`
+  통합 `tests/integration/session_write_ac3.py`
   (`tools/list` 메타데이터만 읽고 파괴 동작은 실행하지 않는다)
 
 ### 시나리오 4: 거부 사유 구분
@@ -78,5 +81,5 @@
 - **자동화**: Go 단위 `internal/server/mcp_test.go`
   (`TestSessionWriteUnavailableReturnsToolError` — 거부가 이 도구에 갇히고 직후 `ping`은
   여전히 `pong`) + `internal/sessionplatform/sessionplatform_test.go`
-  (`TestUnavailableRefusesWrite`) + 통합 (미작성)
+  (`TestUnavailableRefusesWrite`) + 통합
   `tests/integration/session_write_ac5.py`(`실행 대상: auth-variant`)
