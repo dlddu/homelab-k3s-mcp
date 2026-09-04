@@ -42,9 +42,14 @@ metadata:
     app.kubernetes.io/name: dex
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
-# Minimal dex configuration. cmd/dex/config.go::Validate() requires exactly
-# three things -- issuer, storage and a web listen address -- and v2.44.0 has no
-# "at least one connector" check, so a discovery-only issuer needs nothing else.
+# Minimal dex configuration. cmd/dex/config.go::Validate() requires issuer,
+# storage and a web listen address; server.NewServer additionally refuses to
+# start with zero connectors ("server: no connectors specified",
+# server/server.go). enablePasswordDB satisfies that by appending dex's built-in
+# local connector, and no static passwords are defined -- nothing can actually
+# log in through it, which is fine because these ACs need only discovery and the
+# key set, never an interactive flow.
+#
 # Memory storage keeps the signing keys in-process; dex creates the initial RSA
 # key set at startup, which is what makes /keys non-empty on the first fetch.
 #
@@ -63,6 +68,7 @@ data:
       type: memory
     web:
       http: 0.0.0.0:5556
+    enablePasswordDB: true
 ---
 apiVersion: apps/v1
 kind: Deployment
