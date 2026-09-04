@@ -124,7 +124,6 @@ func FromEnv(ctx context.Context) (*Client, error) {
 		loadOpts = append(loadOpts, sdkconfig.WithRegion(region))
 	}
 
-	// Base credentials: the default chain (instance profile in production).
 	baseCfg, err := sdkconfig.LoadDefaultConfig(ctx, loadOpts...)
 	if err != nil {
 		return nil, fmt.Errorf("load aws config: %w", err)

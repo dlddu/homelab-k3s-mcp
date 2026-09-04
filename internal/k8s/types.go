@@ -24,8 +24,7 @@ func (k WorkloadKind) String() string {
 	}
 }
 
-// ParseWorkloadKind maps a user-supplied string to a WorkloadKind. The bool is
-// false when the input does not name a known kind.
+// ParseWorkloadKind maps a user-supplied string to a WorkloadKind.
 func ParseWorkloadKind(s string) (WorkloadKind, bool) {
 	switch s {
 	case "Deployment", "deployment", "deploy":
