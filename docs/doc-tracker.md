@@ -203,18 +203,18 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - AC 전집: 64
 - 예외 등재: 1
 - 1:1 대상: 63
-- 매칭 파일(전용): 54
+- 매칭 파일(전용): 56
 - 분할 대기 파일(규칙 2 위반): 0
-- 공백 AC: 9
+- 공백 AC: 7
 <!-- /ac-e2e-집계 -->
 
-> 공백 9건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 9건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
+> 공백 7건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 7건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
 >
 > **분할 대기 0 달성(2026-09-03)** — 마지막 겸용 파일 `workload.py`(16 AC)의 선결 판단이었던 「케이스가 공유 픽스처 상태에 순서 의존적」은 이 원장이 지목한 방식, 즉 **각 파일이 자기 선행 조건을 스스로 성립시키는 것**으로 해소했다(아래 완료 노트). 러너의 `실행 순서:` 로 파일 간 순서를 고정하는 길은 결합을 파일 단위로 옮길 뿐 없애지 않으므로 채택하지 않았고, 그 증거로 신규 16개 파일 중 **어느 것도 `실행 순서:` 를 선언하지 않는다**.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### AC 레지스트리 (64) — ✅ 전용 파일 54 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 9 · 🚫 예외 1
+### AC 레지스트리 (64) — ✅ 전용 파일 56 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 7 · 🚫 예외 1
 
 | AC | 제목 | e2e 상태 |
 |----|------|----------|
@@ -264,8 +264,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | session-list/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `session_list_ac3.py` |
 | session-read/AC1 | 오프셋 커서 읽기 | ⬜ 공백 — 케이스 없음 |
 | session-read/AC2 | 상태 분기 노출 | ⬜ 공백 — 케이스 없음 |
-| session-read/AC3 | 대상 부재·잘못된 커서 처리 | ⬜ 공백 — 케이스 없음 |
-| session-read/AC4 | 미설정 시 graceful 거부 | ⬜ 공백 — 케이스 없음 |
+| session-read/AC3 | 대상 부재·잘못된 커서 처리 | ✅ 전용 파일 `session_read_ac3.py` |
+| session-read/AC4 | 미설정 시 graceful 거부 | ✅ 전용 파일 `session_read_ac4.py` |
 | session-write/AC1 | 워크로드 입력 주입 | ⬜ 공백 — 케이스 없음 |
 | session-write/AC2 | 상태 분기 처리와 노출 | ⬜ 공백 — 케이스 없음 |
 | session-write/AC3 | 파괴적 작업 표기 | ⬜ 공백 — 케이스 없음 |
@@ -283,11 +283,22 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | workload-scale/AC2 | DaemonSet 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
 | workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `workload_scale_ac3.py` |
 
-### ⬜ 공백 backlog (9) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
+### ⬜ 공백 backlog (7) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
 
 > 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
 
-- **session-read/AC1~AC4 · session-write/AC1~AC5 (9)** → AC별 전용 파일 9개(신규, 파일 단위 규칙 2). 미설정 거부 2건(`session-read/AC4` · `session-write/AC5`)은 각자의 전용 파일 `session_{read_ac4,write_ac5}.py`가 되며, `실행 대상: auth-variant`(port 8088, 자격증명 미부착 변형)를 선언해 다른 "미설정 거부" 파일들과 같은 배포에서 돈다 — `session_list_ac3.py`가 그 자리의 선례다. **선행 조건이던 구현은 2026-09-04로 전부 해소됐다**: `session_read`(PR #51)에 이어 `session_write`도 착지해 자매 모델 `tbm_homelab-k3s-mcp-docs-impl`이 자기 몫을 닫았고(도구 표면 17종), 이제 남은 것은 **이 렌즈의 파일 저작뿐**이다 — 규칙 4가 "도구·기능 미구현은 예외 사유가 아니다"라고 못박으므로 그동안에도 계수에서 빠지지 않고 여기 공백으로 남아 있었다. e2e 픽스처도 이미 서 있다: `tests/k8s/kind/session-platform.yaml`이 실 제어면을 띄우고 `tests/integration/_session_platform.py`가 그 상태 저장소를 시드한다. 다만 read/write는 목록과 달리 **제어면이 파드를 실제로 프로비저닝하는 경로**(접근=active화, 스냅샷 복원)를 타므로, 저작 시 픽스처에 `DATA_PLANE_IMAGE` 배선이 필요한지를 먼저 판단할 것 — 지금은 세션 생성 경로를 쓰지 않아 일부러 비워 두었다.
+- **session-read/AC1~AC2 (2)** → AC별 전용 파일 2개(신규, 파일 단위 규칙 2). 도구는 구현돼 있고(#51), 남은 선행은 **픽스처가 데이터 플레인을 갖추는 것**이다 — 두 AC의 선행이 서로 다르다. 2026-09-04 슬라이스가 소스에서 확정한 답:
+  - **AC1(오프셋 커서 읽기)의 선행은 「읽을 수 있는 실 에이전트 파드」다.** `Service.Read`는 `activate` 뒤 `agent.Read(ctx, sess.Pod, offset)`를 부르고, `HTTPClient.Read`는 **파드 이름을 k8s API로 IP 해석**해 `GET http://<podIP>:8090/read?offset=N`을 친다. 즉 ConfigMap 시드만으로는 관측할 수 없다 — 그 이름의 파드가 실제로 떠서 에이전트 계약을 응답해야 한다. 데이터 플레인 이미지 `ghcr.io/dlddu/session-platform-data-plane:<sha>`는 제어면과 **같은 워크플로가 같은 커밋 SHA 태그로 발행**하는 공개 패키지이고 픽스처가 핀한 `5f60249f…`에 **linux/arm64 매니페스트가 실재한다**(익명 pull 토큰으로 확인) — 따라서 스텁 에이전트는 모킹 정책의 `IMG`·`UPS` 어디에도 걸리지 않는 **등재 불가 모킹**이 된다(dex·실 제어면과 같은 논증). 증분 구간을 만들려면 출력을 발생시켜야 하므로 제어면 `POST /api/v1/sessions/{id}/write` 또는 에이전트 `/write`에 짧은 `kubectl port-forward`로 닿는 길을 쓴다(`_oidc.py`가 그 선례다). `shell` 워크로드 파드는 사이드카도 Secret도 없는 단일 컨테이너라(`buildPod`의 `WorkloadTypeShell` 분기) 픽스처 비용은 `DATA_PLANE_IMAGE` env 한 줄 + 이미지 pull이다.
+  - **AC2(상태 분기 노출)는 추가로 CRIU 게이트가 선행이다 — 픽스처를 지금 상태로 두면 관측 자체가 불가능하다.** AC2는 `active`·`idle`·`snapshot` 세 분기를 모두 요구하는데, `snapshot` 분기는 `activate → Service.Restore → checkpointerFor(workload)`를 타고 그 함수는 **체크포인터가 `Enabled()`가 아니면 `session.ErrCheckpointDisabled`로 거부한다**("Never reclaim a pod behind synthetic checkpoint metadata"). 픽스처는 `CRIU_ENABLED`를 켜지 않으므로 `main.go`가 `criu.NewStubCheckpointer(false)`를 주입하고 → **복원도 스냅샷 생성도 실패한다.** 그래서 `snapshot` 상태에 도달하는 길도, 그 상태에서 읽는 길도 현재 픽스처엔 없다. 해소하려면 CRIU 런타임·특권 파드·체크포인트 저장소를 kind에 세워야 한다(session-platform 자신도 `deploy/` 오버레이에서만 켠다). `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 **「반쪽 단정」**이므로 하지 않는다.
+- **session-write/AC1~AC5 (5)** → AC별 전용 파일 5개(신규). 미설정 거부 1건(`session-write/AC5`)은 전용 파일 `session_write_ac5.py`가 되며 `실행 대상: auth-variant`(port 8088, 자격증명 미부착 변형)를 선언해 다른 "미설정 거부" 파일들과 같은 배포에서 돈다 — `session_list_ac3.py`·`session_read_ac4.py`가 그 자리의 선례다. **선행이던 구현은 2026-09-04로 해소됐다**(자매 모델 `tbm_homelab-k3s-mcp-docs-impl`이 `session_write`를 착지시켰다, 도구 표면 17종) — 남은 것은 이 렌즈의 파일 저작뿐이다. 다만 write 역시 `activate` 뒤 에이전트 파드를 치므로 **위 AC1과 같은 데이터 플레인 선행을 공유하고**, 상태 분기를 노출하는 `session-write/AC2`는 위 AC2와 같은 **CRIU 게이트 선행**을 공유한다. 미설정 거부(AC5)와 인자·거부 응답 구분(AC4)은 그 선행에 걸리지 않을 가능성이 높으니 저작 순서를 그렇게 잡을 것.
+
+> **session-read 2건(AC3 대상 부재·잘못된 커서 · AC4 미설정 거부) → AC별 전용 파일 2개 — ✅ 완료(2026-09-04)**: backlog 9건 중 **데이터 플레인 없이 관측되는 2건**을 전용 파일로 닫았다(`session_read_ac{3,4}.py`). 매칭 파일 **54 → 56**, 공백 **9 → 7**, 규칙 2 위반 **0 유지**. `ci.yml`·픽스처 무변경(러너가 파일을 자동 발견하고 두 배포는 이미 서 있다).
+>
+> **슬라이스 경계는 「제어면이 에이전트 파드를 치는가」로 그었다.** 도구가 구현됐다고 e2e가 관측할 수 있는 것은 아니다 — AC3의 두 실패는 어느 쪽도 에이전트 파드에 닿지 않고(없는 id는 `Get`에서 404, 잘못된 커서는 `internal/mcp`가 HTTP 이전에 거부), AC4는 제어면 자체가 없는 변형에서 돈다. 반대로 AC1·AC2는 `agent.Read`가 파드 IP를 해석해 `:8090/read`를 치는 경로라 실 데이터 플레인이 필요하다. **이 원장이 「저작 시 픽스처에 `DATA_PLANE_IMAGE` 배선이 필요한지 먼저 판단할 것」이라고 미뤄 둔 질문의 답이 그것이고, 답은 「필요하다/아니다」가 아니라 「AC1은 필요하고 AC2는 그것만으로도 부족하다」였다**(CRIU 게이트). 근거는 위 backlog 항목에 소스와 함께 적었다.
+>
+> **AC3은 두 에러의 층이 다르다는 것까지 단정한다.** 없는 id는 제어면 404 → `kindNotFound` → **도구 에러**(`isError`)이고, 음수·비정수 커서는 `internal/mcp`가 **`-32602` 프로토콜 에러**로 거부해 SDK가 `McpError`로 올린다(`pod_describe_ac2.py`가 그 형태의 선례다). 후자가 AC의 「세션 상태는 바뀌지 않는다」를 약속이 아니라 **구조**로 만든다 — 요청이 0건이면 건드릴 방법이 없다. 파일은 그 구조를 밖에서 되받는다: 두 호출 뒤 실재 세션의 `state`·`lastAccess`와 **파드 집합**이 그대로다(실 제어면이라 이 단정이 vacuous하지 않다).
+>
+> **AC4는 거부가 이 도구에 갇히는지를 단정한다** — `session_list`와 `session_read`가 같은 `Unavailable` 서비스를 공유하므로, 거부 문구가 unavailable 계열인 것에 더해 직후 `ping`이 여전히 `pong`인지까지 본다(`_auth_variant.assert_unavailable_refusal`의 두 절).
 
 > **platform 2건(AC2 디스커버리 · AC8 구성 유연성) → AC별 전용 파일 2개 — ✅ 완료(2026-09-04)**: backlog 11건 중 **선행이 구현이 아니라 저작뿐인 2건**을 전용 파일로 닫았다(`platform_auth_safety_ac{2,8}.py`). 매칭 파일 **52 → 54**, 공백 **11 → 9**, 규칙 2 위반 **0 유지**. 남은 9건은 전부 session-read 4 · session-write 5다. 그 선행이던 「도구 미구현」은 같은 날 자매 모델 `tbm_homelab-k3s-mcp-docs-impl`이 `session_read`·`session_write`를 착지시켜 닫았으므로(도구 표면 17종), 9건에 남은 것은 이 렌즈의 파일 저작뿐이다.
 >
@@ -412,6 +423,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-04 | **session-read 2건(AC3 대상 부재·잘못된 커서 · AC4 미설정 거부)의 통합 e2e 저작** — backlog 9건 중 **데이터 플레인 없이 관측되는 2건**을 전용 파일 2개(`session_read_ac{3,4}.py`)로 닫았다. 슬라이스 경계는 「제어면이 에이전트 파드를 치는가」로 그었다: AC3의 두 실패는 어느 쪽도 파드에 닿지 않고(없는 id는 `Get`에서 404, 잘못된 커서는 `internal/mcp`가 HTTP 이전에 `-32602`로 거부), AC4는 제어면이 아예 없는 `auth-variant`에서 돈다. AC3 파일은 **두 에러의 층이 다르다는 것**까지 단정한다 — not-found는 도구 에러(`isError`), 잘못된 커서는 SDK가 올리는 `McpError`(`pod_describe_ac2.py`가 선례) — 그리고 두 호출 뒤 실재 세션의 `state`·`lastAccess`와 **파드 집합**이 불변임을 대조해 「상태 불변」을 관측으로 되받는다(실 제어면이라 vacuous하지 않다). 남은 session-read 2건(AC1·AC2)의 선행을 **소스에서 확정해 backlog에 적었다**: AC1은 `agent.Read`가 파드 IP를 해석해 `:8090/read`를 치므로 **실 데이터 플레인 파드가 필요**하고(이미지는 제어면과 같은 SHA 태그로 발행되는 공개 arm64 패키지라 스텁은 모킹 정책상 등재 불가), AC2는 그 위에 **CRIU 게이트가 추가 선행**이다 — `snapshot` 분기가 `Restore → checkpointerFor`를 타는데 `CRIU_ENABLED` 없이는 `ErrCheckpointDisabled`로 거부되어 관측 자체가 불가능하다. 이로써 원장이 미뤄 둔 「`DATA_PLANE_IMAGE` 배선이 필요한지 먼저 판단할 것」에 답했다(AC1은 필요, AC2는 그것만으로도 부족). session-write 5건의 저작 순서 권고도 같은 근거로 적었다(AC4·AC5 먼저). `ci.yml`·픽스처 무변경(러너 자동 발견, 두 배포 기존). tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 54 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 9 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 56 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 7 · 🚫 예외 1 · 비-AC 1 |
 | 2026-09-04 | **주석 비중복성 정책 문서 신설 + 첫 판정 패스 2개 패키지** — 정합성 모델 `tbm_homelab-k3s-mcp-comment-redundancy`의 to-be가 `absent`(정책 문서 부재)였다. `docs/comment-policy.md`를 세워 **복원 경로 넷**(코드 · 저장소 문서 · PR · 커밋 메시지), **유지 대상 셋**(기계 판독 주석 · doc 주석 최소치 · 복원 불가능한 지식), **5단계 판정 절차**, 「애매하면 남긴다」의 비용 비대칭 근거, 그리고 as-is 지문의 사각지대(Python docstring 본문 · Go 블록 주석 · 줄 끝 주석)를 고정했다. 이어 그 정책을 `internal/opensearch/` · `internal/sessionplatform/`(주석 161줄 / 4파일, 범위 내 848줄의 19%)에 **완전 적용**해 주석 8줄을 제거했다 — 전부 ① 선언 재진술 ② `docs/prd-opensearch-*.md` 재진술 ③ 자기 파일 안의 중복이며, exported 식별자의 1줄 doc 주석과 패키지 주석은 하나도 건드리지 않았다. 판정 표본이 정정한 것: 감지가 지목한 「kind 픽스처 YAML의 매니페스트 재진술」은 실측에서 **성립하지 않았다** — `tests/k8s/kind/*.yaml`의 주석 240줄은 대부분 상류 함정·정책 판단 근거라 유지 대상이다. **범위 밖(후속)**: 나머지 주석 679줄(`main.go` · 그 외 `internal/` · `tests/` · `scripts/`), 지문 패턴 확장, 이 축의 CI 게이트 신설(현재 ungated). docs/ 신설 + `internal/` 주석 변경이라 as-is 해시 변경 + 문서 인벤토리·허브 계수 갱신(PRD·AC·테스트 문서 불변). | 가치 5 / PRD 18 / AC 64 / 테스트 18 · 정책 1 · 허브 39 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변) · 정책 2 · 허브 40 |
 | 2026-09-04 | **`session_write` 구현 착지 — 이 모델의 마지막 미구현 도구가 닫혔다** — `internal/sessionplatform`에 `WriteSession`(제어면 `POST /api/v1/sessions/{id}/write` 클라이언트)을, `internal/mcp`에 `session_write` 도구 등록·디스패치를 더해 session-write/AC1~AC5의 **도구 계층**을 구현으로 닫았다(도구 표면 16 → 17). 새 설계 판단은 **거부 응답 매핑 하나**였고, 원장이 적어 둔 「재시도 가능/불가 **두** 종류를 더한다」 대신 **세 종류**(`kindBusy` 429 · `kindTooLarge` 413 · `kindQuotaExhausted` 507)를 더했다 — 두 종류면 413과 507이 한 kind로 접혀 둘의 구별이 제어면이 보내는 산문에만 의존하는데, AC4가 요구하는 것은 네 거부가 서로 구별되는 것이라 그 의존을 구조로 바꿔야 했다. 그 차이를 지키는 것이 `TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse`다: 네 상태코드에 **같은 오류 본문**을 물려 놓고도 메시지가 쌍쌍이 달라야 통과한다(본문을 다르게 두면 두 kind로 접어도 통과해 버려 단정이 공허해진다 — 실제로 첫 판에서 이 구멍이 뮤테이션으로 드러나 테스트를 고쳤다). 페이로드 1 MiB 상한은 **클라이언트에서 선제 거부하지 않는다**: `claude-code`에만 걸리는 워크로드 타입별 규칙이라 조회 없이는 판정할 수 없고, 판정은 제어면에 남기고 413만 구별해 전달하는 것이 맞다. 빈 id는 HTTP 이전에 거부해 「거부된 호출은 세션을 건드리지 못한다」를 요청 0건으로 증명한다 — write는 도착만으로 스냅샷을 복원시키므로 read보다 이 보장이 더 필요하다. 함께 **원장의 살아 있는 어긋남 3건**을 교정했다: 「session 3종의 통합 e2e — 미작성」 항목의 세 단정(「`tests/integration/`에 아직 케이스가 없다」·「e2e 렌즈에서 공백으로 계수된다」·「스텁이냐 실 제어면이냐의 택일은 그 렌즈의 몫이다」)이 모두 거짓이었고 반례가 **같은 파일 안**에 있었다(session-list 3파일 실재 · 레지스트리 ✅ 3행 · 실 제어면 확정 기록). 문서 매트릭스의 `session_write` 행에 남아 있던 `(구현 선행)`과, e2e 렌즈 절 두 곳의 「도구 미구현」 서술도 이 PR이 거짓으로 만드는 자리라 함께 고쳤다. 곁가지로 `_helpers.EXPECTED_TOOLS`를 15 → **17**로 정정했다(`session_read` 누락 + 신규 `session_write` — 단정이 부분집합이라 **깨진 게 아니라 조용히 약해져** 있었고, 이번이 두 번째 재발이라 주석에 「도구를 더하는 PR이 같은 커밋에서 갱신한다」를 규칙으로 명시했다). **AC·PRD·테스트 문서의 신설·삭제·개정 0건**이고 e2e 렌즈 레지스트리 표·집계도 불변이다 — session_write의 통합 e2e는 그 렌즈 소관으로 남는다(같은 날 platform 2건을 닫은 형제 슬라이스 뒤 **공백 9 유지**). 그 형제 슬라이스가 새로 쓴 「남은 9건은 도구 자체가 미구현」이라는 문장도 이 PR이 거짓으로 만드는 자리라 함께 고쳤다. | 가치 5 / PRD 18 / AC 64 / 테스트 18 · 도구 표면 16 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변) · 도구 표면 17 |
 | 2026-09-04 | **platform 2건(AC2 인증 디스커버리 · AC8 인증 방식 구성 유연성)의 통합 e2e 저작** — backlog 11건 중 **선행이 저작뿐인 2건**을 전용 파일 2개(`platform_auth_safety_ac{2,8}.py`)로 닫았다. 두 AC는 같은 난제(발급자가 없으면 `auth.FromEnv`가 기동을 막는다)를 공유하므로 한 슬라이스다. 핵심 판단은 「스텁 발급자 vs 실 IdP」였고 **모킹 정책이 스텁을 배제한다**: `UPS`는 실 상류를 CI에서 띄울 수 있으면 못 쓰고 `IMG`는 이미지가 공개되면 소멸하는데 `ghcr.io/dexidp/dex`는 공개·arm64라 스텁은 **등재 불가 모킹**이 된다 → 신규 픽스처 `tests/k8s/kind/oidc-fixture.yaml`은 **실 OIDC 발급자(dex, 다이제스트 핀)**이고 **모킹 허용목록은 5건·상한 5로 불변**이다(MinIO·OpenSearch·session-platform과 같은 자리). AC8은 (a)만으로 끊지 않고 **4구성 전부**를 덮었다 — (a) auth-variant에서 401 + 챌린지에 `resource_metadata` 없음 + 디스커버리 404, (b) OAuth만 세팅한 변형에서 디스커버리 200 + Available, (c) 둘 다 세팅한 변형에서 API 키 인가 + 디스커버리 200, (d) 아무것도 미설정인 변형이 종료 코드 1 + 로그 `no authentication configured`로 **기동 실패**. (d)가 AC2의 「Available ⇒ 기동 시 OIDC 디스커버리·JWKS 로드 성공」 추론을 공허하지 않게 만든다. AC2는 401 챌린지 → 보호 리소스 메타데이터 → 발급자 `openid-configuration` → JWKS의 사슬을 **앞 칸이 준 값으로만** 걷는다. `ci.yml`은 픽스처 배포·롤아웃 대기·신규 그룹 실행(`oauth-variant`, 8089)·진단 덤프 4자리가 늘었고, 기동 실패가 의도인 변형에는 롤아웃 대기를 걸지 않았다. 네 구성 대조가 AC8 자체라 그 파일만 `_oidc.py`의 짧은 `kubectl port-forward`로 다른 배포에 닿는다. **범위 밖(후속)**: dex에서 실 토큰을 받아 「유효 JWT → 인가」까지 단정하는 것. tests/·docs/·ci.yml 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 52 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 11 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 54 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 9 · 🚫 예외 1 · 비-AC 1 |
