@@ -23,14 +23,18 @@ API_KEY = "ci-e2e-key"
 
 # The exact refusal texts, from the default reasons in NewUnavailable() and the
 # Error() prefixes of each package (internal/{awsconfig,github,grafana,
-# opensearch}). An empty reason is what main.go passes when the primary env var
-# is unset, which is precisely the situation this fixture reproduces.
+# opensearch,sessionplatform}). An empty reason is what main.go passes when the
+# primary env var is unset, which is precisely the situation this fixture
+# reproduces.
 AWS_REFUSAL = "aws config unavailable: aws config integration is not configured"
 GITHUB_REFUSAL = "github app unavailable: github app credentials are not configured"
 GRAFANA_REFUSAL = (
     "grafana cloud unavailable: grafana cloud credentials are not configured"
 )
 OPENSEARCH_REFUSAL = "opensearch unavailable: opensearch integration is not configured"
+SESSION_PLATFORM_REFUSAL = (
+    "session platform unavailable: session platform endpoint is not configured"
+)
 
 
 async def assert_unavailable_refusal(

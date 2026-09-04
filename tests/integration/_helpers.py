@@ -30,7 +30,11 @@ from mcp.client.streamable_http import streamablehttp_client
 # The complete tool surface the server advertises. ``internal/mcp/toolslist.go``
 # declares it statically, so it does not depend on which integrations are
 # configured -- both the primary deployment and the credential-less auth-variant
-# must advertise all of it. Two files read this: ``platform_auth_safety_ac5.py``
+# must advertise all of it. Keep it complete: the assertions below subtract this
+# set from what the server returned, so a tool missing *here* is not a failure,
+# it is a silently weaker check (``session_list`` was missing from 2026-09-03,
+# when the tool landed, until the session-list e2e slice noticed). Two files read
+# this: ``platform_auth_safety_ac5.py``
 # asserts it on the variant (that is the AC -- the server keeps advertising every
 # tool with each integration unset) and ``smoke.py`` asserts it on the primary
 # deployment as the shared precondition of the cases that drive those tools.
@@ -49,6 +53,7 @@ EXPECTED_TOOLS = {
     "opensearch_search",
     "opensearch_document_put",
     "opensearch_document_delete",
+    "session_list",
 }
 
 
