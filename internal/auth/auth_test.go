@@ -16,16 +16,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// These tests cover platform-auth-safety acceptance criteria:
-//
-//	AC1 인증 게이트         - the bearer gate decides what to reject and how.
-//	AC2 인증 디스커버리      - the protected-resource metadata and the
-//	                          WWW-Authenticate challenge advertise discovery.
-//	AC7 API 키 인증          - static API keys authorize non-interactive clients,
-//	                          with constant-time matching and JWT fallback.
-//	AC8 OAuth 선택화         - OAuth is optional; discovery is advertised only
-//	                          when OAuth is configured.
-//
 // The AC1/AC2/AC7 request-path tests exercise only local logic (header parsing,
 // key matching, challenge emission, metadata rendering) and never reach the
 // network. The FromEnv OAuth-gating tests stand up a local httptest OIDC server
@@ -384,9 +374,6 @@ func TestRequireBearerRejectsJWTInKeyOnlyMode(t *testing.T) {
 	}
 }
 
-// TestRequireBearerAcceptsAPIKeyAndJWT covers test scenario 7: with both an API
-// key and OAuth configured, each credential authorizes independently, and a
-// token that is neither is rejected (JWT fallback path).
 func TestRequireBearerAcceptsAPIKeyAndJWT(t *testing.T) {
 	const (
 		kid      = "test-kid"
