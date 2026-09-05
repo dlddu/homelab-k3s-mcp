@@ -3,11 +3,6 @@
 검증 AC: session-list/AC2
 실행 대상: primary
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-
 AC2의 "새 파드가 기동되지 않음" 절이 이 하네스가 **실 제어면**을 띄우는 이유다. 스텁 앞에서는
 그 단정이 vacuous 하다 — 스텁은 애초에 파드를 만들지 않으므로 도구가 복원을 유발했더라도
 파드 수는 그대로다. 실 제어면은 snapshot 세션을 복원하면 실제로 세션 파드를 만들기 때문에,

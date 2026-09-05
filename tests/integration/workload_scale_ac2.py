@@ -5,10 +5,6 @@
 
 거부 대상은 DaemonSet ``workload-fixture-ds`` 이고 Deployment 픽스처의 레플리카
 상태와 무관하다 — 선행 조건이 없다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations

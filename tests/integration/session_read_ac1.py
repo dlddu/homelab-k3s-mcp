@@ -3,11 +3,6 @@
 검증 AC: session-read/AC1
 실행 대상: primary
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-
 **이 파일이 데이터 플레인을 요구하는 첫 e2e다.** 같은 도구의 AC3·AC4는 에이전트 파드에 닿지
 않아 먼저 닫혔지만(없는 id는 제어면 404, 잘못된 커서는 `internal/mcp`가 HTTP 이전에 거부,
 미설정 거부는 제어면 자체가 없는 변형), AC1의 커서는 **파드가 실제로 쌓은 바이트**다:

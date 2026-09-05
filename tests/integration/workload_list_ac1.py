@@ -7,10 +7,6 @@
 있어야 한다 — ``run()`` 이 ``ensure_workload_fixture_baseline()`` 으로 스스로
 성립시킨다. 레플리카 **값**은 여전히 고정하지 않는다(같은 그룹의
 ``workload_scale_ac1.py`` 가 자기 프로세스에서 그 값을 움직인다).
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations

@@ -5,3 +5,4 @@
 .env.local
 .idea/
 .vscode/
+__pycache__/

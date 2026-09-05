@@ -3,9 +3,6 @@
 검증 AC: ping/AC1
 실행 대상: primary
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
 배포 서버를 상대로 돈다 — ``internal/server/mcp_test.go`` 의 in-process 단언
 (``TestPingToolReturnsPong``)을 배포 e2e 계층으로 승격한 것이다.
 """
