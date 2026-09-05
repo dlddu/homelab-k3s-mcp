@@ -126,7 +126,6 @@ async def test_session_read_ac1_offset_zero_returns_everything(
         "the opening read's cursor must be the byte length of everything since "
         f"session start: {first}"
     )
-    # Reading is not passive, and the result says which branch served it.
     assert first["path"] == "active", first
     assert first["session"]["state"] == "active", first
     print("offset 0 ok: nextOffset =", first["nextOffset"])

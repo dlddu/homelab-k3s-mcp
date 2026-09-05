@@ -16,7 +16,6 @@
 # is a public image with a linux/arm64 manifest, so neither holds and a stub
 # issuer would be an unregistrable mocking point. The 2026-09-04 session-list
 # slice reached the same conclusion about the session-platform control plane.
-# => 허용목록·상한은 이 파일 때문에 변하지 않는다 (등재 5 · 상한 5 그대로).
 #
 # What runs here, and which AC8 configuration each one is:
 #

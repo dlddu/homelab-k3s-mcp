@@ -90,7 +90,6 @@ async def test_session_write_ac1_returns_without_waiting_for_the_workload(
     assert set(body) == {"path", "session"}, (
         f"a write result must carry only the branch and the session: {body}"
     )
-    # The session was already active, so no promotion or restore was needed.
     assert body["path"] == "active", body
     assert body["session"]["id"] == session_id, body
     assert body["session"]["state"] == "active", body

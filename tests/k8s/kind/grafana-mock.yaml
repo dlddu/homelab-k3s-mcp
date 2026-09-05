@@ -7,11 +7,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
-# Stand-in for the Grafana Cloud access-policy token endpoint. The server posts
-# to /api/v1/tokens with a Bearer issuer token and a body carrying the access
-# policy id, a unique name and an RFC3339 expiry; this mock echoes those back in
-# a Grafana-shaped response (token = glc_mock_<name>) so the kind smoke check can
-# drive the full client path end-to-end without touching real Grafana Cloud.
 apiVersion: v1
 kind: ConfigMap
 metadata:
