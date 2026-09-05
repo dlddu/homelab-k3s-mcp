@@ -3,9 +3,6 @@
 검증 AC: aws-config-get/AC3
 실행 대상: auth-variant
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
 This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:
 auth is on (``MCP_API_KEYS`` set, ``MCP_AUTH_DISABLED`` unset) and no credential
 secret is attached at all, so ``main.go``'s ``build*Service`` helpers each degrade

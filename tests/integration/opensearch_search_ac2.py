@@ -5,10 +5,6 @@
 
 기본값과 무제한을 구분하려면 기본 상한보다 많은 문서가 있어야 하므로 자기 인덱스에
 충분한 수를 시드한 뒤 관측한다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations

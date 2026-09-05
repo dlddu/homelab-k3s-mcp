@@ -3,9 +3,6 @@
 검증 AC: platform-auth-safety/AC6
 실행 대상: primary
 실행 순서: 0
-
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
 프로브 확인은 다른 케이스들이 기대는 배포가 살아 있는지를 가장 먼저 말해 주므로
 `실행 순서: 0` 으로 primary 그룹 앞머리에 둔다.
 """

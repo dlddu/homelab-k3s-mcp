@@ -3,9 +3,6 @@
 검증 AC: platform-auth-safety/AC2
 실행 대상: oauth-variant
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
 `실행 대상: oauth-variant` 는 `tests/k8s/kind/oidc-fixture.yaml` 의 `homelab-k3s-mcp-oauth`
 배포다 — `MCP_OAUTH_*` 가 설정된 유일한 배포 종류이고, 디스커버리 문서는 OAuth 가 구성된
 경우에만 라우팅된다(`internal/server/server.go`). 주 배포는 `MCP_AUTH_DISABLED=1` 이고

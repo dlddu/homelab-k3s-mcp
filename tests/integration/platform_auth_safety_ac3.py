@@ -7,10 +7,6 @@
 apiserver SubjectAccessReview만 읽으므로 세션도, 픽스처 선행 조건도 필요 없다.
 ``실행 대상: primary`` 는 러너가 이 파일을 어느 그룹에서 한 번 돌릴지를 신고하는
 것이고, 전달되는 base URL은 쓰이지 않는다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations
