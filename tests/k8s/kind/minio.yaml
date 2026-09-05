@@ -5,9 +5,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
-# Seed payload for the aws_config_get smoke check. The minio-seed Job uploads
-# this file to s3://ci-config-bucket/aws/config; tests/integration/aws_config.py
-# asserts the tool returns it verbatim.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -92,7 +89,6 @@ spec:
       targetPort: 9000
       protocol: TCP
 ---
-# Creates the bucket and uploads the seed object once MinIO is reachable.
 apiVersion: batch/v1
 kind: Job
 metadata:

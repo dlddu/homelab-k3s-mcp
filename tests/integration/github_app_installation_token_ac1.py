@@ -48,9 +48,7 @@ async def test_github_app_installation_token_ac1_short_lived_token(
     env_text, mime = parse_env_resource(result)
     assert mime == "text/plain", mime
     assert f"GITHUB_TOKEN=ghs_mock_{EXPECTED_INSTALLATION_ID}" in env_text, env_text
-    # Expiry comment, carrying exactly what the token endpoint returned.
     assert "# Expires at: 2099-01-01T00:00:00Z" in env_text, env_text
-    # Scope comments accompany the token in the same payload.
     assert "# Repository selection: " in env_text, env_text
     assert "# Permissions: " in env_text, env_text
 

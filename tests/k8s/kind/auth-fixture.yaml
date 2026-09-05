@@ -75,9 +75,8 @@ spec:
               value: 0.0.0.0:3000
             - name: LOG_LEVEL
               value: info
-            # Auth ENABLED: MCP_AUTH_DISABLED is deliberately unset and a single
-            # static API key gates /mcp. The value is a throwaway CI credential
-            # and must match API_KEY in tests/integration/_auth_variant.py.
+            # A throwaway CI credential; must match API_KEY in
+            # tests/integration/_auth_variant.py.
             - name: MCP_API_KEYS
               value: ci-e2e-key
           startupProbe:

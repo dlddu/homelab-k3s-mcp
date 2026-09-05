@@ -382,7 +382,6 @@ spec:
           image: python:3.12-alpine
           command: ["python", "-u", "/scripts/trace_proxy.py"]
           env:
-            # "<name>=<listen port>=<upstream host>:<upstream port>"
             - name: TRACE_ROUTES
               value: >-
                 minio=9000=minio.minio.svc.cluster.local:9000,opensearch=9200=opensearch.opensearch.svc.cluster.local:9200

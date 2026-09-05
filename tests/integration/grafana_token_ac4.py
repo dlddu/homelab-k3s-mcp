@@ -38,7 +38,6 @@ async def test_grafana_token_ac4_issuer_token_not_exposed(
     """
     result = await session.call_tool("grafana_token", {})
     assert result.isError is False, result
-    # The entire payload is the text/plain .env resource; nothing structured.
     assert result.structuredContent is None, result.structuredContent
     env_text, _ = parse_env_resource(result)
     # The minted read token IS returned (that is the whole point of the tool)...

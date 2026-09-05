@@ -85,10 +85,6 @@ metadata:
   labels:
     app: control-plane
 ---
-# The identity every session pod is provisioned with. The control plane names
-# it in the pod spec it builds, so the pod is unschedulable without it; see the
-# note at the top of this file for why its production ClusterRoleBindings are
-# not reproduced.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -167,8 +163,6 @@ spec:
           env:
             - name: CP_ADDR
               value: ":8080"
-            # Same commit tag as the control plane image above: one workflow
-            # publishes the pair, so they speak the same agent contract.
             - name: DATA_PLANE_IMAGE
               value: ghcr.io/dlddu/session-platform-data-plane:5f60249f8381d5cfecbe093bb77fc30d874697f4
           readinessProbe:
