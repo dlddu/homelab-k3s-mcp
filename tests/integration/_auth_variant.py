@@ -1,8 +1,5 @@
 """auth-variant 배포를 상대로 도는 파일들의 공유 표면 (매칭 단위가 아니다).
 
-`_` 접두라 `run_all.py::matching_unit_paths()` 가 걸러내므로 AC를 주검증하지 않고
-`검증 AC:` 선언도 갖지 않는다 — `_opensearch.py`·`_aws_config.py` 와 같은 자리다.
-
 This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:
 auth is on (``MCP_API_KEYS`` set, ``MCP_AUTH_DISABLED`` unset) and no credential
 secret is attached at all, so ``main.go``'s ``build*Service`` helpers each degrade
