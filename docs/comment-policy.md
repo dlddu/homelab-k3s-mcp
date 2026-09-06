@@ -178,17 +178,33 @@ AC 목록, 테스트 이름을 산문으로 옮긴 doc 주석이 여기 해당�
 - **게이트** = `scripts/check_comment_policy.py`(CI `fmt + vet` 잡). 아래 판정 이력의 범위별
   줄 수·지문을 **as-is와 글자 그대로 같은 추출·정규화**로 재측정해 대조한다. 추출 정의가 모델과
   갈리면 게이트가 재는 것과 감지가 보는 것이 달라지므로, 고칠 때는 모델 정의와 함께 고칠 것.
+  게이트는 여기에 더해 **docstring 표면**을 별도 원장으로 잰다(아래) — 그 표면은 모델 as-is에
+  아직 없으므로 「글자 그대로 같아야 한다」는 제약이 걸리는 정의는 줄 주석 쪽뿐이다.
 
 ### 지문의 사각지대
 
-as-is 지문은 `^[[:space:]]*(//|#)` 에 걸리는 줄만 본다. 따라서 아래는 **판정 대상이지만
-지문에는 보이지 않는다** — 이 정책은 적용되지만, 늘어나도 재감지가 트리거되지 않는다.
+as-is 지문은 `^[[:space:]]*(//|#)` 에 걸리는 줄만 본다. 그 밖에도 판정 대상인 주석이 셋
+있었고, 지금 상태는 이렇다.
 
-- Python docstring 본문 (줄 시작이 `#`가 아니다)
-- Go 블록 주석 `/* */` (현재 0건)
-- 줄 끝 주석 (`x := 1 // 이유`)
+| 사각지대 | 현재 | 근거 |
+| --- | --- | --- |
+| **Python docstring 본문** | 게이트가 **별도 표면으로 본다**(아래 「docstring 판정 이력」) | 줄 접두사로 식별되지 않아 정규식을 넓혀도 잡히지 않는다 — `ast` 파서가 필요하다 |
+| **Go 블록 주석 `/* */`** | 0건 | 스캔 범위의 `.go` 파일에 `/*` 가 하나도 없다 |
+| **줄 끝 주석** (`x := 1 // 이유`) | **여전히 사각지대** | 아래 |
 
-패턴을 넓히는 것은 이런 주석이 늘어날 때 별도 task에서 다룬다.
+줄 끝 주석을 정규식으로 넓히는 길은 **없다**. 문자열 리터럴 안의 `#`·`//` 가 함께 걸리기
+때문이다 — 느슨한 패턴(`\S.*(//|#)`)은 스캔 범위에서 118줄을 집는데, Python 을 `tokenize`
+로 정확히 세면 실제 줄 끝 주석은 5줄(그중 하나는 `# noqa` 지시어)이다. 제대로 재려면 언어별
+어휘 분석이 필요하고, 그건 이 표면의 크기에 비해 큰 장치다. **늘어나면 그때 다룬다** — 이
+문장이 지금 발화하지 않았다는 것이 위 실측이다.
+
+> **모델 as-is 는 아직 줄 주석 표면만 본다.** docstring 표면을 게이트가 재기 시작했지만,
+> 정합성 모델 `tbm_homelab-k3s-mcp-comment-redundancy` 의 as-is 버전 스크립트는 bash·grep 이라
+> 파서를 돌리지 않는다 — 그래서 docstring 이 늘어나도 **재감지는 트리거되지 않는다.** 그
+> 자리를 게이트의 **R8(합계 + 잔량 == 실측 전체)** 이 메운다: 판정받지 않은 docstring 이
+> 늘거나 줄면 CI 가 멈추고, 잔량 마커를 갱신하는 행위가 곧 「이만큼은 아직 판정받지
+> 않았다」는 명시적 선언이 된다. 모델의 as-is 를 이 표면까지 넓히는 것은 모델 소유 스킬의
+> 몫이라 별도 task에서 다룬다.
 
 ## 판정 이력
 
@@ -217,7 +233,7 @@ as-is 지문은 `^[[:space:]]*(//|#)` 에 걸리는 줄만 본다. 따라서 아
 | 2026-09-04 | `internal/awsconfig/awsconfig.go` · `internal/awsconfig/awsconfig_test.go` | 24 | `1b5e509876c7` | 제거 1줄 — ③ `LoadDefaultConfig` 위의 「Base credentials: the default chain (instance profile in production).」 이 패키지 주석의 같은 문장을 되풀이. 정책 §제거 대상 ③ 이 예시로 든 형태 그대로이고, 자매 파일 `internal/opensearch/opensearch.go` 가 1차 판정에서 같은 결론을 받았다. `AWS_CONFIG_S3_ENDPOINT`/MinIO 단락(STS 와 S3 를 한 포트에 얹는다, 스모크 전용)은 픽스처가 실환경과 갈리는 지점이라 유지 |
 | 2026-09-04 | `internal/github/github.go` · `internal/github/github_test.go` | 19 | `3e94443eb4d1` | 제거 0줄(문장 1개 삭제, 줄 수 불변) — 「This previously had no automated coverage.」 삭제. 나머지는 exported 1줄 doc(정책이 유지 예시로 든 `// Error is the error type returned by Service.` 포함)과 「앱 JWT 를 되돌려주면 그 자체가 파생 서명 자료의 유출」이라 유지 |
 | 2026-09-04 | `main.go` · `internal/version/version.go` | 4 | `28fb0cecbc29` | 제거 0줄 — 넷 다 Command·패키지 doc 과 exported 상수의 1줄 doc 이라 관례가 요구하는 최소치다 |
-| 2026-09-04 | `scripts/check_comment_policy.py` · `scripts/check_mock_policy.py` | 22 | `3b56892dcb7f` | 제거 0줄 — `ID_TOKEN_RE` 의 「`(?![A-Za-z0-9_])` 가 없으면 정책 문서 경로 자체가 미등재 모킹으로 잡힌다」는 함정이고, 「모델 as-is 스크립트와 글자 그대로 같아야 한다」는 교차 제약이다. `# R1 —` 류 규칙 앵커는 모듈 docstring 의 재진술에 가깝지만 100줄짜리 `main()` 의 항해 표지라 「애매하면 남긴다」로 유지 |
+| 2026-09-05 | `scripts/check_comment_policy.py` · `scripts/check_mock_policy.py` | 23 | `047db5f412c3` | 제거 0줄 — `ID_TOKEN_RE` 의 「`(?![A-Za-z0-9_])` 가 없으면 정책 문서 경로 자체가 미등재 모킹으로 잡힌다」는 함정이고, 「모델 as-is 스크립트와 글자 그대로 같아야 한다」는 교차 제약이다. `# R1 —` 류 규칙 앵커는 모듈 docstring 의 재진술에 가깝지만 100줄짜리 `main()` 의 항해 표지라 「애매하면 남긴다」로 유지 |
 | 2026-09-05 | `tests/k8s/kind/session-platform.yaml` | 75 | `20eaf535b30c` | 제거 6줄 — ③ 자기 파일 중복 둘. `data-plane` ServiceAccount 위 4줄은 머리말이 이미 말한 것(그 SA 가 없으면 세션 파드가 뜨지 않는다 · 프로덕션 ClusterRoleBinding 을 재현하지 않는 이유)의 되풀이이고, `DATA_PLANE_IMAGE` 위 2줄은 머리말의 「한 워크플로가 쌍을 발행하므로 같은 agent 계약을 쓴다」를 다시 적은 것이다. 머리말 나머지는 전부 유지 — 왜 stand-in 이 아니라 실 컴포넌트인가, `CRIU_ENABLED`·`DATA_PLANE_CLAUDE_CODE_IMAGE` 를 비워 두는 것이 게이트 완화가 아닌 이유, 268 MiB 를 테스트 전에 미리 로드하는 이유(제어면이 파드에 주는 2분 예산을 pull 에 쓰면 안 된다), SHA 태그가 불변이라 하네스가 재현 가능하다는 근거 |
 | 2026-09-05 | `tests/k8s/kind/oidc-fixture.yaml` | 78 | `0cffc931b2c9` | 제거 1줄 — 「허용목록·상한은 이 파일 때문에 변하지 않는다 (등재 5 · 상한 5 그대로)」. 바로 앞 문단이 `UPS`·`IMG` 어느 카테고리도 성립하지 않는다고 이미 결론냈고(③), 괄호 안 현재값은 `check_mock_policy.py` R6 이 양방향으로 강제하는 수치라 아무도 검증하지 않는 자리에 두면 낡는다. dex 최소 설정의 근거(`server.NewServer` 가 커넥터 0 개를 거부한다), digest 핀, readiness 를 `/healthz` 가 아니라 discovery 로 둔 이유, (d) 변형의 CrashLoop 이 곧 AC2 논증을 정직하게 만든다는 절은 전부 복원 경로가 없어 유지 |
 | 2026-09-05 | `tests/k8s/kind/http-trace.yaml` | 43 | `e6747e1eba38` | 제거 1줄 — `TRACE_ROUTES` 값 **바로 위**의 형식 주석(① 아래 줄이 형식을 그대로 보여준다). 같은 형식을 적은 임베드 스크립트 쪽 1줄은 파싱 지점의 앵커라 판단이 갈렸고 「애매하면 남긴다」로 보존했다. 프록시가 왜 있는가(픽스처는 assumed-role 요청과 base 자격증명 요청을 구분하지 못해 결과 기반 단정이 공허해진다), hop-by-hop·`Expect`·중복 `Content-Length`·Host 서명 투명성, AssumeRole 레코드는 축출하지 않는 이유는 전부 유지 |
@@ -231,5 +247,45 @@ as-is 지문은 `^[[:space:]]*(//|#)` 에 걸리는 줄만 본다. 따라서 아
 | 2026-09-05 | `tests/integration/.gitignore` · `tests/integration/dear_baby_reset_user_ac1.py` · `tests/integration/dear_baby_reset_user_ac2.py` · `tests/integration/dear_baby_reset_user_ac3.py` · `tests/integration/namespace_list_ac1.py` · `tests/integration/ping_ac1.py` · `tests/integration/pod_describe_ac1.py` · `tests/integration/pod_describe_ac2.py` · `tests/integration/pod_describe_ac3.py` · `tests/integration/requirements.txt` · `tests/integration/smoke.py` · `tests/integration/workload_list_ac1.py` · `tests/integration/workload_list_ac2.py` · `tests/integration/workload_logs_ac1.py` · `tests/integration/workload_logs_ac2.py` · `tests/integration/workload_logs_ac3.py` · `tests/integration/workload_logs_ac4.py` · `tests/integration/workload_restart_ac1.py` · `tests/integration/workload_restart_ac2.py` · `tests/integration/workload_scale_ac1.py` · `tests/integration/workload_scale_ac2.py` · `tests/integration/workload_scale_ac3.py` | 9 | `bae4b9d18d00` | 제거 0줄 — kubelet 이 `timestamps=true` 에 붙이는 접두 형태, 한 kind 의 요약이 다른 kind 의 모양을 갖지 않는다는 단정의 의도, 도구가 selector/container 미지정 시 적용하는 기본값의 출처. 나머지는 주석 0줄이며, **등재해 두면 이후 유입이 R2 에 걸린다**(위 #4 `fakes_test.go` 와 같은 이유) |
 <!-- /판정-원장 -->
 
-판정 완료 합계 **<!-- 판정-합계 -->991<!-- /판정-합계 -->줄**. 전체 대비 비율과 미판정 잔량은
+판정 완료 합계 **<!-- 판정-합계 -->992<!-- /판정-합계 -->줄**. 전체 대비 비율과 미판정 잔량은
 게이트가 출력한다(프로즈에 적으면 낡는다).
+
+## docstring 판정 이력
+
+위 원장이 재는 것은 `^\s*(//|#)` 표면이다. Python docstring 본문은 **같은 정책이 적용되지만
+그 표면에 잡히지 않으므로**, 원장을 하나 더 둔다. 표면이 갈려 있으므로 위 22행은 이 표면이
+생겨도 한 줄도 흔들리지 않고, docstring 판정은 슬라이스마다 누적된다.
+
+측정 단위는 `ast` 로 뜯은 **module·class·function docstring 의 본문 줄**이다. 빈 줄은 세지
+않고(문단을 옮기기만 해도 재판정 대상이 되면 안 된다), 기계가 읽는 선언 줄(`검증 AC:` ·
+`실행 대상:` · `추가 인자:` · `실행 순서:`)도 제외한다 — 그 줄들은 유지 대상 1번이다.
+
+`scripts/check_comment_policy.py` 가 매 CI에서 **R5~R8** 로 이 표를 강제한다. R8 이 특히
+중요하다: **합계 + 미판정 잔량 == 실측 전체**를 양방향으로 요구하므로, 새 파일이 docstring 을
+들고 들어오면 CI 가 멈춘다. 잔량을 올려 통과시키는 것은 정상적인 선택이지만 **diff 에 남는
+명시적 선언**이 된다 — 「아직 판정하지 않았다」가 조용히 넘어가지 않게 하는 것이 목적이다.
+
+<!-- docstring-원장 -->
+
+| 판정일 | 범위 | docstring 줄 | 지문 | 결과 |
+| --- | --- | ---: | --- | --- |
+| 2026-09-05 | `scripts/check_comment_policy.py` · `scripts/check_mock_policy.py` | 70 | `ecad9a6d29b1` | 제거 0줄 — 두 체커의 모듈 docstring은 **규칙 목록**과 「왜 이 게이트가 있는가」다. 규칙 목록은 코드로 복원되는 것처럼 보이지만 실패 메시지 어디에도 규칙 **집합**은 없다(각 메시지는 자기 규칙만 말한다) — 줄 주석 원장 #11이 같은 두 파일의 `# R1 —` 앵커를 「긴 `main()`의 항해 표지」로 유지한 것과 같은 이유로 유지한다. `check_comment_policy.py`가 적은 「정책 문서가 착지하던 날 848줄이라 적힌 사이 형제 PR로 963이 됐고 아무것도 알려주지 않았다」는 **관측된 사건**이고 이 게이트의 존재 이유 자체라 ③④로 도달 가능하더라도 「애매하면 남긴다」로 보존. `marked_block`/`ledger_block`의 「정규식 끝 앵커(`$`)로 뜯지 않는다 — 0행이 '위반 0'으로 보여 초록으로 새어 나간다」는 두 파일에 같은 문장으로 있으나 각자 그 자리의 함정이고 한쪽을 지우면 다른 파일에서 복원해야 하므로 둘 다 유지. `check_comment_policy.py`의 docstring은 **이 PR이 R5~R8을 더하며 다시 쓴 것**이고, 그 상태로 판정해 등재한다 |
+| 2026-09-05 | `tests/integration/run_all.py` · `tests/integration/check_ac_mapping.py` | 75 | `c55b80aa95ea` | 제거 0줄 — `run_all.py`의 「파일이 신고하는 것」 블록은 **이 레포에서 그 규약의 SSOT**이다(지우면 60개 파일이 무엇을 선언해야 하는지가 어디에도 없다). `check_ac_mapping.py`의 규칙 열거는 `docs/doc-tracker.md`가 같은 번호를 쓰지만 축이 다르다 — 그쪽은 **모델이 요구하는 것**이고 이쪽은 **이 스크립트가 실제로 검사하는 것**이며, 그 증거로 여기엔 규칙 4가 없다(예외 등재는 체커가 계수에서 빼는 데이터이지 검사하는 규칙이 아니다). `check_cases_are_run`의 「배차만으로는 부족하다 — 디스패처가 케이스를 부르는 줄을 빠뜨려도 exit 0이라 CI가 초록으로 통과한다」와 `check_test_docs`의 「2026-09-04에 그 어긋남이 세 번의 감지를 통과했다」는 관측된 실패 모드다. `_scenario_automation`의 「필드는 여러 줄로 이어질 수 있으므로 다음 `- **` 불릿까지를 한 필드로 본다」는 파싱 경계의 근거로 코드보다 앞선다 |
+| 2026-09-05 | `tests/integration/smoke.py` | 14 | `85f2347e1fd0` | 제거 0줄 — 「`실행 순서: 0`으로 그룹 맨 앞에서 돌기 때문에 배포가 깨졌을 때 뒤따르는 파일들이 차례로 모호하게 죽는 대신 여기서 한 번에 원인을 말한다」(배차 상수 자체는 선언 줄이지만 그 **이유**는 어디에도 없다), 「이것은 platform-auth-safety/AC5가 아니다 — 모든 통합이 구성된 배포의 정상 tools/list는 degradation에 대해 아무것도 말해 주지 않는다」, 「두 파일이 같은 `_helpers.EXPECTED_TOOLS`를 읽는 것은 의도한 것: 도구 표면은 구성과 무관하게 `internal/mcp/toolslist.go`가 정적으로 선언한다」가 전부 복원 경로 넷 어디에도 없다. 「(파일 수는 분할이 진행될수록 늘어나므로 적지 않는다)」는 이 문서 `범위` 절과 같은 규율의 실천이라 유지 |
+<!-- /docstring-원장 -->
+
+판정 완료 합계 **<!-- docstring-합계 -->159<!-- /docstring-합계 -->줄**, 미판정 잔량
+**<!-- docstring-잔량 -->1070<!-- /docstring-잔량 -->줄**. 잔량의 대부분은
+`tests/integration/*_ac*.py` 의 docstring이다 — 이번 슬라이스는 그중 **정형 문단만** 걷어냈고
+(아래), 나머지는 아직 판정받지 않았다.
+
+> **이번 슬라이스가 등재 없이 지운 것.** `tests/integration/*_ac*.py` 60개 파일의 모듈
+> docstring에 「이 파일은 하나의 AC만 주검증한다(… 규칙 2)」·「AC↔파일 매핑 SSOT은
+> `docs/doc-tracker.md`이고 `check_ac_mapping.py`가 … 강제한다」·「`check_ac_mapping.py`가 이
+> 선언을 읽어 … `run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다」 계열의 정형 문단이
+> 복사돼 있었다(164줄). 셋 다 ② 저장소 문서(`docs/doc-tracker.md`의 규칙 2·`run_all.py` 모듈
+> docstring의 「파일이 신고하는 것」)와 ① 코드(`check_ac_mapping.py`·`run_all.py`)로 복원되고,
+> 그것을 요구하는 지시문은 어디에도 없다 — 파일이 신고해야 하는 것은 `검증 AC:`·`실행 대상:`
+> 선언 줄이고 그 줄들은 유지 대상 1번이라 한 글자도 건드리지 않았다. **이 60파일은 등재하지
+> 않는다** — 지운 것은 그 정형 문단뿐이고 나머지 docstring은 아직 판정받지 않았기 때문이다.
+> 등재는 「그 범위를 그때 그 내용으로 **전수** 판정했다」는 뜻이다(위 원장 머리말과 같은 이유).

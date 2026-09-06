@@ -3,11 +3,6 @@
 검증 AC: session-write/AC1
 실행 대상: primary
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-
 **AC1의 검증 방법이 두 도구를 한 문장에 묶는다** — 「shell 세션에 명령을 write한 뒤 read로 그
 명령의 출력이 누적 출력에 나타남을 확인한다」. 그래서 이 파일은 ``session_write``를 주검증
 대상으로 선언하되 ``session_read``로 결과를 관측한다. 규칙 2의 「셋업·관측에서 다른 AC의 도구를

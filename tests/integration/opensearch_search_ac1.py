@@ -5,10 +5,6 @@
 
 질의 토큰이 이 프로세스의 ``RUN_ID`` 를 포함하는 단일 텀이라, 인덱스를 지정하지
 않는 컬렉션 전체 검색도 다른 파일의 문서와 겹치지 않는다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations

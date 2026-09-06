@@ -6,10 +6,6 @@
 ``crashloop-fixture`` 만 상대하고 그 전제를 멱등 폴링으로 스스로 성립시킨다.
 직전 인스턴스 마커는 현재 인스턴스가 찍는 문자열과 달라, 라이브 로그를 읽어
 통과할 수 없다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations

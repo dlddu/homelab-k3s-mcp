@@ -3,11 +3,6 @@
 검증 AC: session-read/AC3
 실행 대상: primary
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-
 AC3은 **두 실패가 서로 구분된다**는 것과 **어느 쪽도 세션을 건드리지 않는다**는 것, 둘을 함께
 요구한다. 그래서 이 파일은 세 가지를 단정한다 — 없는 id 는 not-found 계열 **도구 에러**,
 잘못된 커서는 인자 검증 계열 **프로토콜 에러**(SDK 가 `McpError` 로 올린다), 그리고 두 호출

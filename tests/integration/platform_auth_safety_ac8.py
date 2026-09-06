@@ -3,9 +3,6 @@
 검증 AC: platform-auth-safety/AC8
 실행 대상: auth-variant
 
-`tests/integration/check_ac_mapping.py`가 이 선언을 읽어 `docs/doc-tracker.md`의 레지스트리와
-대조하고, `tests/integration/run_all.py`가 `실행 대상`을 읽어 이 파일을 배차한다.
-
 AC 의 검증 방법은 네 구성을 **각각** 요구한다 — (a) API 키만 → 인증 활성 + 디스커버리 미제공,
 (b) OAuth 만 → 디스커버리 제공, (c) 둘 다 → 둘 다 동작, (d) 둘 다 미설정 + `MCP_AUTH_DISABLED`
 도 미설정 → 기동 실패. 그래서 이 파일은 **네 배포를 대조하는 것 자체**가 검증이며, 자기 그룹의

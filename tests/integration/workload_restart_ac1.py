@@ -6,10 +6,6 @@
 픽스처를 실제로 변형한다(롤링 재시작). 재시작 전 ``metadata.generation`` 을 읽기
 전에 기준선을 성립시켜, 다른 파일이 남긴 진행 중 롤아웃을 자기 세대 증가로
 오독하지 않는다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations

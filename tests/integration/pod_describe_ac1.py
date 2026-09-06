@@ -6,10 +6,6 @@
 셀렉터로 파드 **하나**를 고른 뒤 Running·ready 를 단정하므로, 선행 조건은
 「Ready 파드가 정확히 하나」다 — ``ensure_workload_fixture_baseline()`` 이 그
 조건까지 기다린다.
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations

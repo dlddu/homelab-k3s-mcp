@@ -12,10 +12,6 @@ AC 문언의 「파드에 컨테이너가 둘 이상이면 ``container`` 가 필
 워크로드가 필요하고, 기존 픽스처에 컨테이너를 더하는 경로는 ``workload_logs_ac2.py``
 의 성공 단언을 깨뜨리므로 **별도 워크로드 신설**이 선행이다
 (``docs/doc-tracker.md`` 의 e2e backlog에 등재).
-
-이 파일은 하나의 AC만 주검증한다(모델 `tbm_homelab-k3s-mcp-ac-e2e` 규칙 2).
-AC↔파일 매핑 SSOT은 ``docs/doc-tracker.md``이고,
-``tests/integration/check_ac_mapping.py``가 그 매핑과 이 선언의 일치를 CI에서 강제한다.
 """
 
 from __future__ import annotations
