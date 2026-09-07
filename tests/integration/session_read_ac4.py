@@ -14,11 +14,6 @@ premise holds here and nowhere else. ``session_list_ac3.py`` is the precedent
 for this seat; the two tools share one ``Unavailable`` service, so this file
 asserts the refusal is scoped to *this* tool rather than assuming it.
 
-The shared assertion lives in ``_auth_variant.assert_unavailable_refusal``: it
-checks both halves of the criterion — the call comes back as a normal MCP tool
-result carrying ``isError`` and the unavailable-class text, and ``ping`` still
-answers ``pong`` on the same session afterwards.
-
 ``id`` is required by the tool schema, so one is supplied. It names no real
 session on purpose: with the endpoint unset the refusal must arrive before any
 target lookup could matter, so a caller cannot mistake it for

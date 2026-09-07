@@ -17,11 +17,6 @@ from _helpers import base_url, open_session, wait_for_healthz
 async def test_ping_ac1_always_pong(session: ClientSession) -> None:
     """AC: ping/AC1 — an argument-less call always succeeds with ``pong``.
 
-    Calls the deployed ``ping`` tool with no arguments and asserts the result is
-    a non-error MCP tool result whose single content block is the text ``pong``
-    exactly — the AC's stated verification method. This promotes the in-process
-    assertion in ``internal/server/mcp_test.go`` (``TestPingToolReturnsPong``) to
-    the deployed-server e2e layer.
     """
     result = await session.call_tool("ping", {})
     assert result.isError is False, result

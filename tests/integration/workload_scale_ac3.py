@@ -16,9 +16,6 @@ from _helpers import assert_destructive_annotation, base_url, open_session, wait
 
 async def test_workload_scale_ac3_destructive_hint(session) -> None:
     """AC: workload-scale/AC3 — workload_scale advertises destructiveHint=true.
-
-    Verifies the destructive-operation marking via tools/list metadata only; no
-    scale is performed.
     """
     await assert_destructive_annotation(session, "workload_scale")
 

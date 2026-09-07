@@ -3,11 +3,6 @@
 검증 AC: platform-auth-safety/AC1
 실행 대상: auth-variant
 
-This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:
-auth is on (``MCP_API_KEYS`` set, ``MCP_AUTH_DISABLED`` unset) and no credential
-secret is attached at all, so ``main.go``'s ``build*Service`` helpers each degrade
-to ``NewUnavailable("")`` while the server still starts. Sessions therefore carry
-the static key from ``_auth_variant.API_KEY``.
 주 배포는 ``MCP_AUTH_DISABLED=1`` 로 돌아 게이트 자체를 관측할 수 없다 — 그래서 이 변형이 있다.
 """
 

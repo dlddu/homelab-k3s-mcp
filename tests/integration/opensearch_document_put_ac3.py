@@ -18,9 +18,6 @@ from _helpers import (
 
 async def test_opensearch_document_put_ac3_destructive_hint(session) -> None:
     """AC: opensearch-document-put/AC3 — opensearch_document_put advertises destructiveHint=true.
-
-    Verifies the destructive-operation marking via tools/list metadata only; no
-    document is written.
     """
     await assert_destructive_annotation(session, "opensearch_document_put")
 

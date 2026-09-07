@@ -17,9 +17,6 @@ from _helpers import (
 
 async def test_opensearch_document_delete_ac3_destructive_hint(session) -> None:
     """AC: opensearch-document-delete/AC3 — opensearch_document_delete advertises destructiveHint=true.
-
-    Verifies the destructive-operation marking via tools/list metadata only; no
-    document is deleted.
     """
     await assert_destructive_annotation(session, "opensearch_document_delete")
 

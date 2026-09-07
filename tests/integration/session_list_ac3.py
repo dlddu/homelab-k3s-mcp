@@ -11,11 +11,6 @@ server still starts. ``SESSION_PLATFORM_ENDPOINT`` is one of the absent ones --
 the only place in the repo that sets it is the base deployment
 (``k8s/deployment.yaml``), which this variant does not use -- so the AC's
 premise holds here and nowhere else.
-
-The shared assertion lives in ``_auth_variant.assert_unavailable_refusal``: it
-checks both halves of the criterion — the call comes back as a normal MCP tool
-result carrying ``isError`` and the unavailable-class text, and ``ping`` still
-answers ``pong`` on the same session afterwards.
 """
 
 from __future__ import annotations
