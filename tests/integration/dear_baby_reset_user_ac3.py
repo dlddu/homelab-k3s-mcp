@@ -18,9 +18,6 @@ from _helpers import (
 
 async def test_dear_baby_reset_user_ac3_destructive_hint(session) -> None:
     """AC: dear-baby-reset-user/AC3 — dear_baby_reset_user advertises destructiveHint=true.
-
-    Verifies the destructive-operation marking via tools/list metadata only; no
-    user reset is exec'd.
     """
     await assert_destructive_annotation(session, "dear_baby_reset_user")
 

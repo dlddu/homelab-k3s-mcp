@@ -21,11 +21,7 @@ async def test_workload_scale_ac1_replica_count(session) -> None:
 
     Walks 3 -> 0 -> 1 so both the ordinary path and the AC's explicit
     "0으로의 스케일다운도 허용한다" clause are observed, checking spec.replicas
-    on the cluster after each call rather than trusting the tool's echo. Ends
-    back at 1 replica, and waits for it, to leave the fixture at the baseline
-    tests/k8s/kind/test-deployment.yaml declares -- no other file depends on
-    that restoration, because each file that reads the fixture calls
-    ``ensure_workload_fixture_baseline()`` itself.
+    on the cluster after each call rather than trusting the tool's echo.
     """
     for replicas in (3, 0, 1):
         result = await session.call_tool(

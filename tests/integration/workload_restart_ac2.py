@@ -16,9 +16,6 @@ from _helpers import assert_destructive_annotation, base_url, open_session, wait
 
 async def test_workload_restart_ac2_destructive_hint(session) -> None:
     """AC: workload-restart/AC2 — workload_restart advertises destructiveHint=true.
-
-    Verifies the destructive-operation marking via tools/list metadata only; no
-    restart is triggered.
     """
     await assert_destructive_annotation(session, "workload_restart")
 

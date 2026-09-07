@@ -2,17 +2,6 @@
 
 검증 AC: opensearch-search/AC4
 실행 대상: auth-variant
-
-This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:
-auth is on (``MCP_API_KEYS`` set, ``MCP_AUTH_DISABLED`` unset) and no credential
-secret is attached at all, so ``main.go``'s ``build*Service`` helpers each degrade
-to ``NewUnavailable("")`` while the server still starts. Sessions therefore carry
-the static key from ``_auth_variant.API_KEY``.
-
-The shared assertion lives in ``_auth_variant.assert_unavailable_refusal``: it
-checks both halves of the criterion — the call comes back as a normal MCP tool
-result carrying ``isError`` and the unavailable-class text, and ``ping`` still
-answers ``pong`` on the same session afterwards.
 """
 
 from __future__ import annotations
