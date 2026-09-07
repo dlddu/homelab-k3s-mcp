@@ -1,8 +1,5 @@
 """OpenSearch e2e 픽스처의 공유 상수·문서 헬퍼 (매칭 단위가 아니다).
 
-`_` 접두 파일이라 `run_all.py`·`check_ac_mapping.py` 모두 매칭 단위에서 제외한다
-(AC를 주검증하지 않으므로 `검증 AC:` 선언도 갖지 않는다).
-
 opensearch-{search,document-put,document-delete} 의 AC별 전용 파일들이 공유하는
 것만 담는다. 각 전용 파일은 **자기 프로세스의** ``RUN_ID`` 로 자기 인덱스
 ``ci-<case>-<RUN_ID>`` 와 자기 질의 토큰을 만들므로, 파일끼리도 서로의 문서를 보지

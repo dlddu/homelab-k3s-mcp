@@ -1,8 +1,7 @@
 """workload-test 픽스처를 상대하는 파일들의 공유 표면 (매칭 단위가 아니다).
 
-``run_all.py::matching_unit_paths()`` 가 ``_`` 접두 파일을 걸러내므로 이 모듈은 AC를
-주검증하지 않고 ``검증 AC:`` 선언도 갖지 않는다. ``tests/k8s/kind/test-deployment.yaml``
-픽스처의 이름·마커 계약과 kubectl 관측 헬퍼, 그리고 아래 **선행 조건 헬퍼**를 담는다.
+``tests/k8s/kind/test-deployment.yaml`` 픽스처의 이름·마커 계약과 kubectl 관측 헬퍼,
+그리고 아래 **선행 조건 헬퍼**를 담는다.
 
 ## 선행 조건을 파일이 스스로 성립시킨다
 

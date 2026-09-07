@@ -1,8 +1,5 @@
 """`tests/k8s/kind/oidc-fixture.yaml` 를 상대하는 파일들의 공유 표면 (매칭 단위가 아니다).
 
-`_` 접두라 `run_all.py::matching_unit_paths()` 가 걸러내므로 AC를 주검증하지 않고
-`검증 AC:` 선언도 갖지 않는다 — `_auth_variant.py` · `_workload.py` 와 같은 자리다.
-
 그 매니페스트가 세우는 것들의 이름·주소·자격증명을 여기 한 벌만 둔다. 값이 매니페스트와
 어긋나면 `platform_auth_safety_ac2.py` 와 `platform_auth_safety_ac8.py` 가 **동시에** 거짓을
 단정하게 되므로, 상수는 나뉘지 않는다.

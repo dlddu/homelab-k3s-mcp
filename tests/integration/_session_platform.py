@@ -1,8 +1,5 @@
 """session-* 파일들이 공유하는 제어면 표면 (매칭 단위가 아니다).
 
-`_` 접두라 `run_all.py::matching_unit_paths()` 가 걸러내므로 AC를 주검증하지 않고
-`검증 AC:` 선언도 갖지 않는다 — `_workload.py`·`_auth_variant.py` 와 같은 자리다.
-
 These helpers drive ``tests/k8s/kind/session-platform.yaml``: the **real**
 session-platform control plane, running its published image in the kind
 harness. There are two ways in, and which one a file needs is decided by
@@ -27,9 +24,7 @@ The store's representation is not invented here. session-platform's
 ``control-plane/internal/adapter/configmap`` keeps one ConfigMap per session,
 named ``session-<id>``, labelled with the control plane's ownership labels, and
 carrying the ``session.Session`` JSON under a single ``session`` data key. The
-field names below are that struct's JSON tags; ``List`` reads only these
-ConfigMaps and never looks at pods, which is why a seeded session is a complete
-one as far as listing is concerned.
+field names below are that struct's JSON tags.
 """
 
 from __future__ import annotations
