@@ -69,7 +69,14 @@ DIRECTIVE_RE = re.compile(
 
 # docstring 표면에서만 쓰는 제외 목록. `run_all.py` 가 모듈 docstring 에서 파싱하는 선언
 # 필드들이고, DIRECTIVE_RE 의 `검증 AC:` 와 같은 자리에 있다(그쪽은 두 표면이 공유한다).
-DOCSTRING_DECL_RE = re.compile(r"^(실행 대상|추가 인자|실행 순서):")
+# ⚠️ `검증 시나리오:` 는 여기 있고 DIRECTIVE_RE 에 있지 않다. 2026-09-08 에 e2e 1:1 판정 축이
+# AC → 테스트 시나리오로 옮겨지며 그 선언 필드가 개명됐는데, DIRECTIVE_RE 는 모델
+# tbm_homelab-k3s-mcp-comment-redundancy 의 as-is 버전 스크립트와 **글자 그대로 같아야 하는
+# 넷** 중 하나라 한쪽만 고칠 수 없다. 이 표면(docstring)은 그 모델이 보지 않으므로(위 docstring
+# 표면 설명 참조) 체커 국소인 여기에 두는 것이 두 정의를 갈라지지 않게 하는 유일한 자리다.
+# DIRECTIVE_RE 의 `검증 AC:` 는 이제 어느 표면에도 매칭되지 않는 죽은 패턴이며, 두 정의를 함께
+# 옮기는 정리는 그 모델의 몫이다.
+DOCSTRING_DECL_RE = re.compile(r"^(검증 시나리오|실행 대상|추가 인자|실행 순서):")
 
 LEDGER_OPEN = "<!-- 판정-원장 -->"
 LEDGER_CLOSE = "<!-- /판정-원장 -->"
