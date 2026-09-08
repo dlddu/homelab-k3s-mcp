@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-search/AC1 (질의 검색).
 
-검증 AC: opensearch-search/AC1
+검증 시나리오: test-opensearch-search.md#시나리오 1
 실행 대상: primary
 
 질의 토큰이 이 프로세스의 ``RUN_ID`` 를 포함하는 단일 텀이라, 인덱스를 지정하지

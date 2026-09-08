@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-document-delete/AC1 (단일 문서 삭제).
 
-검증 AC: opensearch-document-delete/AC1
+검증 시나리오: test-opensearch-document-delete.md#시나리오 1
 실행 대상: primary
 
 같은 인덱스에 남는 문서를 함께 두어 "지목한 하나만" 사라졌음을 관측한다.

@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-document-delete/AC2 (부재 문서의 명확한 처리).
 
-검증 AC: opensearch-document-delete/AC2
+검증 시나리오: test-opensearch-document-delete.md#시나리오 2
 실행 대상: primary
 
 부재를 오류가 아닌 결과로 답하는지, 그리고 그 뒤에도 서버가 정상인지(``ping``)를

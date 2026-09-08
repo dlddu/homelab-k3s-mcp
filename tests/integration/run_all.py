@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""통합 e2e 파일 목록 순회 러너 (매칭 단위가 아니다 — AC를 주검증하지 않는다).
+"""통합 e2e 파일 목록 순회 러너 (매칭 단위가 아니다 — 시나리오를 주검증하지 않는다).
 
 `tests/integration/` 최상위의 **매칭 단위 파일**을 자동 발견해, 각 파일이 모듈
 docstring에 신고한 실행 대상(`실행 대상:`)별로 골라 차례로 실행한다. CI가 파일을
 이름으로 나열하지 않게 되므로,
 
-* AC를 전용 파일로 쪼갤 때마다 `.github/workflows/ci.yml`을 고칠 필요가 없고,
+* 시나리오를 전용 파일로 쪼갤 때마다 `.github/workflows/ci.yml`을 고칠 필요가 없고,
 * 스텝 추가를 잊어 **새 파일이 조용히 실행되지 않는 일**이 생기지 않는다.
 
 후자는 `check_ac_mapping.py`가 이 모듈의 배차 결과를 그대로 읽어 "매칭 단위 파일
@@ -14,7 +14,7 @@ docstring에 신고한 실행 대상(`실행 대상:`)별로 골라 차례로 �
 ## 파일이 신고하는 것 (모듈 docstring)
 
 ```
-검증 AC: <domain>/AC<n>[, <domain>/AC<m> ...]   # 또는  검증 AC: 없음 (스모크/인프라)
+검증 시나리오: test-<domain>.md#시나리오 <N>       # 또는  검증 시나리오: 없음 (스모크/인프라)
 실행 대상: primary | auth-variant | oauth-variant
 추가 인자: trace                                # 선택 — http-trace 프록시 URL을 argv[2]로 받는다
 실행 순서: <정수>                                # 선택 — 기본 50, 작을수록 먼저
@@ -25,7 +25,7 @@ docstring에 신고한 실행 대상(`실행 대상:`)별로 골라 차례로 �
 하나도 붙이지 않은 변형(`tests/k8s/kind/auth-fixture.yaml`), `oauth-variant`는 실 OIDC
 발급자(dex)를 가리키도록 `MCP_OAUTH_*`를 세팅한 변형(`tests/k8s/kind/oidc-fixture.yaml`의
 `homelab-k3s-mcp-oauth`)이다. 디스커버리 라우트는 OAuth가 구성된 경우에만 걸리므로
-`platform-auth-safety/AC2`는 마지막 것에서만 관측된다.
+`test-platform-auth-safety.md#시나리오 2`는 마지막 것에서만 관측된다.
 
 ## 사용
 
@@ -56,8 +56,8 @@ GROUPS = ("primary", "auth-variant", "oauth-variant")
 
 DEFAULT_ORDER = 50
 
-#: `검증 AC:` 가 AC 대신 취할 수 있는 값 (규칙 3, 비-AC 파일).
-NON_AC_MARKER = "없음"
+#: `검증 시나리오:` 가 시나리오 대신 취할 수 있는 값 (규칙 3, 비-시나리오 파일).
+NON_SCENARIO_MARKER = "없음"
 
 
 class DeclarationError(Exception):
@@ -67,7 +67,7 @@ class DeclarationError(Exception):
 @dataclass(frozen=True)
 class Declaration:
     path: pathlib.Path
-    acs: tuple[str, ...]
+    scenarios: tuple[str, ...]
     group: str
     needs_trace: bool
     order: int
@@ -77,12 +77,12 @@ class Declaration:
         return self.path.name
 
     @property
-    def non_ac(self) -> bool:
-        return not self.acs
+    def non_scenario(self) -> bool:
+        return not self.scenarios
 
 
 def matching_unit_paths(root: pathlib.Path = HERE) -> list[pathlib.Path]:
-    """매칭 단위 파일(= AC와 1:1로 대응해야 하는 파일) 목록."""
+    """매칭 단위 파일(= 시나리오와 1:1로 대응해야 하는 파일) 목록."""
     return sorted(
         p
         for p in root.glob("*.py")
@@ -106,18 +106,20 @@ def _field(doc: str, key: str) -> str | None:
 def parse_declaration(path: pathlib.Path) -> Declaration:
     """모듈 docstring의 선언을 읽는다. 규약 위반이면 DeclarationError."""
     doc = _docstring(path)
-    raw_acs = _field(doc, "검증 AC")
-    if raw_acs is None:
+    raw_scenarios = _field(doc, "검증 시나리오")
+    if raw_scenarios is None:
         raise DeclarationError(
-            f"{path.name}: 모듈 docstring에 `검증 AC:` 선언이 없다 "
-            f"(매칭 단위 파일은 자신이 주검증하는 AC를 신고해야 한다)"
+            f"{path.name}: 모듈 docstring에 `검증 시나리오:` 선언이 없다 "
+            f"(매칭 단위 파일은 자신이 주검증하는 시나리오를 신고해야 한다)"
         )
-    if raw_acs.startswith(NON_AC_MARKER):
-        acs: tuple[str, ...] = ()
+    if raw_scenarios.startswith(NON_SCENARIO_MARKER):
+        scenarios: tuple[str, ...] = ()
     else:
-        acs = tuple(part.strip() for part in raw_acs.split(",") if part.strip())
-        if not acs:
-            raise DeclarationError(f"{path.name}: `검증 AC:` 값이 비어 있다")
+        scenarios = tuple(
+            part.strip() for part in raw_scenarios.split(",") if part.strip()
+        )
+        if not scenarios:
+            raise DeclarationError(f"{path.name}: `검증 시나리오:` 값이 비어 있다")
 
     group = _field(doc, "실행 대상")
     if group not in GROUPS:
@@ -136,7 +138,11 @@ def parse_declaration(path: pathlib.Path) -> Declaration:
         ) from exc
 
     return Declaration(
-        path=path, acs=acs, group=group, needs_trace=needs_trace, order=order
+        path=path,
+        scenarios=scenarios,
+        group=group,
+        needs_trace=needs_trace,
+        order=order,
     )
 
 
@@ -162,8 +168,10 @@ def _run_one(decl: Declaration, base_url: str, trace_url: str | None) -> int:
             )
             return 2
         argv.append(trace_url)
-    label = ", ".join(decl.acs) if decl.acs else "비-AC(스모크/인프라)"
-    print(f"\n===== {decl.name} (AC: {label}) =====", flush=True)
+    label = (
+        ", ".join(decl.scenarios) if decl.scenarios else "비-시나리오(스모크/인프라)"
+    )
+    print(f"\n===== {decl.name} (시나리오: {label}) =====", flush=True)
     return subprocess.run(argv).returncode
 
 

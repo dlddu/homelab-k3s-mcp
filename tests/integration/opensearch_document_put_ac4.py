@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-document-put/AC4 (AssumeRole·SigV4 접근).
 
-검증 AC: opensearch-document-put/AC4
+검증 시나리오: test-opensearch-document-put.md#시나리오 4
 실행 대상: primary
 추가 인자: trace
 

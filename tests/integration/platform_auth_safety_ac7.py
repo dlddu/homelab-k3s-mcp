@@ -1,6 +1,6 @@
 """API 키 인증: 모르는 키는 401, 구성된 정적 키는 인가된다 (e2e).
 
-검증 AC: platform-auth-safety/AC7
+검증 시나리오: test-platform-auth-safety.md#시나리오 7
 실행 대상: auth-variant
 """
 

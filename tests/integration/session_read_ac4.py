@@ -1,6 +1,6 @@
 """session_read: SESSION_PLATFORM_ENDPOINT 미설정 시 graceful 거부 (e2e).
 
-검증 AC: session-read/AC4
+검증 시나리오: test-session-read.md#시나리오 4
 실행 대상: auth-variant
 
 This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:

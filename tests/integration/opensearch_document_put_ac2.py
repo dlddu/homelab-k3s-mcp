@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-document-put/AC2 (인덱스 자동 생성).
 
-검증 AC: opensearch-document-put/AC2
+검증 시나리오: test-opensearch-document-put.md#시나리오 2
 실행 대상: primary
 
 색인 **전** 상태를 먼저 관측해야 "자동 생성"이 성립하므로, 자기 인덱스가 아직

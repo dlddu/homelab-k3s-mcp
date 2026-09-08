@@ -1,6 +1,6 @@
 """Deployed-server e2e for pod-describe/AC3 (이벤트 best-effort).
 
-검증 AC: pod-describe/AC3
+검증 시나리오: test-pod-describe.md#시나리오 3
 실행 대상: primary
 
 셀렉터로 파드를 고르므로 픽스처 기준선을 선행 조건으로 성립시킨다.

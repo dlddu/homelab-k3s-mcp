@@ -1,6 +1,6 @@
 """Deployed-identity e2e for platform-auth-safety/AC3 (최소권한 RBAC 경계).
 
-검증 AC: platform-auth-safety/AC3
+검증 시나리오: test-platform-auth-safety.md#시나리오 3
 실행 대상: primary
 
 이 도메인의 유일한 파일로, MCP 서버를 상대하지 않는다 — 실제로 바인딩된 ClusterRole과

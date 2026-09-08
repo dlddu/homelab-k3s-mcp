@@ -1,6 +1,6 @@
 """Deployed-server e2e for aws-config-get/AC2 (정적 키 미사용).
 
-검증 AC: aws-config-get/AC2
+검증 시나리오: test-aws-config-get.md#시나리오 2
 실행 대상: primary
 추가 인자: trace
 

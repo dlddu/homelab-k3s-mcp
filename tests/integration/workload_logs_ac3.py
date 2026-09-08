@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-logs/AC3 (크래시 루프 후 직전 로그).
 
-검증 AC: workload-logs/AC3
+검증 시나리오: test-workload-logs.md#시나리오 3
 실행 대상: primary
 
 ``crashloop-fixture`` 만 상대하고 그 전제를 멱등 폴링으로 스스로 성립시킨다.

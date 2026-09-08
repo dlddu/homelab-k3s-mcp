@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-logs/AC2 (tail 라인 제어).
 
-검증 AC: workload-logs/AC2
+검증 시나리오: test-workload-logs.md#시나리오 2
 실행 대상: primary
 
 기본값 응답을 ``deploy/workload-fixture`` 의 파드에서 읽으므로(로그를 내지 않는

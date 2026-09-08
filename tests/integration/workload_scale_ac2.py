@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-scale/AC2 (DaemonSet 거부).
 
-검증 AC: workload-scale/AC2
+검증 시나리오: test-workload-scale.md#시나리오 2
 실행 대상: primary
 
 거부 대상은 DaemonSet ``workload-fixture-ds`` 이고 Deployment 픽스처의 레플리카

@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-document-delete/AC3 (파괴적 작업 표기).
 
-검증 AC: opensearch-document-delete/AC3
+검증 시나리오: test-opensearch-document-delete.md#시나리오 3
 실행 대상: primary
 
 ``tools/list`` 메타데이터만 읽는다 — 파괴 동작을 실행하지 않는다.

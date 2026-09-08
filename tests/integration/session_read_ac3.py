@@ -1,6 +1,6 @@
 """Deployed-server e2e for session-read/AC3 (대상 부재·잘못된 커서의 명확한 처리).
 
-검증 AC: session-read/AC3
+검증 시나리오: test-session-read.md#시나리오 3
 실행 대상: primary
 
 AC3은 **두 실패가 서로 구분된다**는 것과 **어느 쪽도 세션을 건드리지 않는다**는 것, 둘을 함께

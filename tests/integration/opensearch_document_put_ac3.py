@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-document-put/AC3 (파괴적 작업 표기).
 
-검증 AC: opensearch-document-put/AC3
+검증 시나리오: test-opensearch-document-put.md#시나리오 3
 실행 대상: primary
 
 ``tools/list`` 메타데이터만 읽는다 — 파괴 동작을 실행하지 않으므로 픽스처 상태를

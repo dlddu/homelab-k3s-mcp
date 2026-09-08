@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-restart/AC2 (파괴적 작업 표기).
 
-검증 AC: workload-restart/AC2
+검증 시나리오: test-workload-restart.md#시나리오 2
 실행 대상: primary
 
 ``tools/list`` 메타데이터만 읽고 재시작을 실행하지 않는다 — 클러스터 픽스처와

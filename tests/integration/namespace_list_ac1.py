@@ -1,6 +1,6 @@
 """Deployed-server e2e for namespace-list/AC1 (네임스페이스 열거).
 
-검증 AC: namespace-list/AC1
+검증 시나리오: test-namespace-list.md#시나리오 1
 실행 대상: primary
 
 픽스처의 레플리카 상태와 무관하다 — 네임스페이스 오브젝트는 ``test-deployment.yaml``

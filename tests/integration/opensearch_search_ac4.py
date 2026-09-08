@@ -1,6 +1,6 @@
 """opensearch_search: OPENSEARCH_ENDPOINT 미설정 시 graceful 거부 (e2e).
 
-검증 AC: opensearch-search/AC4
+검증 시나리오: test-opensearch-search.md#시나리오 4
 실행 대상: auth-variant
 """
 

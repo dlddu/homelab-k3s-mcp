@@ -1,6 +1,6 @@
 """grafana_token: GRAFANA_ISSUER_TOKEN 미설정 시 graceful 거부 (e2e).
 
-검증 AC: grafana-token/AC3
+검증 시나리오: test-grafana-token.md#시나리오 3
 실행 대상: auth-variant
 """
 

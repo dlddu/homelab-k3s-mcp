@@ -1,6 +1,6 @@
 """opensearch_document_put: OPENSEARCH_ENDPOINT 미설정 시 graceful 거부 (e2e).
 
-검증 AC: opensearch-document-put/AC5
+검증 시나리오: test-opensearch-document-put.md#시나리오 5
 실행 대상: auth-variant
 """
 

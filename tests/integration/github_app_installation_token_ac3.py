@@ -1,6 +1,6 @@
 """github_app_installation_token: GITHUB_APP_CLIENT_ID 미설정 시 graceful 거부 (e2e).
 
-검증 AC: github-app-installation-token/AC3
+검증 시나리오: test-github-app-installation-token.md#시나리오 3
 실행 대상: auth-variant
 """
 

@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-restart/AC1 (롤링 재시작 트리거).
 
-검증 AC: workload-restart/AC1
+검증 시나리오: test-workload-restart.md#시나리오 1
 실행 대상: primary
 
 픽스처를 실제로 변형한다(롤링 재시작). 재시작 전 ``metadata.generation`` 을 읽기

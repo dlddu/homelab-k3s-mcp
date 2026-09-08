@@ -1,6 +1,6 @@
 """Deployed-server e2e for session-read/AC1 (오프셋 커서 읽기).
 
-검증 AC: session-read/AC1
+검증 시나리오: test-session-read.md#시나리오 1
 실행 대상: primary
 
 **이 파일이 데이터 플레인을 요구하는 첫 e2e다.** 같은 도구의 AC3·AC4는 에이전트 파드에 닿지
