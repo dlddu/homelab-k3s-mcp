@@ -11,6 +11,12 @@
 # helpers degrade to an "unavailable" service when a secret is absent and the
 # server still starts, which is all the auth-gate assertions need.
 #
+# Kubernetes is the one integration that absence alone cannot switch off -- it
+# reads an in-cluster ServiceAccount, not a secret -- so MCP_K8S_DISABLED below
+# closes that gap explicitly. This variant is therefore the deployment where
+# *every* integration is unconfigured, which is what makes it the only place
+# test-namespace-list.md#시나리오 2 ("통합 미설정 시 도구 에러") is observable.
+#
 # That absence is now a contract, not just a convenience:
 # The per-AC "미설정 시 graceful 거부" files -- aws_config_get_ac3.py,
 # github_app_installation_token_ac3.py, grafana_token_ac3.py and
@@ -79,6 +85,13 @@ spec:
             # tests/integration/_auth_variant.py.
             - name: MCP_API_KEYS
               value: ci-e2e-key
+            # Turning this off is the *subject* of namespace_list_ac2.py, not a
+            # convenience: main.go's buildK8sService returns
+            # k8s.NewUnavailable("kubernetes integration is disabled") for it,
+            # and that file asserts the resulting refusal text verbatim. Removing
+            # this line (or otherwise restoring k8s here) turns that file red.
+            - name: MCP_K8S_DISABLED
+              value: "1"
           startupProbe:
             httpGet:
               path: /healthz

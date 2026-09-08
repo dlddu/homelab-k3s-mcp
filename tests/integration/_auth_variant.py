@@ -22,7 +22,9 @@ API_KEY = "ci-e2e-key"
 # Error() prefixes of each package (internal/{awsconfig,github,grafana,
 # opensearch,sessionplatform}). An empty reason is what main.go passes when the
 # primary env var is unset, which is precisely the situation this fixture
-# reproduces.
+# reproduces. K8S_REFUSAL is the exception: kubernetes reads an in-cluster
+# ServiceAccount rather than a secret, so the fixture sets MCP_K8S_DISABLED and
+# main.go passes an explicit reason for it instead of an empty one.
 AWS_REFUSAL = "aws config unavailable: aws config integration is not configured"
 GITHUB_REFUSAL = "github app unavailable: github app credentials are not configured"
 GRAFANA_REFUSAL = (
@@ -32,6 +34,7 @@ OPENSEARCH_REFUSAL = "opensearch unavailable: opensearch integration is not conf
 SESSION_PLATFORM_REFUSAL = (
     "session platform unavailable: session platform endpoint is not configured"
 )
+K8S_REFUSAL = "kubernetes client unavailable: kubernetes integration is disabled"
 
 
 async def assert_unavailable_refusal(
