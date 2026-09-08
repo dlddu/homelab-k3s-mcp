@@ -1,6 +1,6 @@
 """aws_config_get: AWS_CONFIG_S3_BUCKET 미설정 시 graceful 거부 (e2e).
 
-검증 AC: aws-config-get/AC3
+검증 시나리오: test-aws-config-get.md#시나리오 3
 실행 대상: auth-variant
 """
 

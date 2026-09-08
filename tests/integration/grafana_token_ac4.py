@@ -1,6 +1,6 @@
 """Deployed-server e2e for grafana-token/AC4 (issuer token not exposed).
 
-검증 AC: grafana-token/AC4
+검증 시나리오: test-grafana-token.md#시나리오 4
 실행 대상: primary
 """
 

@@ -1,6 +1,6 @@
 """Deployed-server e2e for aws-config-get/AC1 (고정 객체 조회).
 
-검증 AC: aws-config-get/AC1
+검증 시나리오: test-aws-config-get.md#시나리오 1
 실행 대상: primary
 
 서버에 고정된 버킷/키의 내용과 메타데이터를 읽는다(픽스처는

@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-scale/AC1 (레플리카 설정).
 
-검증 AC: workload-scale/AC1
+검증 시나리오: test-workload-scale.md#시나리오 1
 실행 대상: primary
 
 3 → 0 → 1 로 걷는 유일한 파일이다. 마지막 1 은 픽스처를 선언된 기준선으로

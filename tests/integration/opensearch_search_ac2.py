@@ -1,6 +1,6 @@
 """Deployed-server e2e for opensearch-search/AC2 (결과 상한).
 
-검증 AC: opensearch-search/AC2
+검증 시나리오: test-opensearch-search.md#시나리오 2
 실행 대상: primary
 
 기본값과 무제한을 구분하려면 기본 상한보다 많은 문서가 있어야 하므로 자기 인덱스에

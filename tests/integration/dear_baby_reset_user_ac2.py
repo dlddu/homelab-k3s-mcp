@@ -1,6 +1,6 @@
 """Deployed-server e2e for dear-baby-reset-user/AC2 (explicit target).
 
-검증 AC: dear-baby-reset-user/AC2
+검증 시나리오: test-dear-baby-reset-user.md#시나리오 2
 실행 대상: primary
 """
 

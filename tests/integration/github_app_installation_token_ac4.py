@@ -1,6 +1,6 @@
 """Deployed-server e2e for github-app-installation-token/AC4 (private key not exposed).
 
-검증 AC: github-app-installation-token/AC4
+검증 시나리오: test-github-app-installation-token.md#시나리오 4
 실행 대상: primary
 """
 

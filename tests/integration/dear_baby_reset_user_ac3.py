@@ -1,6 +1,6 @@
 """Deployed-server e2e for dear-baby-reset-user/AC3 (destructive-operation marking).
 
-검증 AC: dear-baby-reset-user/AC3
+검증 시나리오: test-dear-baby-reset-user.md#시나리오 3
 실행 대상: primary
 """
 

@@ -1,6 +1,6 @@
 """Deployed-server e2e for github-app-installation-token/AC2 (scope restriction).
 
-검증 AC: github-app-installation-token/AC2
+검증 시나리오: test-github-app-installation-token.md#시나리오 2
 실행 대상: primary
 """
 

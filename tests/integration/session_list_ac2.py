@@ -1,6 +1,6 @@
 """Deployed-server e2e for session-list/AC2 (상태를 바꾸지 않는 조회).
 
-검증 AC: session-list/AC2
+검증 시나리오: test-session-list.md#시나리오 2
 실행 대상: primary
 
 AC2의 "새 파드가 기동되지 않음" 절이 이 하네스가 **실 제어면**을 띄우는 이유다. 스텁 앞에서는

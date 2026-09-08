@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-list/AC2 (네임스페이스 스코프).
 
-검증 AC: workload-list/AC2
+검증 시나리오: test-workload-list.md#시나리오 2
 실행 대상: primary
 
 스코프 목록에 ``deploy/workload-fixture`` 가 있어야 하므로 픽스처 기준선을

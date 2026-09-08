@@ -1,6 +1,6 @@
 """ping: 인자 없는 호출은 언제나 ``pong`` 으로 성공한다 (e2e).
 
-검증 AC: ping/AC1
+검증 시나리오: test-ping.md#시나리오 1
 실행 대상: primary
 
 배포 서버를 상대로 돈다 — ``internal/server/mcp_test.go`` 의 in-process 단언

@@ -1,6 +1,6 @@
 """서버 수준 graceful degradation: 자격증명 env를 비운 채 기동한다 (e2e).
 
-검증 AC: platform-auth-safety/AC5
+검증 시나리오: test-platform-auth-safety.md#시나리오 5
 실행 대상: auth-variant
 
 이 배포가 이 AC의 전제가 성립하는 유일한 곳이다 — 주 배포는 모든 자격증명이 배선돼 있어

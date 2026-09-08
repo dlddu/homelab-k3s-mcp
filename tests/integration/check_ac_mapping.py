@@ -1,40 +1,56 @@
 #!/usr/bin/env python3
-"""AC ↔ e2e **파일** 1:1 정합성 체커 (매칭 단위가 아니다 — AC를 주검증하지 않는다).
+"""테스트 시나리오 ↔ e2e **파일** 1:1 정합성 체커 (매칭 단위가 아니다).
 
-정합성 모델 `tbm_homelab-k3s-mcp-ac-e2e`는 `docs/prd-*.md`의 AC와 `tests/integration/`
-최상위 `*.py` **파일**을 완전 1:1(전단사)로 유지할 것을 요구한다. 이 스크립트는 그 판정을
-사람의 자기신고가 아니라 **레포의 실제 상태에서 재도출**해, `docs/doc-tracker.md`의 레지스트리와
-대조한다. 클러스터도 서드파티 의존성도 필요 없다(표준 라이브러리 전용) — CI의 lint 잡에서 돈다.
+정합성 모델 `tbm_homelab-k3s-mcp-scenario-e2e`는 `docs/test-*.md`의 테스트 시나리오
+(`### 시나리오 <N>:` 헤딩)와 `tests/integration/` 최상위 `*.py` **파일**을 완전 1:1(전단사)로
+유지할 것을 요구한다. 이 스크립트는 그 판정을 사람의 자기신고가 아니라 **레포의 실제 상태에서
+재도출**해, `docs/doc-tracker.md`의 레지스트리와 대조한다. 클러스터도 서드파티 의존성도 필요
+없다(표준 라이브러리 전용) — CI의 lint 잡에서 돈다.
 
 세 개의 사실 원천을 읽는다.
 
-1. **AC 전집** — `docs/prd-*.md`의 `### AC<n>:` 헤딩. AC 식별자는 `<domain>/AC<n>`이고
-   `<domain>`은 `prd-<domain>.md` 파일명에서 온다.
-2. **선언** — 각 매칭 단위 파일 모듈 docstring의 `검증 AC:` (파싱은 `run_all.py`가 소유).
-   **정확히 1개**의 AC를 선언한 파일만 그 AC의 "전용 파일"로 세고, 2개 이상을 선언한 파일은
-   규칙 2 위반(분할 대기)으로 세며 그 AC들은 여전히 **공백**으로 계수한다 — 겸용 파일은
-   전단사를 만들지 못하기 때문이다.
-3. **등재** — `docs/doc-tracker.md`의 레지스트리 표·예외 목록·비-AC 파일 목록·집계 블록.
+1. **시나리오 전집** — `docs/test-*.md`의 `### 시나리오 <N>:` 헤딩. 시나리오 식별자는
+   `test-<domain>.md#시나리오 <N>`이고 `<domain>`은 파일명에서 온다. 서수 표기이므로
+   **문서 중간에 시나리오를 끼워 넣으면 뒤 번호가 전부 밀려 식별자가 바뀐다** — 그 사고를
+   잡으려고 레지스트리 행의 **제목까지** 헤딩과 대조한다(아래 규칙 6).
+2. **선언** — 각 매칭 단위 파일 모듈 docstring의 `검증 시나리오:` (파싱은 `run_all.py`가 소유).
+   **정확히 1개**의 시나리오를 선언한 파일만 그 시나리오의 "전용 파일"로 세고, 2개 이상을
+   선언한 파일은 규칙 2 위반(분할 대기)으로 세며 그 시나리오들은 여전히 **공백**으로 계수한다 —
+   겸용 파일은 전단사를 만들지 못하기 때문이다.
+3. **등재** — `docs/doc-tracker.md`의 레지스트리 표·예외 목록·구현 대기 표·비-시나리오 파일
+   목록·집계 블록.
 
 판정하는 것:
 
-* **규칙 1** AC → 전용 파일 유일 (같은 AC를 두 파일이 전용 선언하면 즉시 실패)
-* **규칙 2** 파일 → AC 유일 (겸용 파일은 위반으로 계수되고, 레지스트리와 수가 일치해야 한다)
-* **규칙 3** 비-AC 파일은 `검증 AC: 없음`을 선언하고 doc-tracker에 등재돼야 한다
-* **규칙 5** 참조 무결성 — 선언·레지스트리·예외 목록이 실재하지 않는 AC를 가리키지 않는다
-* **규칙 6** 집계 일치 — 레지스트리의 행별 상태와 집계 숫자가 실측과 정확히 같다
-* **규칙 7** 테스트 문서 상태 일치 — `docs/test-<domain>.md` 시나리오의 `자동화` 필드가 말하는
-  통합 e2e 현황이 실측 파일 집합과 같다(전용 파일이 실재하는데 `(미작성)`이 남아 있거나,
-  전용 파일이 없는데 `(미작성)` 없이 파일을 참조하면 위반)
+* **규칙 1** 시나리오 → 전용 파일 유일 (같은 시나리오를 두 파일이 전용 선언하면 즉시 실패)
+* **규칙 2** 파일 → 시나리오 유일 (겸용 파일은 위반으로 계수되고, 레지스트리와 수가 일치해야 한다)
+* **규칙 3** 비-시나리오 파일은 `검증 시나리오: 없음`을 선언하고 doc-tracker에 등재돼야 한다
+* **규칙 4** 예외(영구 면제)는 사유·대체 검증 수단과 함께 등재돼야 하고, 등재된 시나리오는
+  파일이 없어도 drift가 아니다
+* **규칙 5** 참조 무결성 — 선언·레지스트리·예외 목록·구현 대기 표가 실재하지 않는 시나리오를
+  가리키지 않는다
+* **규칙 6** 집계·행 일치 — 레지스트리의 행별 상태·**제목**과 집계 숫자가 실측과 정확히 같다.
+  **미등재 공백은 실패다** — 모델 불변식이 (시나리오 수 − 예외 수 − 구현 대기 수) = (매칭 파일
+  수)이므로, 전용 파일이 없는 시나리오는 예외나 구현 대기 중 하나로 반드시 등재돼야 한다.
+* **규칙 7** 테스트 문서 상태 일치 — 각 시나리오의 `자동화` 필드가 말하는 통합 e2e 현황이 실측
+  파일 집합과 같다(전용 파일이 실재하는데 `(미작성)`이 남아 있거나, 전용 파일이 없는데
+  `(미작성)` 없이 파일을 참조하면 위반)
 * **하네스 무결성** — 매칭 단위 파일 전부가 `run_all.py`에 정확히 한 번 배차되고,
   각 파일의 `run()`이 그 파일이 정의한 `test_*` 케이스를 **전부 호출한다**
   (만들어 놓고 CI가 실행하지 않는 파일, 그리고 배차는 되지만 자기 케이스를 부르지 않아
   **조용히 통과하는 파일**을 둘 다 구조적으로 막는다)
 
-집계가 실측과 다르면 실패하므로, 파일을 쪼개거나 AC를 추가한 PR은 **같은 PR에서**
+집계가 실측과 다르면 실패하므로, 파일을 쪼개거나 시나리오를 추가한 PR은 **같은 PR에서**
 레지스트리를 갱신해야 한다. 그것이 이 모델이 요구하는 "집계 일치"다. 같은 이유로 규칙 7이
-있다 — e2e 파일을 새로 만든 PR은 그 AC의 테스트 문서에서 `(미작성)` 표기를 같은 PR에서
+있다 — e2e 파일을 새로 만든 PR은 그 시나리오의 테스트 문서에서 `(미작성)` 표기를 같은 PR에서
 지워야 한다.
+
+> **2026-09-08 개정** — 판정 축이 **AC에서 테스트 시나리오로** 옮겨졌다(모델이
+> `tbm_homelab-k3s-mcp-ac-e2e` → `tbm_homelab-k3s-mcp-scenario-e2e`로 개명). AC ↔ 시나리오 층은
+> 이제 이 게이트의 판정 대상이 **아니다**(제품 문서 체계의 몫). 어느 시나리오가 어떤 AC를
+> 검증하는지는 `docs/test-*.md`의 `검증 AC` 필드가 그대로 들고 있으므로, 파일 → AC 는
+> 파일 → 시나리오 → AC 로 한 홉에 복원된다. 파일명은 개명하지 않았다 — 매핑의 확인 지점은
+> 파일명이 아니라 모듈 docstring 선언이다.
 """
 
 from __future__ import annotations
@@ -51,38 +67,73 @@ REPO_ROOT = HERE.parent.parent
 DOCS = REPO_ROOT / "docs"
 TRACKER = DOCS / "doc-tracker.md"
 
-AC_HEADING_RE = re.compile(r"^### (AC\d+):", re.MULTILINE)
-ROW_RE = re.compile(r"^\| ([a-z0-9-]+/AC\d+) \| ([^|]*) \| ([^|]*) \|$", re.MULTILINE)
+#: `docs/test-<domain>.md` 의 시나리오 헤딩. 번호와 제목을 함께 딴다.
+SCENARIO_HEADING_RE = re.compile(r"^### 시나리오 (\d+):[ \t]*(.*)$", re.MULTILINE)
+#: 시나리오 식별자 — 레지스트리·예외·구현 대기가 공유하는 표기.
+SCENARIO_ID = r"test-[a-z0-9-]+\.md#시나리오 \d+"
+ROW_RE = re.compile(rf"^\| ({SCENARIO_ID}) \| ([^|]*) \| ([^|]*) \|$", re.MULTILINE)
+BOLD_SCENARIO_RE = re.compile(rf"\*\*({SCENARIO_ID})\*\*")
 AGGREGATE_RE = re.compile(
-    r"<!-- ac-e2e-집계 -->(.*?)<!-- /ac-e2e-집계 -->", re.DOTALL
+    r"<!-- scenario-e2e-집계 -->(.*?)<!-- /scenario-e2e-집계 -->", re.DOTALL
 )
 AGGREGATE_LINE_RE = re.compile(r"^- (.+): (\d+)$", re.MULTILINE)
 FILE_REF_RE = re.compile(r"`([a-z_0-9]+\.py)`")
 
 # --- 규칙 7: 테스트 문서(`docs/test-<domain>.md`)의 자동화 필드 -------------------
-SCENARIO_RE = re.compile(r"^### 시나리오 .*$", re.MULTILINE)
 DOC_FIELD_RE = re.compile(r"^- \*\*(검증 AC|자동화)\*\*:")
 INTEGRATION_REF_RE = re.compile(r"`tests/integration/([a-z_0-9]+\.py)")
 UNWRITTEN_MARK = "(미작성)"
 
 AGGREGATE_KEYS = (
-    "AC 전집",
+    "시나리오 전집",
     "예외 등재",
+    "구현 대기 등재",
     "1:1 대상",
     "매칭 파일(전용)",
     "분할 대기 파일(규칙 2 위반)",
-    "공백 AC",
+    "공백 시나리오",
 )
 
 
-def ac_universe() -> list[str]:
-    """`docs/prd-*.md`에서 AC 전집을 재도출한다."""
-    acs = []
-    for prd in sorted(DOCS.glob("prd-*.md")):
-        domain = prd.name[len("prd-") : -len(".md")]
-        for match in AC_HEADING_RE.finditer(prd.read_text(encoding="utf-8")):
-            acs.append(f"{domain}/{match.group(1)}")
-    return acs
+def scenario_universe() -> dict[str, str]:
+    """`docs/test-*.md`에서 시나리오 전집을 재도출한다. 식별자 → 제목."""
+    scenarios: dict[str, str] = {}
+    for doc in sorted(DOCS.glob("test-*.md")):
+        for number, title in SCENARIO_HEADING_RE.findall(
+            doc.read_text(encoding="utf-8")
+        ):
+            scenarios[f"{doc.name}#시나리오 {number}"] = title.strip()
+    return scenarios
+
+
+def scenario_automation(doc: pathlib.Path) -> dict[str, str]:
+    """테스트 문서의 시나리오별 ``자동화`` 필드 본문. 식별자 → 본문.
+
+    필드는 여러 줄로 이어질 수 있으므로 다음 ``- **`` 불릿까지를 한 필드로 본다.
+    """
+    text = doc.read_text(encoding="utf-8")
+    blocks: dict[str, str] = {}
+    numbers = [number for number, _ in SCENARIO_HEADING_RE.findall(text)]
+    for number, body in zip(numbers, SCENARIO_HEADING_RE.split(text)[3::3]):
+        fields: dict[str, str] = {}
+        current: str | None = None
+        buffer: list[str] = []
+        for line in body.splitlines():
+            match = DOC_FIELD_RE.match(line)
+            if match:
+                if current:
+                    fields[current] = "\n".join(buffer)
+                current, buffer = match.group(1), [line]
+            elif line.startswith("- **"):
+                if current:
+                    fields[current] = "\n".join(buffer)
+                current, buffer = None, []
+            elif current is not None:
+                buffer.append(line)
+        if current:
+            fields[current] = "\n".join(buffer)
+        blocks[f"{doc.name}#시나리오 {number}"] = fields.get("자동화", "")
+    return blocks
 
 
 def _section(text: str, heading_prefix: str) -> str:
@@ -105,9 +156,10 @@ class Tracker:
     """`docs/doc-tracker.md`의 e2e 렌즈 섹션에서 읽어낸 등재 내용."""
 
     def __init__(self, text: str) -> None:
-        registry = text.split("### AC 레지스트리")[-1]
-        self.rows = {ac: status.strip() for ac, _, status in ROW_RE.findall(registry)}
-        self.row_order = [ac for ac, _, _ in ROW_RE.findall(registry)]
+        registry = text.split("### 시나리오 레지스트리")[-1]
+        rows = ROW_RE.findall(registry)
+        self.rows = {ident: status.strip() for ident, _, status in rows}
+        self.titles = {ident: title.strip() for ident, title, _ in rows}
 
         aggregate = AGGREGATE_RE.search(text)
         self.aggregate = (
@@ -117,9 +169,12 @@ class Tracker:
         )
 
         self.exceptions = set(
-            re.findall(r"\*\*([a-z0-9-]+/AC\d+)\*\*", _section(text, "🚫 e2e 예외"))
+            BOLD_SCENARIO_RE.findall(_section(text, "🚫 e2e 예외"))
         )
-        self.non_ac_files = set(FILE_REF_RE.findall(_section(text, "비-AC 파일")))
+        self.pending = set(BOLD_SCENARIO_RE.findall(_section(text, "⏳ 구현 대기")))
+        self.non_scenario_files = set(
+            FILE_REF_RE.findall(_section(text, "비-시나리오 파일"))
+        )
 
 
 def measure() -> tuple[dict, list[str]]:
@@ -133,28 +188,28 @@ def measure() -> tuple[dict, list[str]]:
 
     dedicated: dict[str, str] = {}
     shared: dict[str, list[str]] = {}
-    non_ac: list[str] = []
+    non_scenario: list[str] = []
     for decl in decls:
-        if decl.non_ac:
-            non_ac.append(decl.name)
-        elif len(decl.acs) == 1:
-            ac = decl.acs[0]
-            if ac in dedicated:
+        if decl.non_scenario:
+            non_scenario.append(decl.name)
+        elif len(decl.scenarios) == 1:
+            scenario = decl.scenarios[0]
+            if scenario in dedicated:
                 problems.append(
-                    f"규칙 1 위반 — {ac} 를 두 파일이 전용 선언한다: "
-                    f"{dedicated[ac]}, {decl.name}"
+                    f"규칙 1 위반 — {scenario} 를 두 파일이 전용 선언한다: "
+                    f"{dedicated[scenario]}, {decl.name}"
                 )
-            dedicated[ac] = decl.name
+            dedicated[scenario] = decl.name
         else:
-            for ac in decl.acs:
-                shared.setdefault(ac, []).append(decl.name)
+            for scenario in decl.scenarios:
+                shared.setdefault(scenario, []).append(decl.name)
 
     return {
         "declarations": decls,
         "dedicated": dedicated,
         "shared": shared,
-        "non_ac": non_ac,
-        "split_pending": [d.name for d in decls if len(d.acs) > 1],
+        "non_scenario": non_scenario,
+        "split_pending": [d.name for d in decls if len(d.scenarios) > 1],
     }, problems
 
 
@@ -182,7 +237,7 @@ def check_cases_are_run(decls) -> list[str]:
 
     배차만으로는 부족하다 — 파일 하나에 케이스 하나인 구조에서는 디스패처가 케이스를
     부르는 줄을 빠뜨려도 그 파일은 여전히 exit 0 이라 CI가 초록으로 통과한다. 그 파일이
-    선언한 AC는 레지스트리에서 ✅ 로 세지지만 실제로는 아무것도 단언하지 않는다.
+    선언한 시나리오는 레지스트리에서 ✅ 로 세지지만 실제로는 아무것도 단언하지 않는다.
     AST 만 보므로 클러스터도 서드파티 임포트도 필요 없다.
     """
     problems = []
@@ -216,88 +271,40 @@ def check_cases_are_run(decls) -> list[str]:
     return problems
 
 
-def _scenario_automation(text: str) -> list[tuple[str, list[str]]]:
-    """테스트 문서의 시나리오별 ``(자동화 필드 본문, 검증 AC 번호들)``.
+def check_test_docs(scenarios: dict[str, str], dedicated: dict[str, str]) -> list[str]:
+    """규칙 7 — 각 시나리오의 `자동화` 필드가 말하는 e2e 현황이 실측 파일 집합과 같은지.
 
-    필드는 여러 줄로 이어질 수 있으므로 다음 ``- **`` 불릿까지를 한 필드로 본다.
-    """
-    blocks: list[tuple[str, list[str]]] = []
-    for body in SCENARIO_RE.split(text)[1:]:
-        fields: dict[str, str] = {}
-        current: str | None = None
-        buffer: list[str] = []
-        for line in body.splitlines():
-            match = DOC_FIELD_RE.match(line)
-            if match:
-                if current:
-                    fields[current] = "\n".join(buffer)
-                current, buffer = match.group(1), [line]
-            elif line.startswith("- **"):
-                if current:
-                    fields[current] = "\n".join(buffer)
-                current, buffer = None, []
-            elif current is not None:
-                buffer.append(line)
-        if current:
-            fields[current] = "\n".join(buffer)
-        blocks.append(
-            (fields.get("자동화", ""), re.findall(r"AC\d+", fields.get("검증 AC", "")))
-        )
-    return blocks
-
-
-def check_test_docs(acs: list[str], dedicated: dict[str, str]) -> list[str]:
-    """규칙 7 — 테스트 문서가 말하는 통합 e2e 현황이 실측 파일 집합과 같은지.
-
-    `docs/test-*.md` 를 읽는 게이트가 하나도 없어서, e2e 파일을 만든 PR 이 그 AC 의 테스트
-    문서를 갱신하지 않아도 CI 가 초록이었다. 그 사이 문서는 "아직 (미작성)" 이라고 말하고
-    파일은 실재하는 상태로 벌어진다 — 2026-09-04 에 그 어긋남이 세 번의 감지를 통과했다.
-    이 검사는 그 자리를 기계로 옮긴다. 판정은 **문서의 자기신고가 아니라 실측 파일 집합**
-    (`dedicated`) 기준이다.
+    `docs/test-*.md` 를 읽는 게이트가 하나도 없어서, e2e 파일을 만든 PR 이 그 시나리오의
+    자동화 필드를 갱신하지 않아도 CI 가 초록이었다. 그 사이 문서는 "아직 (미작성)" 이라고
+    말하고 파일은 실재하는 상태로 벌어진다 — 2026-09-04 에 그 어긋남이 세 번의 감지를
+    통과했다. 이 검사는 그 자리를 기계로 옮긴다. 판정은 **문서의 자기신고가 아니라 실측
+    파일 집합**(`dedicated`) 기준이다.
     """
     problems = []
-    for ac in acs:
-        domain, number = ac.split("/")
-        doc = DOCS / f"test-{domain}.md"
-        if not doc.exists():
-            problems.append(f"규칙 7 위반 — {ac} 의 테스트 문서 test-{domain}.md 가 없다")
-            continue
-        blocks = [
-            automation
-            for automation, declared in _scenario_automation(
-                doc.read_text(encoding="utf-8")
-            )
-            if number in declared
-        ]
-        if not blocks:
+    automation: dict[str, str] = {}
+    for doc in sorted(DOCS.glob("test-*.md")):
+        automation.update(scenario_automation(doc))
+    for scenario in scenarios:
+        field = automation.get(scenario, "")
+        have = dedicated.get(scenario)
+        if have and UNWRITTEN_MARK in field:
             problems.append(
-                f"규칙 7 위반 — test-{domain}.md 에 {ac} 를 검증하는 시나리오가 없다"
+                f"규칙 7 위반 — {scenario} 의 전용 파일 {have} 이 실재하는데 "
+                f"자동화 필드가 아직 {UNWRITTEN_MARK} 이라고 한다"
             )
-            continue
-        have = dedicated.get(ac)
-        for automation in blocks:
-            if have and UNWRITTEN_MARK in automation:
-                problems.append(
-                    f"규칙 7 위반 — {ac} 의 전용 파일 {have} 이 실재하는데 "
-                    f"test-{domain}.md 의 자동화 필드가 아직 {UNWRITTEN_MARK} 이라고 한다"
-                )
-            if (
-                not have
-                and INTEGRATION_REF_RE.search(automation)
-                and UNWRITTEN_MARK not in automation
-            ):
-                refs = sorted(set(INTEGRATION_REF_RE.findall(automation)))
-                problems.append(
-                    f"규칙 7 위반 — {ac} 의 전용 파일이 실측되지 않는데 "
-                    f"test-{domain}.md 의 자동화 필드가 {refs} 를 작성된 것처럼 적는다 "
-                    f"({UNWRITTEN_MARK} 표기가 빠졌다)"
-                )
+        if not have and INTEGRATION_REF_RE.search(field) and UNWRITTEN_MARK not in field:
+            refs = sorted(set(INTEGRATION_REF_RE.findall(field)))
+            problems.append(
+                f"규칙 7 위반 — {scenario} 의 전용 파일이 실측되지 않는데 "
+                f"자동화 필드가 {refs} 를 작성된 것처럼 적는다 "
+                f"({UNWRITTEN_MARK} 표기가 빠졌다)"
+            )
     return problems
 
 
 def main() -> int:
-    acs = ac_universe()
-    ac_set = set(acs)
+    scenarios = scenario_universe()
+    scenario_set = set(scenarios)
     tracker = Tracker(TRACKER.read_text(encoding="utf-8"))
     measured, problems = measure()
     if not measured:
@@ -311,73 +318,102 @@ def main() -> int:
 
     # --- 규칙 5: 참조 무결성 -------------------------------------------------
     for decl in decls:
-        for ac in decl.acs:
-            if ac not in ac_set:
+        for scenario in decl.scenarios:
+            if scenario not in scenario_set:
                 problems.append(
-                    f"규칙 5 위반 — {decl.name} 이 실재하지 않는 AC {ac} 를 선언한다"
+                    f"규칙 5 위반 — {decl.name} 이 실재하지 않는 시나리오 "
+                    f"{scenario} 를 선언한다"
                 )
-    for ac in tracker.rows:
-        if ac not in ac_set:
-            problems.append(f"규칙 5 위반 — 레지스트리가 실재하지 않는 AC {ac} 를 등재한다")
-    for ac in tracker.exceptions:
-        if ac not in ac_set:
-            problems.append(f"규칙 5 위반 — 예외 목록이 실재하지 않는 AC {ac} 를 등재한다")
-    missing_rows = ac_set - set(tracker.rows)
+    for scenario in tracker.rows:
+        if scenario not in scenario_set:
+            problems.append(
+                f"규칙 5 위반 — 레지스트리가 실재하지 않는 시나리오 {scenario} 를 등재한다"
+            )
+    for scenario in tracker.exceptions:
+        if scenario not in scenario_set:
+            problems.append(
+                f"규칙 5 위반 — 예외 목록이 실재하지 않는 시나리오 {scenario} 를 등재한다"
+            )
+    for scenario in tracker.pending:
+        if scenario not in scenario_set:
+            problems.append(
+                f"규칙 5 위반 — 구현 대기 표가 실재하지 않는 시나리오 "
+                f"{scenario} 를 등재한다"
+            )
+    missing_rows = scenario_set - set(tracker.rows)
     if missing_rows:
-        problems.append(f"규칙 5 위반 — 레지스트리에 없는 AC: {sorted(missing_rows)}")
+        problems.append(f"규칙 5 위반 — 레지스트리에 없는 시나리오: {sorted(missing_rows)}")
 
-    # --- 규칙 3: 비-AC 파일 등재 --------------------------------------------
-    for name in measured["non_ac"]:
-        if name not in tracker.non_ac_files:
+    # --- 예외와 구현 대기는 겹치면 안 된다 (영구 면제 vs 임시 보류) -----------
+    both = tracker.exceptions & tracker.pending
+    if both:
+        problems.append(
+            f"규칙 4 위반 — 예외와 구현 대기에 동시에 등재된 시나리오: {sorted(both)} "
+            f"(영구 면제와 임시 보류를 섞지 않는다)"
+        )
+
+    # --- 규칙 3: 비-시나리오 파일 등재 --------------------------------------
+    for name in measured["non_scenario"]:
+        if name not in tracker.non_scenario_files:
             problems.append(
-                f"규칙 3 위반 — 비-AC 파일 {name} 이 doc-tracker 에 등재돼 있지 않다(고아)"
+                f"규칙 3 위반 — 비-시나리오 파일 {name} 이 doc-tracker 에 "
+                f"등재돼 있지 않다(고아)"
             )
-    for name in tracker.non_ac_files:
-        if name not in measured["non_ac"]:
+    for name in tracker.non_scenario_files:
+        if name not in measured["non_scenario"]:
             problems.append(
-                f"규칙 3 위반 — doc-tracker 가 비-AC 로 등재한 {name} 이 실재하지 않거나 "
-                f"AC 를 선언한다(고아 등재)"
+                f"규칙 3 위반 — doc-tracker 가 비-시나리오로 등재한 {name} 이 "
+                f"실재하지 않거나 시나리오를 선언한다(고아 등재)"
             )
 
-    # --- 예외: 선언과 겹치면 안 된다 -----------------------------------------
-    for ac in sorted(tracker.exceptions):
-        if ac in dedicated or ac in shared:
+    # --- 예외·구현 대기: 선언과 겹치면 안 된다 -------------------------------
+    for scenario in sorted(tracker.exceptions | tracker.pending):
+        if scenario in dedicated or scenario in shared:
             problems.append(
-                f"예외 충돌 — {ac} 는 예외로 등재됐는데 파일이 검증을 선언한다 "
-                f"(예외를 해제하거나 선언을 지울 것)"
+                f"등재 충돌 — {scenario} 는 예외/구현 대기로 등재됐는데 파일이 검증을 "
+                f"선언한다 (등재를 해제하거나 선언을 지울 것)"
             )
 
-    # --- 규칙 6: 행별 상태가 실측과 같은가 -----------------------------------
-    for ac in acs:
-        status = tracker.rows.get(ac, "")
+    # --- 규칙 6: 행별 제목·상태가 실측과 같은가 ------------------------------
+    for scenario, title in scenarios.items():
+        declared_title = tracker.titles.get(scenario)
+        if declared_title is not None and declared_title != title:
+            problems.append(
+                f"규칙 6 위반 — {scenario} 레지스트리 제목 {declared_title!r} ≠ "
+                f"문서 헤딩 {title!r} (서수가 밀려 식별자가 바뀌었을 수 있다)"
+            )
+        status = tracker.rows.get(scenario, "")
         refs = FILE_REF_RE.findall(status)
         if status.startswith("✅"):
-            if not refs or dedicated.get(ac) != refs[0]:
+            if not refs or dedicated.get(scenario) != refs[0]:
                 problems.append(
-                    f"규칙 6 위반 — {ac} 레지스트리는 전용 파일 {refs or ['?']} 라고 하는데 "
-                    f"실측은 {dedicated.get(ac) or '없음'}"
+                    f"규칙 6 위반 — {scenario} 레지스트리는 전용 파일 {refs or ['?']} 라고 "
+                    f"하는데 실측은 {dedicated.get(scenario) or '없음'}"
                 )
         elif "분할 대기" in status:
-            if not refs or refs[0] not in shared.get(ac, []):
+            if not refs or refs[0] not in shared.get(scenario, []):
                 problems.append(
-                    f"규칙 6 위반 — {ac} 레지스트리는 겸용 파일 {refs or ['?']} 라고 하는데 "
-                    f"실측은 {shared.get(ac) or '없음'}"
+                    f"규칙 6 위반 — {scenario} 레지스트리는 겸용 파일 {refs or ['?']} 라고 "
+                    f"하는데 실측은 {shared.get(scenario) or '없음'}"
                 )
         elif status.startswith("🚫"):
-            if ac not in tracker.exceptions:
+            if scenario not in tracker.exceptions:
                 problems.append(
-                    f"규칙 6 위반 — {ac} 는 🚫 로 표시됐지만 예외 목록에 사유가 없다"
+                    f"규칙 6 위반 — {scenario} 는 🚫 로 표시됐지만 예외 목록에 사유가 없다"
                 )
-        elif "공백" in status:
-            if ac in dedicated or ac in shared:
+        elif status.startswith("⏳"):
+            if scenario not in tracker.pending:
                 problems.append(
-                    f"규칙 6 위반 — {ac} 는 공백으로 표시됐지만 파일이 검증을 선언한다"
+                    f"규칙 6 위반 — {scenario} 는 ⏳ 로 표시됐지만 구현 대기 표에 "
+                    f"근거·해제 조건이 없다"
                 )
         else:
-            problems.append(f"규칙 6 위반 — {ac} 의 상태 표기를 해석할 수 없다: {status!r}")
+            problems.append(
+                f"규칙 6 위반 — {scenario} 의 상태 표기를 해석할 수 없다: {status!r}"
+            )
 
     # --- 규칙 7: 테스트 문서의 e2e 현황이 실측과 같은가 -----------------------
-    problems += check_test_docs(acs, dedicated)
+    problems += check_test_docs(scenarios, dedicated)
 
     # --- 하네스 무결성 -------------------------------------------------------
     problems += check_dispatch(decls)
@@ -385,15 +421,18 @@ def main() -> int:
 
     # --- 집계 ---------------------------------------------------------------
     exceptions = len(tracker.exceptions)
-    targets = len(acs) - exceptions
+    pending = len(tracker.pending)
+    targets = len(scenarios) - exceptions - pending
     matched = len(dedicated)
+    blank = targets - matched
     counted = {
-        "AC 전집": len(acs),
+        "시나리오 전집": len(scenarios),
         "예외 등재": exceptions,
+        "구현 대기 등재": pending,
         "1:1 대상": targets,
         "매칭 파일(전용)": matched,
         "분할 대기 파일(규칙 2 위반)": len(measured["split_pending"]),
-        "공백 AC": targets - matched,
+        "공백 시나리오": blank,
     }
     for key in AGGREGATE_KEYS:
         declared = tracker.aggregate.get(key)
@@ -404,13 +443,24 @@ def main() -> int:
                 f"규칙 6 위반 — 집계 '{key}' 등재 {declared} ≠ 실측 {counted[key]}"
             )
 
+    # --- 불변식: 미등재 공백은 drift 다 --------------------------------------
+    if blank != 0:
+        orphans = sorted(
+            s
+            for s in scenarios
+            if s not in dedicated
+            and s not in tracker.exceptions
+            and s not in tracker.pending
+        )
+        problems.append(
+            f"불변식 위반 — (시나리오 {len(scenarios)} − 예외 {exceptions} − "
+            f"구현 대기 {pending}) = {targets} ≠ 매칭 파일 {matched}. "
+            f"전용 파일도 등재도 없는 시나리오: {orphans} "
+            f"(전용 파일을 저작하거나 예외/구현 대기로 등재할 것)"
+        )
+
     for key in AGGREGATE_KEYS:
         print(f"{key}: {counted[key]}")
-    print(
-        "공백 내역: 겸용 파일이 커버 "
-        f"{len({ac for ac in shared if ac not in dedicated})} · 케이스 자체 없음 "
-        f"{targets - matched - len({ac for ac in shared if ac not in dedicated})}"
-    )
 
     if problems:
         print()
@@ -419,7 +469,8 @@ def main() -> int:
         return 1
 
     print(
-        "\nOK: 규칙 1(중복 전용)·2·3·5·6·7 위반 없음, 러너 배차 누락·케이스 미호출 없음"
+        "\nOK: 규칙 1(중복 전용)·2·3·4·5·6·7 위반 없음, 불변식 성립, "
+        "러너 배차 누락·케이스 미호출 없음"
     )
     return 0
 

@@ -1,6 +1,6 @@
 """Deployed-server e2e for pod-describe/AC1 (파드 상세 스냅샷).
 
-검증 AC: pod-describe/AC1
+검증 시나리오: test-pod-describe.md#시나리오 1
 실행 대상: primary
 
 셀렉터로 파드 **하나**를 고른 뒤 Running·ready 를 단정하므로, 선행 조건은

@@ -1,6 +1,6 @@
 """Deployed-server e2e for session-write/AC3 (파괴적 작업 표기).
 
-검증 AC: session-write/AC3
+검증 시나리오: test-session-write.md#시나리오 3
 실행 대상: primary
 
 ``tools/list`` 메타데이터만 읽고 **write 를 실행하지 않는다** — 세션도 에이전트 파드도

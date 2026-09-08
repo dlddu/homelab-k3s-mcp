@@ -1,6 +1,6 @@
 """Deployed-server e2e for session-list/AC1 (세션 열거).
 
-검증 AC: session-list/AC1
+검증 시나리오: test-session-list.md#시나리오 1
 실행 대상: primary
 
 AC1의 검증 방법은 제어면의 **두 가지 상태**를 요구한다 — 세션이 있는 제어면과 없는 제어면.

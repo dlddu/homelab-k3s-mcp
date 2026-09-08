@@ -1,6 +1,6 @@
 """헬스·레디니스: 오케스트레이터가 가리키는 두 프로브 경로가 상태를 보고한다 (e2e).
 
-검증 AC: platform-auth-safety/AC6
+검증 시나리오: test-platform-auth-safety.md#시나리오 6
 실행 대상: primary
 실행 순서: 0
 프로브 확인은 다른 케이스들이 기대는 배포가 살아 있는지를 가장 먼저 말해 주므로

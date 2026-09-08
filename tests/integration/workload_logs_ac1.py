@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-logs/AC1 (워크로드 기준 로그 조회).
 
-검증 AC: workload-logs/AC1
+검증 시나리오: test-workload-logs.md#시나리오 1
 실행 대상: primary
 
 출력을 실제로 내는 ``crashloop-fixture`` 를 상대하며, 그 전제(재시작 1회 이상 ·

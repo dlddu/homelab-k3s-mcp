@@ -1,6 +1,6 @@
 """Deployed-server e2e for grafana-token/AC1 (read-only, ~1h token).
 
-검증 AC: grafana-token/AC1
+검증 시나리오: test-grafana-token.md#시나리오 1
 실행 대상: primary
 """
 

@@ -1,6 +1,6 @@
 """인증 게이트: 인증 없는 /mcp 는 MCP 핸들러에 닿기 전에 401 로 막힌다 (e2e).
 
-검증 AC: platform-auth-safety/AC1
+검증 시나리오: test-platform-auth-safety.md#시나리오 1
 실행 대상: auth-variant
 
 주 배포는 ``MCP_AUTH_DISABLED=1`` 로 돌아 게이트 자체를 관측할 수 없다 — 그래서 이 변형이 있다.

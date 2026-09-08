@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-list/AC1 (종류별 워크로드 조회).
 
-검증 AC: workload-list/AC1
+검증 시나리오: test-workload-list.md#시나리오 1
 실행 대상: primary
 
 ``deploy/workload-fixture`` 의 요약 필드를 정수로 단정하므로 픽스처가 기준선에

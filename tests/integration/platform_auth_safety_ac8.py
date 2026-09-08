@@ -1,6 +1,6 @@
 """인증 방식 구성 유연성: API 키·OAuth 의 네 가지 env 조합을 배포로 대조한다 (e2e).
 
-검증 AC: platform-auth-safety/AC8
+검증 시나리오: test-platform-auth-safety.md#시나리오 8
 실행 대상: auth-variant
 
 AC 의 검증 방법은 네 구성을 **각각** 요구한다 — (a) API 키만 → 인증 활성 + 디스커버리 미제공,

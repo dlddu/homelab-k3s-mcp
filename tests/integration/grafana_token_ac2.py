@@ -1,6 +1,6 @@
 """Deployed-server e2e for grafana-token/AC2 (immediately usable .env).
 
-검증 AC: grafana-token/AC2
+검증 시나리오: test-grafana-token.md#시나리오 2
 실행 대상: primary
 """
 

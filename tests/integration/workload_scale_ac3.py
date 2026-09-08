@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-scale/AC3 (파괴적 작업 표기).
 
-검증 AC: workload-scale/AC3
+검증 시나리오: test-workload-scale.md#시나리오 3
 실행 대상: primary
 
 ``tools/list`` 메타데이터만 읽고 스케일을 실행하지 않는다 — 클러스터 픽스처와

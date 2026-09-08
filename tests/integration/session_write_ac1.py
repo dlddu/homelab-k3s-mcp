@@ -1,6 +1,6 @@
 """Deployed-server e2e for session-write/AC1 (워크로드 입력 주입).
 
-검증 AC: session-write/AC1
+검증 시나리오: test-session-write.md#시나리오 1
 실행 대상: primary
 
 **AC1의 검증 방법이 두 도구를 한 문장에 묶는다** — 「shell 세션에 명령을 write한 뒤 read로 그

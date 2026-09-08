@@ -1,6 +1,6 @@
 """Deployed-server e2e for pod-describe/AC2 (대상 지정 방식).
 
-검증 AC: pod-describe/AC2
+검증 시나리오: test-pod-describe.md#시나리오 2
 실행 대상: primary
 
 세 targeting 경로가 **같은 파드**로 수렴하는지 보므로, 픽스처가 기준선(Ready 파드

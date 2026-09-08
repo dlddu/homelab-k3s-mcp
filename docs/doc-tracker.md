@@ -162,8 +162,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - 🔴 **자동화 공백 — 추가 권장**:
   - **session 3종의 통합 e2e — 일부 공백**. 도구 계층은 셋 다 구현·검증됐다
     (`internal/sessionplatform` + `internal/mcp`, 도구 표면 17종). 통합 e2e 쪽의 **현황·잔여·
-    선행 조건은 아래 "AC ↔ e2e 1:1 정합성" 절이 단일 사실 원천**이고(집계 블록 · 레지스트리 표 ·
-    공백 backlog), 그 축의 소유자는 자매 모델 `tbm_homelab-k3s-mcp-ac-e2e`다.
+    선행 조건은 아래 "테스트 시나리오 ↔ e2e 1:1 정합성" 절이 단일 사실 원천**이고(집계 블록 ·
+    레지스트리 표 · 구현 대기 표), 그 축의 소유자는 자매 모델
+    `tbm_homelab-k3s-mcp-scenario-e2e`다.
     **여기에 숫자나 파일 목록을 다시 적지 않는다** — 이 절은 어느 게이트도 파싱하지 않으므로
     사본을 두면 조용히 낡는다. 실제로 그 사본이 「전용 파일이 아직 없다 / 선행은 모두 해소됐다」로
     남아 같은 파일의 집계 블록과 서로 모순한 채 세 번의 감지를 통과했다(2026-09-04 변경 이력 참조).
@@ -175,30 +176,37 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
     대상으로 시험 호출하면 남의 워크로드에 입력을 주입하고 파드를 되살린다. 이 축의 대체
     검증은 위 통합 e2e(자매 렌즈)가 kind의 실 제어면에서 닫는다.
 
-## AC ↔ e2e 1:1 정합성 (reconciler 렌즈)
+## 테스트 시나리오 ↔ e2e 1:1 정합성 (reconciler 렌즈)
 
-> **렌즈 차이**: reconciler 정합성 모델(`tbm_homelab-k3s-mcp-ac-e2e`)은 **`tests/integration/`의 통합 e2e만** 검증으로 인정한다 — `internal/`의 Go 단위 테스트는 정의상 e2e가 아니다. 따라서 위 "자동화 커버리지"에서 🟢로 세는 다수 AC가 이 e2e 렌즈에서는 **e2e 공백**으로 계수된다. 이 섹션은 그 e2e-전용 렌즈의 레지스트리다.
+> **렌즈 차이**: reconciler 정합성 모델(`tbm_homelab-k3s-mcp-scenario-e2e`)은 **`tests/integration/`의 통합 e2e만** 검증으로 인정한다 — `internal/`의 Go 단위 테스트는 정의상 e2e가 아니다. 따라서 위 "자동화 커버리지"에서 🟢로 세는 다수 시나리오가 이 e2e 렌즈에서는 **e2e 공백**으로 계수된다. 이 섹션은 그 e2e-전용 렌즈의 레지스트리다.
 
-### 파일 식별 규약 (규칙 1·2·3·5·6·7)
+> **판정 축은 AC가 아니라 테스트 시나리오다(2026-09-08 개정).** 매칭 공간이 `docs/prd-*.md`의 AC에서 `docs/test-*.md`의 `### 시나리오 <N>:` 헤딩으로 옮겨졌다. **AC ↔ 시나리오 층은 이제 이 렌즈의 판정 대상이 아니다** — 모든 AC가 시나리오로 덮이는지도, 시나리오가 참조하는 AC가 실재하는지도 보지 않는다(그 층은 위 "PRD ↔ 가치 ↔ AC ↔ 테스트 매트릭스"와 제품 문서 체계의 몫이다). 어느 시나리오가 어떤 AC를 검증하는지는 각 시나리오의 `검증 AC` 필드가 그대로 들고 있으므로, **파일 → AC 는 파일 → 시나리오 → AC 로 한 홉에 복원된다.** 그래서 개정은 축을 **옮겼고 덧붙이지 않았다** — 두 축의 사본을 나란히 두면 한쪽이 조용히 낡는다(이 문서가 2026-09-04에 실제로 겪은 실패 모드다).
+
+### 파일 식별 규약 (규칙 1·2·3·4·5·6·7)
 
 > **2026-08-14 개정 — 매칭 단위가 "테스트 케이스"에서 "파일"로 바뀌었다.** 모델 정의(`tbm_homelab-k3s-mcp-ac-e2e`)가 `ac-e2e` 템플릿 고정부에 맞춰 판정 단위를 파일로 옮겼다. 파일 안에서 케이스가 몇 개로 쪼개져 있는지는 이제 판정과 **무관**하다. 케이스 단위 시절에 쌓인 per-AC 케이스는 그대로 자산이며, 분할은 "새 검증 작성"이 아니라 **케이스를 파일로 승격**하는 작업이다.
 
-- **규칙 1 (AC→파일)**: 예외 목록에 없는 모든 AC는 자신을 주검증하는 파일을 **정확히 하나** 가진다. 여러 AC를 겸하는 파일은 그 AC의 전용 파일이 아니므로, 겸용 상태의 AC는 여전히 **공백**으로 계수한다.
-- **규칙 2 (파일→AC)**: 모든 매칭 단위 파일은 **정확히 하나의 AC**만 주검증 대상으로 선언한다. 2개 이상을 선언한 파일은 **분할 대기**(규칙 2 위반)다.
-- **규칙 3 (식별)**: 매칭 단위 파일은 **모듈 docstring**에 `검증 AC: <domain>/AC<n>` 을 선언한다. AC 대신 스모크/인프라를 검증하는 파일은 `검증 AC: 없음 (스모크/인프라)` 을 선언하고 아래 "비-AC 파일" 목록에 등재한다. 어디에도 매핑되지 않은 파일은 고아다.
-- **매칭 단위**: `tests/integration/` 최상위 `*.py`. 단 **`_` 접두 공유 모듈**(`_helpers.py` · `_workload.py` · `_auth_variant.py` · `_opensearch.py` · `_aws_config.py`)과 하네스 자신(`run_all.py` · `check_ac_mapping.py`)은 매칭 단위가 아니다 — 제외 판정은 러너와 체커가 `run_all.py::matching_unit_paths()` 하나로 공유한다.
-- **기계 검사**: `python3 tests/integration/check_ac_mapping.py` 가 위 규칙과 아래 집계를 CI(`fmt + vet` 잡)에서 강제한다. 이 표의 행별 상태·집계 숫자가 실측과 **정확히** 같아야 통과하므로, 파일을 쪼개거나 AC를 추가한 PR은 같은 PR에서 이 절을 갱신해야 한다.
-- **규칙 7 (테스트 문서 상태 일치)**: 같은 체커가 `docs/test-<domain>.md` 의 시나리오별 `자동화` 필드도 실측 파일 집합과 대조한다 — 전용 e2e 파일이 실재하는데 `(미작성)` 이 남아 있거나, 전용 파일이 없는데 `(미작성)` 없이 `tests/integration/*.py` 를 참조하면 위반이다. **e2e 파일을 새로 만든 PR은 그 AC 의 테스트 문서에서 `(미작성)` 을 같은 PR에서 지워야 한다.** 이 규칙이 생기기 전에는 `docs/test-*.md` 를 읽는 게이트가 하나도 없어, 문서가 "아직 미작성" 이라고 말하는 동안 파일이 실재하는 어긋남이 세 번의 감지를 통과했다(아래 변경 이력의 2026-09-04 항목).
-- **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
+- **규칙 1 (시나리오→파일)**: 예외 목록·구현 대기 표 어디에도 없는 모든 시나리오는 자신을 주검증하는 파일을 **정확히 하나** 가진다. 여러 시나리오를 겸하는 파일은 그 시나리오의 전용 파일이 아니므로, 겸용 상태의 시나리오는 여전히 **공백**으로 계수한다.
+- **규칙 2 (파일→시나리오)**: 모든 매칭 단위 파일은 **실재하는 시나리오 정확히 하나**만 주검증 대상으로 선언한다. 2개 이상을 선언한 파일은 **분할 대기**(규칙 2 위반)다. 셋업·관측 과정에서 다른 시나리오의 경로를 경유하는 것은 검증으로 세지 않는다 — 선언된 대상만 센다.
+- **규칙 3 (식별)**: 매칭 단위 파일은 **모듈 docstring**에 `검증 시나리오: test-<domain>.md#시나리오 <N>` 을 선언한다. 시나리오 대신 스모크/인프라를 검증하는 파일은 `검증 시나리오: 없음 (스모크/인프라)` 을 선언하고 아래 "비-시나리오 파일" 목록에 등재한다. 어디에도 매핑되지 않은 파일은 고아다.
+- **규칙 4 (예외)**: e2e로 자동 검증이 곤란한 시나리오(외부 자격증명·과금이 필요한 실호출, 비결정적 산출물, 파괴적 운영 조작)는 아래 "🚫 e2e 예외"에 **사유와 대체 검증 수단**을 적어 등재한다. 등재된 시나리오는 파일이 없어도 drift가 아니다. **"아직 자동화하지 못했다"는 예외 사유가 아니다** — 그것은 규칙 6의 **구현 대기**다.
+- **규칙 6 (구현 대기)**: 시나리오가 기술하는 상태에 이 하네스가 **도달할 수 없어** e2e가 관측할 대상 자체가 없으면 아래 "⏳ 구현 대기"에 **근거·담당·해제 조건**을 적어 등재한다. 예외(영구 면제)와 달리 **임시** 등재이므로 **별도 표**에 둔다 — 영구 면제와 임시 보류를 섞지 않는다. 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다.
+- **불변식**: **(시나리오 수 − 예외 수 − 구현 대기 수) = (매칭 파일 수)**. 전용 파일도 등재도 없는 시나리오(= 공백)가 **하나라도 있으면 체커가 실패한다** — 미등재 공백은 정의상 drift이기 때문이다.
+- **매칭 단위**: `tests/integration/` 최상위 `*.py`. 단 **`_` 접두 공유 모듈**(`_helpers.py` · `_workload.py` · `_auth_variant.py` · `_opensearch.py` · `_aws_config.py`)과 하네스 자신(`run_all.py` · `check_ac_mapping.py`)은 매칭 단위가 아니다 — 제외 판정은 러너와 체커가 `run_all.py::matching_unit_paths()` 하나로 공유한다. ⚠️ **모델 정의의 "매칭 단위가 아닌 것" 목록은 `run_all.py`를 빠뜨리고 있다**(헬퍼와 체커만 든다). 실행 판정은 여기 적힌 대로 `matching_unit_paths()`가 하고 러너 자신은 당연히 제외되지만, 정의 텍스트의 정정은 reconciler 모델 소유자의 몫으로 남긴다.
+- **기계 검사**: `python3 tests/integration/check_ac_mapping.py` 가 위 규칙과 아래 집계를 CI(`fmt + vet` 잡)에서 강제한다. 이 표의 행별 상태·**제목**·집계 숫자가 실측과 **정확히** 같아야 통과하므로, 파일을 쪼개거나 시나리오를 추가한 PR은 같은 PR에서 이 절을 갱신해야 한다. 파일명은 축 개정 전의 `<domain>_ac<n>.py` 그대로 두었다 — **매핑의 확인 지점은 파일명이 아니라 모듈 docstring 선언**이고, 개명은 18개 테스트 문서의 `자동화` 참조를 전부 따라 고치게 만들 뿐 판정에 기여하지 않는다. 체커의 파일명도 같은 이유로 유지했다(모델 정의가 이 이름을 매칭 단위 제외 목록에 박고 있다).
+- **⚠️ 서수 식별자의 취약성**: 시나리오는 `#시나리오 <N>` 서수로 식별되므로 **문서 중간에 시나리오를 끼워 넣으면 뒤 번호가 전부 밀려 식별자가 바뀐다**. 그 사고를 잡으려고 체커는 레지스트리 행의 **제목까지** 문서 헤딩과 대조한다 — 번호가 밀리면 제목이 어긋나 그 자리에서 실패한다. 시나리오를 추가할 때는 가급적 문서 끝에 붙이고, 중간 삽입이 불가피하면 같은 PR에서 선언과 이 표를 함께 옮긴다.
+- **규칙 7 (테스트 문서 상태 일치)**: 같은 체커가 `docs/test-<domain>.md` 의 시나리오별 `자동화` 필드도 실측 파일 집합과 대조한다 — 전용 e2e 파일이 실재하는데 `(미작성)` 이 남아 있거나, 전용 파일이 없는데 `(미작성)` 없이 `tests/integration/*.py` 를 참조하면 위반이다. **e2e 파일을 새로 만든 PR은 그 시나리오의 자동화 필드에서 `(미작성)` 을 같은 PR에서 지워야 한다.** 이 규칙이 생기기 전에는 `docs/test-*.md` 를 읽는 게이트가 하나도 없어, 문서가 "아직 미작성" 이라고 말하는 동안 파일이 실재하는 어긋남이 세 번의 감지를 통과했다(아래 변경 이력의 2026-09-04 항목).
+- **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant · oauth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
-<!-- ac-e2e-집계 -->
-- AC 전집: 64
+<!-- scenario-e2e-집계 -->
+- 시나리오 전집: 65
 - 예외 등재: 1
-- 1:1 대상: 63
+- 구현 대기 등재: 4
+- 1:1 대상: 60
 - 매칭 파일(전용): 60
 - 분할 대기 파일(규칙 2 위반): 0
-- 공백 AC: 3
-<!-- /ac-e2e-집계 -->
+- 공백 시나리오: 0
+<!-- /scenario-e2e-집계 -->
 
 > 공백 3건의 내역: **분할 대기(규칙 2 위반)는 0건**이고, 남은 3건은 전부 **케이스 자체가 없는** backlog(아래)다. 규칙 2 위반이 소멸했으므로 잔여 공백을 줄이는 길은 이제 분할이 아니라 **신규 전용 파일 저작**뿐이다.
 >
@@ -206,78 +214,93 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### AC 레지스트리 (64) — ✅ 전용 파일 60 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 3 · 🚫 예외 1
+### 시나리오 레지스트리 (65) — ✅ 전용 파일 60 · ⬜ 분할 대기 0 · ⏳ 구현 대기 4 · 🚫 예외 1
 
-| AC | 제목 | e2e 상태 |
-|----|------|----------|
-| aws-config-get/AC1 | 고정 객체 조회 | ✅ 전용 파일 `aws_config_get_ac1.py` |
-| aws-config-get/AC2 | 정적 키 미사용 | ✅ 전용 파일 `aws_config_get_ac2.py` |
-| aws-config-get/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `aws_config_get_ac3.py` |
-| dear-baby-reset-user/AC1 | 온보딩 리셋 실행 | ✅ 전용 파일 `dear_baby_reset_user_ac1.py` |
-| dear-baby-reset-user/AC2 | 명시적 대상 지정 | ✅ 전용 파일 `dear_baby_reset_user_ac2.py` |
-| dear-baby-reset-user/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `dear_baby_reset_user_ac3.py` |
-| github-app-installation-token/AC1 | 단명 설치 토큰 발급 | ✅ 전용 파일 `github_app_installation_token_ac1.py` |
-| github-app-installation-token/AC2 | 스코프 제한 | ✅ 전용 파일 `github_app_installation_token_ac2.py` |
-| github-app-installation-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `github_app_installation_token_ac3.py` |
-| github-app-installation-token/AC4 | 베이스 키 비노출 | ✅ 전용 파일 `github_app_installation_token_ac4.py` |
-| grafana-token/AC1 | read-only 토큰 발급 | ✅ 전용 파일 `grafana_token_ac1.py` |
-| grafana-token/AC2 | 즉시 사용 가능한 형태 | ✅ 전용 파일 `grafana_token_ac2.py` |
-| grafana-token/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `grafana_token_ac3.py` |
-| grafana-token/AC4 | 발급자 토큰 비노출 | ✅ 전용 파일 `grafana_token_ac4.py` |
-| namespace-list/AC1 | 네임스페이스 열거 | ✅ 전용 파일 `namespace_list_ac1.py` |
-| opensearch-document-delete/AC1 | 단일 문서 삭제 | ✅ 전용 파일 `opensearch_document_delete_ac1.py` |
-| opensearch-document-delete/AC2 | 부재 문서의 명확한 처리 | ✅ 전용 파일 `opensearch_document_delete_ac2.py` |
-| opensearch-document-delete/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `opensearch_document_delete_ac3.py` |
-| opensearch-document-delete/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_document_delete_ac4.py` |
-| opensearch-document-delete/AC5 | 미설정 시 graceful 거부 | ✅ 전용 파일 `opensearch_document_delete_ac5.py` |
-| opensearch-document-put/AC1 | 문서 색인·업서트 | ✅ 전용 파일 `opensearch_document_put_ac1.py` |
-| opensearch-document-put/AC2 | 인덱스 자동 생성 | ✅ 전용 파일 `opensearch_document_put_ac2.py` |
-| opensearch-document-put/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `opensearch_document_put_ac3.py` |
-| opensearch-document-put/AC4 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_document_put_ac4.py` |
-| opensearch-document-put/AC5 | 미설정 시 graceful 거부 | ✅ 전용 파일 `opensearch_document_put_ac5.py` |
-| opensearch-search/AC1 | 질의 검색 | ✅ 전용 파일 `opensearch_search_ac1.py` |
-| opensearch-search/AC2 | 결과 상한 | ✅ 전용 파일 `opensearch_search_ac2.py` |
-| opensearch-search/AC3 | AssumeRole·SigV4 접근 | ✅ 전용 파일 `opensearch_search_ac3.py` |
-| opensearch-search/AC4 | 미설정 시 graceful 거부 | ✅ 전용 파일 `opensearch_search_ac4.py` |
-| ping/AC1 | 항상 pong 응답 | ✅ 전용 파일 `ping_ac1.py` |
-| platform-auth-safety/AC1 | 인증 게이트 | ✅ 전용 파일 `platform_auth_safety_ac1.py` |
-| platform-auth-safety/AC2 | 인증 디스커버리 | ✅ 전용 파일 `platform_auth_safety_ac2.py` |
-| platform-auth-safety/AC3 | 최소권한 RBAC 경계 | ✅ 전용 파일 `platform_auth_safety_ac3.py` |
-| platform-auth-safety/AC4 | 하드닝된 런타임 | 🚫 예외 |
-| platform-auth-safety/AC5 | 서버 수준 graceful degradation | ✅ 전용 파일 `platform_auth_safety_ac5.py` |
-| platform-auth-safety/AC6 | 헬스·레디니스 | ✅ 전용 파일 `platform_auth_safety_ac6.py` |
-| platform-auth-safety/AC7 | API 키 인증 | ✅ 전용 파일 `platform_auth_safety_ac7.py` |
-| platform-auth-safety/AC8 | 인증 방식 구성 유연성 | ✅ 전용 파일 `platform_auth_safety_ac8.py` |
-| pod-describe/AC1 | 파드 상세 스냅샷 | ✅ 전용 파일 `pod_describe_ac1.py` |
-| pod-describe/AC2 | 대상 지정 방식 | ✅ 전용 파일 `pod_describe_ac2.py` |
-| pod-describe/AC3 | 이벤트 best-effort | ✅ 전용 파일 `pod_describe_ac3.py` |
-| session-list/AC1 | 세션 열거 | ✅ 전용 파일 `session_list_ac1.py` |
-| session-list/AC2 | 상태를 바꾸지 않는 조회 | ✅ 전용 파일 `session_list_ac2.py` |
-| session-list/AC3 | 미설정 시 graceful 거부 | ✅ 전용 파일 `session_list_ac3.py` |
-| session-read/AC1 | 오프셋 커서 읽기 | ✅ 전용 파일 `session_read_ac1.py` |
-| session-read/AC2 | 상태 분기 노출 | ⬜ 공백 — 케이스 없음 |
-| session-read/AC3 | 대상 부재·잘못된 커서 처리 | ✅ 전용 파일 `session_read_ac3.py` |
-| session-read/AC4 | 미설정 시 graceful 거부 | ✅ 전용 파일 `session_read_ac4.py` |
-| session-write/AC1 | 워크로드 입력 주입 | ✅ 전용 파일 `session_write_ac1.py` |
-| session-write/AC2 | 상태 분기 처리와 노출 | ⬜ 공백 — 케이스 없음 |
-| session-write/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `session_write_ac3.py` |
-| session-write/AC4 | 거부 응답의 구분 전달 | ⬜ 공백 — 케이스 없음 |
-| session-write/AC5 | 미설정 시 graceful 거부 | ✅ 전용 파일 `session_write_ac5.py` |
-| workload-list/AC1 | 종류별 워크로드 조회 | ✅ 전용 파일 `workload_list_ac1.py` |
-| workload-list/AC2 | 네임스페이스 스코프 | ✅ 전용 파일 `workload_list_ac2.py` |
-| workload-logs/AC1 | 워크로드 기준 로그 조회 | ✅ 전용 파일 `workload_logs_ac1.py` |
-| workload-logs/AC2 | tail 라인 제어 | ✅ 전용 파일 `workload_logs_ac2.py` |
-| workload-logs/AC3 | 크래시 루프 후 직전 로그 | ✅ 전용 파일 `workload_logs_ac3.py` |
-| workload-logs/AC4 | 컨테이너 선택과 필터 | ✅ 전용 파일 `workload_logs_ac4.py` |
-| workload-restart/AC1 | 롤링 재시작 트리거 | ✅ 전용 파일 `workload_restart_ac1.py` |
-| workload-restart/AC2 | 파괴적 작업 표기 | ✅ 전용 파일 `workload_restart_ac2.py` |
-| workload-scale/AC1 | 레플리카 설정 | ✅ 전용 파일 `workload_scale_ac1.py` |
-| workload-scale/AC2 | DaemonSet 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
-| workload-scale/AC3 | 파괴적 작업 표기 | ✅ 전용 파일 `workload_scale_ac3.py` |
+> 불변식이 여기서 눈으로 닫힌다: **65 − 1(예외) − 4(구현 대기) = 60 = 매칭 파일 60**, 공백 **0**.
+> 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
-### ⬜ 공백 backlog (3) — 케이스 자체가 없는 AC, 전용 **파일** 신설 필요
+| 시나리오 | 제목 | e2e 상태 |
+|----------|------|----------|
+| test-aws-config-get.md#시나리오 1 | 고정 객체 내용·메타데이터 반환 | ✅ 전용 파일 `aws_config_get_ac1.py` |
+| test-aws-config-get.md#시나리오 2 | AssumeRole → GetObject 경로(정적 키 없음) | ✅ 전용 파일 `aws_config_get_ac2.py` |
+| test-aws-config-get.md#시나리오 3 | 미설정 시 도구 에러 | ✅ 전용 파일 `aws_config_get_ac3.py` |
+| test-dear-baby-reset-user.md#시나리오 1 | 리셋 성공/실패 exec | ✅ 전용 파일 `dear_baby_reset_user_ac1.py` |
+| test-dear-baby-reset-user.md#시나리오 2 | 대상 지정(이메일 필수, 셀렉터/컨테이너 기본·재정의) | ✅ 전용 파일 `dear_baby_reset_user_ac2.py` |
+| test-dear-baby-reset-user.md#시나리오 3 | 파괴적 어노테이션 광고 | ✅ 전용 파일 `dear_baby_reset_user_ac3.py` |
+| test-github-app-installation-token.md#시나리오 1 | 기본 토큰 발급(.env + 만료·스코프 주석) | ✅ 전용 파일 `github_app_installation_token_ac1.py` |
+| test-github-app-installation-token.md#시나리오 2 | repo/권한 스코프 제한 | ✅ 전용 파일 `github_app_installation_token_ac2.py` |
+| test-github-app-installation-token.md#시나리오 3 | 미설정 시 도구 에러 | ✅ 전용 파일 `github_app_installation_token_ac3.py` |
+| test-github-app-installation-token.md#시나리오 4 | 개인키 비노출 | ✅ 전용 파일 `github_app_installation_token_ac4.py` |
+| test-grafana-token.md#시나리오 1 | read 토큰 발급(.env + 만료 주석) | ✅ 전용 파일 `grafana_token_ac1.py` |
+| test-grafana-token.md#시나리오 2 | 엔드포인트·인스턴스 ID 동봉 | ✅ 전용 파일 `grafana_token_ac2.py` |
+| test-grafana-token.md#시나리오 3 | 미설정 시 도구 에러 | ✅ 전용 파일 `grafana_token_ac3.py` |
+| test-grafana-token.md#시나리오 4 | 발급자 토큰 비노출 | ✅ 전용 파일 `grafana_token_ac4.py` |
+| test-namespace-list.md#시나리오 1 | 네임스페이스 목록·phase·생성 시각 | ✅ 전용 파일 `namespace_list_ac1.py` |
+| test-namespace-list.md#시나리오 2 | 통합 미설정 시 도구 에러 | ⏳ 구현 대기 (규칙 6 — 하네스 선행 미충족) |
+| test-opensearch-document-delete.md#시나리오 1 | 지정 문서만 삭제 | ✅ 전용 파일 `opensearch_document_delete_ac1.py` |
+| test-opensearch-document-delete.md#시나리오 2 | 없는 문서 삭제 → not_found | ✅ 전용 파일 `opensearch_document_delete_ac2.py` |
+| test-opensearch-document-delete.md#시나리오 3 | destructiveHint 광고 | ✅ 전용 파일 `opensearch_document_delete_ac3.py` |
+| test-opensearch-document-delete.md#시나리오 4 | AssumeRole → SigV4 경로(정적 키 없음) | ✅ 전용 파일 `opensearch_document_delete_ac4.py` |
+| test-opensearch-document-delete.md#시나리오 5 | 미설정 시 도구 에러 | ✅ 전용 파일 `opensearch_document_delete_ac5.py` |
+| test-opensearch-document-put.md#시나리오 1 | 색인·업서트·자동 id | ✅ 전용 파일 `opensearch_document_put_ac1.py` |
+| test-opensearch-document-put.md#시나리오 2 | 미존재 인덱스 자동 생성 | ✅ 전용 파일 `opensearch_document_put_ac2.py` |
+| test-opensearch-document-put.md#시나리오 3 | destructiveHint 광고 | ✅ 전용 파일 `opensearch_document_put_ac3.py` |
+| test-opensearch-document-put.md#시나리오 4 | AssumeRole → SigV4 경로(정적 키 없음) | ✅ 전용 파일 `opensearch_document_put_ac4.py` |
+| test-opensearch-document-put.md#시나리오 5 | 미설정 시 도구 에러 | ✅ 전용 파일 `opensearch_document_put_ac5.py` |
+| test-opensearch-search.md#시나리오 1 | 질의어 매칭 문서 반환 | ✅ 전용 파일 `opensearch_search_ac1.py` |
+| test-opensearch-search.md#시나리오 2 | size 기본값과 상한 초과 거부 | ✅ 전용 파일 `opensearch_search_ac2.py` |
+| test-opensearch-search.md#시나리오 3 | AssumeRole → SigV4 경로(정적 키 없음) | ✅ 전용 파일 `opensearch_search_ac3.py` |
+| test-opensearch-search.md#시나리오 4 | 미설정 시 도구 에러 | ✅ 전용 파일 `opensearch_search_ac4.py` |
+| test-ping.md#시나리오 1 | pong 반환 | ✅ 전용 파일 `ping_ac1.py` |
+| test-platform-auth-safety.md#시나리오 1 | Bearer 인증 게이트 | ✅ 전용 파일 `platform_auth_safety_ac1.py` |
+| test-platform-auth-safety.md#시나리오 2 | 인증 디스커버리 | ✅ 전용 파일 `platform_auth_safety_ac2.py` |
+| test-platform-auth-safety.md#시나리오 3 | 최소권한 RBAC 경계 | ✅ 전용 파일 `platform_auth_safety_ac3.py` |
+| test-platform-auth-safety.md#시나리오 4 | 하드닝된 런타임 | 🚫 예외 등재 (규칙 4 — 정적 매니페스트 검증으로 대체) |
+| test-platform-auth-safety.md#시나리오 5 | 서버 수준 graceful degradation | ✅ 전용 파일 `platform_auth_safety_ac5.py` |
+| test-platform-auth-safety.md#시나리오 6 | 헬스·레디니스 | ✅ 전용 파일 `platform_auth_safety_ac6.py` |
+| test-platform-auth-safety.md#시나리오 7 | API 키 인증 게이트 (비대화형) | ✅ 전용 파일 `platform_auth_safety_ac7.py` |
+| test-platform-auth-safety.md#시나리오 8 | 인증 방식 구성 유연성 (env 게이팅) | ✅ 전용 파일 `platform_auth_safety_ac8.py` |
+| test-pod-describe.md#시나리오 1 | 구조화된 스냅샷 | ✅ 전용 파일 `pod_describe_ac1.py` |
+| test-pod-describe.md#시나리오 2 | 대상 지정과 상호배타 | ✅ 전용 파일 `pod_describe_ac2.py` |
+| test-pod-describe.md#시나리오 3 | 이벤트 best-effort / 에러 처리 | ✅ 전용 파일 `pod_describe_ac3.py` |
+| test-session-list.md#시나리오 1 | 세션 목록 열거 | ✅ 전용 파일 `session_list_ac1.py` |
+| test-session-list.md#시나리오 2 | 조회가 상태를 바꾸지 않음 | ✅ 전용 파일 `session_list_ac2.py` |
+| test-session-list.md#시나리오 3 | 미설정 시 도구 에러 | ✅ 전용 파일 `session_list_ac3.py` |
+| test-session-read.md#시나리오 1 | 전체 읽기 → 증분 읽기 → 재읽기 | ✅ 전용 파일 `session_read_ac1.py` |
+| test-session-read.md#시나리오 2 | 상태 분기와 그 노출 | ⏳ 구현 대기 (규칙 6 — 하네스 선행 미충족) |
+| test-session-read.md#시나리오 3 | 없는 세션·잘못된 커서 | ✅ 전용 파일 `session_read_ac3.py` |
+| test-session-read.md#시나리오 4 | 미설정 시 도구 에러 | ✅ 전용 파일 `session_read_ac4.py` |
+| test-session-write.md#시나리오 1 | shell·claude-code 입력 주입 | ✅ 전용 파일 `session_write_ac1.py` |
+| test-session-write.md#시나리오 2 | 상태 분기와 그 노출 | ⏳ 구현 대기 (규칙 6 — 하네스 선행 미충족) |
+| test-session-write.md#시나리오 3 | destructiveHint 광고 | ✅ 전용 파일 `session_write_ac3.py` |
+| test-session-write.md#시나리오 4 | 거부 사유 구분 | ⏳ 구현 대기 (규칙 6 — 하네스 선행 미충족) |
+| test-session-write.md#시나리오 5 | 미설정 시 도구 에러 | ✅ 전용 파일 `session_write_ac5.py` |
+| test-workload-list.md#시나리오 1 | 종류 지정 조회 | ✅ 전용 파일 `workload_list_ac1.py` |
+| test-workload-list.md#시나리오 2 | 전체 네임스페이스 조회 | ✅ 전용 파일 `workload_list_ac2.py` |
+| test-workload-logs.md#시나리오 1 | 셀렉터 해석 후 파드 로그 반환 | ✅ 전용 파일 `workload_logs_ac1.py` |
+| test-workload-logs.md#시나리오 2 | 기본 200, 초과 시 거부 | ✅ 전용 파일 `workload_logs_ac2.py` |
+| test-workload-logs.md#시나리오 3 | 직전 컨테이너 로그 | ✅ 전용 파일 `workload_logs_ac3.py` |
+| test-workload-logs.md#시나리오 4 | 컨테이너 지정·출력 옵션 | ✅ 전용 파일 `workload_logs_ac4.py` |
+| test-workload-restart.md#시나리오 1 | patch 기반 롤링 재시작 | ✅ 전용 파일 `workload_restart_ac1.py` |
+| test-workload-restart.md#시나리오 2 | 파괴적 어노테이션 광고 | ✅ 전용 파일 `workload_restart_ac2.py` |
+| test-workload-scale.md#시나리오 1 | 레플리카 설정(0 포함) | ✅ 전용 파일 `workload_scale_ac1.py` |
+| test-workload-scale.md#시나리오 2 | DaemonSet/미지원 종류 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
+| test-workload-scale.md#시나리오 3 | 파괴적 어노테이션 광고 | ✅ 전용 파일 `workload_scale_ac3.py` |
 
-> 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다.
+### ⏳ 구현 대기 (4) — 규칙 6 등재 (1:1 계수에서 제외)
+
+> **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
+>
+> 새 통합 e2e는 kind 클러스터 실서버 배포로 실행되므로 앱 구동 검증이 필요 — 후속 task로 저작한다. 아래 표의 **근거·해제 조건**은 축 개정 전 「⬜ 공백 backlog」 절이 AC 기준으로 쌓아 둔 실측을 시나리오 기준으로 옮긴 것이다(원 서술은 표 아래 산문에 그대로 남겼다 — 다시 재지 말 것).
+
+| 시나리오 | 근거 (관측 대상이 없는 이유) | 담당 | 해제 조건 |
+|----------|------------------------------|------|-----------|
+| **test-namespace-list.md#시나리오 2** | `통합 미설정 시 도구 에러`는 k8s 통합이 **구성되지 않은** 배포에서만 관측된다. kind의 세 배포(primary · auth-variant · oauth-variant)는 전부 ServiceAccount로 클러스터에 붙어 있어 그 상태에 도달하는 길이 없다. 대체 검증은 Go 단위 `mcp_test.go::TestNamespaceListUnavailableIsToolError` 가 이미 든다. | 이 렌즈 | k8s 통합을 뺀 네 번째 배포 변형(또는 기존 변형에서 통합만 끄는 배선)을 픽스처에 세운다 |
+| **test-session-read.md#시나리오 2** | `snapshot` 분기가 `activate → Service.Restore → checkpointerFor(workload)` 를 타는데, 그 함수는 체크포인터가 `Enabled()` 가 아니면 `session.ErrCheckpointDisabled` 로 거부한다. 픽스처는 `CRIU_ENABLED` 를 켜지 않아 `criu.NewStubCheckpointer(false)` 가 주입되므로 **그 상태에 도달하는 길도, 도달한 뒤 읽는 길도 없다**. `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. | 이 렌즈 | kind에 CRIU 런타임·특권 파드·체크포인트 저장소를 세우거나, 아래 산문의 claude-code 아카이브 체크포인터 리드를 검증해 그 경로로 연다 |
+| **test-session-write.md#시나리오 2** | 위와 **같은 벽**을 공유한다(`snapshot` 분기 도달 불가). | 이 렌즈 | 위와 동일 |
+| **test-session-write.md#시나리오 4** | AC가 요구하는 네 거부 중 **큐 포화(429)·쿼터 소진(507)이 `data-plane/cmd/agent/claude.go` 에서만** 나온다 — shell 에이전트에는 그 상태코드를 낼 경로가 없다. 게다가 507은 **지금의 데이터 플레인에서 도달 불가**다(`scrollbackLimit` 기본 256 MiB를 낮출 env·플래그가 없고, 아카이브 복원 우회로도 생성·복원 양쪽에서 막힌다). 네 갈래 중 하나만 떼어 닫는 것은 「반쪽 단정」이라 하지 않는다. | 이 렌즈 + session-platform(상한 노출) | ⑴ session-platform 데이터 플레인이 스크롤백 상한을 설정 표면(env)으로 노출하고, ⑵ claude-code 파드가 이 하네스에서 실제로 서야 한다(부트스트랩이 상류 둘을 타므로 모킹 정책 판정이 선행) |
+
+> 아래 산문은 축 개정 전의 실측 기록이다. **AC 기준 표기(`session-read/AC2` 등)를 그대로 두었다** — 자기 시점의 사실을 적은 것이고, 위 표가 그 시나리오 대응을 든다.
 
 - **session-read/AC2 · session-write/AC2 (2)** → AC별 전용 파일 2개(신규). 둘은 **같은 벽** 하나를 공유한다: `active`·`idle`·`snapshot` 세 분기를 모두 요구하는데, `snapshot` 분기는 `activate → Service.Restore → checkpointerFor(workload)`를 타고 그 함수는 **체크포인터가 `Enabled()`가 아니면 `session.ErrCheckpointDisabled`로 거부한다**("Never reclaim a pod behind synthetic checkpoint metadata"). 픽스처는 `CRIU_ENABLED`를 켜지 않으므로 `main.go`가 `criu.NewStubCheckpointer(false)`를 주입하고 → **복원도 스냅샷 생성도 실패한다.** 그래서 `snapshot` 상태에 도달하는 길도, 그 상태에서 읽거나 쓰는 길도 현재 픽스처엔 없다. 해소하려면 CRIU 런타임·특권 파드·체크포인트 저장소를 kind에 세워야 한다(session-platform 자신도 `deploy/` 오버레이에서만 켠다). **2026-09-04의 데이터 플레인 슬라이스가 이 둘을 닫지 못한 이유가 정확히 이것이다** — 그 슬라이스는 shell 파드를 세웠지만 CRIU 게이트는 건드리지 않았다. `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 **「반쪽 단정」**이므로 하지 않는다.
 - **session-write/AC4 (1) — 거부 응답의 구분 전달** → 전용 파일 1개(신규). ⚠️ **이 항목의 선행 서술은 2026-09-04에 두 번 고쳐졌다.** 처음에는 「선행에 걸리지 않을 가능성이 높다」였고, 같은 날 「AC1과 같은 데이터 플레인 선행을 공유한다」로 고쳐졌으며, 데이터 플레인 슬라이스가 소스를 읽고 **한 번 더** 좁혔다:
@@ -429,12 +452,12 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 > **파괴적 작업 표기(5) — ✅ 완료(2026-07-21)**: 파괴 동작을 실제로 실행하지 않고 배포 서버 `tools/list`의 `annotations.destructiveHint == true`(및 `readOnlyHint == false`)를 e2e로 단언하는 per-AC 전용 케이스를 신설해 위 레지스트리에서 ✅로 승격했다(`internal/server/mcp_test.go`의 in-process 단언을 배포 서버 통합 e2e로 승격). 케이스: `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint`, `opensearch.py::test_opensearch_document_{put,delete}_ac3_destructive_hint`, `workload.py::test_workload_{restart_ac2,scale_ac3}_destructive_hint`. 남은 backlog 14건은 no-config 배포 변형·신규 픽스처가 필요한 후속 슬라이스.
 
-### 비-AC 파일 (스모크·인프라) (1)
+### 비-시나리오 파일 (스모크·인프라) (1)
 
-> AC 대신 스모크/인프라 확인(서버 기동·`/healthz`·도구 표면 존재)을 주검증한다고 선언한 매칭 단위 파일의 등재 자리다(규칙 3). 이 목록에 없는 비-AC 파일은 고아이고, 여기 등재됐는데 실재하지 않거나 AC를 선언하는 파일도 고아 등재다 — 체커가 양방향으로 검사한다.
+> 시나리오 대신 스모크/인프라 확인(서버 기동·`/healthz`·도구 표면 존재)을 주검증한다고 선언한 매칭 단위 파일의 등재 자리다(규칙 3). 이 목록에 없는 비-시나리오 파일은 고아이고, 여기 등재됐는데 실재하지 않거나 시나리오를 선언하는 파일도 고아 등재다 — 체커가 양방향으로 검사한다.
 
 - **`smoke.py`** — primary 배포의 **도구 표면 존재 확인**(`_helpers.EXPECTED_TOOLS` 14개가 `tools/list`에 광고되는지). `실행 순서: 0`으로 primary 그룹 맨 앞에서 돌아, 배포가 깨졌을 때 뒤따르는 AC 파일들이 차례로 모호하게 죽는 대신 한 번에 원인을 말하는 **공유 선행 조건**이다(파일 수는 분할이 진행될수록 늘어나므로 여기 적지 않는다 — 세는 것은 러너와 체커의 몫이다). 2026-08-31 분할 전에는 이 확인이 ping/AC1·platform-auth-safety/AC6과 한 파일에 섞여 있었고(= 분할 대기), 두 AC를 각자의 전용 파일(위 레지스트리 참조)로 떼어낸 뒤 남은 것이 이 파일이다.
-  - **이것은 platform-auth-safety/AC5가 아니다**: 주 배포는 모든 통합이 구성돼 있어 정상적인 `tools/list`가 degradation에 대해 아무것도 말해 주지 않는다. AC5는 자격증명이 없는 배포에서만 관측되므로 그 전용 파일이 `auth-variant`에서 같은 상수를 단언한다.
+  - **이것은 `test-platform-auth-safety.md#시나리오 5`가 아니다**: 주 배포는 모든 통합이 구성돼 있어 정상적인 `tools/list`가 degradation에 대해 아무것도 말해 주지 않는다. 그 시나리오는 자격증명이 없는 배포에서만 관측되므로 전용 파일이 `auth-variant`에서 같은 상수를 단언한다.
 
 > 이 절의 백틱 파일명은 체커가 **등재 목록으로 읽는다**(`FILE_REF_RE`). 다른 파일을 예로 들 때는 백틱을 쓰지 말 것 — 고아 등재로 잡힌다.
 
@@ -444,12 +467,13 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > **정의 예외 개정 제안(1건, e2e 비대상)**: e2e 1:1 계수에서 빠져야 하는 AC는 아래 platform/AC4 1건뿐이다. 파괴적 표기 5건은 `tools/list` 메타데이터를 e2e로 단언해 커버하므로(✅ 전용 케이스, 2026-07-21 완료) e2e 예외가 아니다. 정의의 예외 목록에는 이 1건만 등재하도록 제안한다.
 
-- **platform-auth-safety/AC4** 하드닝된 런타임 — [정적 매니페스트] `k8s/deployment.yaml` securityContext(비루트·읽기전용 루트FS·capability drop 등) 정적 검증 — definition이 든 e2e 예외 예시. 대체: 정적 매니페스트 리뷰 + (선택) 런타임 securityContext 단언 단위.
+- **test-platform-auth-safety.md#시나리오 4** 하드닝된 런타임 (`platform-auth-safety/AC4`) — [정적 매니페스트] `k8s/deployment.yaml` securityContext(비루트·읽기전용 루트FS·capability drop 등) 정적 검증 — definition이 든 e2e 예외 예시. 대체: 정적 매니페스트 리뷰 + (선택) 런타임 securityContext 단언 단위.
 
 ## 변경 이력
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-08 | **e2e 1:1 판정 축을 AC → 테스트 시나리오로 옮겼다**(모델 `tbm_homelab-k3s-mcp-ac-e2e` → `tbm_homelab-k3s-mcp-scenario-e2e`). 매칭 공간이 `docs/prd-*.md`의 AC 64개에서 `docs/test-*.md`의 `### 시나리오 <N>:` 65개로 바뀌었다. ① 매칭 단위 61개의 모듈 docstring 선언을 `검증 AC:` → `검증 시나리오: test-<domain>.md#시나리오 <N>`로 교체(파일당 정확히 한 줄, 테스트 로직 무변경). ② `run_all.py`의 선언 파싱·실행 라벨을 시나리오 축으로. ③ `check_ac_mapping.py`를 시나리오 축으로 개정 — 시나리오 전집을 테스트 문서에서 재도출하고, **구현 대기 표 파싱**과 **레지스트리 제목 대조**(서수가 밀려 식별자가 바뀌는 사고를 잡는다)를 신설했으며, **미등재 공백을 실패로** 만들어 불변식을 기계가 강제한다. ④ 이 절의 레지스트리를 65행으로 재작성하고 집계 블록 마커를 `scenario-e2e-집계`로, 예외(영구)와 **구현 대기(임시)를 별도 표**로 갈랐다. **매핑은 손으로 짓지 않고 각 시나리오의 `자동화` 필드(1순위)와 `검증 AC`(2순위)로 레포에서 유도했다 — 전용 선언 60개가 서로 다른 시나리오 60개에 미결 0·중복 0으로 배정됐고, 결과가 `<domain>_ac<n>.py ↔ #시나리오 <n>` 항등식이라 눈으로 대조된다.** 파일명·체커 이름·PRD·테스트 문서 본문·`ci.yml`은 무변경. 뮤테이션 7종(존재하지 않는 시나리오 선언 · 중복 전용 선언 · 시나리오 추가 · 집계 변조 · 제목 어긋남 · 비-시나리오 등재 해제 · 구현 대기 등재 해제)이 전부 rc=1이고, 새 게이트는 개정 前 트리에서, 구 게이트는 개정 後 트리에서 각각 rc=1임을 확인했다. | AC 축: 전집 64 · 예외 1 · 1:1 대상 63 · 매칭 파일 60 · 공백 AC 3 | 시나리오 축: 전집 65 · 예외 1 · **구현 대기 4** · 1:1 대상 60 · 매칭 파일 60 · **공백 0**(불변식 성립) |
 | 2026-09-04 | **주석 판정 원장을 기계 검증 대상으로 승격 + `internal/sessionplatform/` 재판정** — `docs/comment-policy.md`가 자기 자신에 대해 적은 수치 셋이 낡아 있었다(판정 대상 `848줄 / 64파일` → 실측 969/66, 범위 `104파일 / 16.5k LOC` → 106/17.4k, `검증 AC:` `67건 / 63파일` → 69/65). 값만 고치면 다음 머지에서 또 낡으므로 **낡을 수 있는 형태를 없앴다**: 현재형 인구조사는 프로즈에서 걷어내 게이트 stdout으로 옮기고, 판정 이력은 범위(파일 단위)·주석 줄 수·지문을 담은 마커 원장으로 재작성했다. 신설 `scripts/check_comment_policy.py`(lint 잡, 표준 라이브러리 전용)가 R1~R4로 그 원장을 강제한다 — 등재 범위의 주석이 판정 이후 바뀌면 CI가 붉어져 재판정을 요구한다. 함께 원장이 **패키지 이름으로** 범위를 적은 탓에 「판정 완료」로 위장돼 있던 `internal/sessionplatform/`의 주석 **96줄**(`session_read`·`session_write` 구현이 들여온 것)을 재판정해 18줄을 제거했다 — 전부 ③ 자기 파일 중복(`ReadSession`·`WriteSession` doc 본문이 `errKind` 상수 doc·`WriteResult` doc의 재진술). 실행 코드는 한 줄도 바뀌지 않았고 AC·PRD·테스트 문서·e2e 레지스트리·집계도 전부 불변이다. | 판정 완료 153줄(등재는 패키지 단위, 96줄 미판정) · 이 축 ungated | 판정 완료 224줄(등재는 파일 단위 + 지문) · CI 게이트 1종 신설 |
 | 2026-09-04 | **session-read 2건(AC3 대상 부재·잘못된 커서 · AC4 미설정 거부)의 통합 e2e 저작** — backlog 9건 중 **데이터 플레인 없이 관측되는 2건**을 전용 파일 2개(`session_read_ac{3,4}.py`)로 닫았다. 슬라이스 경계는 「제어면이 에이전트 파드를 치는가」로 그었다: AC3의 두 실패는 어느 쪽도 파드에 닿지 않고(없는 id는 `Get`에서 404, 잘못된 커서는 `internal/mcp`가 HTTP 이전에 `-32602`로 거부), AC4는 제어면이 아예 없는 `auth-variant`에서 돈다. AC3 파일은 **두 에러의 층이 다르다는 것**까지 단정한다 — not-found는 도구 에러(`isError`), 잘못된 커서는 SDK가 올리는 `McpError`(`pod_describe_ac2.py`가 선례) — 그리고 두 호출 뒤 실재 세션의 `state`·`lastAccess`와 **파드 집합**이 불변임을 대조해 「상태 불변」을 관측으로 되받는다(실 제어면이라 vacuous하지 않다). 남은 session-read 2건(AC1·AC2)의 선행을 **소스에서 확정해 backlog에 적었다**: AC1은 `agent.Read`가 파드 IP를 해석해 `:8090/read`를 치므로 **실 데이터 플레인 파드가 필요**하고(이미지는 제어면과 같은 SHA 태그로 발행되는 공개 arm64 패키지라 스텁은 모킹 정책상 등재 불가), AC2는 그 위에 **CRIU 게이트가 추가 선행**이다 — `snapshot` 분기가 `Restore → checkpointerFor`를 타는데 `CRIU_ENABLED` 없이는 `ErrCheckpointDisabled`로 거부되어 관측 자체가 불가능하다. 이로써 원장이 미뤄 둔 「`DATA_PLANE_IMAGE` 배선이 필요한지 먼저 판단할 것」에 답했다(AC1은 필요, AC2는 그것만으로도 부족). session-write 5건의 저작 순서 권고도 같은 근거로 적었다(AC4·AC5 먼저). `ci.yml`·픽스처 무변경(러너 자동 발견, 두 배포 기존). tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 54 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 9 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 56 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 7 · 🚫 예외 1 · 비-AC 1 |
 | 2026-09-04 | **주석 비중복성 정책 문서 신설 + 첫 판정 패스 2개 패키지** — 정합성 모델 `tbm_homelab-k3s-mcp-comment-redundancy`의 to-be가 `absent`(정책 문서 부재)였다. `docs/comment-policy.md`를 세워 **복원 경로 넷**(코드 · 저장소 문서 · PR · 커밋 메시지), **유지 대상 셋**(기계 판독 주석 · doc 주석 최소치 · 복원 불가능한 지식), **5단계 판정 절차**, 「애매하면 남긴다」의 비용 비대칭 근거, 그리고 as-is 지문의 사각지대(Python docstring 본문 · Go 블록 주석 · 줄 끝 주석)를 고정했다. 이어 그 정책을 `internal/opensearch/` · `internal/sessionplatform/`(주석 161줄 / 4파일, 범위 내 848줄의 19%)에 **완전 적용**해 주석 8줄을 제거했다 — 전부 ① 선언 재진술 ② `docs/prd-opensearch-*.md` 재진술 ③ 자기 파일 안의 중복이며, exported 식별자의 1줄 doc 주석과 패키지 주석은 하나도 건드리지 않았다. 판정 표본이 정정한 것: 감지가 지목한 「kind 픽스처 YAML의 매니페스트 재진술」은 실측에서 **성립하지 않았다** — `tests/k8s/kind/*.yaml`의 주석 240줄은 대부분 상류 함정·정책 판단 근거라 유지 대상이다. **범위 밖(후속)**: 나머지 주석 679줄(`main.go` · 그 외 `internal/` · `tests/` · `scripts/`), 지문 패턴 확장, 이 축의 CI 게이트 신설(현재 ungated). docs/ 신설 + `internal/` 주석 변경이라 as-is 해시 변경 + 문서 인벤토리·허브 계수 갱신(PRD·AC·테스트 문서 불변). | 가치 5 / PRD 18 / AC 64 / 테스트 18 · 정책 1 · 허브 39 | 가치 5 / PRD 18 / AC 64 / 테스트 18 (불변) · 정책 2 · 허브 40 |

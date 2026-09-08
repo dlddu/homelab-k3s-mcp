@@ -1,6 +1,6 @@
 """인증 디스커버리: 401 챌린지 → 보호 리소스 메타데이터 → OIDC 디스커버리 → JWKS (e2e).
 
-검증 AC: platform-auth-safety/AC2
+검증 시나리오: test-platform-auth-safety.md#시나리오 2
 실행 대상: oauth-variant
 
 `실행 대상: oauth-variant` 는 `tests/k8s/kind/oidc-fixture.yaml` 의 `homelab-k3s-mcp-oauth`

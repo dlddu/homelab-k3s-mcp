@@ -1,6 +1,6 @@
 """Deployed-server e2e for workload-logs/AC4 (컨테이너 선택과 필터).
 
-검증 AC: workload-logs/AC4
+검증 시나리오: test-workload-logs.md#시나리오 4
 실행 대상: primary
 
 두 픽스처를 함께 쓴다 — 컨테이너 선택은 ``deploy/workload-fixture``(기준선을 선행
