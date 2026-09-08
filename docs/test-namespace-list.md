@@ -19,4 +19,6 @@
 - **실행 단계**: `namespace_list` 호출
 - **기대 결과**: 서버는 정상, 호출만 도구 에러 반환
 - **검증 AC**: AC1 (degradation 동작)
-- **자동화**: Go 단위 `mcp_test.go::TestNamespaceListUnavailableIsToolError`.
+- **자동화**: Go 단위 `mcp_test.go::TestNamespaceListUnavailableIsToolError`. 통합
+  `tests/integration/namespace_list_ac2.py::test_namespace_list_ac2_unconfigured_refusal`
+  (`MCP_K8S_DISABLED` 로 통합을 끈 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).

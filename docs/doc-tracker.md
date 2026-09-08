@@ -201,9 +201,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 <!-- scenario-e2e-집계 -->
 - 시나리오 전집: 65
 - 예외 등재: 1
-- 구현 대기 등재: 4
-- 1:1 대상: 60
-- 매칭 파일(전용): 60
+- 구현 대기 등재: 3
+- 1:1 대상: 61
+- 매칭 파일(전용): 61
 - 분할 대기 파일(규칙 2 위반): 0
 - 공백 시나리오: 0
 <!-- /scenario-e2e-집계 -->
@@ -214,9 +214,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### 시나리오 레지스트리 (65) — ✅ 전용 파일 60 · ⬜ 분할 대기 0 · ⏳ 구현 대기 4 · 🚫 예외 1
+### 시나리오 레지스트리 (65) — ✅ 전용 파일 61 · ⬜ 분할 대기 0 · ⏳ 구현 대기 3 · 🚫 예외 1
 
-> 불변식이 여기서 눈으로 닫힌다: **65 − 1(예외) − 4(구현 대기) = 60 = 매칭 파일 60**, 공백 **0**.
+> 불변식이 여기서 눈으로 닫힌다: **65 − 1(예외) − 3(구현 대기) = 61 = 매칭 파일 61**, 공백 **0**.
 > 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
 | 시나리오 | 제목 | e2e 상태 |
@@ -236,7 +236,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-grafana-token.md#시나리오 3 | 미설정 시 도구 에러 | ✅ 전용 파일 `grafana_token_ac3.py` |
 | test-grafana-token.md#시나리오 4 | 발급자 토큰 비노출 | ✅ 전용 파일 `grafana_token_ac4.py` |
 | test-namespace-list.md#시나리오 1 | 네임스페이스 목록·phase·생성 시각 | ✅ 전용 파일 `namespace_list_ac1.py` |
-| test-namespace-list.md#시나리오 2 | 통합 미설정 시 도구 에러 | ⏳ 구현 대기 (규칙 6 — 하네스 선행 미충족) |
+| test-namespace-list.md#시나리오 2 | 통합 미설정 시 도구 에러 | ✅ 전용 파일 `namespace_list_ac2.py` |
 | test-opensearch-document-delete.md#시나리오 1 | 지정 문서만 삭제 | ✅ 전용 파일 `opensearch_document_delete_ac1.py` |
 | test-opensearch-document-delete.md#시나리오 2 | 없는 문서 삭제 → not_found | ✅ 전용 파일 `opensearch_document_delete_ac2.py` |
 | test-opensearch-document-delete.md#시나리오 3 | destructiveHint 광고 | ✅ 전용 파일 `opensearch_document_delete_ac3.py` |
@@ -287,7 +287,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-workload-scale.md#시나리오 2 | DaemonSet/미지원 종류 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
 | test-workload-scale.md#시나리오 3 | 파괴적 어노테이션 광고 | ✅ 전용 파일 `workload_scale_ac3.py` |
 
-### ⏳ 구현 대기 (4) — 규칙 6 등재 (1:1 계수에서 제외)
+### ⏳ 구현 대기 (3) — 규칙 6 등재 (1:1 계수에서 제외)
 
 > **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
 >
@@ -295,7 +295,6 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시나리오 | 근거 (관측 대상이 없는 이유) | 담당 | 해제 조건 |
 |----------|------------------------------|------|-----------|
-| **test-namespace-list.md#시나리오 2** | `통합 미설정 시 도구 에러`는 k8s 통합이 **구성되지 않은** 배포에서만 관측된다. kind의 세 배포(primary · auth-variant · oauth-variant)는 전부 ServiceAccount로 클러스터에 붙어 있어 그 상태에 도달하는 길이 없다. 대체 검증은 Go 단위 `mcp_test.go::TestNamespaceListUnavailableIsToolError` 가 이미 든다. | 이 렌즈 | k8s 통합을 뺀 네 번째 배포 변형(또는 기존 변형에서 통합만 끄는 배선)을 픽스처에 세운다 |
 | **test-session-read.md#시나리오 2** | `snapshot` 분기가 `activate → Service.Restore → checkpointerFor(workload)` 를 타는데, 그 함수는 체크포인터가 `Enabled()` 가 아니면 `session.ErrCheckpointDisabled` 로 거부한다. 픽스처는 `CRIU_ENABLED` 를 켜지 않아 `criu.NewStubCheckpointer(false)` 가 주입되므로 **그 상태에 도달하는 길도, 도달한 뒤 읽는 길도 없다**. `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. | 이 렌즈 | kind에 CRIU 런타임·특권 파드·체크포인트 저장소를 세우거나, 아래 산문의 claude-code 아카이브 체크포인터 리드를 검증해 그 경로로 연다 |
 | **test-session-write.md#시나리오 2** | 위와 **같은 벽**을 공유한다(`snapshot` 분기 도달 불가). | 이 렌즈 | 위와 동일 |
 | **test-session-write.md#시나리오 4** | AC가 요구하는 네 거부 중 **큐 포화(429)·쿼터 소진(507)이 `data-plane/cmd/agent/claude.go` 에서만** 나온다 — shell 에이전트에는 그 상태코드를 낼 경로가 없다. 게다가 507은 **지금의 데이터 플레인에서 도달 불가**다(`scrollbackLimit` 기본 256 MiB를 낮출 env·플래그가 없고, 아카이브 복원 우회로도 생성·복원 양쪽에서 막힌다). 네 갈래 중 하나만 떼어 닫는 것은 「반쪽 단정」이라 하지 않는다. | 이 렌즈 + session-platform(상한 노출) | ⑴ session-platform 데이터 플레인이 스크롤백 상한을 설정 표면(env)으로 노출하고, ⑵ claude-code 파드가 이 하네스에서 실제로 서야 한다(부트스트랩이 상류 둘을 타므로 모킹 정책 판정이 선행) |
