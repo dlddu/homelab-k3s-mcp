@@ -33,7 +33,7 @@
 | PRD (공통) | `prd-platform-auth-safety.md` |
 | 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (18개) |
 | 상태 추적 | `doc-tracker.md` |
-| 정책 | `e2e-mocking-policy.md` (E2E 모킹 최소화 정책의 SSOT — 등재·예외의 단일 출처), `comment-policy.md` (주석 비중복성 정책의 SSOT — 복원 경로·유지 대상·판정 절차) |
+| 정책 | `e2e-mocking-policy.md` (E2E 모킹 최소화 정책의 SSOT — 등재·예외의 단일 출처), `comment-policy/README.md` (주석 비중복성 정책의 SSOT — 복원 경로·유지 대상·판정 절차), `comment-policy/ledger.md` (그 정책의 판정 원장 — 범위별 줄 수·지문·결과) |
 | 배포 골격 | `index.html`(허브), `reader.html`(마크다운 뷰어), `.nojekyll` |
 
 ## 문서 공개 (GitHub Pages)
@@ -46,7 +46,7 @@
 | 공개 URL | `https://dlddu.github.io/homelab-k3s-mcp/` |
 | Pages 설정 | ⬜ **사용자 작업 대기** — Settings → Pages → Source `Deploy from a branch` → `main` + `/docs` |
 | 배포 골격 | ✅ `index.html`(허브) · `reader.html`(뷰어) · `.nojekyll` |
-| 허브 도달 가능 문서 | ✅ **40 / 40** (가치 1 + PRD 18 + 테스트 18 + 상태 추적 1 + 정책 2), 끊긴 링크 0 |
+| 허브 도달 가능 문서 | ✅ **41 / 41** (가치 1 + PRD 18 + 테스트 18 + 상태 추적 1 + 정책 3), 끊긴 링크 0 |
 | 공개 범위 | 레포가 **public** — `docs/`의 마크다운은 이미 GitHub에서 공개 상태였고, Pages는 그것을 읽기 좋게 서빙할 뿐이다. 새로 공개되는 문서 없음 |
 | 비공개 유지 문서 | (없음) |
 

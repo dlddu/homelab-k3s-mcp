@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """주석 비중복성 판정 원장 ↔ 실제 주석 상태 대조 체커.
 
-정합성 모델 `tbm_homelab-k3s-mcp-comment-redundancy`의 to-be 는 `docs/comment-policy.md`
-자신이다. 그래서 **그 문서가 자기 자신에 대해 적은 수치가 낡으면 to-be 가 틀린 것**이 되는데,
+정합성 모델 `tbm_homelab-k3s-mcp-comment-redundancy`의 to-be 는 `docs/comment-policy/`
+디렉터리다. 그래서 **그 문서가 자기 자신에 대해 적은 수치가 낡으면 to-be 가 틀린 것**이 되는데,
 사람이 쓴 프로즈 수치는 조용히 낡는다 — 실제로 정책 문서가 착지하던 날, 문서가 「판정 대상
 주석 848줄」이라 적은 사이에 형제 PR 이 머지되어 963줄이 됐고 아무것도 그것을 알려주지
 않았다. 이 스크립트가 그 자리를 메운다.
@@ -55,7 +55,9 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent
-POLICY = REPO_ROOT / "docs" / "comment-policy.md"
+POLICY_DIR = REPO_ROOT / "docs" / "comment-policy"
+POLICY_README = POLICY_DIR / "README.md"
+LEDGER = POLICY_DIR / "ledger.md"
 
 # 아래 넷은 모델 tbm_homelab-k3s-mcp-comment-redundancy 의 as-is 버전 스크립트와 글자 그대로
 # 같은 정의다. 하나라도 갈리면 이 게이트가 강제하는 지문이 모델이 관측하는 지문과 다른 것을
@@ -183,7 +185,7 @@ def marked_block(text: str, open_marker: str, close_marker: str) -> str:
     """마커 사이 본문. 정규식 끝 앵커(`$`)로 뜯지 않는다 — 멀티라인에서 줄 끝에도 붙어
     표가 조용히 0행으로 파싱되고, 0행은 '위반 0' 으로 보여 초록으로 새어 나간다."""
     if open_marker not in text or close_marker not in text:
-        raise SystemExit(f"{POLICY.name}: 마커({open_marker} … )를 찾지 못했다.")
+        raise SystemExit(f"{LEDGER.name}: 마커({open_marker} … )를 찾지 못했다.")
     return text.split(open_marker, 1)[1].split(close_marker, 1)[0]
 
 
@@ -201,10 +203,10 @@ def parse_ledger(text: str, open_marker: str, close_marker: str) -> list[dict]:
             if nxt and all(set(c) <= set("-: ") and c for c in nxt):
                 continue  # 구분선 바로 앞 = 헤더
         if len(cells) != 5:
-            raise SystemExit(f"{POLICY.name}: 판정 이력 행의 열 수가 5가 아니다 -> {line}")
+            raise SystemExit(f"{LEDGER.name}: 판정 이력 행의 열 수가 5가 아니다 -> {line}")
         count = cells[2].strip("`")
         if not count.isdigit():
-            raise SystemExit(f"{POLICY.name}: 주석 줄 수가 정수가 아니다 ({count!r}).")
+            raise SystemExit(f"{LEDGER.name}: 주석 줄 수가 정수가 아니다 ({count!r}).")
         rows.append(
             {
                 # 같은 날 두 범위를 판정하는 일이 흔하므로 날짜만으로는 행을 못 가리킨다.
@@ -216,14 +218,14 @@ def parse_ledger(text: str, open_marker: str, close_marker: str) -> list[dict]:
             }
         )
     if not rows:
-        raise SystemExit(f"{POLICY.name}: 판정 이력에서 행을 하나도 읽지 못했다(파싱 실패).")
+        raise SystemExit(f"{LEDGER.name}: 판정 이력에서 행을 하나도 읽지 못했다(파싱 실패).")
     return rows
 
 
 def parse_total(text: str, open_marker: str, close_marker: str) -> int:
     raw = marked_block(text, open_marker, close_marker).strip()
     if not raw.isdigit():
-        raise SystemExit(f"{POLICY.name}: {open_marker} 의 값이 정수가 아니다 ({raw!r}).")
+        raise SystemExit(f"{LEDGER.name}: {open_marker} 의 값이 정수가 아니다 ({raw!r}).")
     return int(raw)
 
 
@@ -307,11 +309,12 @@ def check_ledger(
 
 
 def main() -> int:
-    if not POLICY.exists():
-        print(f"[R1] 정책 SSOT 가 없다: {POLICY.relative_to(REPO_ROOT)}", file=sys.stderr)
-        return 1
+    for required in (POLICY_README, LEDGER):
+        if not required.exists():
+            print(f"[R1] 정책 SSOT 가 없다: {required.relative_to(REPO_ROOT)}", file=sys.stderr)
+            return 1
 
-    text = POLICY.read_text(encoding="utf-8")
+    text = LEDGER.read_text(encoding="utf-8")
     rows = parse_ledger(text, LEDGER_OPEN, LEDGER_CLOSE)
     total = parse_total(text, TOTAL_OPEN, TOTAL_CLOSE)
     doc_rows = parse_ledger(text, DOC_LEDGER_OPEN, DOC_LEDGER_CLOSE)
