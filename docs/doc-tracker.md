@@ -15,10 +15,11 @@
 ## 현재 상태 요약
 
 - 정의된 가치: **5개** (V1~V5)
-- PRD: **18개** (도구 17 + 공통 기반 1)
-- Acceptance Criteria: **64개** (가치 연결됨: 64 / 미연결: 0)
-- 테스트 문서: **18개** (AC 커버됨: 64 / 미커버: 0)
-- **건강 상태**: 🟢 **건강함** — 가치 → PRD → AC → 테스트 전 계층 연결 완료
+- PRD: **20개** (도구 18 + 공통 기반 2)
+- Acceptance Criteria: **82개** (가치 연결됨: 82 / 미연결: 0)
+- 테스트 문서: **20개** (AC 커버됨: 82 / 미커버: 0)
+- **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있으나,
+  승인 게이트의 적용 범위에 미결 사항 1건이 열려 있다(아래 "수용된 위험" 참조)
 
 > 문서 체계의 모든 화살표가 연결되었다(고아 가치·미정렬 문서·무가치 PRD·AC 없는 PRD·
 > 미연결 AC·미검증 AC·고아 테스트 없음). 별도로, 테스트 문서가 참조하는 **자동화의 실제
@@ -29,9 +30,9 @@
 | 종류 | 파일 |
 |------|------|
 | 가치 문서 | `values.md` |
-| PRD (도구) | `prd-ping.md`, `prd-namespace-list.md`, `prd-workload-list.md`, `prd-workload-logs.md`, `prd-pod-describe.md`, `prd-workload-restart.md`, `prd-workload-scale.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-grafana-token.md`, `prd-aws-config-get.md`, `prd-opensearch-search.md`, `prd-opensearch-document-put.md`, `prd-opensearch-document-delete.md`, `prd-session-list.md`, `prd-session-read.md`, `prd-session-write.md` |
-| PRD (공통) | `prd-platform-auth-safety.md` |
-| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (18개) |
+| PRD (도구) | `prd-ping.md`, `prd-namespace-list.md`, `prd-workload-list.md`, `prd-workload-logs.md`, `prd-pod-describe.md`, `prd-workload-restart.md`, `prd-workload-scale.md`, `prd-resource-generic.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-grafana-token.md`, `prd-aws-config-get.md`, `prd-opensearch-search.md`, `prd-opensearch-document-put.md`, `prd-opensearch-document-delete.md`, `prd-session-list.md`, `prd-session-read.md`, `prd-session-write.md` |
+| PRD (공통) | `prd-platform-auth-safety.md`, `prd-approval-gate.md` |
+| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (20개) |
 | 상태 추적 | `doc-tracker.md` |
 | 정책 | `e2e-mocking-policy.md` (E2E 모킹 최소화 정책의 SSOT — 등재·예외의 단일 출처), `comment-policy/README.md` (주석 비중복성 정책의 SSOT — 복원 경로·유지 대상·판정 절차), `comment-policy/ledger.md` (그 정책의 판정 원장 — 범위별 줄 수·지문·결과) |
 | 배포 골격 | `index.html`(허브), `reader.html`(마크다운 뷰어), `.nojekyll` |
@@ -46,7 +47,7 @@
 | 공개 URL | `https://dlddu.github.io/homelab-k3s-mcp/` |
 | Pages 설정 | ⬜ **사용자 작업 대기** — Settings → Pages → Source `Deploy from a branch` → `main` + `/docs` |
 | 배포 골격 | ✅ `index.html`(허브) · `reader.html`(뷰어) · `.nojekyll` |
-| 허브 도달 가능 문서 | ✅ **41 / 41** (가치 1 + PRD 18 + 테스트 18 + 상태 추적 1 + 정책 3), 끊긴 링크 0 |
+| 허브 도달 가능 문서 | ✅ **45 / 45** (가치 1 + PRD 20 + 테스트 20 + 상태 추적 1 + 정책 3), 끊긴 링크 0 |
 | 공개 범위 | 레포가 **public** — `docs/`의 마크다운은 이미 GitHub에서 공개 상태였고, Pages는 그것을 읽기 좋게 서빙할 뿐이다. 새로 공개되는 문서 없음 |
 | 비공개 유지 문서 | (없음) |
 
@@ -82,6 +83,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | pod_describe | V1, V3 | 3 | test-pod-describe | ✅ 완전 |
 | workload_restart | V1, V3 | 2 | test-workload-restart | ✅ 완전 |
 | workload_scale | V1, V3 | 3 | test-workload-scale | ✅ 완전 |
+| resource_* (generic) | V1, V3 | 9 | test-resource-generic | ✅ 완전 |
 | dear_baby_reset_user | V5, V3 | 3 | test-dear-baby-reset-user | ✅ 완전 |
 | github_app_installation_token | V2, V3 | 4 | test-github-app-installation-token | ✅ 완전 |
 | grafana_token | V2, V3 | 4 | test-grafana-token | ✅ 완전 |
@@ -93,14 +95,15 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | session_read | V5, V3 | 4 | test-session-read | ✅ 완전 |
 | session_write | V5, V3 | 5 | test-session-write | ✅ 완전 |
 | platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
+| approval-gate (승인 게이트 공통) | V3, V1 | 9 | test-approval-gate | ✅ 완전 |
 
 ## 가치 커버리지
 
 | 가치 | 이 가치를 달성하는 PRD |
 |------|------------------------|
-| V1: 자연어로 클러스터 운영 | namespace_list, workload_list, workload_logs, pod_describe, workload_restart, workload_scale |
+| V1: 자연어로 클러스터 운영 | namespace_list, workload_list, workload_logs, pod_describe, workload_restart, workload_scale, resource_*(generic), approval-gate |
 | V2: 단명·최소권한 자격증명 | github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete |
-| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), ping, pod_describe, workload_restart, workload_scale, dear_baby_reset_user, github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete, session_list, session_read, session_write |
+| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), approval-gate, resource_*(generic), ping, pod_describe, workload_restart, workload_scale, dear_baby_reset_user, github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete, session_list, session_read, session_write |
 | V4: 운영 지식의 축적·검색 | opensearch_search, opensearch_document_put, opensearch_document_delete |
 | V5: 클러스터 내부 앱 기능의 도구화 | dear_baby_reset_user, session_list, session_read, session_write |
 
@@ -113,16 +116,36 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - (없음)
 
 ### 무가치 PRD / AC 없는 PRD
-- (없음) — 18개 PRD 모두 가치를 달성하고 AC를 보유
+- (없음) — 20개 PRD 모두 가치를 달성하고 AC를 보유
 
 ### 미연결 AC (가치와 연결되지 않은 AC)
-- (없음) — 64개 AC 모두 가치에 연결
+- (없음) — 82개 AC 모두 가치에 연결
 
 ### 미검증 AC (테스트 없는 AC)
-- (없음) — 64개 AC 모두 테스트 문서의 시나리오로 커버
+- (없음) — 82개 AC 모두 테스트 문서의 시나리오로 커버
 
 ### 고아 테스트 (AC를 참조하지 않는 테스트)
-- (없음) — 18개 테스트 문서 모두 검증 대상 AC를 명시
+- (없음) — 20개 테스트 문서 모두 검증 대상 AC를 명시
+
+### 수용된 위험 / 미결 사항
+
+| 위험 | 대상 | 내용 | 상태 |
+|------|------|------|------|
+| 게이트 우회 가능 | `workload_scale`, `workload_restart`, `dear_baby_reset_user`, `session_write` | `prd-approval-gate`는 게이트를 **동사**(`apply`/`delete`/`scale`/`exec`)로 정의하지만, 적용 대상은 `resource_*` 도구군으로 한정했다. 위 기존 도구들도 같은 동사에 해당하므로, `resource_scale`이 막혀도 `workload_scale`로 같은 변경을 승인 없이 할 수 있다. 게이트가 강제가 아니라 **선택 가능한 경로**가 된다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12 제기) |
+
+판단 선택지는 셋이다.
+
+1. **기존 4종을 게이트에 편입한다** — 동사 정의와 구현이 일치하고 우회가 사라진다.
+   대신 네 PRD의 AC가 바뀌므로 각 PRD·테스트 문서를 함께 고쳐야 하고,
+   기존 운영 습관(승인 없이 재시작)이 깨진다.
+2. **기존 4종을 `resource_*`로 흡수하고 폐기한다** — 표면이 줄지만 마이그레이션 비용이 있다.
+3. **현 상태를 의도된 것으로 수용한다** — 이 경우 게이트는 "넓은 표면에만 거는 안전장치"이지
+   "모든 변경에 거는 경계"가 아니며, `values.md` V3의 서술을 그에 맞게 좁혀야 한다.
+   지금의 V3 문구("변경 동사는 사람의 사전 승인을 거친다")는 1번을 전제로 쓰여 있다.
+
+1번을 권고한다. 3번을 택하면 게이트의 보증이 "승인 없이 클러스터를 바꿀 수 없다"에서
+"승인 없이 *이 도구들로는* 바꿀 수 없다"로 약해지는데, 후자는 운영자가 게이트를 믿는 근거로
+부족하다.
 
 ## 자동화 커버리지 (문서 구조와 별개)
 
@@ -199,9 +222,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant · oauth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
 <!-- scenario-e2e-집계 -->
-- 시나리오 전집: 65
+- 시나리오 전집: 83
 - 예외 등재: 1
-- 구현 대기 등재: 3
+- 구현 대기 등재: 21
 - 1:1 대상: 61
 - 매칭 파일(전용): 61
 - 분할 대기 파일(규칙 2 위반): 0
@@ -212,9 +235,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### 시나리오 레지스트리 (65) — ✅ 전용 파일 61 · ⬜ 분할 대기 0 · ⏳ 구현 대기 3 · 🚫 예외 1
+### 시나리오 레지스트리 (83) — ✅ 전용 파일 61 · ⬜ 분할 대기 0 · ⏳ 구현 대기 21 · 🚫 예외 1
 
-> 불변식이 여기서 눈으로 닫힌다: **65 − 1(예외) − 3(구현 대기) = 61 = 매칭 파일 61**, 공백 **0**.
+> 불변식이 여기서 눈으로 닫힌다: **83 − 1(예외) − 21(구현 대기) = 61 = 매칭 파일 61**, 공백 **0**.
 > 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
 | 시나리오 | 제목 | e2e 상태 |
@@ -284,8 +307,26 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-workload-scale.md#시나리오 1 | 레플리카 설정(0 포함) | ✅ 전용 파일 `workload_scale_ac1.py` |
 | test-workload-scale.md#시나리오 2 | DaemonSet/미지원 종류 거부 | ✅ 전용 파일 `workload_scale_ac2.py` |
 | test-workload-scale.md#시나리오 3 | 파괴적 어노테이션 광고 | ✅ 전용 파일 `workload_scale_ac3.py` |
+| test-approval-gate.md#시나리오 1 | 승인 없이는 클러스터에 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 2 | 요청 본문 계약 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 3 | context가 판정을 가능하게 한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 4 | 폴링으로 판정을 관측한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 5 | 모든 실패는 거부로 수렴한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 6 | 승인한 상태와 실행할 상태가 같아야 한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 7 | 승인은 한 번만 쓰인다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 8 | 감사 로그 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 9 | 자동 승인은 숨기지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 1 | 임의 종류를 좌표로 조회한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 2 | 목록은 표로 온다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 3 | 절단과 이어보기 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 4 | 단건 조회의 잡음 제거 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 5 | Secret은 어떤 동사로도 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 6 | 우회 경로도 막힌다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 7 | 변경 동사는 게이트를 지난다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 8 | 종류 해석 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 9 | 권한 밖은 권한 밖이라고 말한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 
-### ⏳ 구현 대기 (3) — 규칙 6 등재 (1:1 계수에서 제외)
+### ⏳ 구현 대기 (21) — 규칙 6 등재 (1:1 계수에서 제외)
 
 > **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
 >
@@ -296,6 +337,24 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-session-read.md#시나리오 2** | `snapshot` 분기가 `activate → Service.Restore → checkpointerFor(workload)` 를 타는데, 그 함수는 체크포인터가 `Enabled()` 가 아니면 `session.ErrCheckpointDisabled` 로 거부한다. 픽스처는 `CRIU_ENABLED` 를 켜지 않아 `criu.NewStubCheckpointer(false)` 가 주입되므로 **그 상태에 도달하는 길도, 도달한 뒤 읽는 길도 없다**. `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. | 이 렌즈 | kind에 CRIU 런타임·특권 파드·체크포인트 저장소를 세우거나, 아래 산문의 claude-code 아카이브 체크포인터 리드를 검증해 그 경로로 연다 |
 | **test-session-write.md#시나리오 2** | 위와 **같은 벽**을 공유한다(`snapshot` 분기 도달 불가). | 이 렌즈 | 위와 동일 |
 | **test-session-write.md#시나리오 4** | AC가 요구하는 네 거부 중 **큐 포화(429)·쿼터 소진(507)이 `data-plane/cmd/agent/claude.go` 에서만** 나온다 — shell 에이전트에는 그 상태코드를 낼 경로가 없다. 게다가 507은 **지금의 데이터 플레인에서 도달 불가**다(`scrollbackLimit` 기본 256 MiB를 낮출 env·플래그가 없고, 아카이브 복원 우회로도 생성·복원 양쪽에서 막힌다). 네 갈래 중 하나만 떼어 닫는 것은 「반쪽 단정」이라 하지 않는다. | 이 렌즈 + session-platform(상한 노출) | ⑴ session-platform 데이터 플레인이 스크롤백 상한을 설정 표면(env)으로 노출하고, ⑵ claude-code 파드가 이 하네스에서 실제로 서야 한다(부트스트랩이 상류 둘을 타므로 모킹 정책 판정이 선행) |
+| **test-approval-gate.md#시나리오 1** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 2** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 3** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 4** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 5** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 6** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 7** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 8** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 9** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 1** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 2** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 3** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 4** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 5** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 6** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 7** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 8** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 9** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 
 > 아래 산문은 축 개정 전의 실측 기록이다. **AC 기준 표기(`session-read/AC2` 등)를 그대로 두었다** — 자기 시점의 사실을 적은 것이고, 위 표가 그 시나리오 대응을 든다.
 
@@ -470,6 +529,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-12 | **generic resource 도구군 + 승인 게이트의 제품 문서 신설(구현 선행)** — `workload_*` 가 Deployment/StatefulSet/DaemonSet 만 알아 종류마다 도구를 새로 만들어야 하던 표면을 리소스 좌표(`apiVersion`+`kind`+`namespace`+`name`) 기반 도구군으로 넓히는 `prd-resource-generic`(AC 9)과, 그 표면을 여는 전제 조건인 `prd-approval-gate`(AC 9)를 테스트 문서 2종과 함께 신설했다. 게이트는 **도구 이름이 아니라 동사**(`apply`/`delete`/`scale`/`exec`)로 판정한다 — 이름으로 걸면 같은 일을 하는 도구가 새로 생길 때 게이트 밖으로 새기 때문이다. gatekeeper 계약은 레포 실측으로 고정했다: 만료가 **`GET /api/requests/{id}` 조회 시점에 lazy 평가**되므로 (`expiresAt` 경과 + `PENDING` → `EXPIRED`) 폴링 없이 최초 응답만 믿는 구현은 만료를 영영 관측하지 못하고, `autoResponseMode=AUTO_APPROVE` 는 사람 판단 없이 승인을 떨어뜨리므로 게이트를 무력화하는 경로로 AC9 에 가시화 의무를 박았다. Secret 배제는 종류 이름 차단만으로 부족해 **우회 경로 셋**(다중 문서 매니페스트에 섞인 Secret · `exec` 을 통한 마운트 시크릿 열람 · 평문 자격증명을 품은 CRD)을 AC6 으로 따로 세웠다 — 특히 exec 경유 유출은 RBAC 로 막을 수 없어 게이트가 유일한 방어선이고, 그래서 게이트 `context` 의 명령 전문 노출이 선택이 아니다. `values.md` V3 에 근거 2건(사전 승인 게이트 · Secret 전면 배제)을 추가했고 새 가치는 만들지 않았다 — 둘 다 「기본값이 안전하게」의 구현체다. **미결 1건을 남긴다**: 게이트를 동사로 정의해 놓고 적용은 `resource_*` 로 한정했으므로 기존 `workload_scale`·`workload_restart`·`dear_baby_reset_user`·`session_write` 가 게이트 밖에 있고, `resource_scale` 이 막혀도 `workload_scale` 로 같은 변경이 가능하다(「수용된 위험」 절에 선택지 셋과 권고를 적었다). 구현 전 문서이므로 신규 시나리오 18개는 전부 **규칙 6 구현 대기**로 등재했다 — 도구와 `internal/gatekeeper` 가 없어 e2e 가 관측할 대상 자체가 없다. | 가치 5 / PRD 18 / AC 64 / 테스트 18 · 시나리오 전집 65 · 구현 대기 3 · 허브 41 | 가치 5 / PRD 20 / AC 82 / 테스트 20 · 시나리오 전집 83 · 구현 대기 21 · 허브 45 |
 | 2026-09-08 | **e2e 1:1 판정 축을 AC → 테스트 시나리오로 옮겼다**(모델 `tbm_homelab-k3s-mcp-ac-e2e` → `tbm_homelab-k3s-mcp-scenario-e2e`). 매칭 공간이 `docs/prd-*.md`의 AC 64개에서 `docs/test-*.md`의 `### 시나리오 <N>:` 65개로 바뀌었다. ① 매칭 단위 61개의 모듈 docstring 선언을 `검증 AC:` → `검증 시나리오: test-<domain>.md#시나리오 <N>`로 교체(파일당 정확히 한 줄, 테스트 로직 무변경). ② `run_all.py`의 선언 파싱·실행 라벨을 시나리오 축으로. ③ `check_ac_mapping.py`를 시나리오 축으로 개정 — 시나리오 전집을 테스트 문서에서 재도출하고, **구현 대기 표 파싱**과 **레지스트리 제목 대조**(서수가 밀려 식별자가 바뀌는 사고를 잡는다)를 신설했으며, **미등재 공백을 실패로** 만들어 불변식을 기계가 강제한다. ④ 이 절의 레지스트리를 65행으로 재작성하고 집계 블록 마커를 `scenario-e2e-집계`로, 예외(영구)와 **구현 대기(임시)를 별도 표**로 갈랐다. **매핑은 손으로 짓지 않고 각 시나리오의 `자동화` 필드(1순위)와 `검증 AC`(2순위)로 레포에서 유도했다 — 전용 선언 60개가 서로 다른 시나리오 60개에 미결 0·중복 0으로 배정됐고, 결과가 `<domain>_ac<n>.py ↔ #시나리오 <n>` 항등식이라 눈으로 대조된다.** 파일명·체커 이름·PRD·테스트 문서 본문·`ci.yml`은 무변경. 뮤테이션 7종(존재하지 않는 시나리오 선언 · 중복 전용 선언 · 시나리오 추가 · 집계 변조 · 제목 어긋남 · 비-시나리오 등재 해제 · 구현 대기 등재 해제)이 전부 rc=1이고, 새 게이트는 개정 前 트리에서, 구 게이트는 개정 後 트리에서 각각 rc=1임을 확인했다. | AC 축: 전집 64 · 예외 1 · 1:1 대상 63 · 매칭 파일 60 · 공백 AC 3 | 시나리오 축: 전집 65 · 예외 1 · **구현 대기 4** · 1:1 대상 60 · 매칭 파일 60 · **공백 0**(불변식 성립) |
 | 2026-09-04 | **주석 판정 원장을 기계 검증 대상으로 승격 + `internal/sessionplatform/` 재판정** — `docs/comment-policy.md`가 자기 자신에 대해 적은 수치 셋이 낡아 있었다(판정 대상 `848줄 / 64파일` → 실측 969/66, 범위 `104파일 / 16.5k LOC` → 106/17.4k, `검증 AC:` `67건 / 63파일` → 69/65). 값만 고치면 다음 머지에서 또 낡으므로 **낡을 수 있는 형태를 없앴다**: 현재형 인구조사는 프로즈에서 걷어내 게이트 stdout으로 옮기고, 판정 이력은 범위(파일 단위)·주석 줄 수·지문을 담은 마커 원장으로 재작성했다. 신설 `scripts/check_comment_policy.py`(lint 잡, 표준 라이브러리 전용)가 R1~R4로 그 원장을 강제한다 — 등재 범위의 주석이 판정 이후 바뀌면 CI가 붉어져 재판정을 요구한다. 함께 원장이 **패키지 이름으로** 범위를 적은 탓에 「판정 완료」로 위장돼 있던 `internal/sessionplatform/`의 주석 **96줄**(`session_read`·`session_write` 구현이 들여온 것)을 재판정해 18줄을 제거했다 — 전부 ③ 자기 파일 중복(`ReadSession`·`WriteSession` doc 본문이 `errKind` 상수 doc·`WriteResult` doc의 재진술). 실행 코드는 한 줄도 바뀌지 않았고 AC·PRD·테스트 문서·e2e 레지스트리·집계도 전부 불변이다. | 판정 완료 153줄(등재는 패키지 단위, 96줄 미판정) · 이 축 ungated | 판정 완료 224줄(등재는 파일 단위 + 지문) · CI 게이트 1종 신설 |
 | 2026-09-04 | **session-read 2건(AC3 대상 부재·잘못된 커서 · AC4 미설정 거부)의 통합 e2e 저작** — backlog 9건 중 **데이터 플레인 없이 관측되는 2건**을 전용 파일 2개(`session_read_ac{3,4}.py`)로 닫았다. 슬라이스 경계는 「제어면이 에이전트 파드를 치는가」로 그었다: AC3의 두 실패는 어느 쪽도 파드에 닿지 않고(없는 id는 `Get`에서 404, 잘못된 커서는 `internal/mcp`가 HTTP 이전에 `-32602`로 거부), AC4는 제어면이 아예 없는 `auth-variant`에서 돈다. AC3 파일은 **두 에러의 층이 다르다는 것**까지 단정한다 — not-found는 도구 에러(`isError`), 잘못된 커서는 SDK가 올리는 `McpError`(`pod_describe_ac2.py`가 선례) — 그리고 두 호출 뒤 실재 세션의 `state`·`lastAccess`와 **파드 집합**이 불변임을 대조해 「상태 불변」을 관측으로 되받는다(실 제어면이라 vacuous하지 않다). 남은 session-read 2건(AC1·AC2)의 선행을 **소스에서 확정해 backlog에 적었다**: AC1은 `agent.Read`가 파드 IP를 해석해 `:8090/read`를 치므로 **실 데이터 플레인 파드가 필요**하고(이미지는 제어면과 같은 SHA 태그로 발행되는 공개 arm64 패키지라 스텁은 모킹 정책상 등재 불가), AC2는 그 위에 **CRIU 게이트가 추가 선행**이다 — `snapshot` 분기가 `Restore → checkpointerFor`를 타는데 `CRIU_ENABLED` 없이는 `ErrCheckpointDisabled`로 거부되어 관측 자체가 불가능하다. 이로써 원장이 미뤄 둔 「`DATA_PLANE_IMAGE` 배선이 필요한지 먼저 판단할 것」에 답했다(AC1은 필요, AC2는 그것만으로도 부족). session-write 5건의 저작 순서 권고도 같은 근거로 적었다(AC4·AC5 먼저). `ci.yml`·픽스처 무변경(러너 자동 발견, 두 배포 기존). tests/·docs/ 변경이라 as-is 해시 변경 + doc-tracker 레지스트리 갱신(prd 불변). | ✅ 전용 파일 54 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 9 · 🚫 예외 1 · 비-AC 1 | ✅ 전용 파일 56 · ⬜ 분할 대기 0 · ⬜ 공백(케이스 없음) 7 · 🚫 예외 1 · 비-AC 1 |

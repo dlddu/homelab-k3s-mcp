@@ -1,0 +1,119 @@
+# PRD: resource_* (generic resource 도구군)
+
+특정 워크로드 종류에 묶이지 않고 **리소스 좌표**(`apiVersion` + `kind` + `namespace` + `name`)로
+임의의 쿠버네티스 리소스를 다루는 도구군.
+
+기존 `workload_*` 도구는 Deployment/StatefulSet/DaemonSet만 안다. 그래서 Service·Ingress·
+ConfigMap·PVC·CRD를 보려면 도구가 없어 매번 새 도구를 추가해야 했다. 이 도구군은 종류를
+입력으로 받아 그 반복을 끝낸다.
+
+## 달성 가치
+
+- **V1: 자연어로 클러스터 운영** — `kubectl`이 다루는 리소스 표면 대부분을 자연어로 연다.
+  종류마다 도구를 새로 만들지 않아도 되므로, 운영 중 마주치는 리소스를 그때그때 조회·수정할 수 있다.
+- **V3: 안전한 운영(Safe-by-default)** — 표면이 넓어진 만큼 두 개의 경계를 함께 세운다.
+  Secret은 어떤 동사로도 닿지 않고(AC5·AC6), 변경 동사는 사람 승인을 거친다(AC7).
+
+## 도구 개요
+
+| 도구 | 동사 | 게이트 | 입력 |
+|------|------|--------|------|
+| `resource_list` | list | — | `apiVersion`, `kind`, `namespace?`, `labelSelector?`, `fieldSelector?`, `limit?`, `continue?` |
+| `resource_get` | get | — | `apiVersion`, `kind`, `name`, `namespace?` |
+| `api_resources` | get | — | `groupFilter?` |
+| `resource_apply` | apply | O | `manifest`(YAML/JSON 전문) |
+| `resource_delete` | delete | O | `apiVersion`, `kind`, `name`, `namespace?`, `gracePeriodSeconds?` |
+| `resource_scale` | scale | O | `apiVersion`, `kind`, `name`, `namespace?`, `replicas` |
+| `resource_exec` | exec | O | `namespace`, `pod`, `container?`, `command`(배열) |
+
+어노테이션: 읽기 3종은 `readOnlyHint=true`, `destructiveHint=false`.
+변경 4종은 `readOnlyHint=false`, `destructiveHint=true`.
+
+> `resource_scale`은 기존 `workload_scale`과 기능이 겹친다. 이 PRD는 둘을 통합하지 않으며,
+> 겹침과 그로 인한 게이트 우회 가능성은 `prd-approval-gate`의 "범위 밖 — 미결 사항"과
+> `doc-tracker.md`에 기록한다.
+
+## Acceptance Criteria
+
+### AC1: 좌표로 목록 조회
+- **설명**: `resource_list`는 `apiVersion`+`kind`로 임의 종류의 목록을 조회한다.
+  `namespace`를 생략하면 전 네임스페이스, 지정하면 해당 네임스페이스로 좁힌다.
+  `labelSelector`·`fieldSelector`는 서버 사이드로 전달해 apiserver가 걸러낸 결과만 받는다.
+  클러스터 스코프 리소스에 `namespace`가 오면 무시하지 않고 거부한다.
+- **달성 가치**: V1
+- **검증 방법**: `v1/Service`, `apps/v1/Deployment`, `networking.k8s.io/v1/Ingress`,
+  임의 CRD에 대해 목록이 반환되고, 셀렉터가 결과를 실제로 좁힌다.
+
+### AC2: 목록은 표 형식으로 반환
+- **설명**: 목록 응답은 apiserver의 Table 표현
+  (`Accept: application/json;as=Table;v=1;g=meta.k8s.io`)을 사용해 `kubectl get`과 같은
+  컬럼 형태로 반환한다. 객체 전문을 JSON으로 덤프하지 않는다. 목록 하나가 어시스턴트의
+  컨텍스트를 채워버리면 그다음 판단을 할 여지가 없어지기 때문이다.
+- **달성 가치**: V1
+- **검증 방법**: 동일 목록에 대해 Table 응답이 객체 전문 대비 현저히 작고, 컬럼 헤더와 행이
+  보존된다.
+
+### AC3: 목록 절단과 이어보기
+- **설명**: `limit`은 기본 100, 상한 500으로 강제한다. apiserver가 `continue` 토큰을 주면
+  응답에 그대로 실어 다음 페이지를 이어 볼 수 있게 한다. 절단이 일어났다는 사실을 응답에
+  명시해, 목록이 전부인 것처럼 오인되지 않게 한다.
+- **달성 가치**: V1, V3
+- **검증 방법**: 항목이 `limit`보다 많은 종류를 조회하면 절단 표시와 `continue` 토큰이 함께
+  오고, 그 토큰으로 다음 페이지가 조회된다.
+
+### AC4: 단건 조회의 잡음 제거
+- **설명**: `resource_get`은 객체 전문을 반환하되 `metadata.managedFields`와
+  `kubectl.kubernetes.io/last-applied-configuration` 어노테이션을 제거한다. 둘은 객체 크기의
+  대부분을 차지하면서 운영 판단에 기여하지 않는다.
+- **달성 가치**: V1
+- **검증 방법**: 반환된 객체에 위 두 필드가 없고, 나머지 `spec`/`status`는 온전하다.
+
+### AC5: Secret 전면 배제
+- **설명**: `v1/Secret`은 **모든 동사에서** 거부한다. 읽기(`resource_list`, `resource_get`)도
+  예외가 아니다. 거부는 도구 레이어에서 명시적 에러로 이뤄지며, RBAC에
+  `secrets` 규칙을 추가하지 않는 것으로 2중화한다. 도구 레이어 검사가 뚫려도 apiserver가
+  403으로 막고, RBAC가 잘못 넓어져도 도구가 막는다.
+
+  도구 레이어에서 먼저 막는 이유는 에러 품질 때문이다. 403만 돌려주면 어시스턴트가 권한
+  문제로 오인해 다른 경로로 재시도하지만, "Secret은 이 서버가 다루지 않는다"는 명시적
+  거부는 재시도를 끝낸다.
+- **달성 가치**: V3
+- **검증 방법**: `kind=Secret`에 대한 list/get/apply/delete가 모두 거부되고, 거부 사유가
+  권한 부족이 아니라 정책상 배제임을 밝힌다. `k8s/rbac.yaml`에 `secrets` 규칙이 없다.
+
+### AC6: Secret 우회 경로 차단
+- **설명**: 종류 이름만 막으면 값은 다른 길로 새어나온다. 다음을 함께 막는다.
+  - **`resource_apply`의 Secret 생성/갱신** — 매니페스트의 `kind`가 `Secret`이면 거부.
+    여러 문서가 담긴 매니페스트는 **하나라도** Secret이면 전체를 거부한다.
+  - **`resource_exec`을 통한 마운트 시크릿 열람** — exec는 컨테이너 파일시스템에 닿으므로
+    `/var/run/secrets/**`에 마운트된 값을 읽을 수 있다. RBAC로는 막을 수 없는 경로이며,
+    이 위험은 승인 게이트가 담당한다. 그래서 AC7의 `exec` 게이트는 선택이 아니고,
+    게이트의 `context`에 명령 전문이 반드시 들어가야 한다(`prd-approval-gate` AC3).
+  - **Secret을 품은 사용자 정의 리소스** — 평문 자격증명을 `spec`에 두는 CRD가 있을 수 있다.
+    종류 단위 차단 목록을 설정으로 확장할 수 있게 한다(`RESOURCE_DENIED_KINDS`).
+- **달성 가치**: V3
+- **검증 방법**: Secret이 섞인 다중 문서 매니페스트가 통째로 거부된다. `exec` 호출이 게이트
+  없이 실행되지 않는다. `RESOURCE_DENIED_KINDS`에 추가한 종류가 모든 동사에서 거부된다.
+
+### AC7: 변경 동사는 승인 게이트 경유
+- **설명**: `resource_apply`·`resource_delete`·`resource_scale`·`resource_exec`은
+  `prd-approval-gate`가 정의한 게이트를 통과해야만 실행된다. 게이트 미통과 시
+  쿠버네티스 API를 호출하지 않는다.
+- **달성 가치**: V3
+- **검증 방법**: `prd-approval-gate` AC1·AC5의 검증을 이 네 도구 각각에 대해 수행한다.
+
+### AC8: 종류 해석과 미지원 종류 거부
+- **설명**: `api_resources`는 discovery API로 클러스터가 실제로 제공하는 종류 목록
+  (group/version/kind/plural/namespaced 여부)을 반환한다. 다른 도구들은 이 discovery 결과로
+  `kind`를 실제 리소스 경로로 해석하며, 클러스터에 없는 종류는 추측해 호출하지 않고 거부한다.
+  거부 메시지에는 비슷한 이름의 실존 종류를 함께 제시한다.
+- **달성 가치**: V1
+- **검증 방법**: 존재하지 않는 `kind`가 거부되고 후보가 제시된다. CRD를 설치하면
+  `api_resources`에 나타나고 곧바로 `resource_list`로 조회된다.
+
+### AC9: 권한 경계의 정직한 보고
+- **설명**: RBAC가 허용하지 않는 조합(예: 이 서버에 부여되지 않은 종류의 변경)은 apiserver의
+  403을 그대로 흘리지 않고, 이 서버에 부여된 권한 밖임을 밝히는 에러로 변환한다. 부여된
+  권한의 범위는 `k8s/rbac.yaml`이 단일 출처다.
+- **달성 가치**: V3
+- **검증 방법**: 권한 밖 호출이 재시도를 유도하지 않는 명시적 에러를 반환한다.
