@@ -16,8 +16,8 @@
 
 - 정의된 가치: **5개** (V1~V5)
 - PRD: **14개** (도구 12 + 공통 기반 2)
-- Acceptance Criteria: **72개** (가치 연결됨: 72 / 미연결: 0)
-- 테스트 문서: **14개** (AC 커버됨: 72 / 미커버: 0)
+- Acceptance Criteria: **73개** (가치 연결됨: 73 / 미연결: 0)
+- 테스트 문서: **14개** (AC 커버됨: 73 / 미커버: 0)
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있으나,
   ⑴ 폐기된 6종이 아직 코드에 살아 있고 ⑵ `dear_baby_reset_user`가 게이트 밖에 있다
   (아래 "수용된 위험" 참조)
@@ -90,7 +90,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | session_read | V5, V3 | 4 | test-session-read | ✅ 완전 |
 | session_write | V5, V3 | 5 | test-session-write | ✅ 완전 |
 | platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
-| approval-gate (승인 게이트 공통) | V3, V1 | 9 | test-approval-gate | ✅ 완전 |
+| approval-gate (승인 게이트 공통) | V3, V1 | 10 | test-approval-gate | ✅ 완전 |
 
 ## 가치 커버리지
 
@@ -114,10 +114,10 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - (없음) — 14개 PRD 모두 가치를 달성하고 AC를 보유
 
 ### 미연결 AC (가치와 연결되지 않은 AC)
-- (없음) — 72개 AC 모두 가치에 연결
+- (없음) — 73개 AC 모두 가치에 연결
 
 ### 미검증 AC (테스트 없는 AC)
-- (없음) — 72개 AC 모두 테스트 문서의 시나리오로 커버
+- (없음) — 73개 AC 모두 테스트 문서의 시나리오로 커버
 
 ### 고아 테스트 (AC를 참조하지 않는 테스트)
 - (없음) — 14개 테스트 문서 모두 검증 대상 AC를 명시
@@ -126,12 +126,14 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 위험 | 대상 | 내용 | 상태 |
 |------|------|------|------|
-| 게이트 우회 가능 | `workload_scale`, `workload_restart` | 게이트를 동사로 정의해 놓고 적용을 `resource_*`로 한정한 탓에 이 둘이 승인 없이 같은 변경을 하는 경로로 남아 있었다. | ✅ **해소(2026-09-12)** — 두 도구가 `resource_*`로 흡수·폐기되면서 경로가 사라졌다 |
-| 게이트 우회 가능 | `dear_baby_reset_user` | `pods/exec`으로 파드 안 CLI를 실행하므로 게이트의 `exec` 정의에 해당하지만 편입하지 않았다. V5(앱 기능의 도구화) 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user`의 AC를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12 좁힘) |
-| 문서 없는 실행 코드 | 폐기된 6종 | 이 PR은 **문서만** 폐기했고 Go 구현은 그대로다. 따라서 `namespace_list`·`workload_list`·`workload_logs`·`pod_describe`·`workload_restart`·`workload_scale` 6종이 **PRD도 e2e도 없이 계속 서빙된다**. 그 사이 `workload_scale`·`workload_restart`의 무승인 변경 경로도 실제로는 아직 열려 있다 — 위 첫 행의 "해소"는 목표 상태 기준이고, 코드가 따라오기 전까지는 아니다. | ⬜ **구현 제거 선행 대기** (2026-09-12 제기) |
+| 무승인 서비스 중단 | `resource_scale`, `resource_restart` | 게이트를 타지 않으므로 승인 없이 레플리카를 0으로 줄이거나 파드를 교체할 수 있다. 둘 다 서비스 중단을 부른다. | ✅ **의도된 설계(2026-09-12)** — 가역적이고 가장 자주 쓰는 조작에 승인을 걸면 운영자가 `AUTO_APPROVE` 를 켜고, 그러면 `apply`·`delete`·`exec`·Secret 읽기까지 함께 무인 승인이 된다. 게이트를 드물고 무겁게 유지하는 편을 택했다. `destructiveHint=true` 는 유지 |
+| 방어층 축소 | Secret 읽기 | 이전 설계는 도구 레이어 거부 + RBAC 에 `secrets` 규칙 부재의 **2중화**였다. 읽기를 허용하려면 RBAC 가 `secrets: get` 을 줘야 하므로, 이제 **도구 레이어의 게이트 판정이 유일한 경계**다. 그 판정이 뚫리면 apiserver 가 막아 주지 않는다. | ⚠️ **수용(2026-09-12)** — 거부하면 운영자가 `kubectl` 로 우회해 아무 기록도 남지 않는다. 승인을 걸면 같은 일을 하면서 감사 기록이 남는다. 전제 조건은 `prd-resource-generic` AC11 이 적은 둘 — 디스패처 단계 강제와 fail-closed. RBAC 는 `get`·`list` 만 주고 쓰기 verb 는 주지 않는다 |
+| 승인된 값의 확산 | Secret `get` 응답 | 승인이 떨어지면 값이 도구 응답에 담기고, 그 응답은 모델 컨텍스트와 대화 기록에 남는다. 게이트는 **읽는 시점**을 통제할 뿐 읽은 뒤를 통제하지 못한다. | ⚠️ **수용(2026-09-12)** — 완화는 셋이다: 1승인 1실행(AC7)이라 한 번 승인이 대화 내내 유효해지지 않고, 값이 `context`·로그·에러에 남지 않으며(AC10), `describe` 가 값 없이 키만 반환해 "무엇이 들어 있나"와 "값을 꺼낸다"를 다른 승인으로 가른다 |
+| 게이트 우회 가능 | `dear_baby_reset_user` | `pods/exec` 으로 파드 안 CLI 를 실행하므로 게이트의 `exec` 정의에 해당하지만 편입하지 않았다. V5 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user` 의 AC 를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12 좁힘) |
+| 문서 없는 실행 코드 | 폐기된 6종 | 이 PR 은 **문서만** 폐기했고 Go 구현은 그대로다. 따라서 `namespace_list`·`workload_list`·`workload_logs`·`pod_describe`·`workload_restart`·`workload_scale` 6종이 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **구현 제거 선행 대기** (2026-09-12 제기) |
 
-`session_write`는 초안의 우회 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 동사가 아니라
-게이트의 정의 범위 밖이고, 그 도구의 안전장치는 `prd-session-write`가 맡는다.
+`session_write` 는 게이트 우회 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 동사가 아니라
+게이트의 정의 범위 밖이고, 그 도구의 안전장치는 `prd-session-write` 가 맡는다.
 
 #### 구현 제거가 남긴 일
 
@@ -144,6 +146,10 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
    워크로드 한정 규칙으로는 대부분의 종류가 AC14의 "권한 밖" 에러로 떨어진다.
    무엇을 열지는 이 문서가 정하지 않는다 — `prd-resource-generic` AC14가 `rbac.yaml`을
    단일 출처로 지정했으므로 그 파일을 고치는 PR이 근거를 함께 적는다.
+   **단, `secrets`만은 이 문서가 형태를 못박는다**: `get`·`list`만 주고
+   `create`·`update`·`patch`·`delete`는 주지 않는다(AC11·AC12). 이 규칙을 추가하는 순간
+   Secret 방어는 도구 레이어 하나로 줄어들므로, 게이트 구현이 **먼저** 들어가고 RBAC 변경이
+   **나중에** 들어가야 한다. 순서가 뒤집히면 그 사이 Secret이 무승인으로 열린다.
 4. e2e 16개를 지운 자리에 `resource_generic_ac{1..14}.py`를 저작한다. 삭제된 파일의
    단언은 버리지 않고 승계한다 — 어느 시나리오가 무엇을 승계하는지는
    `test-resource-generic.md`의 각 `자동화` 필드에 적었다.
@@ -228,9 +234,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant · oauth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
 <!-- scenario-e2e-집계 -->
-- 시나리오 전집: 72
+- 시나리오 전집: 73
 - 예외 등재: 1
-- 구현 대기 등재: 26
+- 구현 대기 등재: 27
 - 1:1 대상: 45
 - 매칭 파일(전용): 45
 - 분할 대기 파일(규칙 2 위반): 0
@@ -241,9 +247,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### 시나리오 레지스트리 (72) — ✅ 전용 파일 45 · ⬜ 분할 대기 0 · ⏳ 구현 대기 26 · 🚫 예외 1
+### 시나리오 레지스트리 (73) — ✅ 전용 파일 45 · ⬜ 분할 대기 0 · ⏳ 구현 대기 27 · 🚫 예외 1
 
-> 불변식이 여기서 눈으로 닫힌다: **72 − 1(예외) − 26(구현 대기) = 45 = 매칭 파일 45**, 공백 **0**.
+> 불변식이 여기서 눈으로 닫힌다: **73 − 1(예외) − 27(구현 대기) = 45 = 매칭 파일 45**, 공백 **0**.
 > 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
 | 시나리오 | 제목 | e2e 상태 |
@@ -297,7 +303,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-session-write.md#시나리오 3 | destructiveHint 광고 | ✅ 전용 파일 `session_write_ac3.py` |
 | test-session-write.md#시나리오 4 | 거부 사유 구분 | ⏳ 구현 대기 (규칙 6 — 하네스 선행 미충족) |
 | test-session-write.md#시나리오 5 | 미설정 시 도구 에러 | ✅ 전용 파일 `session_write_ac5.py` |
-| test-approval-gate.md#시나리오 1 | 승인 없이는 클러스터에 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 1 | 게이트 대상만 막히고 나머지는 지나간다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 2 | 요청 본문 계약 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 3 | context가 판정을 가능하게 한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 4 | 폴링으로 판정을 관측한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
@@ -306,6 +312,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-approval-gate.md#시나리오 7 | 승인은 한 번만 쓰인다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 8 | 감사 로그 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 9 | 자동 승인은 숨기지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 10 | 승인된 값이 응답 밖으로 새지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 1 | 임의 종류를 좌표로 조회한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 2 | 목록은 표로 온다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 3 | 절단과 이어보기 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
@@ -316,12 +323,12 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-resource-generic.md#시나리오 8 | 종류 해석 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 9 | 레플리카 설정과 DaemonSet 거부 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 10 | 롤링 재시작이 나머지를 건드리지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 11 | Secret은 어떤 동사로도 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 12 | 우회 경로도 막힌다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 13 | 변경 동사는 게이트를 지난다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 11 | Secret 읽기는 승인을 거친다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 12 | 값이 새는 경로가 막혀 있다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 13 | 게이트가 필요한 변경만 게이트를 지난다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 14 | 권한 밖은 권한 밖이라고 말한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 
-### ⏳ 구현 대기 (26) — 규칙 6 등재 (1:1 계수에서 제외)
+### ⏳ 구현 대기 (27) — 규칙 6 등재 (1:1 계수에서 제외)
 
 > **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
 >
@@ -341,6 +348,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-approval-gate.md#시나리오 7** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-approval-gate.md#시나리오 8** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-approval-gate.md#시나리오 9** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 10** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 1** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 2** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 3** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
@@ -529,6 +537,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-12 | **게이트 범위 조정 — `scale`·`restart` 제외, Secret 은 배제에서 읽기 게이트로** — 쓰기 게이트를 `apply`·`delete`·`exec` 3종으로 좁히고, `v1/Secret` 의 `get`·`describe` 를 새 **읽기 게이트**로 들였다(`RESOURCE_READ_GATED_KINDS`, 기본 `v1/Secret`). 두 변경의 근거는 하나다 — **게이트가 너무 자주 울리면 운영자가 `AUTO_APPROVE` 를 켜고, 도구가 너무 많이 거부하면 `kubectl` 로 우회한다.** 어느 쪽이든 기록이 사라지므로, 승인을 드물고 무겁게 유지하는 대신 정말 중요한 것에만 거는 쪽을 택했다. `scale`·`restart` 는 가역적이고 일상적이라 뺐고(`destructiveHint=true` 는 유지), Secret 은 거부 대신 승인을 걸어 「누가 언제 무엇을 읽었는지」를 남기게 했다. **V3 의 보증 범위가 좁아졌음을 `values.md` 에 명시했다** — "승인 없이 클러스터를 바꿀 수 없다"가 아니라 "승인 없이 되돌리기 어려운 일을 하거나 자격증명을 읽을 수 없다". `resource_describe` 를 파드 전용에서 임의 종류로 일반화하고, Secret 대상에서는 승인 후에도 키 이름과 바이트 수만 반환하게 했다 — 「무엇이 들어 있나」와 「값을 꺼낸다」를 다른 승인으로 가른다. `list` 는 apiserver Table 이라 값이 애초에 전송되지 않아 무승인 허용이고, 원시 목록 폴백을 금지했다(AC12). 신설 `prd-approval-gate` AC10 이 승인된 값을 `context`·감사 로그·에러 메시지에서 배제한다 — 값이 승인 화면에 뜨면 게이트가 오히려 유출 경로가 되기 때문이다. **수용한 위험 셋을 명시했다**: 무승인 서비스 중단(의도), Secret 방어층이 2중에서 1중으로 축소(RBAC 가 `secrets: get` 을 줘야 하므로), 승인된 값이 모델 컨텍스트에 남음. 후속 순서에 제약 하나를 더했다 — **게이트 구현이 먼저, `secrets` RBAC 가 나중**. 뒤집히면 그 사이 Secret 이 무승인으로 열린다. | PRD 14 / AC 72 · 게이트 동사 5 · Secret 전면 배제 · 시나리오 전집 72 | PRD 14 / AC 73 · 쓰기 게이트 3 + 읽기 게이트 2 · Secret 읽기 승인 · 시나리오 전집 73 |
 | 2026-09-12 | **V1 도구 6종을 `resource_*` 로 통합·폐기(문서 선행)** — `namespace_list`·`workload_list`·`workload_logs`·`pod_describe`·`workload_restart`·`workload_scale` 의 PRD·테스트 문서와 대응 e2e 16개를 지우고, 그 기능을 `prd-resource-generic` 이 흡수했다(AC 9 → 14). **좌표 기반 list/get 만으로는 덮이지 않는 셋을 도구로 남겼다** — 로그는 `pods/log` 서브리소스라 객체 조회 경로에 없고(`resource_logs`), 진단은 객체와 이벤트를 합쳐야 의미가 생기며 따로 부르면 왕복이 세 번이고(`resource_describe`), 롤링 재시작은 파드 템플릿 어노테이션 패치이지 전체 매니페스트 재적용이 아니라 재적용으로 흉내 내면 의도하지 않은 필드까지 되돌린다(`resource_restart`). 폐기 도구의 성질은 AC 문언으로 승계했다 — `tailLines` 1–5000 초과의 **클램프 아닌 거부**, `previous=true` 의 크래시 루프 동작, 이벤트 best-effort, 대상 해석 세 경로의 상호배타, DaemonSet 의 레플리카 부재 사유 거부, 재시작 시 레플리카 보존. 삭제된 e2e 16개의 단언이 어느 시나리오로 승계되는지는 `test-resource-generic.md` 의 각 `자동화` 필드에 적었다. 게이트에는 `restart` 동사를 더해 5종이 됐다. **부수 효과로 직전 PR 이 남긴 미결 1건이 닫힌다** — `workload_scale`·`workload_restart` 가 사라져 무승인 변경 우회로가 없어졌다. 남은 게이트 밖 도구는 `dear_baby_reset_user` 하나이고(V5 라 좌표가 아니라 앱 의미로 대상을 지정한다), `session_write` 는 쿠버네티스 동사가 아니라 정의 범위 밖으로 뺐다. **새 위험 1건을 연다**: 이 PR 은 문서만 폐기했고 Go 구현은 그대로라 6종이 PRD 도 e2e 도 없이 계속 서빙되며, 그동안 무승인 경로도 실제로는 열려 있다 — 「구현 제거가 남긴 일」에 순서를 못박았다(`EXPECTED_TOOLS` 동시 갱신, `rbac.yaml` 재검토 포함). `_workload.py` 는 `platform_auth_safety_ac3.py`·`session_write_ac1.py` 가 아직 쓰므로 남긴다. `ci.yml` 무변경(러너 자동 발견). | 가치 5 / PRD 20 / AC 82 / 테스트 20 · 시나리오 전집 83 · 매칭 파일 61 · 허브 45 | 가치 5 / PRD 14 / AC 72 / 테스트 14 · 시나리오 전집 72 · 매칭 파일 45 · 허브 33 |
 | 2026-09-12 | **generic resource 도구군 + 승인 게이트의 제품 문서 신설(구현 선행)** — `workload_*` 가 Deployment/StatefulSet/DaemonSet 만 알아 종류마다 도구를 새로 만들어야 하던 표면을 리소스 좌표(`apiVersion`+`kind`+`namespace`+`name`) 기반 도구군으로 넓히는 `prd-resource-generic`(AC 9)과, 그 표면을 여는 전제 조건인 `prd-approval-gate`(AC 9)를 테스트 문서 2종과 함께 신설했다. 게이트는 **도구 이름이 아니라 동사**(`apply`/`delete`/`scale`/`exec`)로 판정한다 — 이름으로 걸면 같은 일을 하는 도구가 새로 생길 때 게이트 밖으로 새기 때문이다. gatekeeper 계약은 레포 실측으로 고정했다: 만료가 **`GET /api/requests/{id}` 조회 시점에 lazy 평가**되므로 (`expiresAt` 경과 + `PENDING` → `EXPIRED`) 폴링 없이 최초 응답만 믿는 구현은 만료를 영영 관측하지 못하고, `autoResponseMode=AUTO_APPROVE` 는 사람 판단 없이 승인을 떨어뜨리므로 게이트를 무력화하는 경로로 AC9 에 가시화 의무를 박았다. Secret 배제는 종류 이름 차단만으로 부족해 **우회 경로 셋**(다중 문서 매니페스트에 섞인 Secret · `exec` 을 통한 마운트 시크릿 열람 · 평문 자격증명을 품은 CRD)을 AC6 으로 따로 세웠다 — 특히 exec 경유 유출은 RBAC 로 막을 수 없어 게이트가 유일한 방어선이고, 그래서 게이트 `context` 의 명령 전문 노출이 선택이 아니다. `values.md` V3 에 근거 2건(사전 승인 게이트 · Secret 전면 배제)을 추가했고 새 가치는 만들지 않았다 — 둘 다 「기본값이 안전하게」의 구현체다. **미결 1건을 남긴다**: 게이트를 동사로 정의해 놓고 적용은 `resource_*` 로 한정했으므로 기존 `workload_scale`·`workload_restart`·`dear_baby_reset_user`·`session_write` 가 게이트 밖에 있고, `resource_scale` 이 막혀도 `workload_scale` 로 같은 변경이 가능하다(「수용된 위험」 절에 선택지 셋과 권고를 적었다). 구현 전 문서이므로 신규 시나리오 18개는 전부 **규칙 6 구현 대기**로 등재했다 — 도구와 `internal/gatekeeper` 가 없어 e2e 가 관측할 대상 자체가 없다. | 가치 5 / PRD 18 / AC 64 / 테스트 18 · 시나리오 전집 65 · 구현 대기 3 · 허브 41 | 가치 5 / PRD 20 / AC 82 / 테스트 20 · 시나리오 전집 83 · 구현 대기 21 · 허브 45 |
 | 2026-09-08 | **e2e 1:1 판정 축을 AC → 테스트 시나리오로 옮겼다**(모델 `tbm_homelab-k3s-mcp-ac-e2e` → `tbm_homelab-k3s-mcp-scenario-e2e`). 매칭 공간이 `docs/prd-*.md`의 AC 64개에서 `docs/test-*.md`의 `### 시나리오 <N>:` 65개로 바뀌었다. ① 매칭 단위 61개의 모듈 docstring 선언을 `검증 AC:` → `검증 시나리오: test-<domain>.md#시나리오 <N>`로 교체(파일당 정확히 한 줄, 테스트 로직 무변경). ② `run_all.py`의 선언 파싱·실행 라벨을 시나리오 축으로. ③ `check_ac_mapping.py`를 시나리오 축으로 개정 — 시나리오 전집을 테스트 문서에서 재도출하고, **구현 대기 표 파싱**과 **레지스트리 제목 대조**(서수가 밀려 식별자가 바뀌는 사고를 잡는다)를 신설했으며, **미등재 공백을 실패로** 만들어 불변식을 기계가 강제한다. ④ 이 절의 레지스트리를 65행으로 재작성하고 집계 블록 마커를 `scenario-e2e-집계`로, 예외(영구)와 **구현 대기(임시)를 별도 표**로 갈랐다. **매핑은 손으로 짓지 않고 각 시나리오의 `자동화` 필드(1순위)와 `검증 AC`(2순위)로 레포에서 유도했다 — 전용 선언 60개가 서로 다른 시나리오 60개에 미결 0·중복 0으로 배정됐고, 결과가 `<domain>_ac<n>.py ↔ #시나리오 <n>` 항등식이라 눈으로 대조된다.** 파일명·체커 이름·PRD·테스트 문서 본문·`ci.yml`은 무변경. 뮤테이션 7종(존재하지 않는 시나리오 선언 · 중복 전용 선언 · 시나리오 추가 · 집계 변조 · 제목 어긋남 · 비-시나리오 등재 해제 · 구현 대기 등재 해제)이 전부 rc=1이고, 새 게이트는 개정 前 트리에서, 구 게이트는 개정 後 트리에서 각각 rc=1임을 확인했다. | AC 축: 전집 64 · 예외 1 · 1:1 대상 63 · 매칭 파일 60 · 공백 AC 3 | 시나리오 축: 전집 65 · 예외 1 · **구현 대기 4** · 1:1 대상 60 · 매칭 파일 60 · **공백 0**(불변식 성립) |

@@ -12,9 +12,9 @@
 - AC8: 종류 해석과 미지원 종류 거부 (PRD: resource-generic)
 - AC9: 레플리카 설정과 레플리카 없는 종류 거부 (PRD: resource-generic)
 - AC10: 롤링 재시작 (PRD: resource-generic)
-- AC11: Secret 전면 배제 (PRD: resource-generic)
-- AC12: Secret 우회 경로 차단 (PRD: resource-generic)
-- AC13: 변경 동사는 승인 게이트 경유 (PRD: resource-generic)
+- AC11: Secret 읽기는 승인 게이트를 거친다 (PRD: resource-generic)
+- AC12: 값이 새는 경로 봉쇄 (PRD: resource-generic)
+- AC13: 되돌리기 어려운 변경은 승인 게이트 경유 (PRD: resource-generic)
 - AC14: 권한 경계의 정직한 보고 (PRD: resource-generic)
 
 ## 픽스처
@@ -26,8 +26,8 @@
 여기에 종류 다양성과 배제 검증을 위한 픽스처를 더한다
 (`tests/k8s/kind/resource-generic-fixture.yaml`): Service·ConfigMap·Ingress 각 1,
 목록 절단을 만들 ConfigMap 120개, CRD 1종과 그 인스턴스 1개, 크래시 루프 파드 1개,
-다중 컨테이너 파드 1개, 그리고 **의도적으로 배치하는 Secret 1개**(배제가 실제로
-동작하는지 확인하려면 대상이 실재해야 한다).
+다중 컨테이너 파드 1개, 그리고 **값이 고유 난수 토큰인 Secret 1개**(게이트와 값 봉쇄가 실제로 동작하는지 확인하려면
+대상이 실재하고 그 값이 전 표면에서 검색 가능해야 한다).
 
 승인 게이트가 필요한 시나리오는 `test-approval-gate.md`의 gatekeeper 픽스처를 공유한다.
 
@@ -89,14 +89,16 @@
   (폐기되는 `workload_logs_ac{1,2,3,4}.py`의 단언을 승계한다)
 
 ### 시나리오 6: 진단 스냅샷과 이벤트 best-effort
-- **사전 조건**: `workload-fixture` 기준선
-- **실행 단계**: `resource_describe`로 파드 조회 → 이벤트 권한이 없는 배포 변형에서 재조회
-- **기대 결과**: 메타데이터·컨테이너 상태(state·reason·restart count·exit code)·conditions·
-  최근 이벤트가 **한 응답에** 담김. 이벤트 권한이 없으면 빈 이벤트 배열로 정상 반환되고
-  호출이 실패하지 않음
+- **사전 조건**: `workload-fixture` 기준선, 픽스처 Secret
+- **실행 단계**: `resource_describe`로 파드 조회 → 이벤트 권한이 없는 배포 변형에서 재조회 →
+  승인을 받아 `kind=Secret`으로 재조회
+- **기대 결과**: 파드에서는 메타데이터·컨테이너 상태(state·reason·restart count·exit code)·
+  conditions·최근 이벤트가 **한 응답에** 담김. 이벤트 권한이 없으면 빈 이벤트 배열로 정상
+  반환되고 호출이 실패하지 않음. Secret에서는 **승인 후에도** 키 이름과 바이트 수만 나오고
+  값은 나오지 않음 — 값을 보려면 `resource_get`을 따로 승인받아야 한다
 - **검증 AC**: AC6
-- **자동화**: (미작성) — 계획: 통합 `resource_generic_ac6.py`
-  (폐기되는 `pod_describe_ac{1,3}.py`의 단언을 승계한다)
+- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestDescribeSecretOmitsValues`.
+  통합 `resource_generic_ac6.py` (폐기되는 `pod_describe_ac{1,3}.py`의 단언을 승계한다)
 
 ### 시나리오 7: 대상 해석의 세 경로와 상호배타
 - **사전 조건**: 동일
@@ -140,43 +142,48 @@
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestResourceRestartPatchesOnlyAnnotation`.
   통합 `resource_generic_ac10.py` (폐기되는 `workload_restart_ac1.py`의 단언을 승계한다)
 
-### 시나리오 11: Secret은 어떤 동사로도 닿지 않는다
-- **사전 조건**: 픽스처 Secret 1개가 실재
-- **실행 단계**: `kind=Secret`으로 `resource_list`, `resource_get`, `resource_delete`,
-  그리고 Secret 매니페스트로 `resource_apply`를 호출. 별도로 `k8s/rbac.yaml`을 정적 검사
-- **기대 결과**: 네 호출 모두 거부. 거부 사유가 권한 부족이 아니라 **정책상 배제**임이
-  메시지에 드러남. `rbac.yaml`에 `secrets` 리소스 규칙이 존재하지 않음.
-  `resource_apply`는 게이트에 승인 요청조차 만들지 않고 거부(승인해도 통과할 수 없는 것을
-  사람에게 묻지 않는다)
+### 시나리오 11: Secret 읽기는 승인을 거친다
+- **사전 조건**: 픽스처 Secret 1개가 실재, kind 실물 gatekeeper
+- **실행 단계**: `kind=Secret`으로 `resource_get` 호출(미승인 대기) → 거절 →
+  다시 호출하고 승인 → 같은 절차를 `resource_describe`로 반복 →
+  `kind=ConfigMap`으로 `resource_get` 호출. 별도로 `k8s/rbac.yaml`을 정적 검사
+- **기대 결과**: 미승인·거절 시 거부되고 k8s 호출 카운트 0. 승인 후 `get`이 값을,
+  `describe`가 키 이름과 바이트 수를 반환. ConfigMap은 승인 요청을 만들지 않고 바로 조회됨
+  (게이트가 종류로 좁혀져 있음). `rbac.yaml`의 `secrets` 규칙이 `get`·`list`만 담고
+  `create`·`update`·`patch`·`delete`를 담지 않음
 - **검증 AC**: AC11
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestSecretDeniedForEveryVerb`,
-  `TestSecretDenialPrecedesGatekeeper`. 정적 `scripts/check_rbac_no_secrets.py`.
+- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestReadGatedKindsRequireApproval`,
+  `TestNonGatedKindsSkipGatekeeper`. 정적 `scripts/check_rbac_secret_verbs.py`.
   통합 `resource_generic_ac11.py`
 
-### 시나리오 12: 우회 경로도 막힌다
-- **사전 조건**: 동일
-- **실행 단계**: (a) Deployment + Secret이 함께 담긴 다중 문서 매니페스트로
-  `resource_apply`. (b) `RESOURCE_DENIED_KINDS`에 픽스처 CRD를 추가하고 그 종류로 list·get.
-  (c) `resource_exec`으로 `cat /var/run/secrets/kubernetes.io/serviceaccount/token` 시도
-- **기대 결과**: (a) Deployment 부분도 적용되지 않고 **전체 거부**. (b) 두 호출 모두 거부.
-  (c) 게이트 미승인 상태에서 실행되지 않으며, 승인 요청의 `context`에 그 명령 전문이
-  그대로 노출되어 운영자가 보고 거절할 수 있음
+### 시나리오 12: 값이 새는 경로가 막혀 있다
+- **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 gatekeeper
+- **실행 단계**: (a) `kind=Secret`으로 `resource_list` 호출(승인 없이). (b)
+  `RESOURCE_READ_GATED_KINDS`에 픽스처 CRD를 추가하고 그 종류로 get.
+  (c) `resource_exec`으로 `cat /var/run/secrets/kubernetes.io/serviceaccount/token` 시도.
+  (d) Secret 매니페스트로 `resource_apply`(승인 후)
+- **기대 결과**: (a) 승인 없이 성공하되 응답이 `NAME`/`TYPE`/`DATA`/`AGE` 컬럼만 담고
+  **난수 토큰이 등장하지 않음**. (b) 승인 없이는 거부 — 게이트 종류가 설정으로 확장됨.
+  (c) 게이트 미승인 상태에서 실행되지 않고, 승인 요청 `context`에 명령 전문이 그대로
+  노출되어 운영자가 보고 거절할 수 있음. (d) 게이트는 통과하지만 apiserver 권한 밖이라
+  AC14의 에러로 떨어짐(RBAC가 Secret 쓰기 verb를 주지 않음)
 - **검증 AC**: AC12
-- **자동화**: (미작성) — 계획: Go 단위
-  `resource_test.go::TestMultiDocManifestRejectedWhenAnyDocIsSecret`,
-  `TestDeniedKindsConfigurable`. 통합 `resource_generic_ac12.py`
+- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestSecretListCarriesNoValues`,
+  `TestNoRawListFallbackForGatedKinds`, `TestReadGatedKindsConfigurable`.
+  통합 `resource_generic_ac12.py`
 
-### 시나리오 13: 변경 동사는 게이트를 지난다
+### 시나리오 13: 게이트가 필요한 변경만 게이트를 지난다
 - **사전 조건**: 가짜 k8s 서비스(호출 카운터)
-- **실행 단계**: `resource_apply`·`resource_delete`·`resource_scale`·`resource_restart`·
-  `resource_exec`을 게이트 미승인 상태에서 각각 호출
-- **기대 결과**: 다섯 도구 모두 에러, k8s 호출 카운트 0.
-  `test-approval-gate.md` 시나리오 1·5와 동일한 판정이 이 다섯 도구에 대해 성립.
-  폐기된 `workload_scale`·`workload_restart`가 열어 두던 무승인 경로가 남아 있지 않음
+- **실행 단계**: 게이트 미승인 상태에서 (a) `resource_apply`·`resource_delete`·
+  `resource_exec`을 각각 호출, (b) `resource_scale`·`resource_restart`를 각각 호출
+- **기대 결과**: (a) 세 도구 모두 에러, k8s 호출 카운트 0. (b) 두 도구 모두 **정상 수행**되고
+  k8s 서비스에 도달하며 `destructiveHint=true`는 유지됨 — 승인 없이 레플리카를 0으로 줄이고
+  파드를 교체할 수 있다는 것이 이 설계의 알려진 대가다(`prd-approval-gate`의 "게이트 대상이
+  아닌 것과 그 이유")
 - **검증 AC**: AC13
 - **자동화**: (미작성) — 계획: Go 단위
-  `resource_test.go::TestAllMutatingResourceToolsAreGated`(표 기반 5종).
-  통합 `resource_generic_ac13.py`
+  `resource_test.go::TestGatedMutatingToolsBlocked`(표 기반 3종),
+  `TestScaleAndRestartBypassGate`. 통합 `resource_generic_ac13.py`
 
 ### 시나리오 14: 권한 밖은 권한 밖이라고 말한다
 - **사전 조건**: RBAC에 없는 종류(예: `rbac.authorization.k8s.io/v1/ClusterRole`)의 변경
