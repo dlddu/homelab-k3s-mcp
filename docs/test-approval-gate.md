@@ -26,9 +26,9 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 
 ### 시나리오 1: 승인 없이는 클러스터에 닿지 않는다
 - **사전 조건**: 가짜 k8s 서비스(호출 카운터 포함), gatekeeper는 `PENDING`을 유지
-- **실행 단계**: `resource_apply`, `resource_delete`, `resource_scale`, `resource_exec`을
-  각각 호출하고 `GATEKEEPER_TIMEOUT_SECONDS` 경과까지 대기
-- **기대 결과**: 네 호출 모두 에러 반환. 가짜 k8s 서비스 호출 카운트 **0**
+- **실행 단계**: `resource_apply`, `resource_delete`, `resource_scale`, `resource_restart`,
+  `resource_exec`을 각각 호출하고 `GATEKEEPER_TIMEOUT_SECONDS` 경과까지 대기
+- **기대 결과**: 다섯 호출 모두 에러 반환. 가짜 k8s 서비스 호출 카운트 **0**
 - **검증 AC**: AC1, AC5
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestGatedVerbsNeverReachKubeWithoutApproval`.
   통합 `approval_gate_ac1.py`
@@ -45,10 +45,10 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 
 ### 시나리오 3: context가 판정을 가능하게 한다
 - **사전 조건**: 동일
-- **실행 단계**: 네 동사 각각을 호출하고 생성된 `context` 문자열을 수집
+- **실행 단계**: 다섯 동사 각각을 호출하고 생성된 `context` 문자열을 수집
 - **기대 결과**: 모든 `context`에 도구 이름·`apiVersion`/`kind`/`namespace`/`name`·요청 시각이
-  포함. `scale`은 현재→목표 레플리카, `delete`는 `gracePeriodSeconds`,
-  `apply`는 생성/갱신 구분, `exec`는 **명령 인자 전문**이 축약 없이 포함.
+  포함. `scale`은 현재→목표 레플리카, `restart`는 교체될 파드 수, `delete`는
+  `gracePeriodSeconds`, `apply`는 생성/갱신 구분, `exec`는 **명령 인자 전문**이 축약 없이 포함.
   좌표를 해석할 수 없는 호출은 승인 요청을 만들지 않고 거부
 - **검증 AC**: AC3
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestContextIncludesVerbSpecificDetail`,
