@@ -19,8 +19,11 @@
   클러스터를 운영한다. 네임스페이스·워크로드 조회, 컨테이너 로그 확인, 파드 진단,
   롤링 재시작, 레플리카 스케일 조정을 자연어 의도만으로 수행한다. 이 가치가 지향하는
   방향은 **홈랩 운영의 마찰(명령어 암기·반복 타이핑·컨텍스트 전환)을 줄이는 것**이다.
-- **관련 도구**: `namespace_list`, `workload_list`, `workload_logs`, `pod_describe`,
-  `workload_restart`, `workload_scale`, `ping`
+  도구는 **리소스 좌표**(`apiVersion`+`kind`+`namespace`+`name`)로 대상을 지정하므로
+  종류가 늘어도 도구가 늘지 않는다.
+- **관련 도구**: `resource_list`, `resource_get`, `resource_logs`, `resource_describe`,
+  `api_resources`, `resource_apply`, `resource_delete`, `resource_scale`,
+  `resource_restart`, `resource_exec`, `ping`
 - **경계**: 쿠버네티스 API를 직접 다루는 도구만 여기 속한다. 클러스터 위에 올라간 **앱의
   기능**을 도구로 여는 것은 V5의 몫이다.
 
@@ -47,8 +50,9 @@
   - `/mcp` 엔드포인트는 인증 없이 접근할 수 없다 — 대화형 클라이언트는 OAuth 2.0
     Bearer(RS256 JWT + JWKS 검증)로, 자동화(비대화형) 클라이언트는 정적 API 키로
     인증한다. 두 방식은 병행 가능하며 최소 하나는 활성이어야 한다.
-  - 파괴적 도구는 `destructiveHint`로 명시된다 — `workload_restart`,
-    `workload_scale`, `dear_baby_reset_user`, `session_write`.
+  - 파괴적 도구는 `destructiveHint`로 명시된다 — `resource_apply`, `resource_delete`,
+    `resource_scale`, `resource_restart`, `resource_exec`, `dear_baby_reset_user`,
+    `session_write`.
   - **변경 동사는 사람의 사전 승인을 거친다** — `apply`·`delete`·`scale`·`exec`에 해당하는
     도구 호출은 gatekeeper(`dlddu/gatekeeper`)의 판정이 `APPROVED`일 때만 클러스터에
     도달한다. `destructiveHint`가 클라이언트에 대한 광고에 그치는 데 반해, 이 게이트는
@@ -101,4 +105,5 @@
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |
 | 2026-08-12 | V5(클러스터 내부 앱 기능의 도구화) 추가 — session-platform 제어면 연동 도구 3종의 근거 가치. 기존 `dear_baby_reset_user`를 V1에서 V5로 재배치(앱 상태 조작은 클러스터 운영이 아니라는 경계 확정)하고, V1에 경계 문구 추가. |
 | 2026-07-04 | V3 인증 서술 확장 — `/mcp`에 정적 API 키 인증(비대화형 자동화용)을 OAuth와 병행 추가(platform PRD AC7·AC8). 새 가치 추가 없음. |
+| 2026-09-12 | V1 도구 6종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`·`workload_restart`·`workload_scale`)을 `resource_*` 도구군으로 통합·폐기. 가치의 내용은 그대로이고 수단만 좁은 도구 여럿에서 좌표 기반 도구군으로 바뀐다. 부수 효과로 `workload_scale`·`workload_restart`가 열어 두던 무승인 변경 경로가 닫혔다. |
 | 2026-09-12 | V3 구체적 근거 2건 추가 — (1) 변경 동사(`apply`/`delete`/`scale`/`exec`)의 gatekeeper 사전 승인 게이트, (2) Secret 전면 배제. generic resource 도구군이 V1의 표면을 넓히면서 함께 세운 경계다. 새 가치 추가 없음 — 둘 다 "기본값이 안전하게"라는 V3의 구현체이므로 별도 가치로 분리하지 않았다. |

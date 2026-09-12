@@ -26,16 +26,29 @@
 | `apply` | 리소스 생성 또는 갱신(Server-Side Apply) | `resource_apply` |
 | `delete` | 리소스 삭제 | `resource_delete` |
 | `scale` | 레플리카 수 변경 | `resource_scale` |
+| `restart` | 파드 템플릿 어노테이션 패치로 롤링 재시작 | `resource_restart` |
 | `exec` | 실행 중인 컨테이너 안에서 명령 실행 | `resource_exec` |
 
-읽기 동사(`list`, `get`)는 게이트 대상이 아니다. 다만 Secret 배제는 읽기에도 똑같이
-적용된다(`prd-resource-generic` AC5).
+읽기 동사(`list`, `get`, `logs`, `describe`)는 게이트 대상이 아니다. 다만 Secret 배제는
+읽기에도 똑같이 적용된다(`prd-resource-generic` AC11).
 
-> **범위 밖 — 미결 사항**: 기존 도구 `workload_scale`, `workload_restart`,
-> `dear_baby_reset_user`, `session_write`도 위 동사 정의에 해당하지만, 이 PRD는 아직
-> 이들을 게이트에 편입하지 않는다. 편입하지 않으면 `resource_scale`이 막혀도
-> `workload_scale`로 같은 일을 할 수 있어 게이트가 우회 가능해진다. 이 공백은
-> `doc-tracker.md`의 "수용된 위험"에 미결 사항으로 기록한다.
+### 우회로가 닫힌 경위
+
+이 게이트의 초안은 동사로 판정하면서 적용은 `resource_*`로 한정했고, 그 결과
+`workload_scale`·`workload_restart`가 **승인 없이 같은 변경을 수행하는 우회로**로 남아
+있었다. 게이트가 강제가 아니라 선택 가능한 경로가 되는 상태였다.
+
+`prd-resource-generic`이 V1 도구 6종을 흡수·폐기하면서 그 둘이 사라졌고, 이제
+클러스터 상태를 바꾸는 k8s 동사는 전부 게이트 안에 있다.
+
+> **남은 예외 1건 — `dear_baby_reset_user`**: 이 도구는 실행 중인 파드에
+> `pods/exec`으로 번들 CLI를 실행하므로 위 `exec` 정의에 해당한다. 그럼에도 게이트에
+> 편입하지 않은 것은 이 도구가 V5(앱 기능의 도구화)에 속해 좌표가 아니라 앱 의미로
+> 대상을 지정하기 때문이며, 편입하려면 `prd-dear-baby-reset-user`의 AC를 함께 고쳐야 한다.
+> `doc-tracker.md`의 "수용된 위험"에 미결로 기록한다.
+>
+> `session_write`는 이 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 동사가 아니므로
+> 이 게이트의 정의 범위 밖이다. 그 도구의 안전장치는 `prd-session-write`가 맡는다.
 
 ## 구성
 
@@ -50,13 +63,13 @@
 ## Acceptance Criteria
 
 ### AC1: 동사 기반 게이트 강제
-- **설명**: `apply`·`delete`·`scale`·`exec` 동사에 해당하는 모든 도구 호출은 gatekeeper
+- **설명**: `apply`·`delete`·`scale`·`restart`·`exec` 동사에 해당하는 모든 도구 호출은 gatekeeper
   판정이 `APPROVED`인 경우에만 쿠버네티스 API에 도달한다. 게이트를 건너뛰는 경로는
   존재하지 않으며, 게이트 호출은 도구 핸들러가 선택적으로 부르는 것이 아니라 디스패처
   단계에서 동사 테이블로 강제된다.
 - **달성 가치**: V3
-- **검증 방법**: 게이트 대상 도구를 승인 없이 호출했을 때 쿠버네티스 클라이언트가 단 한 번도
-  호출되지 않는다(가짜 k8s 서비스의 호출 카운트가 0).
+- **검증 방법**: 게이트 대상 도구 다섯을 승인 없이 호출했을 때 쿠버네티스 클라이언트가
+  단 한 번도 호출되지 않는다(가짜 k8s 서비스의 호출 카운트가 0).
 
 ### AC2: 승인 요청 생성
 - **설명**: 게이트 대상 호출은 `POST /api/requests`로 승인 요청을 만든다. `x-api-key` 헤더,
@@ -73,6 +86,7 @@
   - `apply` — 신규 생성인지 갱신인지, 갱신이면 바뀌는 필드 요약
   - `delete` — 삭제 대상과 `gracePeriodSeconds`
   - `scale` — 현재 레플리카 → 목표 레플리카
+  - `restart` — 재시작 대상 워크로드와 현재 레플리카 수(재시작이 몇 개 파드를 교체하는지)
   - `exec` — 컨테이너 이름과 **실행할 명령 전문**(요약·생략 금지)
 
   대상 좌표를 해석할 수 없거나 상세를 만들 수 없으면 승인 요청을 만들지 않고 거부한다.

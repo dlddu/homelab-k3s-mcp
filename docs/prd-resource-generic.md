@@ -3,35 +3,41 @@
 특정 워크로드 종류에 묶이지 않고 **리소스 좌표**(`apiVersion` + `kind` + `namespace` + `name`)로
 임의의 쿠버네티스 리소스를 다루는 도구군.
 
-기존 `workload_*` 도구는 Deployment/StatefulSet/DaemonSet만 안다. 그래서 Service·Ingress·
-ConfigMap·PVC·CRD를 보려면 도구가 없어 매번 새 도구를 추가해야 했다. 이 도구군은 종류를
-입력으로 받아 그 반복을 끝낸다.
+이 도구군은 기존 V1 도구 6종(`namespace_list`, `workload_list`, `workload_logs`,
+`pod_describe`, `workload_restart`, `workload_scale`)을 **대체하고 폐기한다**. 그 6종은
+Deployment/StatefulSet/DaemonSet과 Pod만 알았기 때문에 Service·Ingress·ConfigMap·PVC·CRD를
+다루려면 매번 도구를 새로 만들어야 했다. 종류를 입력으로 받으면 그 반복이 끝난다.
 
 ## 달성 가치
 
 - **V1: 자연어로 클러스터 운영** — `kubectl`이 다루는 리소스 표면 대부분을 자연어로 연다.
-  종류마다 도구를 새로 만들지 않아도 되므로, 운영 중 마주치는 리소스를 그때그때 조회·수정할 수 있다.
+  6종이 덮던 범위는 전부 유지하면서(AC1·AC5·AC6·AC9·AC10), 종류 제약만 걷어낸다.
 - **V3: 안전한 운영(Safe-by-default)** — 표면이 넓어진 만큼 두 개의 경계를 함께 세운다.
-  Secret은 어떤 동사로도 닿지 않고(AC5·AC6), 변경 동사는 사람 승인을 거친다(AC7).
+  Secret은 어떤 동사로도 닿지 않고(AC11·AC12), 변경 동사는 사람 승인을 거친다(AC13).
 
 ## 도구 개요
 
-| 도구 | 동사 | 게이트 | 입력 |
-|------|------|--------|------|
-| `resource_list` | list | — | `apiVersion`, `kind`, `namespace?`, `labelSelector?`, `fieldSelector?`, `limit?`, `continue?` |
-| `resource_get` | get | — | `apiVersion`, `kind`, `name`, `namespace?` |
-| `api_resources` | get | — | `groupFilter?` |
-| `resource_apply` | apply | O | `manifest`(YAML/JSON 전문) |
-| `resource_delete` | delete | O | `apiVersion`, `kind`, `name`, `namespace?`, `gracePeriodSeconds?` |
-| `resource_scale` | scale | O | `apiVersion`, `kind`, `name`, `namespace?`, `replicas` |
-| `resource_exec` | exec | O | `namespace`, `pod`, `container?`, `command`(배열) |
+| 도구 | 동사 | 게이트 | 대체하는 도구 |
+|------|------|--------|----------------|
+| `resource_list` | list | — | `namespace_list`, `workload_list` |
+| `resource_get` | get | — | — |
+| `resource_logs` | logs | — | `workload_logs` |
+| `resource_describe` | describe | — | `pod_describe` |
+| `api_resources` | get | — | — |
+| `resource_apply` | apply | O | — |
+| `resource_delete` | delete | O | — |
+| `resource_scale` | scale | O | `workload_scale` |
+| `resource_restart` | restart | O | `workload_restart` |
+| `resource_exec` | exec | O | — |
 
-어노테이션: 읽기 3종은 `readOnlyHint=true`, `destructiveHint=false`.
-변경 4종은 `readOnlyHint=false`, `destructiveHint=true`.
+어노테이션: 읽기 5종은 `readOnlyHint=true`, `destructiveHint=false`.
+변경 5종은 `readOnlyHint=false`, `destructiveHint=true`.
 
-> `resource_scale`은 기존 `workload_scale`과 기능이 겹친다. 이 PRD는 둘을 통합하지 않으며,
-> 겹침과 그로 인한 게이트 우회 가능성은 `prd-approval-gate`의 "범위 밖 — 미결 사항"과
-> `doc-tracker.md`에 기록한다.
+`resource_logs`·`resource_describe`·`resource_restart`를 따로 두는 이유는 이들이
+`resource_get`/`resource_apply`로 대체되지 않기 때문이다. 로그는 `pods/log` 서브리소스라
+객체 조회 경로에 없고, 진단은 객체와 이벤트를 합쳐야 의미가 생기며(따로 부르면 왕복이
+세 번이다), 롤링 재시작은 파드 템플릿 어노테이션 패치이지 전체 매니페스트 재적용이 아니다.
+재적용으로 흉내 내면 의도하지 않은 필드까지 되돌릴 위험이 있다.
 
 ## Acceptance Criteria
 
@@ -40,9 +46,11 @@ ConfigMap·PVC·CRD를 보려면 도구가 없어 매번 새 도구를 추가해
   `namespace`를 생략하면 전 네임스페이스, 지정하면 해당 네임스페이스로 좁힌다.
   `labelSelector`·`fieldSelector`는 서버 사이드로 전달해 apiserver가 걸러낸 결과만 받는다.
   클러스터 스코프 리소스에 `namespace`가 오면 무시하지 않고 거부한다.
+  `namespace_list`(`v1`/`Namespace`)와 `workload_list`(`apps/v1`의 세 종류)가 하던 일은
+  이 도구의 인자 조합으로 표현된다.
 - **달성 가치**: V1
-- **검증 방법**: `v1/Service`, `apps/v1/Deployment`, `networking.k8s.io/v1/Ingress`,
-  임의 CRD에 대해 목록이 반환되고, 셀렉터가 결과를 실제로 좁힌다.
+- **검증 방법**: `v1/Namespace`, `v1/Service`, `apps/v1/Deployment`,
+  `networking.k8s.io/v1/Ingress`, 임의 CRD에 대해 목록이 반환되고, 셀렉터가 결과를 실제로 좁힌다.
 
 ### AC2: 목록은 표 형식으로 반환
 - **설명**: 목록 응답은 apiserver의 Table 표현
@@ -68,7 +76,62 @@ ConfigMap·PVC·CRD를 보려면 도구가 없어 매번 새 도구를 추가해
 - **달성 가치**: V1
 - **검증 방법**: 반환된 객체에 위 두 필드가 없고, 나머지 `spec`/`status`는 온전하다.
 
-### AC5: Secret 전면 배제
+### AC5: 컨테이너 로그 조회
+- **설명**: `resource_logs`는 대상 파드의 컨테이너 로그를 반환한다. `workload_logs`가 가지던
+  성질을 그대로 유지한다 — `tailLines`는 기본 200, 허용 1–5000이고 초과 값은 클램프하지 않고
+  **거부**한다. `previous=true`는 종료된 직전 컨테이너 인스턴스의 로그를 반환하므로 Running
+  파드가 없는 크래시 루프에서도 동작한다. 컨테이너가 둘 이상이면 `container`가 필요하며,
+  `timestamps`·`sinceSeconds`로 형식과 시간 범위를 조절한다.
+- **달성 가치**: V1
+- **검증 방법**: 정상 워크로드에서 최근 로그가 반환되고, `tailLines`가 라인 수를 바꾸며,
+  5001은 거부된다. 크래시 루프 파드에서 `previous=true`가 직전 인스턴스 로그를 반환한다.
+  다중 컨테이너 파드에서 `container` 누락이 거부된다.
+
+### AC6: 진단 스냅샷
+- **설명**: `resource_describe`는 대상 파드의 메타데이터, 컨테이너 상태(state·reason·restart
+  count·exit code), conditions, 최근 이벤트를 **한 응답에** 담아 반환한다. 이벤트 조회 권한이
+  없으면 빈 이벤트 배열로 동작하며 실패하지 않는다(best-effort). `pod_describe`의 성질을
+  그대로 유지한다.
+- **달성 가치**: V1, V3
+- **검증 방법**: 스냅샷에 위 필드가 모두 담긴다. 이벤트 권한이 없는 상황에서도 스냅샷이
+  (빈 이벤트로) 정상 반환된다.
+
+### AC7: 대상 해석
+- **설명**: `resource_logs`와 `resource_describe`는 `name` / `labelSelector` /
+  `workloadKind`+`workloadName` 중 **정확히 하나**로 파드를 해석한다. 둘 이상을 함께 주면
+  거부한다. 셀렉터·워크로드 경로는 첫 Running 파드를 우선하되, Running이 없으면 매칭 파드를
+  사용한다(AC5의 크래시 루프 동작이 여기에 의존한다).
+- **달성 가치**: V1
+- **검증 방법**: 세 경로가 각각 같은 파드로 해석된다. 두 경로를 동시에 지정하면 거부된다.
+
+### AC8: 종류 해석과 미지원 종류 거부
+- **설명**: `api_resources`는 discovery API로 클러스터가 실제로 제공하는 종류 목록
+  (group/version/kind/plural/namespaced 여부)을 반환한다. 다른 도구들은 이 discovery 결과로
+  `kind`를 실제 리소스 경로로 해석하며, 클러스터에 없는 종류는 추측해 호출하지 않고 거부한다.
+  거부 메시지에는 비슷한 이름의 실존 종류를 함께 제시한다.
+- **달성 가치**: V1
+- **검증 방법**: 존재하지 않는 `kind`가 거부되고 후보가 제시된다. CRD를 설치하면
+  `api_resources`에 나타나고 곧바로 `resource_list`로 조회된다.
+
+### AC9: 레플리카 설정과 레플리카 없는 종류 거부
+- **설명**: `resource_scale`은 `spec.replicas`를 지정한 값으로 설정하며 0으로의 스케일다운도
+  허용한다. 음수와 누락은 거부한다. DaemonSet처럼 레플리카 개념이 없는 종류는 거부하고,
+  거부 메시지가 권한이나 존재 여부가 아니라 **그 종류에 레플리카가 없다는 사실**을 밝힌다.
+  `workload_scale`의 성질을 그대로 유지한다.
+- **달성 가치**: V1, V3
+- **검증 방법**: 지정 레플리카 수가 반영되고 `replicas=0`도 적용된다. 음수·누락이 거부된다.
+  DaemonSet 요청이 레플리카 부재를 사유로 거부된다.
+
+### AC10: 롤링 재시작
+- **설명**: `resource_restart`는 파드 템플릿에
+  `kubectl.kubernetes.io/restartedAt` 어노테이션을 패치해 롤링 재시작을 유발한다. 전체
+  매니페스트를 재적용하지 않으므로 **그 어노테이션 외의 어떤 필드도 바뀌지 않으며**,
+  특히 레플리카 수가 보존된다. `workload_restart`의 성질을 그대로 유지한다.
+- **달성 가치**: V1, V3
+- **검증 방법**: 재시작 후 어노테이션 타임스탬프가 갱신되고 파드가 교체되며,
+  `spec.replicas`와 나머지 스펙이 호출 전과 동일하다.
+
+### AC11: Secret 전면 배제
 - **설명**: `v1/Secret`은 **모든 동사에서** 거부한다. 읽기(`resource_list`, `resource_get`)도
   예외가 아니다. 거부는 도구 레이어에서 명시적 에러로 이뤄지며, RBAC에
   `secrets` 규칙을 추가하지 않는 것으로 2중화한다. 도구 레이어 검사가 뚫려도 apiserver가
@@ -81,13 +144,13 @@ ConfigMap·PVC·CRD를 보려면 도구가 없어 매번 새 도구를 추가해
 - **검증 방법**: `kind=Secret`에 대한 list/get/apply/delete가 모두 거부되고, 거부 사유가
   권한 부족이 아니라 정책상 배제임을 밝힌다. `k8s/rbac.yaml`에 `secrets` 규칙이 없다.
 
-### AC6: Secret 우회 경로 차단
+### AC12: Secret 우회 경로 차단
 - **설명**: 종류 이름만 막으면 값은 다른 길로 새어나온다. 다음을 함께 막는다.
   - **`resource_apply`의 Secret 생성/갱신** — 매니페스트의 `kind`가 `Secret`이면 거부.
     여러 문서가 담긴 매니페스트는 **하나라도** Secret이면 전체를 거부한다.
   - **`resource_exec`을 통한 마운트 시크릿 열람** — exec는 컨테이너 파일시스템에 닿으므로
     `/var/run/secrets/**`에 마운트된 값을 읽을 수 있다. RBAC로는 막을 수 없는 경로이며,
-    이 위험은 승인 게이트가 담당한다. 그래서 AC7의 `exec` 게이트는 선택이 아니고,
+    이 위험은 승인 게이트가 담당한다. 그래서 AC13의 `exec` 게이트는 선택이 아니고,
     게이트의 `context`에 명령 전문이 반드시 들어가야 한다(`prd-approval-gate` AC3).
   - **Secret을 품은 사용자 정의 리소스** — 평문 자격증명을 `spec`에 두는 CRD가 있을 수 있다.
     종류 단위 차단 목록을 설정으로 확장할 수 있게 한다(`RESOURCE_DENIED_KINDS`).
@@ -95,23 +158,17 @@ ConfigMap·PVC·CRD를 보려면 도구가 없어 매번 새 도구를 추가해
 - **검증 방법**: Secret이 섞인 다중 문서 매니페스트가 통째로 거부된다. `exec` 호출이 게이트
   없이 실행되지 않는다. `RESOURCE_DENIED_KINDS`에 추가한 종류가 모든 동사에서 거부된다.
 
-### AC7: 변경 동사는 승인 게이트 경유
-- **설명**: `resource_apply`·`resource_delete`·`resource_scale`·`resource_exec`은
-  `prd-approval-gate`가 정의한 게이트를 통과해야만 실행된다. 게이트 미통과 시
-  쿠버네티스 API를 호출하지 않는다.
+### AC13: 변경 동사는 승인 게이트 경유
+- **설명**: `resource_apply`·`resource_delete`·`resource_scale`·`resource_restart`·
+  `resource_exec`은 `prd-approval-gate`가 정의한 게이트를 통과해야만 실행된다. 게이트
+  미통과 시 쿠버네티스 API를 호출하지 않는다.
+
+  폐기되는 `workload_scale`·`workload_restart`는 게이트 없이 같은 변경을 할 수 있는
+  우회로였다. 6종 폐기로 그 우회로가 닫힌다.
 - **달성 가치**: V3
-- **검증 방법**: `prd-approval-gate` AC1·AC5의 검증을 이 네 도구 각각에 대해 수행한다.
+- **검증 방법**: `prd-approval-gate` AC1·AC5의 검증을 이 다섯 도구 각각에 대해 수행한다.
 
-### AC8: 종류 해석과 미지원 종류 거부
-- **설명**: `api_resources`는 discovery API로 클러스터가 실제로 제공하는 종류 목록
-  (group/version/kind/plural/namespaced 여부)을 반환한다. 다른 도구들은 이 discovery 결과로
-  `kind`를 실제 리소스 경로로 해석하며, 클러스터에 없는 종류는 추측해 호출하지 않고 거부한다.
-  거부 메시지에는 비슷한 이름의 실존 종류를 함께 제시한다.
-- **달성 가치**: V1
-- **검증 방법**: 존재하지 않는 `kind`가 거부되고 후보가 제시된다. CRD를 설치하면
-  `api_resources`에 나타나고 곧바로 `resource_list`로 조회된다.
-
-### AC9: 권한 경계의 정직한 보고
+### AC14: 권한 경계의 정직한 보고
 - **설명**: RBAC가 허용하지 않는 조합(예: 이 서버에 부여되지 않은 종류의 변경)은 apiserver의
   403을 그대로 흘리지 않고, 이 서버에 부여된 권한 밖임을 밝히는 에러로 변환한다. 부여된
   권한의 범위는 `k8s/rbac.yaml`이 단일 출처다.
