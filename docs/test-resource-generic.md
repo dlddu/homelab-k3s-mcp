@@ -16,6 +16,7 @@
 - AC12: 값이 새는 경로 봉쇄 (PRD: resource-generic)
 - AC13: 되돌리기 어려운 변경은 승인 게이트 경유 (PRD: resource-generic)
 - AC14: 권한 경계의 정직한 보고 (PRD: resource-generic)
+- AC15: 도구가 행사하지 않는 권한은 부여하지 않는다 (PRD: resource-generic)
 
 ## 픽스처
 
@@ -161,16 +162,18 @@
 - **실행 단계**: (a) `kind=Secret`으로 `resource_list` 호출(승인 없이). (b)
   `RESOURCE_READ_GATED_KINDS`에 픽스처 CRD를 추가하고 그 종류로 get.
   (c) `resource_exec`으로 `cat /var/run/secrets/kubernetes.io/serviceaccount/token` 시도.
-  (d) Secret 매니페스트로 `resource_apply`(승인 후)
+  (d) Secret 매니페스트로 `resource_apply`(승인 후).
+  (e) 서버의 ServiceAccount 토큰으로 `GET /api/v1/secrets?watch=true` 를 직접 호출
 - **기대 결과**: (a) 승인 없이 성공하되 응답이 `NAME`/`TYPE`/`DATA`/`AGE` 컬럼만 담고
   **난수 토큰이 등장하지 않음**. (b) 승인 없이는 거부 — 게이트 종류가 설정으로 확장됨.
   (c) 게이트 미승인 상태에서 실행되지 않고, 승인 요청 `context`에 명령 전문이 그대로
   노출되어 운영자가 보고 거절할 수 있음. (d) 게이트는 통과하지만 apiserver 권한 밖이라
-  AC14의 에러로 떨어짐(RBAC가 Secret 쓰기 verb를 주지 않음)
+  AC14의 에러로 떨어짐(RBAC가 Secret 쓰기 verb를 주지 않음). (e) apiserver가 403 —
+  `watch` 가 부여돼 있지 않아 게이트를 우회하는 스트림 경로가 존재하지 않음
 - **검증 AC**: AC12
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestSecretListCarriesNoValues`,
   `TestNoRawListFallbackForGatedKinds`, `TestReadGatedKindsConfigurable`.
-  통합 `resource_generic_ac12.py`
+  통합 `resource_generic_ac12.py`(watch 403 확인 포함)
 
 ### 시나리오 13: 게이트가 필요한 변경만 게이트를 지난다
 - **사전 조건**: 가짜 k8s 서비스(호출 카운터)
@@ -193,3 +196,18 @@
 - **검증 AC**: AC14
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestForbiddenIsTranslated`.
   통합 `resource_generic_ac14.py`
+
+### 시나리오 15: RBAC 가 도구 표와 정확히 같다
+- **사전 조건**: `k8s/rbac.yaml` 과 도구별 권한 선언
+- **실행 단계**: 정적 검사로 (a) `rbac.yaml` 의 `(verb, resource[/subresource])` 쌍 집합과
+  도구 표의 합집합을 양방향 대조 → (b) 금지 목록
+  (`watch` · `/scale` 밖의 `update` · `deletecollection` · `pods/attach` ·
+  `pods/portforward` · `*/proxy` · `secrets` 의 쓰기 verb)이 `rbac.yaml` 에 없는지 확인 →
+  (c) `rbac.yaml` 에 `watch` 를 한 줄 넣은 변형으로 재실행
+- **기대 결과**: (a) 양방향 어긋남 0 — 도구가 쓰지 않는 권한도, 도구에 모자란 권한도 없음.
+  (b) 금지 목록 전부 부재. (c) 변형이 실패로 잡힘(검사가 실제로 물린다는 증거).
+  현 `rbac.yaml` 이 워크로드에 주고 있던 `watch` 는 코드에 `Watch()` 호출이 없는 죽은
+  권한이므로 이 검사가 곧바로 잡는다
+- **검증 AC**: AC15
+- **자동화**: (미작성) — 계획: 정적 `scripts/check_rbac_matches_tools.py`
+  (뮤테이션 1건 포함). 통합 `resource_generic_ac15.py`

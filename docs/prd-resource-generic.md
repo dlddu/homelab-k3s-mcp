@@ -18,18 +18,23 @@ Deployment/StatefulSet/DaemonSet과 Pod만 알았기 때문에 Service·Ingress�
 
 ## 도구 개요
 
-| 도구 | 동사 | 게이트 | 대체하는 도구 |
-|------|------|--------|----------------|
-| `resource_list` | list | — | `namespace_list`, `workload_list` |
-| `resource_get` | get | 읽기 게이트 종류만 | — |
-| `resource_logs` | logs | — | `workload_logs` |
-| `resource_describe` | describe | 읽기 게이트 종류만 | `pod_describe` |
-| `api_resources` | get | — | — |
-| `resource_apply` | apply | O | — |
-| `resource_delete` | delete | O | — |
-| `resource_scale` | scale | — | `workload_scale` |
-| `resource_restart` | restart | — | `workload_restart` |
-| `resource_exec` | exec | O | — |
+| 도구 | 행사하는 RBAC 권한 | 게이트 | 대체하는 도구 |
+|------|---------------------|--------|----------------|
+| `resource_list` | `list` on ⟨kind⟩ | — | `namespace_list`, `workload_list` |
+| `resource_get` | `get` on ⟨kind⟩ | 읽기 게이트 종류만 | — |
+| `resource_logs` | `get` on `pods/log` | — | `workload_logs` |
+| `resource_describe` | `get` on ⟨kind⟩ + `list` on `events` | 읽기 게이트 종류만 | `pod_describe` |
+| `api_resources` | discovery (리소스 권한 아님) | — | — |
+| `resource_apply` | `patch` + `create` on ⟨kind⟩ | O | — |
+| `resource_delete` | `delete` on ⟨kind⟩ | O | — |
+| `resource_scale` | `update` on ⟨kind⟩`/scale` | — | `workload_scale` |
+| `resource_restart` | `patch` on `apps/v1` 워크로드 | — | `workload_restart` |
+| `resource_exec` | `create` on `pods/exec` | O | — |
+
+이 표가 **RBAC의 입력이자 게이트의 입력**이다. `k8s/rbac.yaml`은 여기 적힌 쌍의 합집합과
+정확히 같아야 하며, 그보다 넓으면 AC15 위반이고 좁으면 해당 도구가 AC14의 "권한 밖"으로
+떨어진다. 도구 이름이 아니라 이 쌍으로 판정하는 이유는 `prd-approval-gate`의
+"게이트 대상"에 적었다.
 
 어노테이션: 읽기 5종은 `readOnlyHint=true`, `destructiveHint=false`.
 변경 5종은 `readOnlyHint=false`, `destructiveHint=true`.
@@ -165,6 +170,11 @@ Deployment/StatefulSet/DaemonSet과 Pod만 알았기 때문에 Service·Ingress�
     Secret의 Table은 apiserver가 서버 사이드로 만들어 `NAME`/`TYPE`/`DATA`/`AGE`만 담으므로
     값이 애초에 전송되지 않는다. 원시 목록으로 떨어지는 폴백 경로를 두지 않는다 — 그 폴백이
     곧 무승인 일괄 열람이 된다.
+  - **`watch`는 어떤 도구도 행사하지 않는다** — 변경 스트림은 객체 전문을 밀어 주므로
+    읽기 게이트 종류를 `watch`하면 `data`가 그대로 흘러나온다. 게이트는 단발 `get`을
+    통제할 뿐 스트림을 통제하지 못하므로, 이 경로는 게이트가 아니라 **RBAC 미부여**로
+    막는다(AC15). 현재 `k8s/rbac.yaml`은 워크로드에 `watch`를 주고 있으나 코드에 `Watch()`
+    호출이 없다 — 죽은 권한이며 함께 제거한다.
   - **`resource_exec`을 통한 마운트 시크릿 열람** — exec는 컨테이너 파일시스템에 닿으므로
     `/var/run/secrets/**`를 읽을 수 있다. 이 경로는 `exec` 동사 게이트가 담당하며, 게이트
     `context`에 명령 전문이 반드시 들어가야 한다(`prd-approval-gate` AC3).
@@ -191,9 +201,36 @@ Deployment/StatefulSet/DaemonSet과 Pod만 알았기 때문에 Service·Ingress�
   같은 조건에서 `resource_scale`·`resource_restart`가 승인 없이 정상 동작한다.
 
 ### AC14: 권한 경계의 정직한 보고
-- **설명**: RBAC가 허용하지 않는 조합(예: 이 서버에 부여되지 않은 종류의 변경)은 apiserver의
-  403을 그대로 흘리지 않고, 이 서버에 부여된 권한 밖임을 밝히는 에러로 변환한다. 부여된
-  권한의 범위는 `k8s/rbac.yaml`이 단일 출처다. Secret에 쓰기 verb를 주지 않는 것도 여기서
-  강제되며(AC12), 그 결과 Secret 생성·수정·삭제 시도는 이 에러로 떨어진다.
+- **설명**: RBAC가 허용하지 않는 조합(예: 이 서버에 부여되지 않은 종류의 `patch`)은
+  apiserver의 403을 그대로 흘리지 않고, 이 서버에 부여된 권한 밖임을 밝히는 에러로
+  변환한다. 에러 메시지는 **어떤 `(verb, resource)` 쌍이 없어서 막혔는지**를 밝혀,
+  운영자가 `k8s/rbac.yaml`에서 곧바로 대조할 수 있게 한다.
+
+  Secret에 쓰기 verb를 주지 않는 것도 여기서 강제되며(AC12), 그 결과 Secret
+  생성·수정·삭제 시도는 이 에러로 떨어진다.
 - **달성 가치**: V3
-- **검증 방법**: 권한 밖 호출이 재시도를 유도하지 않는 명시적 에러를 반환한다.
+- **검증 방법**: 권한 밖 호출이 재시도를 유도하지 않는 명시적 에러를 반환하고, 그 메시지에
+  누락된 `(verb, resource)` 쌍이 담긴다.
+
+### AC15: 도구가 행사하지 않는 권한은 부여하지 않는다
+- **설명**: `k8s/rbac.yaml`은 위 도구 표의 `(verb, resource[/subresource])` 쌍 합집합과
+  정확히 같다. 넓으면 아무도 쓰지 않는 권한이 공격 표면으로만 남고, 좁으면 도구가
+  AC14로 떨어진다. 특히 다음은 **어떤 경우에도 부여하지 않는다**.
+
+  | 부여하지 않는 것 | 이유 |
+  |------------------|------|
+  | `watch` (전 종류) | 어떤 도구도 행사하지 않는다. 읽기 게이트 종류에 대해서는 게이트를 통째로 우회하는 경로다(AC12) |
+  | `update` (`/scale` 외) | `resource_apply`는 Server-Side Apply(`patch`)를 쓴다. 전체 교체(PUT) 경로는 필요 없다 |
+  | `deletecollection` | 한 번의 호출이 몇 개를 지우는지 승인 화면이 말할 수 없다. 행사하는 도구가 없으므로 주지 않는다 |
+  | `pods/attach` | `exec`과 같은 권능인데 게이트 표에 없다 |
+  | `pods/portforward` | 파드 네트워크로 임의 TCP 터널을 연다. 네트워크 정책을 우회한다 |
+  | `nodes/proxy`·`pods/proxy`·`services/proxy` | kubelet API에 직접 닿아 이 서버의 다른 모든 경계를 무의미하게 만든다 |
+  | `secrets`의 쓰기 verb (`create`/`update`/`patch`/`delete`) | Secret은 읽기만 연다(AC11) |
+
+  `secrets`에는 `get`만 준다. `list`는 Table 표현이 apiserver에서 만들어지지만 그 변환에도
+  `list` 권한이 필요하므로 함께 부여하되, **원시 목록 폴백 경로를 두지 않는 것**(AC12)이
+  값 노출을 막는 유일한 장치임을 명시한다.
+- **달성 가치**: V3
+- **검증 방법**: 정적 검사가 `k8s/rbac.yaml`의 `(verb, resource)` 쌍 집합을 도구 표의
+  합집합과 대조해 양방향으로 어긋남을 잡는다. 위 표의 항목이 하나라도 `rbac.yaml`에
+  나타나면 실패한다.

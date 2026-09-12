@@ -33,10 +33,11 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `resource_restart`, `kind=ConfigMap`으로 `resource_get`을 호출
 - **기대 결과**: (a) 다섯 호출 모두 에러 반환, 가짜 k8s 서비스 호출 카운트 **0**.
   (b) 세 호출 모두 **정상 수행**되고 k8s 서비스에 도달 — 게이트가 필요 이상으로 넓지 않음을
-  같은 시나리오에서 확인한다
+  같은 시나리오에서 확인한다. (c) 기동이 실패 — 선언과 실제 행사가 어긋난 도구는 등록되지
+  않는다
 - **검증 AC**: AC1, AC5
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestGatedCallsNeverReachKubeWithoutApproval`,
-  `TestUngatedCallsProceedWithoutApproval`. 통합 `approval_gate_ac1.py`
+  `TestUngatedCallsProceedWithoutApproval`, `TestUndeclaredVerbPairFailsRegistration`. 통합 `approval_gate_ac1.py`
 
 ### 시나리오 2: 요청 본문 계약
 - **사전 조건**: gatekeeper 스텁이 요청 본문을 기록
