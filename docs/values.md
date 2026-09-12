@@ -19,8 +19,12 @@
   클러스터를 운영한다. 네임스페이스·워크로드 조회, 컨테이너 로그 확인, 파드 진단,
   롤링 재시작, 레플리카 스케일 조정을 자연어 의도만으로 수행한다. 이 가치가 지향하는
   방향은 **홈랩 운영의 마찰(명령어 암기·반복 타이핑·컨텍스트 전환)을 줄이는 것**이다.
-- **관련 도구**: `namespace_list`, `workload_list`, `workload_logs`, `pod_describe`,
-  `workload_restart`, `workload_scale`, `ping`
+  도구는 **리소스 좌표**(`apiVersion`+`kind`+`namespace`+`name`)로 대상을 지정하므로
+  종류가 늘어도 도구가 늘지 않고, **쿠버네티스 RBAC verb와 1:1**이라 도구 목록이 곧
+  권한 목록이다.
+- **관련 도구**: `resource_list`, `resource_get`, `resource_create`, `resource_update`,
+  `resource_patch`, `resource_delete`, `resource_exec`, `resource_attach`,
+  `resource_port_forward`, `resource_proxy`, `api_resources`, `ping`
 - **경계**: 쿠버네티스 API를 직접 다루는 도구만 여기 속한다. 클러스터 위에 올라간 **앱의
   기능**을 도구로 여는 것은 V5의 몫이다.
 
@@ -47,15 +51,25 @@
   - `/mcp` 엔드포인트는 인증 없이 접근할 수 없다 — 대화형 클라이언트는 OAuth 2.0
     Bearer(RS256 JWT + JWKS 검증)로, 자동화(비대화형) 클라이언트는 정적 API 키로
     인증한다. 두 방식은 병행 가능하며 최소 하나는 활성이어야 한다.
-  - 파괴적 도구는 `destructiveHint`로 명시된다 — `workload_restart`,
-    `workload_scale`, `dear_baby_reset_user`, `session_write`.
+  - 파괴적 도구는 `destructiveHint`로 명시된다 — `resource_create`, `resource_update`,
+    `resource_patch`, `resource_delete`, `resource_exec`, `resource_attach`,
+    `resource_port_forward`, `resource_proxy`, `dear_baby_reset_user`, `session_write`.
+  - **변경 동사는 사람의 사전 승인을 거친다** — `apply`·`delete`·`scale`·`exec`에 해당하는
+    도구 호출은 gatekeeper(`dlddu/gatekeeper`)의 판정이 `APPROVED`일 때만 클러스터에
+    도달한다. `destructiveHint`가 클라이언트에 대한 광고에 그치는 데 반해, 이 게이트는
+    서버 쪽에서 실행 자체를 막는다. 승인이 확인되지 않은 모든 경우(거절·만료·타임아웃·
+    통신 실패·미설정)는 거부다.
+  - **Secret은 어떤 도구로도 다루지 않는다** — `v1/Secret`은 읽기를 포함한 모든 동사에서
+    거부되며, 클러스터 RBAC에도 `secrets` 규칙을 두지 않아 도구 레이어와 apiserver가
+    2중으로 막는다.
   - 통합(k8s/GitHub/AWS/Grafana/OpenSearch/session-platform)이 미설정이어도 서버는 죽지
     않고 해당 도구만 에러를 반환한다(graceful degradation).
   - 클러스터 RBAC가 최소권한으로 제한된다 — 워크로드에 `get/list/watch/patch`만
     부여되고 `delete`·시크릿 읽기·워크로드 생성 권한이 없어, 가능한 피해 범위가
     구조적으로 제한된다.
 - **관련 도구/구성**: 전 도구 공통(인증), `internal/auth`, `k8s/rbac.yaml`,
-  도구 어노테이션(`destructiveHint`)
+  도구 어노테이션(`destructiveHint`), 승인 게이트(`internal/gatekeeper`,
+  `prd-approval-gate.md`)
 
 ### V4: 운영 지식의 축적·검색
 
@@ -92,3 +106,8 @@
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |
 | 2026-08-12 | V5(클러스터 내부 앱 기능의 도구화) 추가 — session-platform 제어면 연동 도구 3종의 근거 가치. 기존 `dear_baby_reset_user`를 V1에서 V5로 재배치(앱 상태 조작은 클러스터 운영이 아니라는 경계 확정)하고, V1에 경계 문구 추가. |
 | 2026-07-04 | V3 인증 서술 확장 — `/mcp`에 정적 API 키 인증(비대화형 자동화용)을 OAuth와 병행 추가(platform PRD AC7·AC8). 새 가치 추가 없음. |
+| 2026-09-12 | V1 도구 6종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`·`workload_restart`·`workload_scale`)을 `resource_*` 도구군으로 통합·폐기. 가치의 내용은 그대로이고 수단만 좁은 도구 여럿에서 좌표 기반 도구군으로 바뀐다. 부수 효과로 `workload_scale`·`workload_restart`가 열어 두던 무승인 변경 경로가 닫혔다. |
+| 2026-09-12 | V3 구체적 근거 2건 추가 — (1) gatekeeper 사전 승인 게이트, (2) Secret 취급. generic resource 도구군이 V1의 표면을 넓히면서 함께 세운 경계다. 새 가치 추가 없음 — 둘 다 "기본값이 안전하게"라는 V3의 구현체이므로 별도 가치로 분리하지 않았다. |
+| 2026-09-12 | V1·V3 스트림 서브리소스 4종을 도구로 분리 — `exec`·`attach`·`portforward`·`proxy`는 RBAC 에서 서로 다른 서브리소스이고 따로 부여·회수되므로 도구도 따로 둔다. 넷 다 게이트 대상이며, 프록시는 `GET` 도 게이트를 탄다(쿠버네티스 객체가 아니라 클러스터 내부의 임의 엔드포인트에 도달하므로). `nodes/proxy` 는 열지 않는다. |
+| 2026-09-12 | V3 게이트 범위 **재확대** — 앞선 이력에서 뺐던 `scale`·`restart`를 다시 게이트 안으로 넣었다. 예외를 두면 무엇이 승인 대상인지 설명할 때 verb 목록이 아니라 사연을 읽어야 하고, 그 사연은 도구가 늘 때마다 다시 쓰인다. 보증이 "되돌리기 어려운 일만"에서 **"승인 없이는 클러스터 상태가 바뀌지 않는다"**로 돌아왔다. 대가로 `AUTO_APPROVE` 유인이 커지며, 이는 `doc-tracker.md`의 수용된 위험에 기록한다. |
+| 2026-09-12 | V3 게이트 범위 조정 — `scale`·`restart`를 게이트 대상에서 빼고, Secret을 전면 배제에서 **읽기 게이트**로 바꿨다. 둘 다 같은 관찰에서 나왔다: 게이트가 너무 자주 울리면 무인 승인이 켜지고, 도구가 너무 많이 거부하면 `kubectl`로 우회한다 — 어느 쪽이든 기록이 사라진다. V3의 보증 범위가 "모든 변경"에서 "되돌리기 어려운 변경과 자격증명 읽기"로 **좁아졌음을 명시**했다. |
