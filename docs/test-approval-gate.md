@@ -11,6 +11,7 @@
 - AC7: 1승인 1실행 (PRD: approval-gate)
 - AC8: 감사 기록 (PRD: approval-gate)
 - AC9: 자동 응답 모드의 가시화 (PRD: approval-gate)
+- AC10: 승인된 읽기의 값은 응답에만 담긴다 (PRD: approval-gate)
 
 ## 픽스처
 
@@ -24,14 +25,18 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 
 ## 테스트 시나리오
 
-### 시나리오 1: 승인 없이는 클러스터에 닿지 않는다
+### 시나리오 1: 게이트 대상만 막히고 나머지는 지나간다
 - **사전 조건**: 가짜 k8s 서비스(호출 카운터 포함), gatekeeper는 `PENDING`을 유지
-- **실행 단계**: `resource_apply`, `resource_delete`, `resource_scale`, `resource_restart`,
-  `resource_exec`을 각각 호출하고 `GATEKEEPER_TIMEOUT_SECONDS` 경과까지 대기
-- **기대 결과**: 다섯 호출 모두 에러 반환. 가짜 k8s 서비스 호출 카운트 **0**
+- **실행 단계**: (a) `resource_apply`, `resource_delete`, `resource_exec`, 그리고
+  `kind=Secret`으로 `resource_get`·`resource_describe`를 각각 호출하고
+  `GATEKEEPER_TIMEOUT_SECONDS` 경과까지 대기. (b) 같은 조건에서 `resource_scale`,
+  `resource_restart`, `kind=ConfigMap`으로 `resource_get`을 호출
+- **기대 결과**: (a) 다섯 호출 모두 에러 반환, 가짜 k8s 서비스 호출 카운트 **0**.
+  (b) 세 호출 모두 **정상 수행**되고 k8s 서비스에 도달 — 게이트가 필요 이상으로 넓지 않음을
+  같은 시나리오에서 확인한다
 - **검증 AC**: AC1, AC5
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestGatedVerbsNeverReachKubeWithoutApproval`.
-  통합 `approval_gate_ac1.py`
+- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestGatedCallsNeverReachKubeWithoutApproval`,
+  `TestUngatedCallsProceedWithoutApproval`. 통합 `approval_gate_ac1.py`
 
 ### 시나리오 2: 요청 본문 계약
 - **사전 조건**: gatekeeper 스텁이 요청 본문을 기록
@@ -45,10 +50,11 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 
 ### 시나리오 3: context가 판정을 가능하게 한다
 - **사전 조건**: 동일
-- **실행 단계**: 다섯 동사 각각을 호출하고 생성된 `context` 문자열을 수집
+- **실행 단계**: 게이트 대상 다섯 경로 각각을 호출하고 생성된 `context` 문자열을 수집
 - **기대 결과**: 모든 `context`에 도구 이름·`apiVersion`/`kind`/`namespace`/`name`·요청 시각이
-  포함. `scale`은 현재→목표 레플리카, `restart`는 교체될 파드 수, `delete`는
-  `gracePeriodSeconds`, `apply`는 생성/갱신 구분, `exec`는 **명령 인자 전문**이 축약 없이 포함.
+  포함. `delete`는 `gracePeriodSeconds`, `apply`는 생성/갱신 구분, `exec`는 **명령 인자
+  전문**이 축약 없이 포함. 읽기 게이트는 `get`(값 반환)과 `describe`(키 이름·바이트 수만)의
+  구분이 문장으로 드러남.
   좌표를 해석할 수 없는 호출은 승인 요청을 만들지 않고 거부
 - **검증 AC**: AC3
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestContextIncludesVerbSpecificDetail`,
@@ -71,25 +77,30 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `externalId` 충돌(409), 5xx, 연결 실패, `GATEKEEPER_BASE_URL` 미설정,
   `GATEKEEPER_API_KEY` 미설정
 - **기대 결과**: 8가지 모두 도구 에러. 모든 경우 k8s 호출 카운트 0. 같은 조건에서
-  `resource_list`·`resource_get`은 정상 동작(게이트 미설정이 읽기를 막지 않음)
+  `resource_list`·`resource_scale`·`resource_restart`와 비게이트 종류의 `resource_get`은
+  정상 동작(gatekeeper 장애가 일상 운영을 멈추지 않음)
 - **검증 AC**: AC5
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestFailClosedPaths`(표 기반 8 케이스),
-  `TestReadToolsUnaffectedByGatekeeperOutage`. 통합 `approval_gate_ac5.py`
+  `TestUngatedToolsUnaffectedByGatekeeperOutage`. 통합 `approval_gate_ac5.py`
 
 ### 시나리오 6: 승인한 상태와 실행할 상태가 같아야 한다
 - **사전 조건**: kind 실물 gatekeeper + 테스트 Deployment
-- **실행 단계**: `resource_scale` 호출로 승인 요청 생성 → 승인 전에 외부에서 같은
-  Deployment를 수정(`resourceVersion` 변경) → 승인
-- **기대 결과**: 실행이 거부되고 재승인이 필요함을 알림. 레플리카는 변경되지 않음.
+- **실행 단계**: `resource_delete` 호출로 승인 요청 생성 → 승인 전에 외부에서 같은
+  대상을 수정(`resourceVersion` 변경) → 승인. 같은 절차를 `kind=Secret`의
+  `resource_get`으로 반복(승인 전에 Secret 값 교체)
+- **기대 결과**: 두 경우 모두 실행이 거부되고 재승인이 필요함을 알림. 대상은 변경되지 않고,
+  Secret은 **반환되지 않음** — 운영자가 승인한 것과 다른 값을 내주지 않는다.
   `resource_exec`은 대상 파드를 삭제·재생성한 뒤 승인하면 `uid` 불일치로 거부
 - **검증 AC**: AC6
-- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(scale·exec 각 1케이스)
+- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(delete·Secret get·exec 각 1케이스)
 
 ### 시나리오 7: 승인은 한 번만 쓰인다
 - **사전 조건**: 동일
-- **실행 단계**: 승인을 받아 실행한 뒤, 같은 승인 id로 실행을 재시도
+- **실행 단계**: 승인을 받아 실행한 뒤, 같은 승인 id로 실행을 재시도. 이어서 방금 읽은
+  Secret을 `resource_get`으로 한 번 더 호출
 - **기대 결과**: 두 번째 실행 거부. 실행 실패 후 재시도 시에도 새 승인 요청이 생성됨
-  (기존 `externalId` 재사용 없음)
+  (기존 `externalId` 재사용 없음). 같은 Secret 재조회도 **새 승인 요청**을 만듦 — 한 번
+  승인이 그 대화 내내 유효해지지 않는다
 - **검증 AC**: AC7
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestApprovalIsConsumedOnce`.
   통합 `approval_gate_ac7.py`
@@ -109,3 +120,17 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `autoApproved=true`가 남음. `AUTO_REJECT` 사용자로는 실행이 거부됨
 - **검증 AC**: AC9
 - **자동화**: (미작성) — 계획: 통합 `approval_gate_ac9.py`(AUTO_APPROVE·AUTO_REJECT 각 1케이스)
+
+### 시나리오 10: 승인된 값이 응답 밖으로 새지 않는다
+- **사전 조건**: kind 실물 gatekeeper, 값이 고유 토큰인 Secret 1개
+  (예: `data.token` = 검색 가능한 난수 문자열)
+- **실행 단계**: `kind=Secret`으로 `resource_get` 호출 → 승인 요청 본문을 수집 →
+  승인 후 응답 수집 → 서버 로그 수집. 이어서 승인 후 실행이 실패하도록 대상을 지운 뒤
+  같은 절차를 반복해 에러 메시지를 수집. 마지막으로 `kind=Secret`으로 `resource_list` 호출
+- **기대 결과**: 그 난수 문자열이 **승인 요청 `context`에 없고**, 서버 로그에 없고,
+  에러 메시지에 없고, `resource_list` 응답에도 없다. 오직 승인 후 정상 `resource_get`
+  응답에만 등장한다. `resource_describe`는 승인 후에도 키 이름과 바이트 수만 반환하고
+  그 문자열을 담지 않는다
+- **검증 AC**: AC10
+- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestSecretValueNeverLeavesResponse`
+  (context·로그·에러 3표면 표 기반). 통합 `approval_gate_ac10.py`

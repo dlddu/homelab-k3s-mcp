@@ -12,22 +12,23 @@ Deployment/StatefulSet/DaemonSet과 Pod만 알았기 때문에 Service·Ingress�
 
 - **V1: 자연어로 클러스터 운영** — `kubectl`이 다루는 리소스 표면 대부분을 자연어로 연다.
   6종이 덮던 범위는 전부 유지하면서(AC1·AC5·AC6·AC9·AC10), 종류 제약만 걷어낸다.
-- **V3: 안전한 운영(Safe-by-default)** — 표면이 넓어진 만큼 두 개의 경계를 함께 세운다.
-  Secret은 어떤 동사로도 닿지 않고(AC11·AC12), 변경 동사는 사람 승인을 거친다(AC13).
+- **V3: 안전한 운영(Safe-by-default)** — 표면이 넓어진 만큼 경계를 함께 세운다.
+  Secret은 **읽는 것조차** 사람 승인을 거치고(AC11), 그 값이 응답 밖으로 새지 않으며(AC12),
+  되돌리기 어려운 변경도 승인을 거친다(AC13).
 
 ## 도구 개요
 
 | 도구 | 동사 | 게이트 | 대체하는 도구 |
 |------|------|--------|----------------|
 | `resource_list` | list | — | `namespace_list`, `workload_list` |
-| `resource_get` | get | — | — |
+| `resource_get` | get | 읽기 게이트 종류만 | — |
 | `resource_logs` | logs | — | `workload_logs` |
-| `resource_describe` | describe | — | `pod_describe` |
+| `resource_describe` | describe | 읽기 게이트 종류만 | `pod_describe` |
 | `api_resources` | get | — | — |
 | `resource_apply` | apply | O | — |
 | `resource_delete` | delete | O | — |
-| `resource_scale` | scale | O | `workload_scale` |
-| `resource_restart` | restart | O | `workload_restart` |
+| `resource_scale` | scale | — | `workload_scale` |
+| `resource_restart` | restart | — | `workload_restart` |
 | `resource_exec` | exec | O | — |
 
 어노테이션: 읽기 5종은 `readOnlyHint=true`, `destructiveHint=false`.
@@ -88,13 +89,19 @@ Deployment/StatefulSet/DaemonSet과 Pod만 알았기 때문에 Service·Ingress�
   다중 컨테이너 파드에서 `container` 누락이 거부된다.
 
 ### AC6: 진단 스냅샷
-- **설명**: `resource_describe`는 대상 파드의 메타데이터, 컨테이너 상태(state·reason·restart
-  count·exit code), conditions, 최근 이벤트를 **한 응답에** 담아 반환한다. 이벤트 조회 권한이
-  없으면 빈 이벤트 배열로 동작하며 실패하지 않는다(best-effort). `pod_describe`의 성질을
-  그대로 유지한다.
+- **설명**: `resource_describe`는 대상 객체의 요약과 최근 이벤트를 **한 응답에** 담아
+  반환한다. 파드가 대상이면 메타데이터, 컨테이너 상태(state·reason·restart count·exit code),
+  conditions를 담아 `pod_describe`의 성질을 그대로 유지한다. 이벤트 조회 권한이 없으면 빈
+  이벤트 배열로 동작하며 실패하지 않는다(best-effort).
+
+  파드 외의 종류도 대상이 된다. **Secret이 대상이면 키 이름과 각 값의 바이트 수만 반환하고
+  값 자체는 담지 않는다**(`kubectl describe secret`과 같은 동작). 승인을 받아도 이 도구는
+  값을 내주지 않는다 — 값이 필요하면 `resource_get`을 따로 승인받는다. 무엇이 들어 있는지
+  확인하는 일과 값을 꺼내는 일을 다른 승인으로 가르기 위해서다.
 - **달성 가치**: V1, V3
-- **검증 방법**: 스냅샷에 위 필드가 모두 담긴다. 이벤트 권한이 없는 상황에서도 스냅샷이
-  (빈 이벤트로) 정상 반환된다.
+- **검증 방법**: 파드 스냅샷에 위 필드가 모두 담긴다. 이벤트 권한이 없는 상황에서도 스냅샷이
+  (빈 이벤트로) 정상 반환된다. Secret 대상에서는 키 이름과 바이트 수가 나오고 값은 나오지
+  않는다.
 
 ### AC7: 대상 해석
 - **설명**: `resource_logs`와 `resource_describe`는 `name` / `labelSelector` /
@@ -131,46 +138,62 @@ Deployment/StatefulSet/DaemonSet과 Pod만 알았기 때문에 Service·Ingress�
 - **검증 방법**: 재시작 후 어노테이션 타임스탬프가 갱신되고 파드가 교체되며,
   `spec.replicas`와 나머지 스펙이 호출 전과 동일하다.
 
-### AC11: Secret 전면 배제
-- **설명**: `v1/Secret`은 **모든 동사에서** 거부한다. 읽기(`resource_list`, `resource_get`)도
-  예외가 아니다. 거부는 도구 레이어에서 명시적 에러로 이뤄지며, RBAC에
-  `secrets` 규칙을 추가하지 않는 것으로 2중화한다. 도구 레이어 검사가 뚫려도 apiserver가
-  403으로 막고, RBAC가 잘못 넓어져도 도구가 막는다.
+### AC11: Secret 읽기는 승인 게이트를 거친다
+- **설명**: `v1/Secret`을 비롯한 **읽기 게이트 종류**(`RESOURCE_READ_GATED_KINDS`, 기본
+  `v1/Secret`)를 대상으로 하는 `resource_get`·`resource_describe`는
+  `prd-approval-gate`의 게이트를 통과해야만 실행된다. 미승인 시 쿠버네티스 API를 호출하지
+  않는다.
 
-  도구 레이어에서 먼저 막는 이유는 에러 품질 때문이다. 403만 돌려주면 어시스턴트가 권한
-  문제로 오인해 다른 경로로 재시도하지만, "Secret은 이 서버가 다루지 않는다"는 명시적
-  거부는 재시도를 끝낸다.
+  이는 이전 설계(모든 동사에서 Secret 거부)를 대체한다. 거부는 안전하지만 운영자가 결국
+  `kubectl`로 돌아가게 만들어 도구를 우회하게 했다. 승인을 걸면 같은 일을 하면서 **누가
+  언제 무엇을 읽었는지가 남는다**(`prd-approval-gate` AC8).
+
+  **대가로 방어층이 하나 줄어든다.** 이 AC를 구현하려면 `k8s/rbac.yaml`이 `secrets`에
+  `get`을 부여해야 하므로, 이전처럼 "도구가 뚫려도 apiserver가 403으로 막는" 2중화가
+  성립하지 않는다. 도구 레이어의 게이트 판정이 유일한 경계다. 그래서 AC1의 "디스패처
+  단계에서 강제"와 `prd-approval-gate` AC5의 fail-closed가 이 AC의 전제 조건이다.
 - **달성 가치**: V3
-- **검증 방법**: `kind=Secret`에 대한 list/get/apply/delete가 모두 거부되고, 거부 사유가
-  권한 부족이 아니라 정책상 배제임을 밝힌다. `k8s/rbac.yaml`에 `secrets` 규칙이 없다.
+- **검증 방법**: `kind=Secret`의 `resource_get`·`resource_describe`가 미승인 시 거부되고
+  k8s 호출 카운트가 0이다. 승인 후에는 `get`이 값을, `describe`가 키 이름과 바이트 수를
+  반환한다. `k8s/rbac.yaml`의 `secrets` 규칙이 `get`·`list`로만 한정되고
+  `create`·`update`·`patch`·`delete`를 포함하지 않는다.
 
-### AC12: Secret 우회 경로 차단
-- **설명**: 종류 이름만 막으면 값은 다른 길로 새어나온다. 다음을 함께 막는다.
-  - **`resource_apply`의 Secret 생성/갱신** — 매니페스트의 `kind`가 `Secret`이면 거부.
-    여러 문서가 담긴 매니페스트는 **하나라도** Secret이면 전체를 거부한다.
+### AC12: 값이 새는 경로 봉쇄
+- **설명**: 읽기를 허용한 이상 값이 **승인 없이 보이는 경로**와 **응답 밖에 남는 경로**를
+  함께 막아야 한다.
+  - **`resource_list`는 값을 담지 않는다** — 목록은 AC2의 Table 표현으로만 응답한다.
+    Secret의 Table은 apiserver가 서버 사이드로 만들어 `NAME`/`TYPE`/`DATA`/`AGE`만 담으므로
+    값이 애초에 전송되지 않는다. 원시 목록으로 떨어지는 폴백 경로를 두지 않는다 — 그 폴백이
+    곧 무승인 일괄 열람이 된다.
   - **`resource_exec`을 통한 마운트 시크릿 열람** — exec는 컨테이너 파일시스템에 닿으므로
-    `/var/run/secrets/**`에 마운트된 값을 읽을 수 있다. RBAC로는 막을 수 없는 경로이며,
-    이 위험은 승인 게이트가 담당한다. 그래서 AC13의 `exec` 게이트는 선택이 아니고,
-    게이트의 `context`에 명령 전문이 반드시 들어가야 한다(`prd-approval-gate` AC3).
-  - **Secret을 품은 사용자 정의 리소스** — 평문 자격증명을 `spec`에 두는 CRD가 있을 수 있다.
-    종류 단위 차단 목록을 설정으로 확장할 수 있게 한다(`RESOURCE_DENIED_KINDS`).
+    `/var/run/secrets/**`를 읽을 수 있다. 이 경로는 `exec` 동사 게이트가 담당하며, 게이트
+    `context`에 명령 전문이 반드시 들어가야 한다(`prd-approval-gate` AC3).
+  - **승인된 값의 사후 확산** — `context`·감사 로그·에러 메시지 어디에도 값을 남기지
+    않는다(`prd-approval-gate` AC10).
+  - **Secret 쓰기** — `resource_apply`·`resource_delete`는 종류와 무관하게 이미 게이트
+    대상이므로 별도 규칙이 필요 없다. 다만 `k8s/rbac.yaml`이 `secrets`에 쓰기 verb를
+    주지 않으므로 Secret 생성·수정·삭제는 AC14의 "권한 밖" 에러로 떨어진다.
 - **달성 가치**: V3
-- **검증 방법**: Secret이 섞인 다중 문서 매니페스트가 통째로 거부된다. `exec` 호출이 게이트
-  없이 실행되지 않는다. `RESOURCE_DENIED_KINDS`에 추가한 종류가 모든 동사에서 거부된다.
+- **검증 방법**: `kind=Secret`의 `resource_list`가 승인 없이 동작하되 값을 담지 않는다.
+  원시 목록 폴백 경로가 코드에 존재하지 않는다. `exec` 호출이 게이트 없이 실행되지 않는다.
 
-### AC13: 변경 동사는 승인 게이트 경유
-- **설명**: `resource_apply`·`resource_delete`·`resource_scale`·`resource_restart`·
-  `resource_exec`은 `prd-approval-gate`가 정의한 게이트를 통과해야만 실행된다. 게이트
-  미통과 시 쿠버네티스 API를 호출하지 않는다.
+### AC13: 되돌리기 어려운 변경은 승인 게이트 경유
+- **설명**: `resource_apply`·`resource_delete`·`resource_exec`은 `prd-approval-gate`가
+  정의한 게이트를 통과해야만 실행된다. 게이트 미통과 시 쿠버네티스 API를 호출하지 않는다.
 
-  폐기되는 `workload_scale`·`workload_restart`는 게이트 없이 같은 변경을 할 수 있는
-  우회로였다. 6종 폐기로 그 우회로가 닫힌다.
+  `resource_scale`·`resource_restart`는 **게이트를 타지 않는다**. 가역적 조작이고 가장 자주
+  쓰는 동작이라, 여기에 승인을 걸면 운영자가 `AUTO_APPROVE`를 켜 게이트 전체가 무력화된다
+  (근거는 `prd-approval-gate`의 "게이트 대상이 아닌 것과 그 이유"). 두 도구는
+  `destructiveHint=true`를 유지하지만 실행을 막지는 않으므로, **승인 없이 서비스를 멈출 수
+  있다**는 점이 이 설계의 알려진 대가다.
 - **달성 가치**: V3
-- **검증 방법**: `prd-approval-gate` AC1·AC5의 검증을 이 다섯 도구 각각에 대해 수행한다.
+- **검증 방법**: `prd-approval-gate` AC1·AC5의 검증을 이 세 도구에 대해 수행한다.
+  같은 조건에서 `resource_scale`·`resource_restart`가 승인 없이 정상 동작한다.
 
 ### AC14: 권한 경계의 정직한 보고
 - **설명**: RBAC가 허용하지 않는 조합(예: 이 서버에 부여되지 않은 종류의 변경)은 apiserver의
   403을 그대로 흘리지 않고, 이 서버에 부여된 권한 밖임을 밝히는 에러로 변환한다. 부여된
-  권한의 범위는 `k8s/rbac.yaml`이 단일 출처다.
+  권한의 범위는 `k8s/rbac.yaml`이 단일 출처다. Secret에 쓰기 verb를 주지 않는 것도 여기서
+  강제되며(AC12), 그 결과 Secret 생성·수정·삭제 시도는 이 에러로 떨어진다.
 - **달성 가치**: V3
 - **검증 방법**: 권한 밖 호출이 재시도를 유도하지 않는 명시적 에러를 반환한다.
