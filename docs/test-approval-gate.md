@@ -51,11 +51,14 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 
 ### 시나리오 3: context가 판정을 가능하게 한다
 - **사전 조건**: 동일
-- **실행 단계**: 게이트 대상 다섯 경로 각각을 호출하고 생성된 `context` 문자열을 수집
+- **실행 단계**: 게이트 대상 verb 각각을 호출하고 생성된 `context` 문자열을 수집
 - **기대 결과**: 모든 `context`에 도구 이름·`apiVersion`/`kind`/`namespace`/`name`·요청 시각이
-  포함. `delete`는 `gracePeriodSeconds`, `apply`는 생성/갱신 구분, `exec`는 **명령 인자
-  전문**이 축약 없이 포함. 읽기 게이트는 `get`(값 반환)과 `describe`(키 이름·바이트 수만)의
-  구분이 문장으로 드러남.
+  포함. `create`는 주요 스펙 요약, `update`는 바뀌는 필드(스케일이면 현재→목표 레플리카),
+  `patch`는 `patchType`과 **패치 본문 전문**, `delete`는 `gracePeriodSeconds`, `exec`는
+  **명령 인자 전문**, `attach`는 `readSeconds`와 `stdin` 전문, `port_forward`는 포트와
+  **페이로드 전문**, `proxy`는 메서드·경로·**본문 전문**이 축약 없이 포함. 재시작 어노테이션 패치의 `context`에도 본문이 그대로
+  담겨 운영자가 "이건 재시작이구나"를 **스스로** 읽어낼 수 있음 — 서버가 대신 판단해 요약하지
+  않음.
   좌표를 해석할 수 없는 호출은 승인 요청을 만들지 않고 거부
 - **검증 AC**: AC3
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestContextIncludesVerbSpecificDetail`,
@@ -78,22 +81,22 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `externalId` 충돌(409), 5xx, 연결 실패, `GATEKEEPER_BASE_URL` 미설정,
   `GATEKEEPER_API_KEY` 미설정
 - **기대 결과**: 8가지 모두 도구 에러. 모든 경우 k8s 호출 카운트 0. 같은 조건에서
-  `resource_list`·`resource_scale`·`resource_restart`와 비게이트 종류의 `resource_get`은
-  정상 동작(gatekeeper 장애가 일상 운영을 멈추지 않음)
+  `resource_list`와 비게이트 종류의 `resource_get`은 정상 동작. 반대로 **변경은 전부
+  멈춘다** — 승인 경로가 죽었는데 변경이 나가면 게이트가 있으나 마나이므로 의도된 동작이다
 - **검증 AC**: AC5
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestFailClosedPaths`(표 기반 8 케이스),
-  `TestUngatedToolsUnaffectedByGatekeeperOutage`. 통합 `approval_gate_ac5.py`
+  `TestReadsSurviveGatekeeperOutage`, `TestAllWritesStopOnGatekeeperOutage`. 통합 `approval_gate_ac5.py`
 
 ### 시나리오 6: 승인한 상태와 실행할 상태가 같아야 한다
 - **사전 조건**: kind 실물 gatekeeper + 테스트 Deployment
-- **실행 단계**: `resource_delete` 호출로 승인 요청 생성 → 승인 전에 외부에서 같은
-  대상을 수정(`resourceVersion` 변경) → 승인. 같은 절차를 `kind=Secret`의
-  `resource_get`으로 반복(승인 전에 Secret 값 교체)
+- **실행 단계**: `resource_patch` 호출로 승인 요청 생성 → 승인 전에 외부에서 같은
+  대상을 수정(`resourceVersion` 변경) → 승인. 같은 절차를 `resource_update`
+  (`subresource=scale`)와 `kind=Secret`의 `resource_get`으로 반복
 - **기대 결과**: 두 경우 모두 실행이 거부되고 재승인이 필요함을 알림. 대상은 변경되지 않고,
   Secret은 **반환되지 않음** — 운영자가 승인한 것과 다른 값을 내주지 않는다.
   `resource_exec`은 대상 파드를 삭제·재생성한 뒤 승인하면 `uid` 불일치로 거부
 - **검증 AC**: AC6
-- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(delete·Secret get·exec 각 1케이스)
+- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(patch·scale·Secret get·exec 각 1케이스)
 
 ### 시나리오 7: 승인은 한 번만 쓰인다
 - **사전 조건**: 동일
