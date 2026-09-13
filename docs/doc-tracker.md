@@ -134,7 +134,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 쌍이 분류력을 잃음 | `nodes/proxy` | 경로 제한 없이 열면서 `create nodes/proxy` 하나가 `/healthz` POST 와 임의 파드 exec 을 동시에 뜻하게 됐다. **`(verb, resource)` 쌍이 호출의 권능을 한정하지 못한다** — 한정하는 것은 경로이고 경로는 `context` 에만 있다. RBAC 의 네임스페이스 범위도 파드 수준 조작에는 적용되지 않으며, 민감 종류 게이트도 kubelet `/exec` 경유 읽기는 잡지 못한다(쌍이 `create nodes/proxy` 이므로). | ⚠️ **수용(2026-09-12)** — 경로 허용목록을 두면 「이 경로는 봐준다」는 분류기가 생기고 그 분류기가 곧 우회 경로가 된다. 대신 게이트가 경로를 숨기지 않고 보여 준다. 고권한 kubelet 경로는 `context` 에 **표시**하되 막지 않는다. **그 결과 `context` 의 품질이 곧 보안이며, AC3 가 이 설계에서 가장 무거운 AC 다** |
 | RBAC 백스톱 소멸 | 전체 | `watch`·`deletecollection`·`attach`·`portforward`·`proxy`(`Node` 포함)·`secrets` 쓰기가 차례로 도구가 되면서 **금지 목록이 비었다**. RBAC 가 도구 표와 정확히 같아진다는 것은 곧 **RBAC 가 더는 백스톱이 아니라는 뜻**이다 — 게이트에 결함이 생기면 apiserver 가 막아 줄 것이 없다. | ⚠️ **수용(2026-09-12)** — 완화는 AC1(디스패처 강제)·AC5(fail-closed)·AC11(게이트 권한 선언)이며, 이 셋이 이제 구조 전체를 지탱한다. 구현 시 이 경로들의 테스트 밀도를 다른 곳보다 높게 잡을 것 |
 | 게이트 우회 가능 | `dear_baby_reset_user` | `create` on `pods/exec` 을 행사하므로 게이트 정의에 해당하지만 편입하지 않았다. V5 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user` 의 AC 를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12) |
-| 문서 없는 실행 코드 | 폐기된 6종 | 이 PR 은 **문서만** 폐기했고 Go 구현은 그대로다. 6종이 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **구현 제거 선행 대기** (2026-09-12) |
+| 문서 없는 실행 코드 | 폐기된 6종 중 **남은 2종** (`workload_restart`·`workload_scale`) | #72 는 **문서만** 폐기했고 Go 구현은 그대로였다. 2026-09-13 에 읽기 전용 4종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 대체재 `resource_list`·`resource_get` 과 함께 제거됐다. 남은 둘은 **상태를 바꾸는** 도구라 대체재가 `resource_patch`·`resource_update`(둘 다 게이트 대상)이고, 그것이 설 때까지 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **쓰기 축 구현 선행 대기** (2026-09-13 갱신) |
 
 `session_write` 는 게이트 우회 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 권한을
 행사하지 않으므로 게이트의 정의 범위 밖이고, 그 도구의 안전장치는 `prd-session-write` 가 맡는다.
@@ -151,6 +151,26 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > `dear_baby_reset_user`는 코드에 `Exemptions()`로 등재돼 기동 로그에 매번 이름이 찍힌다
 > (각각 위 "문서 없는 실행 코드"·"게이트 우회 가능" 미결 행에 대응한다). AC3은 게이트 대상 호출이
 > 아직 없어 verb별 상세를 겨룰 대상이 없고, AC6·AC10·AC11은 미착수다.
+
+> **2026-09-13 — 1번의 읽기 절반이 착지했다.** `api_resources`·`resource_list`·`resource_get`이
+> `internal/mcp`에 등록되고, 그 셋이 흡수하는 **읽기 전용 폐기 도구 4종**
+> (`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 등록·디스패치·핸들러·
+> `k8s.Service`에서 사라졌다. 도구 표면 17 → 16. 구현된 AC는
+> `prd-resource-generic` **AC1·AC2·AC3·AC4·AC5·AC18·AC20**이고, **AC16은 읽기 절반만**
+> (민감 종류의 `get`이 게이트를 탄다 — 쓰기 verb는 아직 도구가 없다), **AC17도 절반만**
+> (`resource_list`가 Table 전용이라 값이 전송되지 않는다; 원시 목록 폴백 경로는 두지 않았다)이다.
+> 2번은 같은 커밋에서 닫았다(`EXPECTED_TOOLS` 4종 제거 / 3종 추가).
+> 3번은 **읽기 두 verb에 한해** 닫았다 — `get`·`list`를 종류 제약 없이 열고, `watch`는
+> 여기서 사라졌다(죽은 권한이었다). **쓰기 verb는 한 줄도 부여하지 않았으므로 순서 제약은
+> 그대로 유지된다.** 4번은 손대지 않았다(자매 모델 `scenario-e2e` 소관).
+>
+> **남은 것**: `resource_*`의 쓰기 축 8종(`create`·`update`·`patch`·`delete`·
+> `delete_collection`·`exec`·`attach`·`port_forward`·`proxy`)과 `resource_watch`, 그리고
+> 그것들이 함께 닫을 `workload_restart`·`workload_scale` 제거. AC6·AC7~AC15·AC19와
+> `prd-approval-gate` AC3·AC6·AC10·AC11도 미착수 그대로다. **게이트의 쌍 선언은 이 슬라이스에서
+> 런타임 해석으로 넓어졌다** — 좌표가 인자인 도구는 정적 표로 기술할 수 없어, 호출의 인자에서
+> 쌍을 만들어 낸다. 그 해석은 discovery를 부르지 않는다(AC16이 요구하는 「미승인 시 k8s 호출 0」이
+> 깨지므로).
 
 1. `internal/mcp`에서 6종 도구 등록·디스패치를 제거하고 `resource_*` 13종
    (`list`·`get`·`watch`·`create`·`update`·`patch`·`delete`·`delete_collection`·

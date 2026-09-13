@@ -46,12 +46,11 @@ from mcp.client.streamable_http import streamablehttp_client
 # deployment as the shared precondition of the cases that drive those tools.
 EXPECTED_TOOLS = {
     "ping",
-    "namespace_list",
-    "workload_list",
+    "api_resources",
+    "resource_list",
+    "resource_get",
     "workload_restart",
     "workload_scale",
-    "workload_logs",
-    "pod_describe",
     "dear_baby_reset_user",
     "grafana_token",
     "github_app_installation_token",

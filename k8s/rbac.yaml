@@ -7,56 +7,45 @@ metadata:
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: homelab
 rules:
+  # resource_list and resource_get take the kind as an argument, so a
+  # workload-shaped grant would drop most kinds into prd-resource-generic AC18's
+  # "outside this server's grant". What is opened here is the read half and only
+  # the read half: get and list, no write verb and no watch (resource_watch is
+  # not implemented, and an unexercised grant is attack surface with no user).
+  #
+  # This includes secrets, which doc-tracker.md carries as an accepted risk
+  # ("방어층 축소") on two stated preconditions — dispatcher-level enforcement
+  # (prd-approval-gate AC1) and fail-closed refusal (AC5) — both of which landed
+  # in PR #73. get on a sensitive kind is refused before the apiserver is
+  # touched unless a human approves it (AC16); list stays ungated because the
+  # table is rendered server-side and carries no values (AC17). Write verbs on
+  # secrets are deliberately still absent: the ordering constraint is gate
+  # first, write grant later, and the write half of the gate has no tool yet.
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs:
+      - get
+      - list
+  # workload_restart and workload_scale are retired in the documents and survive
+  # in code pending removal (doc-tracker.md 「문서 없는 실행 코드」). Their patch
+  # goes when they do; resource_patch is what replaces it.
   - apiGroups: ["apps"]
     resources:
       - deployments
       - statefulsets
       - daemonsets
     verbs:
-      - get
-      - list
-      - watch
       - patch
-  # dear_baby_reset_user execs the bundled /reset-user CLI
-  # inside a running backend pod. List is needed to resolve the label
-  # selector to a pod name; pods/exec is the subresource the apiserver
-  # gates the exec stream on. client-go's SPDY executor opens the stream
-  # with POST (the `create` verb); `get` is retained so a WebSocket
-  # executor fallback keeps working without an RBAC change.
-  # namespace_list enumerates namespaces in the cluster.
-  - apiGroups: [""]
-    resources:
-      - namespaces
-    verbs:
-      - get
-      - list
-  - apiGroups: [""]
-    resources:
-      - pods
-    verbs:
-      - get
-      - list
+  # dear_baby_reset_user execs the bundled /reset-user CLI inside a running
+  # backend pod. client-go's SPDY executor opens the stream with POST (the
+  # `create` verb); `get` is retained so a WebSocket executor fallback keeps
+  # working without an RBAC change.
   - apiGroups: [""]
     resources:
       - pods/exec
     verbs:
       - get
       - create
-  # workload_logs streams container logs from a pod backing a workload.
-  - apiGroups: [""]
-    resources:
-      - pods/log
-    verbs:
-      - get
-  # pod_describe surfaces events alongside the pod snapshot. Listing events
-  # in the pod's namespace is best-effort; describing still works without
-  # this rule but with an empty events array.
-  - apiGroups: [""]
-    resources:
-      - events
-    verbs:
-      - get
-      - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding

@@ -4,9 +4,13 @@ import "context"
 
 // Service is the kubernetes-facing surface the MCP tools depend on.
 type Service interface {
-	ListNamespaces(ctx context.Context) ([]any, error)
+	// APIResources reports the kinds the cluster actually serves, which is what
+	// the other two methods resolve a coordinate against.
+	APIResources(ctx context.Context) ([]APIResource, error)
 
-	ListWorkloads(ctx context.Context, kind WorkloadKind, namespace *string) ([]any, error)
+	ListResources(ctx context.Context, query ListQuery) (*ListResult, error)
+
+	GetResource(ctx context.Context, ref ResourceRef) (*ResourceResult, error)
 
 	RolloutRestart(ctx context.Context, kind WorkloadKind, namespace, name string) (string, error)
 
@@ -16,15 +20,6 @@ type Service interface {
 	ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*ExecOutcome, error)
 
 	ScaleWorkload(ctx context.Context, kind WorkloadKind, namespace, name string, replicas int32) (int32, error)
-
-	// WorkloadLogs fetches container logs from a pod backing the given workload.
-	// It resolves the workload's pod selector and pulls logs from the first
-	// Running pod (falling back to any matching pod if none is Running, so
-	// Previous still works after a crash loop).
-	WorkloadLogs(ctx context.Context, kind WorkloadKind, namespace, name string, opts LogOptions) (*LogResult, error)
-
-	// DescribePod produces a kubectl-describe-style snapshot for a single pod.
-	DescribePod(ctx context.Context, namespace string, target PodTarget) (*PodDescription, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -40,11 +35,15 @@ func NewUnavailable(reason string) *Unavailable {
 	return &Unavailable{reason: reason}
 }
 
-func (u *Unavailable) ListNamespaces(context.Context) ([]any, error) {
+func (u *Unavailable) APIResources(context.Context) ([]APIResource, error) {
 	return nil, unavailableErr(u.reason)
 }
 
-func (u *Unavailable) ListWorkloads(context.Context, WorkloadKind, *string) ([]any, error) {
+func (u *Unavailable) ListResources(context.Context, ListQuery) (*ListResult, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) GetResource(context.Context, ResourceRef) (*ResourceResult, error) {
 	return nil, unavailableErr(u.reason)
 }
 
@@ -58,12 +57,4 @@ func (u *Unavailable) ExecInPod(context.Context, string, string, *string, []stri
 
 func (u *Unavailable) ScaleWorkload(context.Context, WorkloadKind, string, string, int32) (int32, error) {
 	return 0, unavailableErr(u.reason)
-}
-
-func (u *Unavailable) WorkloadLogs(context.Context, WorkloadKind, string, string, LogOptions) (*LogResult, error) {
-	return nil, unavailableErr(u.reason)
-}
-
-func (u *Unavailable) DescribePod(context.Context, string, PodTarget) (*PodDescription, error) {
-	return nil, unavailableErr(u.reason)
 }
