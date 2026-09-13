@@ -40,7 +40,7 @@ spec:
     spec:
       containers:
         - name: minio
-          image: minio/minio:latest
+          image: pgsty/silo:RELEASE.2026-09-03T13-18-01Z@sha256:b616a0cf8cb281e7e6bb3c9b1fb53875b4016a2878223925541c18f82d6c5ca3
           args: ["server", "/data"]
           env:
             - name: MINIO_ROOT_USER
@@ -104,7 +104,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: seed
-          image: minio/mc:latest
+          image: pgsty/mc:RELEASE.2026-09-13T00-00-00Z@sha256:aa5cc1401b3e1ab482d215d5717e9e69b4f14970a3656f330ed20a549fe19020
           command: ["/bin/sh", "-c"]
           args:
             - |
