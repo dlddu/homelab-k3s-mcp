@@ -7,19 +7,21 @@
 - AC3: 목록 절단과 이어보기 (PRD: resource-generic)
 - AC4: 단건 조회와 잡음 제거 (PRD: resource-generic)
 - AC5: 서브리소스 조회 (PRD: resource-generic)
-- AC6: 생성 (PRD: resource-generic)
-- AC7: 전체 교체 (PRD: resource-generic)
-- AC8: 부분 수정 (PRD: resource-generic)
-- AC9: 삭제 (PRD: resource-generic)
-- AC10: 컨테이너 안에서 명령 실행 (PRD: resource-generic)
-- AC11: 실행 중 컨테이너의 stdio에 접속 (PRD: resource-generic)
-- AC12: 포트 포워드 (PRD: resource-generic)
-- AC13: 프록시 (PRD: resource-generic)
-- AC14: Secret 읽기는 승인 게이트를 거친다 (PRD: resource-generic)
-- AC15: 값이 새는 경로 봉쇄 (PRD: resource-generic)
-- AC16: 권한 경계의 정직한 보고 (PRD: resource-generic)
-- AC17: RBAC는 도구 표의 쌍 집합과 정확히 같다 (PRD: resource-generic)
-- AC18: 종류 해석과 미지원 종류 거부 (PRD: resource-generic)
+- AC6: 변경 스트림 관측 (PRD: resource-generic)
+- AC7: 생성 (PRD: resource-generic)
+- AC8: 전체 교체 (PRD: resource-generic)
+- AC9: 부분 수정 (PRD: resource-generic)
+- AC10: 삭제 (PRD: resource-generic)
+- AC11: 컬렉션 일괄 삭제 (PRD: resource-generic)
+- AC12: 컨테이너 안에서 명령 실행 (PRD: resource-generic)
+- AC13: 실행 중 컨테이너의 stdio에 접속 (PRD: resource-generic)
+- AC14: 포트 포워드 (PRD: resource-generic)
+- AC15: 프록시 (PRD: resource-generic)
+- AC16: 민감 종류는 읽기도 쓰기도 승인 게이트를 거친다 (PRD: resource-generic)
+- AC17: 값이 새는 경로 봉쇄 (PRD: resource-generic)
+- AC18: 권한 경계의 정직한 보고 (PRD: resource-generic)
+- AC19: RBAC는 도구 표와 게이트 선언의 쌍 집합과 정확히 같다 (PRD: resource-generic)
+- AC20: 종류 해석과 미지원 종류 거부 (PRD: resource-generic)
 
 ## 픽스처
 
@@ -98,28 +100,40 @@
   `TestGetLogPreviousInstance`, `TestSubresourceGetIsUngated`.
   통합 `resource_generic_ac5.py` (폐기되는 `workload_logs_ac{1,2,3,4}.py`의 단언을 승계한다)
 
-### 시나리오 6: 생성은 덮어쓰지 않는다
+### 시나리오 6: 변경 스트림 관측
+- **사전 조건**: `workload-fixture` 기준선, 픽스처 Secret, kind 실물 gatekeeper
+- **실행 단계**: Deployment 를 `watchSeconds=10` 으로 관측하면서 별도 경로로 레플리카 변경 →
+  `watchSeconds=61` 호출 → `resourceVersion` 을 주고 재관측 → `kind=Secret` 으로 미승인 호출 →
+  승인 후 재호출
+- **기대 결과**: `MODIFIED` 이벤트가 창 안에서 관측되고 창이 닫히면 응답이 돌아옴.
+  61은 거부. `resourceVersion` 이후 변경만 옴. Secret 은 미승인 시 거부되고 승인 후에는
+  이벤트가 오되 수·창 상한이 그대로 적용됨
+- **검증 AC**: AC6
+- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestWatchWindowBounds`,
+  `TestWatchOnGatedKindRequiresApproval`. 통합 `resource_generic_ac6.py`
+
+### 시나리오 7: 생성은 덮어쓰지 않는다
 - **사전 조건**: kind 실물 gatekeeper
 - **실행 단계**: 신규 ConfigMap 매니페스트로 `resource_create`(승인) → 같은 이름으로 재호출
   (승인) → Deployment + Service 2문서 매니페스트로 호출
 - **기대 결과**: 1회차 생성 성공. 2회차는 409로 거부되고 기존 객체가 변경되지 않음 —
   생성 승인이 갱신까지 하지 않음. 2문서 매니페스트는 **승인 요청 2건**을 만듦
-- **검증 AC**: AC6
+- **검증 AC**: AC7
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestCreateDoesNotOverwrite`,
-  `TestMultiDocCreateRequiresApprovalPerDoc`. 통합 `resource_generic_ac6.py`
+  `TestMultiDocCreateRequiresApprovalPerDoc`. 통합 `resource_generic_ac7.py`
 
-### 시나리오 7: 전체 교체와 스케일
+### 시나리오 8: 전체 교체와 스케일
 - **사전 조건**: 동일, `workload-fixture` 기준선, DaemonSet 픽스처
 - **실행 단계**: `subresource=scale`로 replicas=3 → 0 → 1 (각 승인) → replicas=-1 →
   replicas 누락 → `kind=DaemonSet`으로 호출 → 서브리소스 없이 매니페스트 전체 교체
 - **기대 결과**: 3·0·1이 그대로 반영됨. 음수와 누락은 거부(승인 요청조차 만들지 않음).
   DaemonSet은 **레플리카 부재**를 사유로 거부. 전체 교체가 PUT으로 반영됨
-- **검증 AC**: AC7
+- **검증 AC**: AC8
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestUpdateScaleBounds`,
-  `TestUpdateScaleRejectsReplicalessKind`. 통합 `resource_generic_ac7.py`
+  `TestUpdateScaleRejectsReplicalessKind`. 통합 `resource_generic_ac8.py`
   (폐기되는 `workload_scale_ac{1,2}.py`의 단언을 승계한다)
 
-### 시나리오 8: 부분 수정과 롤링 재시작
+### 시나리오 9: 부분 수정과 롤링 재시작
 - **사전 조건**: 동일, `workload-fixture`를 replicas=2로 세팅
 - **실행 단계**: `patchType`을 `merge`·`strategic`·`json`·`apply`로 각각 호출(각 승인) →
   호출 전 스펙 전문을 뜬 뒤 `restartedAt` 어노테이션을 얹는 `strategic` 패치(승인) →
@@ -128,117 +142,136 @@
   재시작 후 어노테이션 타임스탬프가 갱신되고 파드가 교체되며, `spec.replicas`가 2로
   보존되고 그 어노테이션 외 **어떤 필드도 달라지지 않음**. 재시작 패치도 다른 패치와 똑같이
   승인 요청을 만듦 — 내용으로 예외를 주지 않음
-- **검증 AC**: AC8
+- **검증 AC**: AC9
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestPatchTypes`,
   `TestRestartPatchTouchesOnlyAnnotation`, `TestRestartPatchIsGatedLikeAnyPatch`.
-  통합 `resource_generic_ac8.py` (폐기되는 `workload_restart_ac1.py`의 단언을 승계한다)
+  통합 `resource_generic_ac9.py` (폐기되는 `workload_restart_ac1.py`의 단언을 승계한다)
 
-### 시나리오 9: 삭제는 단건만
+### 시나리오 10: 삭제는 단건만
 - **사전 조건**: 동일
 - **실행 단계**: 픽스처 ConfigMap 하나를 `resource_delete`(승인) → `gracePeriodSeconds=0`으로
   파드 삭제(승인) → 이름 없이 `labelSelector`만으로 호출 시도
 - **기대 결과**: 지정 객체만 사라지고 같은 레이블의 다른 객체는 남음. `gracePeriodSeconds`가
   반영됨. 셀렉터 전용 호출 경로가 존재하지 않아 인자 검증에서 거부됨
-- **검증 AC**: AC9
+- **검증 AC**: AC10
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestDeleteIsSingleObjectOnly`.
-  통합 `resource_generic_ac9.py`
+  통합 `resource_generic_ac10.py`
 
-### 시나리오 10: 컨테이너 안에서 명령 실행
+### 시나리오 11: 컨테이너 안에서 명령 실행
 - **사전 조건**: kind 실물 gatekeeper, `workload-fixture` 기준선, 다중 컨테이너 파드
 - **실행 단계**: `resource_exec`으로 `echo` 실행(승인) → stderr 를 내는 명령 실행 →
   다중 컨테이너 파드에 `container` 없이 호출 → `yes` 처럼 무한 출력하는 명령 실행
 - **기대 결과**: stdout 과 stderr 가 구분되어 반환됨. `container` 누락이 거부되고 후보
   이름이 제시됨. 무한 출력은 바이트·시간 상한에서 잘리고 **잘렸음이 응답에 표시**됨
-- **검증 AC**: AC10
+- **검증 AC**: AC11
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestExecStreamsAndCaps`.
-  통합 `resource_generic_ac10.py`
+  통합 `resource_generic_ac11.py`
 
-### 시나리오 11: 실행 중 컨테이너 stdio 접속
+### 시나리오 12: 컬렉션 일괄 삭제
+- **사전 조건**: kind 실물 gatekeeper, 같은 레이블을 단 ConfigMap 5개와 다른 레이블 2개
+- **실행 단계**: `labelSelector` 로 5개를 겨냥해 호출 → 승인 요청 `context` 수집 → 승인 →
+  `namespace` 없이 호출 → 0건을 가리키는 셀렉터로 호출 → 승인과 실행 사이에 같은 레이블의
+  ConfigMap 을 하나 더 만들고 승인
+- **기대 결과**: 5개만 사라지고 다른 레이블 2개는 남음. `context` 에 **대상 수 5와 이름
+  목록**이 담김. `namespace` 누락은 거부. 0건 셀렉터는 승인 요청을 만들지 않고 알림.
+  대상이 늘어난 마지막 케이스는 실행이 거부됨
+- **검증 AC**: AC12
+- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestDeleteCollectionRequiresNamespace`,
+  `TestDeleteCollectionContextCarriesTargets`, `TestDeleteCollectionZeroMatchSkipsApproval`.
+  통합 `resource_generic_ac12.py`
+
+### 시나리오 13: 실행 중 컨테이너 stdio 접속
 - **사전 조건**: 동일, stdout 을 주기 출력하며 stdin 을 읽는 파드
 - **실행 단계**: `resource_attach`로 `readSeconds=3` 접속(승인) → `readSeconds=31` 호출 →
   `stdin`을 실어 접속(승인)
 - **기대 결과**: 3초 동안의 출력이 반환됨(새 프로세스가 뜨지 않고 기존 프로세스 스트림임을
   파드 로그로 확인). `readSeconds=31`은 거부. `stdin`이 대상 프로세스에 전달되어 그
   반응이 출력에 나타남
-- **검증 AC**: AC11
-- **자동화**: (미작성) — 계획: 통합 `resource_generic_ac11.py`
+- **검증 AC**: AC13
+- **자동화**: (미작성) — 계획: 통합 `resource_generic_ac13.py`
 
-### 시나리오 12: 포트 포워드는 단발 왕복이다
+### 시나리오 14: 포트 포워드는 단발 왕복이다
 - **사전 조건**: 동일, HTTP 를 서빙하는 파드
 - **실행 단계**: `resource_port_forward`로 해당 포트에 요청 페이로드 전송(승인) →
   같은 승인 id 로 두 번째 왕복 시도 → 읽기 상한을 넘기는 응답을 내는 경로로 재호출
 - **기대 결과**: 1회차에 응답이 반환되고 호출이 끝나면 터널이 닫힘. 같은 승인으로 두 번째
   왕복이 불가능(1승인 1실행이 터널에도 적용됨). 상한 초과가 잘리고 표시됨.
   승인 요청 `context` 에 **포트와 페이로드 전문**이 담김
-- **검증 AC**: AC12
-- **자동화**: (미작성) — 계획: 통합 `resource_generic_ac12.py`
-
-### 시나리오 13: 프록시는 Pod·Service 만
-- **사전 조건**: 동일, HTTP 파드와 그 Service
-- **실행 단계**: `kind=Pod`로 `GET`(승인) → `kind=Service`로 `POST`(승인) →
-  `kind=Node`로 호출 → `GET` 을 승인 없이 호출
-- **기대 결과**: `GET`은 `get`, `POST`는 `create` 쌍으로 각각 게이트를 탐.
-  `kind=Node`가 거부되고 사유가 **kubelet 도달**임을 밝힘. 승인 없는 `GET`도 거부됨 —
-  프록시의 `get`은 객체 조회와 달라 게이트 밖이 아님. `context` 에 메서드·경로·본문이 담김
-- **검증 AC**: AC13
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestProxyRejectsNode`,
-  `TestProxyGetIsGated`. 통합 `resource_generic_ac13.py`
-
-### 시나리오 14: Secret 읽기는 승인을 거친다
-- **사전 조건**: 픽스처 Secret, kind 실물 gatekeeper
-- **실행 단계**: `kind=Secret`으로 `resource_get` 호출(미승인 대기) → 거절 → 재호출 후 승인 →
-  `kind=ConfigMap`으로 `resource_get` 호출
-- **기대 결과**: 미승인·거절 시 거부되고 k8s 호출 카운트 0. 승인 후 값이 반환됨.
-  ConfigMap 은 승인 요청을 만들지 않고 바로 조회됨 — 게이트가 종류로 좁혀져 있음
 - **검증 AC**: AC14
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestReadGatedKindsRequireApproval`,
-  `TestNonGatedKindsSkipGatekeeper`. 통합 `resource_generic_ac14.py`
+- **자동화**: (미작성) — 계획: 통합 `resource_generic_ac14.py`
 
-### 시나리오 15: 값이 새는 경로가 막혀 있다
+### 시나리오 15: 프록시는 경로를 숨기지 않는다
+- **사전 조건**: kind 실물 gatekeeper, HTTP 파드와 그 Service, 노드 1개
+- **실행 단계**: `kind=Pod`로 `GET`(승인) → `kind=Service`로 `POST`(승인) →
+  `kind=Node`로 `/healthz` `GET`(승인) → `kind=Node`로 `/exec/⟨ns⟩/⟨pod⟩/⟨c⟩?command=id`
+  호출하고 승인 요청 `context` 수집 후 승인 → `GET`을 승인 없이 호출
+- **기대 결과**: 네 경우 모두 메서드에 대응하는 쌍(`get`/`create`)으로 게이트를 탐.
+  `/healthz`와 `/exec`이 **같은 쌍**으로 표현되어 쌍만으로는 구별되지 않음. `/exec` 호출의
+  `context`에 **경로 전문과 고권한 표시**가 함께 담기고, 승인하면 실제로 실행됨 —
+  경로 허용목록이 없음을 확인한다. 승인 없는 `GET`도 거부됨
+- **검증 AC**: AC15
+- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestProxyAllPathsGated`,
+  `TestProxyKubeletHighPowerPathFlagged`. 통합 `resource_generic_ac15.py`
+
+### 시나리오 16: 민감 종류는 읽기도 쓰기도 승인을 거친다
+- **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 gatekeeper
+- **실행 단계**: `kind=Secret`으로 `get`·`watch`·`create`·`update`·`patch`·`delete`를
+  각각 미승인 호출 → `create`를 승인 흐름까지 태우고 `context` 수집 → 승인 후 값 확인 →
+  `kind=Secret`으로 `list` 호출(승인 없이) → `kind=ConfigMap`으로 `get`
+- **기대 결과**: 여섯 verb 모두 미승인 거부, k8s 호출 카운트 0. `create`의 `context`에
+  **키 이름과 바이트 수만** 있고 난수 토큰이 없음. 승인 후 Secret이 생성되고 값이 반영됨.
+  `list`는 승인 없이 동작. ConfigMap `get`은 승인 요청을 만들지 않음
+- **검증 AC**: AC16
+- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestGatedKindsGateEveryVerbButList`,
+  `TestSecretWriteContextRedactsValues`. 통합 `resource_generic_ac16.py`
+
+### 시나리오 17: 값이 새는 경로가 막혀 있다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, 그 토큰을 서빙하는 HTTP 파드
 - **실행 단계**: (a) `kind=Secret`으로 `resource_list`(승인 없이) → (b)
-  `RESOURCE_READ_GATED_KINDS`에 픽스처 CRD를 추가하고 그 종류로 `resource_get` →
+  `RESOURCE_GATED_KINDS`에 픽스처 CRD를 추가하고 그 종류로 `resource_get` →
   (c) 스트림 넷을 각각 미승인으로 호출 — `exec`으로 `cat /var/run/secrets/.../token`,
   `attach`로 접속, `port_forward`로 토큰 서빙 포트, `proxy`로 그 경로 →
+  (c') `kind=Node` 프록시의 `/exec` 으로 같은 파일을 읽어 그 호출의 쌍을 기록 →
   (d) 서버의 SA 토큰으로 `GET /api/v1/secrets?watch=true` 직접 호출
 - **기대 결과**: (a) 승인 없이 성공하되 `NAME`/`TYPE`/`DATA`/`AGE` 컬럼만 담고 **난수 토큰이
   등장하지 않음**. (b) 승인 없이는 거부. (c) **넷 다** 미승인 거부, k8s 호출 카운트 0.
   각 승인 요청 `context` 에 명령·페이로드·경로가 전문으로 노출되어 운영자가 보고 거절할 수
-  있음. (d) 403 — `watch` 미부여로 스트림 우회 경로 없음
-- **검증 AC**: AC15
+  있음. (c') 쌍이 `create nodes/proxy` 로만 기록되어 **민감 종류 판정에 걸리지 않음** —
+  쌍으로 막을 수 없는 경로임을 시나리오로 못박는다. 막는 것은 `context` 의 경로 노출뿐임.
+  (d) `watch` 는 이제 부여되어 403 이 아니라 **민감 종류 게이트**에서 거부 — `watch` 미부여로 스트림 우회 경로 없음
+- **검증 AC**: AC17
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestSecretListCarriesNoValues`,
   `TestNoRawListFallbackForGatedKinds`, `TestAllStreamSubresourcesGated`(표 기반 4종).
-  통합 `resource_generic_ac15.py`(watch 403 확인 포함)
+  통합 `resource_generic_ac17.py`(watch 403 확인 포함)
 
-### 시나리오 16: 권한 밖은 권한 밖이라고 말한다
+### 시나리오 18: 권한 밖은 권한 밖이라고 말한다
 - **사전 조건**: RBAC 에 없는 종류(예: `rbac.authorization.k8s.io/v1/ClusterRole`)
 - **실행 단계**: 승인을 받은 뒤 해당 종류로 `resource_patch`
 - **기대 결과**: apiserver 403을 그대로 흘리지 않고, 부여된 권한 밖임을 밝히는 에러를
   반환하며 그 메시지에 누락된 `(verb, resource)` 쌍이 담김
-- **검증 AC**: AC16
+- **검증 AC**: AC18
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestForbiddenIsTranslated`.
-  통합 `resource_generic_ac16.py`
+  통합 `resource_generic_ac18.py`
 
-### 시나리오 17: RBAC 가 도구 표와 정확히 같다
-- **사전 조건**: `k8s/rbac.yaml` 과 도구별 쌍 선언
-- **실행 단계**: 정적 검사로 (a) `rbac.yaml`의 쌍 집합과 도구 표를 양방향 대조 →
-  (b) 금지 목록(`watch`·`deletecollection`·`nodes/proxy`·`secrets`의 쓰기 verb)이 없는지
-  확인 → (c) `rbac.yaml`에 `watch` 를, 그리고 `nodes/proxy` 를 각각 넣은 변형 2건으로 재실행
-- **기대 결과**: (a) 양방향 어긋남 0 — `pods/attach`·`pods/portforward`·`pods/proxy`·
-  `services/proxy` 는 도구가 생겼으므로 **있어야 정상**. (b) 금지 목록 전부 부재.
-  (c) 변형 2건 모두 실패로 잡힘. 현 `rbac.yaml`이 워크로드에 주고 있던 `watch` 는 코드에
-  `Watch()` 호출이 없는 죽은 권한이므로 이 검사가 곧바로 잡는다
-- **검증 AC**: AC17
-- **자동화**: (미작성) — 계획: 정적 `scripts/check_rbac_matches_tools.py`(뮤테이션 2건 포함).
-  통합 `resource_generic_ac17.py`
+### 시나리오 19: RBAC 가 도구 표 ∪ 게이트 선언과 정확히 같다
+- **사전 조건**: `k8s/rbac.yaml`, 도구별 쌍 선언, 게이트 선언
+- **실행 단계**: 정적 검사로 (a) `rbac.yaml`의 쌍 집합과 도구 표 ∪ 게이트 선언을 양방향
+  대조 → (b) `rbac.yaml`에 아무 도구도 쓰지 않는 쌍을 하나 넣은 변형 → (c) 도구가 쓰는
+  쌍을 하나 뺀 변형 → (d) 게이트 선언(`get`·`list`)을 계산에서 뺀 변형
+- **기대 결과**: (a) 양방향 어긋남 0. `secrets` 에 일곱 verb 가 모두 있고, `nodes/proxy`·
+  `pods/attach`·`pods/portforward`·`watch`·`deletecollection` 이 전부 **있어야 정상** —
+  금지 목록은 비어 있다. (b)(c)(d) 세 변형 모두 실패로 잡힘
+- **검증 AC**: AC19
+- **자동화**: (미작성) — 계획: 정적 `scripts/check_rbac_matches_tools.py`(뮤테이션 3건 포함).
+  통합 `resource_generic_ac19.py`
 
-### 시나리오 18: 종류 해석
+### 시나리오 20: 종류 해석
 - **사전 조건**: 픽스처 CRD 설치 전/후 두 상태
 - **실행 단계**: `api_resources` 조회 → 존재하지 않는 `kind=Deploymnt`(오타)로
   `resource_list` → CRD 설치 후 `api_resources` 재조회 및 해당 종류 list
 - **기대 결과**: 오타 호출이 거부되고 후보로 `Deployment`가 제시됨. CRD 설치 후
   `api_resources`에 나타나고 곧바로 조회됨(재기동 불필요). `api_resources`는 리소스 권한을
   행사하지 않으므로 RBAC 대조 대상이 아님
-- **검증 AC**: AC18
+- **검증 AC**: AC20
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestUnknownKindSuggestsCandidates`.
-  통합 `resource_generic_ac18.py`
+  통합 `resource_generic_ac20.py`
