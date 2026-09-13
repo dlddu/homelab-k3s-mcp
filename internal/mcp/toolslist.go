@@ -36,7 +36,7 @@ const toolsListJSON = `{
     },
     {
       "name": "resource_list",
-      "description": "List any Kubernetes resource by coordinate (apiVersion + kind), returned as the apiserver's table rendering. Namespace is optional; omit it to list across all namespaces. Exercises the list verb only.",
+      "description": "List any Kubernetes resource by coordinate (apiVersion + kind), returned as the apiserver's table rendering. Namespace is optional; omit it to list across all namespaces. Exercises the list verb only. A kind outside this server's RBAC grant is reported as such rather than retried.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -83,7 +83,7 @@ const toolsListJSON = `{
     },
     {
       "name": "resource_get",
-      "description": "Read one Kubernetes object whole by coordinate and name, or one of its log/scale/status subresources. Exercises the get verb only; name is required, so find the object with resource_list first.",
+      "description": "Read one Kubernetes object whole by coordinate and name, or one of its log/scale/status subresources. Exercises the get verb only; name is required, so find the object with resource_list first. Sensitive kinds (Secret) require human approval, and a kind outside this server's RBAC grant is reported as such.",
       "inputSchema": {
         "type": "object",
         "properties": {

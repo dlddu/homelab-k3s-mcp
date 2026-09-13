@@ -134,6 +134,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 쌍이 분류력을 잃음 | `nodes/proxy` | 경로 제한 없이 열면서 `create nodes/proxy` 하나가 `/healthz` POST 와 임의 파드 exec 을 동시에 뜻하게 됐다. **`(verb, resource)` 쌍이 호출의 권능을 한정하지 못한다** — 한정하는 것은 경로이고 경로는 `context` 에만 있다. RBAC 의 네임스페이스 범위도 파드 수준 조작에는 적용되지 않으며, 민감 종류 게이트도 kubelet `/exec` 경유 읽기는 잡지 못한다(쌍이 `create nodes/proxy` 이므로). | ⚠️ **수용(2026-09-12)** — 경로 허용목록을 두면 「이 경로는 봐준다」는 분류기가 생기고 그 분류기가 곧 우회 경로가 된다. 대신 게이트가 경로를 숨기지 않고 보여 준다. 고권한 kubelet 경로는 `context` 에 **표시**하되 막지 않는다. **그 결과 `context` 의 품질이 곧 보안이며, AC3 가 이 설계에서 가장 무거운 AC 다** |
 | RBAC 백스톱 소멸 | 전체 | `watch`·`deletecollection`·`attach`·`portforward`·`proxy`(`Node` 포함)·`secrets` 쓰기가 차례로 도구가 되면서 **금지 목록이 비었다**. RBAC 가 도구 표와 정확히 같아진다는 것은 곧 **RBAC 가 더는 백스톱이 아니라는 뜻**이다 — 게이트에 결함이 생기면 apiserver 가 막아 줄 것이 없다. | ⚠️ **수용(2026-09-12)** — 완화는 AC1(디스패처 강제)·AC5(fail-closed)·AC11(게이트 권한 선언)이며, 이 셋이 이제 구조 전체를 지탱한다. 구현 시 이 경로들의 테스트 밀도를 다른 곳보다 높게 잡을 것 |
 | 게이트 우회 가능 | `dear_baby_reset_user` | `create` on `pods/exec` 을 행사하므로 게이트 정의에 해당하지만 편입하지 않았다. V5 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user` 의 AC 를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12) |
+| **두 PRD 가 `k8s/rbac.yaml` 을 두고 어긋난다** | `prd-platform-auth-safety` AC3 ↔ `prd-resource-generic` AC19 | AC3 은 부여 집합을 **축자로** 못박고(워크로드 `get/list/watch/patch` · 파드 `get/list` · `pods/log` `get` · `pods/exec` `get/create` · 네임스페이스·이벤트 `get/list`) 「워크로드 `delete`/`create`, **시크릿 읽기** 권한은 부여하지 않는다」로 닫는다. AC19 는 같은 파일의 쌍 집합이 `resource_*` **도구 표 ∪ 게이트 선언과 정확히 같아야** 하고 「`secrets` 에는 일곱 verb 를 모두 준다」고 적는다. **둘을 동시에 만족하는 `rbac.yaml` 은 없다.** `platform_auth_safety_ac3.py` 가 살아 있는 ClusterRole 을 **등가로** 단언하므로 이 어긋남은 산문이 아니라 **CI 가 멈추는 형태**로 존재한다 — 2026-09-13 읽기 축 슬라이스가 AC19 쪽으로 파일을 넓혔다가 그 게이트에 걸려 되돌렸다. **`resource_*` 쓰기 축은 이 결정 없이는 착수할 수 없다**(그 도구들이 요구하는 verb 가 전부 AC3 의 금지 목록에 있다). | ⬜ **미결 — 어느 문서가 이기는지는 소유자 판단** (2026-09-13). 코드가 한쪽을 고르면 다른 쪽이 그 순간 거짓이 되므로, 읽기 축은 **AC3 이 이미 허용한 범위 안에서** 구현했다(권한 확대 0) |
 | 문서 없는 실행 코드 | 폐기된 6종 중 **남은 2종** (`workload_restart`·`workload_scale`) | #72 는 **문서만** 폐기했고 Go 구현은 그대로였다. 2026-09-13 에 읽기 전용 4종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 대체재 `resource_list`·`resource_get` 과 함께 제거됐다. 남은 둘은 **상태를 바꾸는** 도구라 대체재가 `resource_patch`·`resource_update`(둘 다 게이트 대상)이고, 그것이 설 때까지 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **쓰기 축 구현 선행 대기** (2026-09-13 갱신) |
 
 `session_write` 는 게이트 우회 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 권한을
@@ -160,9 +161,16 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > (민감 종류의 `get`이 게이트를 탄다 — 쓰기 verb는 아직 도구가 없다), **AC17도 절반만**
 > (`resource_list`가 Table 전용이라 값이 전송되지 않는다; 원시 목록 폴백 경로는 두지 않았다)이다.
 > 2번은 같은 커밋에서 닫았다(`EXPECTED_TOOLS` 4종 제거 / 3종 추가).
-> 3번은 **읽기 두 verb에 한해** 닫았다 — `get`·`list`를 종류 제약 없이 열고, `watch`는
-> 여기서 사라졌다(죽은 권한이었다). **쓰기 verb는 한 줄도 부여하지 않았으므로 순서 제약은
-> 그대로 유지된다.** 4번은 손대지 않았다(자매 모델 `scenario-e2e` 소관).
+> **3번은 열지 못했다 — `k8s/rbac.yaml`은 한 verb도 바뀌지 않았다.** 이 슬라이스가 발견한
+> 것은 **두 문서가 이 파일을 두고 어긋나 있다**는 사실이다(아래 「수용된 위험」의 새 미결 행).
+> `prd-platform-auth-safety` AC3이 부여 집합을 축자로 못박고 시크릿 읽기를 금지하는데,
+> `prd-resource-generic` AC19는 그 집합이 `resource_*` 도구 표와 같아야 한다고(시크릿 7 verb
+> 포함) 적는다. 한쪽을 코드가 골라 버리면 그 순간 다른 한쪽이 거짓이 되므로, **읽기 축은 AC3이
+> 이미 허용한 범위 위에 세웠다** — 폐기 4종이 쓰던 바로 그 권한이라 권한 확대가 0이다.
+> 그 결과 `resource_list`·`resource_get`은 그 범위 밖 종류에 대해 AC18의 「권한 밖」으로 답한다.
+> **`watch` 제거도 같은 이유로 보류했다** — 죽은 권한인 것은 맞지만 AC3의 부여 집합에 축자로
+> 올라 있고 `platform_auth_safety_ac3.py`가 **등가(equality)로** 단언한다. 4번은 손대지 않았다
+> (자매 모델 `scenario-e2e` 소관).
 >
 > **남은 것**: `resource_*`의 쓰기 축 8종(`create`·`update`·`patch`·`delete`·
 > `delete_collection`·`exec`·`attach`·`port_forward`·`proxy`)과 `resource_watch`, 그리고
