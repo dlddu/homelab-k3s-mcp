@@ -4,12 +4,7 @@
 임의의 쿠버네티스 리소스를 다루는 도구군.
 
 도구는 **쿠버네티스 RBAC verb와 1:1**이다. 도구 하나가 verb 하나를 행사하며, 그 이상도
-이하도 아니다. `apply`·`describe`·`scale`·`restart`처럼 편의를 위해 동사를 발명하면 도구
-목록과 RBAC가 서로 다른 어휘를 쓰게 되고, "이 서버가 무엇을 할 수 있나"를 어느 한쪽만
-읽어서는 알 수 없게 된다. 도구 목록이 곧 verb 목록이면 그 질문에 표 하나로 답한다.
-
-이 도구군은 기존 V1 도구 6종(`namespace_list`, `workload_list`, `workload_logs`,
-`pod_describe`, `workload_restart`, `workload_scale`)을 **대체하고 폐기한다**.
+이하도 아니다.
 
 ## 달성 가치
 
@@ -17,8 +12,8 @@
   종류 제약이 사라지므로 Service·Ingress·ConfigMap·PVC·CRD를 다루려고 도구를 새로 만들 일이
   없다.
 - **V3: 안전한 운영(Safe-by-default)** — 상태를 바꾸는 verb는 **예외 없이** 사람 승인을
-  거치고(AC12), Secret은 읽는 것조차 승인을 거치며(AC10), 그 값이 응답 밖으로 새지
-  않는다(AC11).
+  거치고(`prd-approval-gate` AC1), 민감 종류는 읽기도 쓰기도 승인을 거치며(AC16),
+  그 값이 응답 밖으로 새지 않는다(AC17).
 
 ## 도구 개요
 
@@ -54,23 +49,8 @@
 엔드포인트에 도달하는 것**이라 성질이 다르다.
 
 이 표가 **RBAC의 입력이자 게이트의 입력**이다. `k8s/rbac.yaml`의 verb 집합은 여기 적힌
-집합과 정확히 같아야 하며(AC13), 게이트는 도구 이름이 아니라 이 verb로 판정한다
+집합과 정확히 같아야 하며(AC19), 게이트는 도구 이름이 아니라 이 verb로 판정한다
 (`prd-approval-gate` AC1).
-
-### 발명한 동사를 없앤 대가
-
-`pod_describe`는 객체와 이벤트를 한 응답에 담아 줬다. verb 1:1에서는 그런 도구가 없다 —
-`resource_get`은 `get`만 행사하고, 이벤트는 `resource_list`로 `v1/Event`를
-`fieldSelector=involvedObject.name=⟨name⟩`으로 좁혀 따로 받는다. 파드 하나를 진단하는 데
-왕복이 한 번에서 두 번으로 는다.
-
-대상 해석도 사라진다. `workload_logs`는 `labelSelector`나 워크로드 이름으로 파드를 찾아
-줬지만, 그 해석은 내부적으로 `list`를 먼저 행사하는 것이어서 1:1을 깬다. 이제
-`resource_get`은 **이름을 요구하고**, 이름을 모르면 호출자가 `resource_list`로 먼저 찾는다.
-
-둘 다 V1의 "마찰 감소"를 거스르는 손해다. 그럼에도 1:1을 택한 것은, 편의 도구가 두 개
-이상의 verb를 행사하는 순간 **게이트와 RBAC가 그 도구를 어떻게 판정해야 하는지가 모호해지기**
-때문이다. 모호한 경계보다 왕복 한 번이 싸다.
 
 ## Acceptance Criteria
 
@@ -180,11 +160,12 @@
   `spec.replicas`와 나머지 스펙은 호출 전과 동일하다.
 
 ### AC10: 삭제
-- **설명**: `resource_delete`는 단일 객체를 삭제하며 `delete` verb만 행사한다.
-  `gracePeriodSeconds`를 받는다. 컬렉션 일괄 삭제(`deletecollection`)는 **제공하지 않는다** —
-  한 번의 승인이 몇 개를 지우는지 승인 화면이 말할 수 없기 때문이다(AC13).
+- **설명**: `resource_delete`는 **단일 객체**를 삭제하며 `delete` verb만 행사한다.
+  `name`이 필수이고 `gracePeriodSeconds`를 받는다. 셀렉터로 여러 개를 지우는 것은 이
+  도구가 아니라 `resource_delete_collection`(AC11)의 일이다 — verb가 다르므로 도구도 다르다.
 - **달성 가치**: V1, V3
-- **검증 방법**: 지정 객체만 삭제된다. 이름 없이 셀렉터만으로 호출하는 경로가 존재하지 않는다.
+- **검증 방법**: 지정 객체만 삭제된다. `name` 없이 셀렉터만으로 호출하는 경로가 이 도구에
+  존재하지 않는다.
 
 ### AC11: 컬렉션 일괄 삭제
 - **설명**: `resource_delete_collection`은 `deletecollection` verb만 행사하며
@@ -291,11 +272,9 @@
   - **`resource_list`는 값을 담지 않는다** — 목록은 AC2의 Table 표현으로만 응답한다.
     Secret의 Table은 apiserver가 서버 사이드로 만들어 `NAME`/`TYPE`/`DATA`/`AGE`만 담으므로
     값이 애초에 전송되지 않는다. 원시 목록으로 떨어지는 폴백 경로를 두지 않는다.
-  - **`watch`는 어떤 도구도 행사하지 않는다** — 변경 스트림은 객체 전문을 밀어 주므로
-    민감 종류를 `watch`하면 `data`가 그대로 흘러나온다. 게이트는 단발 `get`을
-    통제할 뿐 스트림을 통제하지 못하므로, 이 경로는 게이트가 아니라 **RBAC 미부여**로
-    막는다(AC17). 현재 `k8s/rbac.yaml`은 워크로드에 `watch`를 주고 있으나 코드에 `Watch()`
-    호출이 없다 — 죽은 권한이며 함께 제거한다.
+  - **`watch`도 민감 종류 게이트를 탄다** — 변경 스트림은 객체 전문을 밀어 주므로 민감
+    종류를 `watch`하면 `data`가 그대로 흘러나온다. `get`과 같은 노출이므로 같은 취급을
+    받는다(AC6). 스트림이라는 이유로 금지하는 대신 게이트를 건다.
   - **스트림 서브리소스 넷은 모두 자격증명에 닿는다** — `exec`은
     `/var/run/secrets/**`를 읽고, `attach`는 그 위에서 도는 셸의 stdio를 잡고,
     `port_forward`와 `proxy`는 파드가 서빙하는 내부 API에 도달한다. 넷 다 RBAC로는 내용을
