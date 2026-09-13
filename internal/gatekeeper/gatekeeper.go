@@ -38,14 +38,10 @@ const (
 	StatusExpired  = "EXPIRED"
 )
 
-// ErrNotConfigured is the refusal used when the gate has no backend to ask.
-// AC5 lists an unset GATEKEEPER_BASE_URL/GATEKEEPER_API_KEY among the paths
-// that must refuse, so this is a normal runtime outcome rather than a startup
-// failure: the server keeps serving and only gated calls stop.
+// ErrNotConfigured is the refusal used when the gate has no backend to ask (AC5).
 var ErrNotConfigured = errors.New("approval gate is not configured (GATEKEEPER_BASE_URL/GATEKEEPER_API_KEY): refusing")
 
-// ErrConsumed reports a second attempt to spend one approval. AC7 gives an
-// approval a budget of exactly one kubernetes API call.
+// ErrConsumed reports a second attempt to spend one approval (AC7).
 var ErrConsumed = errors.New("approval has already been spent; request a new one")
 
 // Pair is a kubernetes RBAC (verb, resource[/subresource]) pair. Resource
@@ -137,9 +133,7 @@ func gatedKindsFromEnv() []string {
 }
 
 // Call describes the single kubernetes operation an approval is being sought
-// for. Context is the operator-facing text of AC3; an empty one is refused
-// rather than sent, because an approval screen that does not say what it is
-// approving turns the button into a formality.
+// for. Context is the operator-facing text of AC3.
 type Call struct {
 	Tool    string
 	Pair    Pair
@@ -158,8 +152,7 @@ type Decision struct {
 	used bool
 }
 
-// Consume spends the approval. The second call fails, so a retry after a failed
-// execution has to go back through the gate (AC7).
+// Consume spends the approval. The second call fails (AC7).
 func (d *Decision) Consume() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -322,10 +315,7 @@ func (c *Client) create(ctx context.Context, call Call, externalID string) (*req
 	return &decoded, nil
 }
 
-// poll waits for the verdict. gatekeeper evaluates expiry when the request is
-// read rather than in the background, so a request that is never polled is
-// never observed to expire — hence the loop rather than trusting the create
-// response (AC4).
+// poll waits for the verdict (AC4).
 func (c *Client) poll(ctx context.Context, call Call, requestID, externalID string) (*Decision, error) {
 	deadline := c.afterFunc(c.cfg.Timeout)
 

@@ -182,8 +182,7 @@ func TestPendingBecomesApprovedThroughPolling(t *testing.T) {
 	}
 }
 
-// AC4/AC5: gatekeeper evaluates expiry when the request is read, so EXPIRED is
-// something a poll observes — and it is a refusal.
+// AC4/AC5: an EXPIRED verdict is a refusal.
 func TestExpiredVerdictIsRefused(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusExpired}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -299,7 +298,7 @@ func TestEmptyContextIsRefusedBeforeTheRequestIsMade(t *testing.T) {
 	}
 }
 
-// AC7: one approval buys one execution.
+// AC7 at the client layer: Consume is the half the dispatcher spends (mcp).
 func TestApprovalIsSpentOnce(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
