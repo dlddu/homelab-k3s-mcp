@@ -20,10 +20,11 @@
 | `update` | `resource_update` | `subresource=scale`(레플리카 변경) 포함 |
 | `patch` | `resource_patch` | SSA(`apply-patch+yaml`)와 롤링 재시작 모두 이 verb다 |
 | `delete` | `resource_delete` | |
+| `deletecollection` | `resource_delete_collection` | `context`에 대상 수와 이름 목록이 필수 |
 | `create` on `pods/exec` | `resource_exec` | SPDY 실행기가 POST로 스트림을 연다 |
 | `create` on `pods/attach` | `resource_attach` | 새 프로세스가 아니라 주 프로세스 stdio에 붙는다 |
 | `create` on `pods/portforward` | `resource_port_forward` | 파드 네트워크로 단발 TCP 왕복 |
-| HTTP 메서드별 verb on `⟨kind⟩/proxy` | `resource_proxy` | `Pod`·`Service`만. `GET`도 게이트를 탄다 |
+| HTTP 메서드별 verb on `⟨kind⟩/proxy` | `resource_proxy` | `Pod`·`Service`·`Node`. 경로 제한 없음. `GET`도 게이트를 탄다 |
 
 **예외는 없다.** 레플리카를 바꾸는 것도, 파드를 재시작하는 것도 승인을 받는다. 그래서 이
 게이트의 보증은 단순하다 — **승인 없이는 클러스터 상태가 바뀌지 않는다.**
@@ -33,13 +34,18 @@
 **verb 목록이 아니라 사연을 읽어야** 하고, 사연은 도구가 늘 때마다 다시 쓰인다. 대신
 `AUTO_APPROVE`로 도망갈 유인이 커지는데, 이는 `doc-tracker.md`의 "수용된 위험"에 기록한다.
 
-### 읽기 게이트 — 값 자체가 자격증명인 종류
+### 읽기 게이트 — 민감 종류
 
 | verb | 도구 | 조건 |
 |------|------|------|
-| `get` | `resource_get` | 대상이 읽기 게이트 종류일 때만 |
+| `get` | `resource_get` | 대상이 민감 종류일 때만 |
+| `watch` | `resource_watch` | 대상이 민감 종류일 때만. 스트림은 객체 전문을 밀어 주므로 `get`과 같은 노출이다 |
 
-읽기 게이트 종류는 `RESOURCE_READ_GATED_KINDS`로 정하고 기본값은 `v1/Secret`이다.
+민감 종류(`RESOURCE_GATED_KINDS`, 기본 `v1/Secret`)는 **쓰기도 게이트를 탄다** — 다만 쓰기는
+원래 모든 종류에서 게이트 대상이므로 실질적인 추가는 읽기 쪽이다. 쓰기의 `context`에서는
+값을 가린다(`prd-resource-generic` AC16).
+
+민감 종류는 `RESOURCE_GATED_KINDS`로 정하고 기본값은 `v1/Secret`이다.
 평문 자격증명을 `spec`에 두는 CRD가 있으면 같은 목록에 더한다. 종류를 코드에 박지 않는
 이유는 무엇이 자격증명인지가 클러스터마다 다르기 때문이다.
 
@@ -48,20 +54,26 @@
 | verb | 도구 | 이유 |
 |------|------|------|
 | `list` | `resource_list` | Table 표현이라 값이 전송되지 않는다(`prd-resource-generic` AC11) |
-| `get` (비게이트 종류) | `resource_get` | 상태를 바꾸지 않고 자격증명도 아니다. **`⟨kind⟩/proxy`의 `get`은 여기 해당하지 않는다** — 쿠버네티스 객체를 읽는 것이 아니라 클러스터 내부의 임의 엔드포인트에 도달하는 것이라 성질이 다르다 |
+| `watch` (비민감 종류) | `resource_watch` | 상태를 바꾸지 않고 자격증명도 아니다 |
+| `get` (비민감 종류) | `resource_get` | 상태를 바꾸지 않고 자격증명도 아니다. **`⟨kind⟩/proxy`의 `get`은 여기 해당하지 않는다** — 쿠버네티스 객체를 읽는 것이 아니라 클러스터 내부의 임의 엔드포인트에 도달하는 것이라 성질이 다르다 |
 | — | `api_resources` | 리소스 권한을 행사하지 않는다 |
 
-### 어떤 도구도 행사하지 않는 verb
+### 부여하지 않는 verb는 없다
 
-`watch`·`deletecollection`과 `nodes/proxy`는 이 서버의 어느 도구도 행사하지 않는다. 따라서 게이트 표에 없고, **RBAC에도 부여하지 않는다**
-(`prd-resource-generic` AC13). 나중에 이들을 행사하는 도구가 생기면 게이트 표에 먼저
-들어와야 한다 — 등급은 다음과 같다.
+이 서버는 쿠버네티스 RBAC의 모든 관련 verb를 행사한다 — `get`·`list`·`watch`·`create`·
+`update`·`patch`·`delete`·`deletecollection`과 서브리소스 `exec`·`attach`·`portforward`·
+`proxy`(`Node` 포함)·`log`·`scale`. 초안들이 유지하던 금지 목록은 비었다.
 
-| verb | 등급 | 근거 |
-|------|------|------|
-| `watch` on 읽기 게이트 종류 | **금지** | 변경 스트림이 객체 전문을 밀어 주므로 `data`가 그대로 흘러나온다. 읽기 게이트를 통째로 우회한다 |
-| `proxy` on `nodes/proxy` | **금지** | kubelet API에 직접 닿는다 — 그 노드 위 모든 파드의 로그와 실행이 여기서 열린다. 게이트를 우회하는 게 아니라 **무의미하게 만든다**. `resource_proxy`가 `Pod`·`Service`만 받는 이유다 |
-| `deletecollection` | 쓰기 게이트 + 영향 건수 필수 | 한 번의 승인이 몇 개를 지우는지 모르면 승인이 아니다. `context`에 대상 수가 들어가야 한다 |
+그 결과 **RBAC는 백스톱이 아니다.** 이전에는 미부여가 "도구 레이어가 뚫려도 apiserver가
+막는" 2차 방어선이었지만, 이제 게이트 판정이 유일한 경계다. 특히 `nodes/proxy`가 열려
+있으므로 `(verb, resource)` 쌍은 호출이 무엇을 하는지 한정하지 못한다 —
+`create nodes/proxy` 하나가 `/healthz` POST와 임의 파드 exec을 동시에 뜻한다.
+한정하는 것은 **경로이고, 경로는 `context`에만 나타난다**(AC3).
+
+이것은 이 설계가 명시적으로 받아들인 위치다. 경로나 패치 내용으로 예외를 주면 분류기가
+하나 더 생기고 그 분류기가 곧 우회 경로가 되므로, 대신 게이트가 **무엇 하나 숨기지 않고**
+보여 주고 판단을 사람에게 남긴다. 그 대가는 `context`의 품질이 곧 보안이라는 것이다 —
+AC3가 이 문서에서 가장 무거운 AC인 이유다.
 
 > **남은 예외 1건 — `dear_baby_reset_user`**: `create` on `pods/exec`을 행사하므로 위
 > 쓰기 게이트 정의에 해당한다. 그럼에도 편입하지 않은 것은 이 도구가 V5(앱 기능의
@@ -89,7 +101,7 @@
 | `GATEKEEPER_USER_ID` | X | 푸시 알림을 받을 사용자. 미지정 시 알림 없이 웹 UI 확인에만 의존 |
 | `GATEKEEPER_TIMEOUT_SECONDS` | X | 승인 대기 상한. 기본 300 |
 | `GATEKEEPER_POLL_INTERVAL_SECONDS` | X | 판정 폴링 주기. 기본 2 |
-| `RESOURCE_READ_GATED_KINDS` | X | 읽기 게이트 종류. 기본 `v1/Secret` |
+| `RESOURCE_GATED_KINDS` | X | 민감 종류. 기본 `v1/Secret` |
 
 ## Acceptance Criteria
 
@@ -97,10 +109,11 @@
 - **설명**: 각 도구는 자신이 행사하는 `(verb, resource[/subresource])` 쌍을 선언하고,
   게이트는 **도구 이름이 아니라 그 쌍**으로 판정한다. 상태를 바꾸는 verb
   (`create`·`update`·`patch`·`delete`·`create pods/exec`)는 **예외 없이** 게이트 대상이며,
-  읽기 게이트 종류의 `get`도 같다. 이들은 gatekeeper 판정이 `APPROVED`인 경우에만
+  민감 종류의 `get`·`watch`도 같다. 이들은 gatekeeper 판정이 `APPROVED`인 경우에만
   쿠버네티스 API에 도달한다.
 
-  판정은 **verb에만** 걸리고 패치 내용이나 대상 종류(읽기 게이트 종류 판정 제외)를 보지
+  판정은 **verb에만** 걸리고 패치 내용이나 경로를 보지 않는다. 대상 종류를 보는 것은
+  민감 종류 판정 한 곳뿐이다. 그 밖에는 내용을 보지
   않는다. 내용으로 판정하면 "이 패치는 재시작이니 봐준다" 같은 예외가 생기고, 그런 예외는
   분류기를 하나 더 만드는 일이라 그 분류기가 곧 우회 경로가 된다.
 
@@ -109,7 +122,7 @@
   등록 자체가 거부된다** — 선언과 실제 행사가 어긋나면 게이트 표가 거짓말을 하게 되고,
   그 어긋남은 런타임에 조용히 통과한다.
 - **달성 가치**: V3
-- **검증 방법**: 변경 verb 다섯과 읽기 게이트 종류의 `get`을 승인 없이 호출하면 쿠버네티스
+- **검증 방법**: 변경 verb 여섯과 민감 종류의 `get`·`watch`를 승인 없이 호출하면 쿠버네티스
   클라이언트가 단 한 번도 호출되지 않는다(가짜 k8s 서비스의 호출 카운트가 0). `list`와
   비게이트 종류의 `get`은 같은 조건에서 정상 동작한다. 선언에 없는 쌍을 행사하는 가짜
   도구를 등록하면 기동이 실패한다.
@@ -131,12 +144,21 @@
   - `patch` — `patchType`과 **패치 본문 전문**. 재시작 어노테이션 패치도 예외가 아니다 —
     무엇을 바꾸는 패치인지는 본문을 봐야 알 수 있고, 요약하면 그 판단을 서버가 대신하게 된다
   - `delete` — 삭제 대상과 `gracePeriodSeconds`
+  - `deletecollection` — 셀렉터, **삭제될 대상 수와 이름 목록**(많으면 앞 20개와 총 개수)
   - `exec` — 컨테이너 이름과 **실행할 명령 전문**(요약·생략 금지)
   - `attach` — 컨테이너 이름, `readSeconds`, 그리고 `stdin`이 있으면 **그 내용 전문**
   - `port_forward` — 대상 포트와 **보낼 페이로드 전문**. 네트워크 정책이 막아 둔 포트에
     도달할 수 있으므로 어디로 무엇을 보내는지가 승인의 전부다
   - `proxy` — HTTP 메서드, 대상 종류·이름, **경로와 본문 전문**
-  - `get`(읽기 게이트) — 어떤 종류의 어떤 대상을 읽는지
+  - `get`·`watch`(민감 종류) — 어떤 종류의 어떤 대상을 읽는지
+
+  두 가지 예외 처리가 붙는다.
+  - **민감 종류 쓰기는 값을 가린다** — `data`·`stringData`를 키 이름과 바이트 수로 대체한다.
+    값을 그대로 실으면 승인 화면과 푸시 알림이 유출 경로가 되어, 거절해도 이미 본 것이 된다.
+  - **kubelet 고권한 경로는 표시한다** — `nodes/proxy`의 경로가 `/exec`·`/attach`·
+    `/portForward`·`/run`·`/logs`·`/containerLogs`에 해당하면 `context`에 그 사실을 눈에
+    띄게 적는다. **막지 않는다** — 경로는 이미 전문으로 실려 있고, 이 표시는 운영자가
+    놓치지 않게 하는 것뿐이다.
 
   스트림 넷(`exec`·`attach`·`port_forward`·`proxy`)은 RBAC로 내용을 가릴 수 없어 게이트가
   유일한 방어선이다. 이들의 `context`에서 전문 노출은 선택이 아니다.
@@ -212,14 +234,43 @@
 - **검증 방법**: `AUTO_APPROVE` 사용자로 게이트 대상 호출을 수행하면 응답에 자동 승인 표기가
   포함되고, 로그에도 남는다.
 
-### AC10: 승인된 읽기의 값은 응답에만 담긴다
-- **설명**: 읽기 게이트가 열리면 자격증명 값이 반환되므로, 그 값이 **응답 외의 어디에도
-  남지 않게** 한다.
+### AC10: 자격증명 값은 응답에만 담긴다
+- **설명**: 민감 종류의 값은 읽기에서는 응답으로 나오고 쓰기에서는 요청으로 들어온다.
+  어느 쪽이든 그 값이 **응답 외의 어디에도 남지 않게** 한다.
   - 승인 요청 `context`에 값을 넣지 않는다. 좌표만 넣는다. 값이 승인 화면과 푸시 알림에
     뜨면 게이트가 오히려 유출 경로가 된다 — 승인하지 않아도 이미 본 것이 된다.
   - 감사 로그(AC8)에 값을 넣지 않는다.
   - 에러 메시지에 값을 넣지 않는다. 특히 실행 실패 시 대상 객체를 통째로 덤프하지 않는다.
-  - `list`는 값을 담지 않는 표현으로만 응답한다(`prd-resource-generic` AC10).
+  - `list`는 값을 담지 않는 표현으로만 응답한다(`prd-resource-generic` AC17).
+  - **쓰기 요청의 값도 같다** — `create`·`update`·`patch`로 들어온 `data`·`stringData`는
+    `context`·로그·에러 어디에도 남지 않는다. 들어오는 값이 나가는 값보다 안전할 이유가 없다.
 - **달성 가치**: V3
-- **검증 방법**: Secret 읽기 승인 요청의 `context`, 서버 로그, 그리고 각 실패 경로의 에러
-  메시지 어디에도 `data` 값이 등장하지 않는다. 승인 후 정상 응답에만 담긴다.
+- **검증 방법**: Secret 읽기·쓰기 양쪽에서 승인 요청 `context`, 서버 로그, 각 실패 경로의
+  에러 메시지 어디에도 `data` 값이 등장하지 않는다. 읽기는 승인 후 정상 응답에만 담기고,
+  쓰기는 어디에도 담기지 않는다.
+
+### AC11: 게이트 자신이 행사하는 권한을 선언한다
+- **설명**: 게이트는 승인을 중개하기만 하지 않는다. AC3의 `context`를 채우려면 대상의
+  현재 상태를 읽어야 하고(스케일의 현재 레플리카, `deletecollection`의 대상 수와 이름),
+  AC6의 프리컨디션을 걸려면 `resourceVersion`을 읽어야 한다. 이것들은 **게이트가 행사하는
+  쿠버네티스 권한**이며 도구의 것이 아니다.
+
+  게이트는 다음 두 쌍을 선언하고, `prd-resource-generic` AC19의 RBAC 대조가 이를 함께
+  센다. 선언하지 않으면 대조가 성립할 수 없다 — 이전 판은 게이트의 읽기를 계산에서 빼
+  놓은 채 "양방향으로 정확히 같다"고 적고 있었다.
+
+  | 쌍 | 쓰임 |
+  |----|------|
+  | `get` on ⟨kind⟩ | `resourceVersion` 프리컨디션, 스케일의 현재 레플리카 |
+  | `list` on ⟨kind⟩ | `deletecollection`의 대상 수·이름 목록 |
+
+  **민감 종류에는 예외가 적용된다.** Secret의 `resourceVersion`을 얻겠다고 전체
+  객체를 `get`하면 게이트가 승인 전에 값을 읽게 된다 — 승인 여부와 무관하게 이미 서버
+  메모리에 값이 들어온 것이고, 그 상태에서 거절이 나면 게이트는 아무것도 막지 못한 셈이다.
+  따라서 민감 종류의 프리컨디션은 **PartialObjectMetadata**
+  (`Accept: application/json;as=PartialObjectMetadata;v=1;g=meta.k8s.io`)로 받는다.
+  apiserver가 서버 사이드로 메타데이터만 잘라 보내므로 `data`가 전송되지 않는다.
+- **달성 가치**: V3
+- **검증 방법**: 게이트 선언이 `rbac.yaml`과 대조되고 양방향 어긋남이 0이다. Secret 읽기
+  승인을 **거절**한 뒤 서버 프로세스의 요청 기록을 보면 전체 객체 `get`이 한 번도 없고
+  PartialObjectMetadata 요청만 있다.

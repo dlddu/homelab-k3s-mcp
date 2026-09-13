@@ -16,8 +16,8 @@
 
 - 정의된 가치: **5개** (V1~V5)
 - PRD: **14개** (도구 12 + 공통 기반 2)
-- Acceptance Criteria: **77개** (가치 연결됨: 77 / 미연결: 0)
-- 테스트 문서: **14개** (AC 커버됨: 77 / 미커버: 0)
+- Acceptance Criteria: **80개** (가치 연결됨: 80 / 미연결: 0)
+- 테스트 문서: **14개** (AC 커버됨: 80 / 미커버: 0)
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있으나,
   ⑴ 폐기된 6종이 아직 코드에 살아 있고 ⑵ `dear_baby_reset_user`가 게이트 밖에 있다
   (아래 "수용된 위험" 참조)
@@ -78,7 +78,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | PRD (도구) | 달성 가치 | AC 수 | 테스트 문서 | 상태 |
 |------------|-----------|:----:|--------------|------|
 | ping | V3 | 1 | test-ping | ✅ 완전 |
-| resource_* (generic) | V1, V3 | 18 | test-resource-generic | ✅ 완전 |
+| resource_* (generic) | V1, V3 | 20 | test-resource-generic | ✅ 완전 |
 | dear_baby_reset_user | V5, V3 | 3 | test-dear-baby-reset-user | ✅ 완전 |
 | github_app_installation_token | V2, V3 | 4 | test-github-app-installation-token | ✅ 완전 |
 | grafana_token | V2, V3 | 4 | test-grafana-token | ✅ 완전 |
@@ -90,7 +90,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | session_read | V5, V3 | 4 | test-session-read | ✅ 완전 |
 | session_write | V5, V3 | 5 | test-session-write | ✅ 완전 |
 | platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
-| approval-gate (승인 게이트 공통) | V3, V1 | 10 | test-approval-gate | ✅ 완전 |
+| approval-gate (승인 게이트 공통) | V3, V1 | 11 | test-approval-gate | ✅ 완전 |
 
 ## 가치 커버리지
 
@@ -114,10 +114,10 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - (없음) — 14개 PRD 모두 가치를 달성하고 AC를 보유
 
 ### 미연결 AC (가치와 연결되지 않은 AC)
-- (없음) — 77개 AC 모두 가치에 연결
+- (없음) — 80개 AC 모두 가치에 연결
 
 ### 미검증 AC (테스트 없는 AC)
-- (없음) — 77개 AC 모두 테스트 문서의 시나리오로 커버
+- (없음) — 80개 AC 모두 테스트 문서의 시나리오로 커버
 
 ### 고아 테스트 (AC를 참조하지 않는 테스트)
 - (없음) — 14개 테스트 문서 모두 검증 대상 AC를 명시
@@ -131,7 +131,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 스트림 표면 확대 | `attach`·`port_forward`·`proxy` | 도구로 분리하면서 RBAC 에 `pods/attach`·`pods/portforward`·`pods/proxy`·`services/proxy` 를 **새로 부여한다**. `port_forward` 와 `proxy` 는 네트워크 정책이 막아 둔 파드 포트·내부 API 에 도달할 수 있고, `attach` 는 대화형 셸이 PID 1 인 파드에서 `exec` 과 구별되지 않는다. RBAC 로는 내용을 가릴 수 없어 **게이트가 유일한 방어선**이다. | ⚠️ **수용(2026-09-12)** — 넷 다 게이트 대상이고 `context` 에 명령·페이로드·경로가 전문으로 들어간다(`prd-approval-gate` AC3). `nodes/proxy` 만은 열지 않는다 — 그건 게이트를 우회하는 게 아니라 무의미하게 만든다 |
 | 방어층 축소 | Secret 읽기 | 이전 설계는 도구 레이어 거부 + RBAC 에 `secrets` 규칙 부재의 **2중화**였다. 읽기를 허용하려면 RBAC 가 `secrets: get` 을 줘야 하므로, 이제 **도구 레이어의 게이트 판정이 유일한 경계**다. | ⚠️ **수용(2026-09-12)** — 거부하면 운영자가 `kubectl` 로 우회해 아무 기록도 남지 않는다. 전제 조건은 디스패처 단계 강제(AC1)와 fail-closed(AC5). RBAC 는 `get`·`list` 만 준다 |
 | 승인된 값의 확산 | Secret `get` 응답 | 승인이 떨어지면 값이 도구 응답에 담기고, 그 응답은 모델 컨텍스트와 대화 기록에 남는다. 게이트는 **읽는 시점**을 통제할 뿐 읽은 뒤를 통제하지 못한다. | ⚠️ **수용(2026-09-12)** — 완화는 1승인 1실행(AC7)과 값 봉쇄(AC10) |
-| 읽기 게이트 우회 (`watch`) | `k8s/rbac.yaml` | 현 RBAC 가 `apps/v1` 워크로드에 `watch` 를 주는데 **코드에 `Watch()` 호출이 없다** — 죽은 권한이다. 읽기 게이트를 여는 PR 이 범위를 넓히면서 `watch` 를 같이 끌고 가면 변경 스트림이 객체 전문을 밀어 게이트를 통째로 우회한다. | ⬜ **제거 대기** (2026-09-12 발견) — AC13 의 정적 검사가 잡는다. 죽은 권한이라 **게이트 구현을 기다리지 않고 지금 제거해도 안전하다** |
+| 쌍이 분류력을 잃음 | `nodes/proxy` | 경로 제한 없이 열면서 `create nodes/proxy` 하나가 `/healthz` POST 와 임의 파드 exec 을 동시에 뜻하게 됐다. **`(verb, resource)` 쌍이 호출의 권능을 한정하지 못한다** — 한정하는 것은 경로이고 경로는 `context` 에만 있다. RBAC 의 네임스페이스 범위도 파드 수준 조작에는 적용되지 않으며, 민감 종류 게이트도 kubelet `/exec` 경유 읽기는 잡지 못한다(쌍이 `create nodes/proxy` 이므로). | ⚠️ **수용(2026-09-12)** — 경로 허용목록을 두면 「이 경로는 봐준다」는 분류기가 생기고 그 분류기가 곧 우회 경로가 된다. 대신 게이트가 경로를 숨기지 않고 보여 준다. 고권한 kubelet 경로는 `context` 에 **표시**하되 막지 않는다. **그 결과 `context` 의 품질이 곧 보안이며, AC3 가 이 설계에서 가장 무거운 AC 다** |
+| RBAC 백스톱 소멸 | 전체 | `watch`·`deletecollection`·`attach`·`portforward`·`proxy`(`Node` 포함)·`secrets` 쓰기가 차례로 도구가 되면서 **금지 목록이 비었다**. RBAC 가 도구 표와 정확히 같아진다는 것은 곧 **RBAC 가 더는 백스톱이 아니라는 뜻**이다 — 게이트에 결함이 생기면 apiserver 가 막아 줄 것이 없다. | ⚠️ **수용(2026-09-12)** — 완화는 AC1(디스패처 강제)·AC5(fail-closed)·AC11(게이트 권한 선언)이며, 이 셋이 이제 구조 전체를 지탱한다. 구현 시 이 경로들의 테스트 밀도를 다른 곳보다 높게 잡을 것 |
 | 게이트 우회 가능 | `dear_baby_reset_user` | `create` on `pods/exec` 을 행사하므로 게이트 정의에 해당하지만 편입하지 않았다. V5 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user` 의 AC 를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12) |
 | 문서 없는 실행 코드 | 폐기된 6종 | 이 PR 은 **문서만** 폐기했고 Go 구현은 그대로다. 6종이 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **구현 제거 선행 대기** (2026-09-12) |
 
@@ -142,9 +143,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 문서가 목표 상태를 말하고 코드가 현재 상태를 사는 구간이므로, 후속 작업의 순서를 못박는다.
 
-1. `internal/mcp`에서 6종 도구 등록·디스패치를 제거하고 `resource_*` 11종
-   (`list`·`get`·`create`·`update`·`patch`·`delete`·`exec`·`attach`·`port_forward`·
-   `proxy` + `api_resources`)을 등록한다.
+1. `internal/mcp`에서 6종 도구 등록·디스패치를 제거하고 `resource_*` 13종
+   (`list`·`get`·`watch`·`create`·`update`·`patch`·`delete`·`delete_collection`·
+   `exec`·`attach`·`port_forward`·`proxy` + `api_resources`)을 등록한다.
 2. `_helpers.EXPECTED_TOOLS`를 같은 커밋에서 갱신한다 — 이 상수는 부분집합이라
    **깨지지 않고 조용히 약해지는** 전례가 두 번 있었다(2026-09-03, 2026-09-04 변경 이력).
 3. `k8s/rbac.yaml`을 재검토한다. `resource_*`는 종류를 입력으로 받으므로 현재의
@@ -242,9 +243,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant · oauth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
 <!-- scenario-e2e-집계 -->
-- 시나리오 전집: 77
+- 시나리오 전집: 80
 - 예외 등재: 1
-- 구현 대기 등재: 31
+- 구현 대기 등재: 34
 - 1:1 대상: 45
 - 매칭 파일(전용): 45
 - 분할 대기 파일(규칙 2 위반): 0
@@ -255,9 +256,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### 시나리오 레지스트리 (77) — ✅ 전용 파일 45 · ⬜ 분할 대기 0 · ⏳ 구현 대기 31 · 🚫 예외 1
+### 시나리오 레지스트리 (80) — ✅ 전용 파일 45 · ⬜ 분할 대기 0 · ⏳ 구현 대기 34 · 🚫 예외 1
 
-> 불변식이 여기서 눈으로 닫힌다: **77 − 1(예외) − 31(구현 대기) = 45 = 매칭 파일 45**, 공백 **0**.
+> 불변식이 여기서 눈으로 닫힌다: **80 − 1(예외) − 34(구현 대기) = 45 = 매칭 파일 45**, 공백 **0**.
 > 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
 | 시나리오 | 제목 | e2e 상태 |
@@ -320,27 +321,30 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-approval-gate.md#시나리오 7 | 승인은 한 번만 쓰인다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 8 | 감사 로그 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 9 | 자동 승인은 숨기지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-approval-gate.md#시나리오 10 | 승인된 값이 응답 밖으로 새지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 10 | 자격증명 값이 응답 밖으로 새지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 11 | 게이트의 읽기가 선언되고 값에 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 1 | 임의 종류를 좌표로 조회한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 2 | 목록은 표로 온다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 3 | 절단과 이어보기 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 4 | 단건 조회는 이름을 요구한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 5 | 서브리소스 조회 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 6 | 생성은 덮어쓰지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 7 | 전체 교체와 스케일 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 8 | 부분 수정과 롤링 재시작 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 9 | 삭제는 단건만 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 10 | 컨테이너 안에서 명령 실행 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 11 | 실행 중 컨테이너 stdio 접속 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 12 | 포트 포워드는 단발 왕복이다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 13 | 프록시는 Pod·Service 만 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 14 | Secret 읽기는 승인을 거친다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 15 | 값이 새는 경로가 막혀 있다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 16 | 권한 밖은 권한 밖이라고 말한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 17 | RBAC 가 도구 표와 정확히 같다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 18 | 종류 해석 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 6 | 변경 스트림 관측 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 7 | 생성은 덮어쓰지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 8 | 전체 교체와 스케일 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 9 | 부분 수정과 롤링 재시작 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 10 | 삭제는 단건만 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 11 | 컨테이너 안에서 명령 실행 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 12 | 컬렉션 일괄 삭제 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 13 | 실행 중 컨테이너 stdio 접속 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 14 | 포트 포워드는 단발 왕복이다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 15 | 프록시는 경로를 숨기지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 16 | 민감 종류는 읽기도 쓰기도 승인을 거친다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 17 | 값이 새는 경로가 막혀 있다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 18 | 권한 밖은 권한 밖이라고 말한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 19 | RBAC 가 도구 표 ∪ 게이트 선언과 정확히 같다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 20 | 종류 해석 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 
-### ⏳ 구현 대기 (31) — 규칙 6 등재 (1:1 계수에서 제외)
+### ⏳ 구현 대기 (34) — 규칙 6 등재 (1:1 계수에서 제외)
 
 > **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
 >
@@ -361,6 +365,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-approval-gate.md#시나리오 8** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-approval-gate.md#시나리오 9** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-approval-gate.md#시나리오 10** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-approval-gate.md#시나리오 11** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 1** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 2** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 3** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
@@ -379,6 +384,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-resource-generic.md#시나리오 16** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 17** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 18** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 19** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
+| **test-resource-generic.md#시나리오 20** | `resource_*` 도구군과 승인 게이트가 **아직 구현되지 않았다** — `internal/mcp` 에 도구가 없고 `internal/gatekeeper` 패키지가 존재하지 않으므로 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 
 > 아래 산문은 축 개정 전의 실측 기록이다. **AC 기준 표기(`session-read/AC2` 등)를 그대로 두었다** — 자기 시점의 사실을 적은 것이고, 위 표가 그 시나리오 대응을 든다.
 
@@ -553,6 +560,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-12 | **Secret 쓰기와 `nodes/proxy` 를 열었다 — 금지 목록이 비었다** — Secret 쓰기 금지의 근거(「Secret 은 읽기만 연다」)는 결론을 다시 쓴 순환논증이었다. 쓰기는 그 자체로 값을 유출하지 않고, 매니페스트의 `data`/`stringData` 를 `context` 에서 키 이름 + 바이트 수로 가리면 승인이 성립한다. 자격증명 로테이션은 실재하는 필요이고 막으면 `kubectl` 로 우회한다 — 읽기를 허용한 바로 그 논거다. 「읽기 게이트」를 **「민감 종류 게이트」**로 넓혀 `RESOURCE_GATED_KINDS` 의 모든 verb 를 게이트에 태운다(`list` 만 예외 — Table 이라 값이 전송되지 않는다). `nodes/proxy` 는 **경로 제한 없이** 열었다. 그 대가는 명확하다 — `create nodes/proxy` 하나가 `/healthz` POST 와 임의 파드 exec 을 동시에 뜻하므로 **`(verb, resource)` 쌍이 호출의 권능을 한정하지 못한다**. kubelet `/exec` 경유 Secret 읽기는 쌍이 `create nodes/proxy` 라 민감 종류 게이트에도 걸리지 않는다. 경로 허용목록을 두지 않은 것은 「이 경로는 봐준다」는 분류기가 곧 우회 경로가 되기 때문이며(패치 내용을 보지 않기로 한 것과 같은 이유), 대신 게이트가 경로를 숨기지 않고 보여 주고 kubelet 고권한 경로를 `context` 에 **표시**한다(막지는 않는다). **금지 목록이 비면서 RBAC 는 백스톱이 아니게 됐다** — 남은 역할은 종류 범위를 좁히는 것 하나이고, 게이트 판정이 유일한 경계다. 따라서 `context` 의 품질이 곧 보안이며 AC3 가 이 설계에서 가장 무거운 AC 다. | 금지 목록 2건(`nodes/proxy`·`secrets` 쓰기) · 읽기 게이트 · RBAC 부분 백스톱 | 금지 목록 0건 · 민감 종류 게이트(읽기·쓰기) · RBAC 백스톱 없음 |
+| 2026-09-12 | **`watch`·`deletecollection` 을 도구로 들이고, 게이트 자신의 권한 선언 누락을 고쳤다** — 두 verb 를 뺀 근거가 서지 않았다. `watch` 는 「스트림이라 읽기 게이트를 우회한다」였는데 그건 **게이트를 걸 이유를 게이트를 두지 않을 이유로 뒤집어 읽은 것**이고, `deletecollection` 은 「몇 개를 지우는지 말할 수 없다」였는데 해법(「`context` 에 영향 건수 필수」)을 금지 등급 표에 이미 적어 놓고 도구만 안 만들었다. 둘 다 `scale`·`restart` 예외를 반대하며 든 논거 — 예외에 사연을 붙이지 말 것 — 에 스스로 걸린 셈이다. `resource_watch` 는 `watchSeconds`(기본 10, 상한 60) 창으로, `resource_delete_collection` 은 `namespace` 필수 + `context` 에 대상 수·이름 목록으로 요청·응답 모델에 맞췄다. **그 과정에서 있던 버그 하나가 드러났다**: 게이트는 `context` 를 채우고 TOCTOU 프리컨디션을 걸려고 이미 `get`·`list` 를 행사하고 있었는데 그것을 **어디에도 선언하지 않았다**. AC19 가 「RBAC 와 도구 표가 양방향으로 정확히 같다」고 단언하면서 게이트의 읽기를 계산에서 빼고 있었으니 성립할 수 없는 주장이었다. 게이트 선언을 `prd-approval-gate` AC11 로 신설해 대조에 넣었다. **함께 드러난 더 나쁜 것**: Secret 의 `resourceVersion` 을 얻겠다고 전체 객체를 `get` 하면 게이트가 **승인 전에 값을 읽는다** — 거절이 나도 이미 읽은 뒤라 게이트가 아무것도 막지 못한다. 읽기 게이트 종류의 프리컨디션은 `PartialObjectMetadata` 로 받아 `data` 가 전송되지 않게 했다. 금지 목록은 `nodes/proxy` 와 `secrets` 쓰기 둘만 남았고, 이는 **RBAC 가 더는 백스톱이 아니라는 뜻**이라 수용 위험으로 올렸다. | 도구 11 / AC 77 · `watch`·`deletecollection` 금지 · 게이트 권한 미선언 · 시나리오 77 | 도구 13 / AC 80 · 둘 다 도구화 · 게이트 권한 선언 + PartialObjectMetadata · 시나리오 80 |
 | 2026-09-12 | **스트림 서브리소스 4종을 도구로 분리하고 `exec` AC 누락을 메웠다** — `pods/exec`·`pods/attach`·`pods/portforward`·`⟨kind⟩/proxy` 는 RBAC 에서 서로 다른 서브리소스이고 따로 부여·회수되므로 도구도 따로 둔다. 한 도구로 묶으면 그 선언이 네 쌍을 한꺼번에 들고 있게 되어, RBAC 가 셋만 허용한 상태에서 그 도구를 어떻게 판정할지 답이 없다. 직전 슬라이스에 **`exec` 전용 AC 가 아예 없었던 것**도 이번에 함께 메웠다. 요청·응답 모델에 맞추느라 둘은 형태를 제약했다 — `attach` 는 `readSeconds`(기본 5, 상한 30) 동안 출력을 모으고, `port_forward` 는 **터널을 걸쳐 유지하지 않고** 열고·보내고·읽고·닫는 단발 왕복이다(1승인 1실행이 터널에도 걸린다). 지속 세션은 `kubectl port-forward` 의 일이다. `resource_proxy` 의 verb 는 HTTP 메서드를 따라가며(`GET`→`get`, `POST`→`create` …) **메서드와 무관하게 전부 게이트를 탄다** — 프록시의 `get` 은 쿠버네티스 객체를 읽는 게 아니라 클러스터 내부의 임의 엔드포인트에 도달하는 것이라 성질이 다르다. **`nodes/proxy` 는 열지 않는다** — kubelet API 에 직접 닿아 그 노드 위 모든 파드의 로그·실행을 열므로, `resource_exec` 에 승인을 걸어 두고 이걸 열면 승인을 받을 이유가 없어진다. 게이트를 우회하는 게 아니라 무의미하게 만드는 경로다. 금지 목록에는 `watch`·`deletecollection`·`nodes/proxy`·`secrets` 쓰기만 남았고, 나머지 셋은 도구가 생겨 부여 대상이 됐다 — 표에서 빠졌다는 게 위험이 줄었다는 뜻은 아니어서 AC17 에 그 문장을 박았다. 새 수용 위험 1건: 스트림 표면 확대. | 도구 8 / AC 73 · 스트림 = `exec` 하나 · `exec` AC 없음 · 시나리오 73 | 도구 11 / AC 77 · 스트림 4종 분리 · 전부 게이트 · 시나리오 77 |
 | 2026-09-12 | **도구를 RBAC verb 와 1:1 로 맞추고, 변경 verb 의 게이트 예외를 없앴다** — 직전까지 게이트 판정 키만 verb 로 바꾸고 **도구군은 발명한 동사 모양 그대로**였다(`resource_logs` = `get pods/log`, `resource_describe` = `get`+`list events`, `resource_restart` = `patch`). 그 결과 「통합」이라면서 6종을 10종으로 늘렸고, 실제로 흡수된 건 `namespace_list`·`workload_list` 둘뿐이며 나머지 넷은 접두사만 갈았다. 도구를 verb 와 1:1 로 재설계해 8종으로 줄였다 — `list`·`get`(+`subresource`)·`create`·`update`(+`subresource`)·`patch`·`delete`·`create pods/exec` + 권한을 행사하지 않는 `api_resources`. 발명한 동사는 전부 인자가 됐다: 로그는 `get subresource=log`, 스케일은 `update subresource=scale`, 재시작은 `restartedAt` 어노테이션 `strategic` 패치, SSA 는 `patch patchType=apply`. **대가 둘을 수용했다** — `pod_describe` 의 「객체+이벤트 한 응답」과 `workload_logs` 의 대상 해석이 사라져 진단 왕복이 두 번이 된다. 편의 도구가 verb 를 둘 이상 행사하면 게이트와 RBAC 가 그 도구를 어떻게 판정할지 모호해지기 때문이다. **게이트 예외도 없앴다** — `scale`·`restart` 가 다시 게이트 안으로 들어와 변경 verb 다섯이 예외 없이 승인을 받는다. 보증이 「되돌리기 어려운 일만」에서 **「승인 없이는 클러스터 상태가 바뀌지 않는다」**로 돌아왔다. 판정은 **verb 에만** 걸고 패치 내용을 보지 않는다 — 내용으로 판정하면 「이 패치는 재시작이니 봐준다」는 분류기가 필요해지고, 그 분류기가 곧 우회 경로가 된다. 그래서 `context` 에는 패치 본문 전문이 들어가 운영자가 스스로 읽는다. 새 수용 위험 2건: `AUTO_APPROVE` 유인 증가, 진단 왕복 증가. | 도구 10 / AC 74 · 판정 키 verb · 게이트 밖 `scale`·`restart` · 시나리오 74 | 도구 8 / AC 73 · 도구 = verb 1:1 · 변경 verb 예외 없음 · 시나리오 73 |
 | 2026-09-12 | **게이트 판정을 RBAC verb 어휘로 옮기고 탈출구 verb 를 막았다** — 발명한 동사(`apply`·`restart`·`describe`·`logs`·`scale`)로 판정하면 게이트와 RBAC 가 **서로 다른 어휘로 같은 것을 재게** 되고, 그러면 「이 서버가 무엇을 할 수 있나」를 어느 한쪽만 읽어서는 알 수 없다. 판정 키를 `(verb, resource[/subresource])` 쌍으로 바꾸고 verb 는 RBAC 어휘를 그대로 쓴다. 도구 표에 행사 권한 열을 추가해 **그 표가 RBAC 의 입력이자 게이트의 입력**이 되게 했다(AC15 가 양방향 대조). 매핑에서 드러난 것: `apply` 는 SSA 라 `patch`+`create`, `exec` 은 SPDY POST 라 `create pods/exec`, `scale` 은 `update ⟨kind⟩/scale`, `restart` 는 `patch` 다. **`restart` 와 `apply` 가 같은 verb 라 RBAC 가 둘을 구별하지 못한다** — 완화는 리소스 범위로 좁히는 것뿐이라 `patch` 를 `apps/v1` 세 워크로드에만 준다. **구멍 하나를 발견했다**: 현 `rbac.yaml` 이 `watch` 를 주는데 코드에 `Watch()` 호출이 없다. 죽은 권한이면서 동시에, 읽기 게이트 종류로 범위가 넓어지면 변경 스트림이 `data` 를 그대로 밀어 게이트를 통째로 우회하는 경로다 — 게이트가 아니라 **RBAC 미부여**로 막는다. 어떤 도구도 행사하지 않는 verb 의 등급을 미리 정했다: `watch`(읽기 게이트 종류)·`nodes/proxy` 는 **금지**, `pods/attach`·`pods/portforward` 는 exec 등급 쓰기 게이트, `deletecollection` 은 쓰기 게이트 + `context` 에 영향 건수 필수(몇 개를 지우는지 모르면 승인이 아니다). AC1 에 **선언되지 않은 쌍을 행사하는 도구는 등록 자체가 거부된다**를 더했다 — 선언과 실제 행사의 어긋남은 런타임에 조용히 통과하기 때문이다. | AC 73 · 판정 키 = 발명 동사 · 탈출구 verb 미정의 · `watch` 죽은 부여 | AC 74 · 판정 키 = `(verb, resource)` · 탈출구 verb 6종 등급 확정 · `watch` 제거 대기로 등재 |

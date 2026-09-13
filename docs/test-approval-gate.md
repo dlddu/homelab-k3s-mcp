@@ -11,7 +11,8 @@
 - AC7: 1승인 1실행 (PRD: approval-gate)
 - AC8: 감사 기록 (PRD: approval-gate)
 - AC9: 자동 응답 모드의 가시화 (PRD: approval-gate)
-- AC10: 승인된 읽기의 값은 응답에만 담긴다 (PRD: approval-gate)
+- AC10: 자격증명 값은 응답에만 담긴다 (PRD: approval-gate)
+- AC11: 게이트 자신이 행사하는 권한을 선언한다 (PRD: approval-gate)
 
 ## 픽스처
 
@@ -54,7 +55,8 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **실행 단계**: 게이트 대상 verb 각각을 호출하고 생성된 `context` 문자열을 수집
 - **기대 결과**: 모든 `context`에 도구 이름·`apiVersion`/`kind`/`namespace`/`name`·요청 시각이
   포함. `create`는 주요 스펙 요약, `update`는 바뀌는 필드(스케일이면 현재→목표 레플리카),
-  `patch`는 `patchType`과 **패치 본문 전문**, `delete`는 `gracePeriodSeconds`, `exec`는
+  `patch`는 `patchType`과 **패치 본문 전문**, `delete`는 `gracePeriodSeconds`,
+  `deletecollection`은 **대상 수와 이름 목록**, `exec`는
   **명령 인자 전문**, `attach`는 `readSeconds`와 `stdin` 전문, `port_forward`는 포트와
   **페이로드 전문**, `proxy`는 메서드·경로·**본문 전문**이 축약 없이 포함. 재시작 어노테이션 패치의 `context`에도 본문이 그대로
   담겨 운영자가 "이건 재시작이구나"를 **스스로** 읽어낼 수 있음 — 서버가 대신 판단해 요약하지
@@ -125,16 +127,33 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **검증 AC**: AC9
 - **자동화**: (미작성) — 계획: 통합 `approval_gate_ac9.py`(AUTO_APPROVE·AUTO_REJECT 각 1케이스)
 
-### 시나리오 10: 승인된 값이 응답 밖으로 새지 않는다
+### 시나리오 10: 자격증명 값이 응답 밖으로 새지 않는다
 - **사전 조건**: kind 실물 gatekeeper, 값이 고유 토큰인 Secret 1개
   (예: `data.token` = 검색 가능한 난수 문자열)
 - **실행 단계**: `kind=Secret`으로 `resource_get` 호출 → 승인 요청 본문을 수집 →
+  같은 Secret 을 `resource_create`·`resource_patch` 로 쓰며 요청 본문을 수집 →
   승인 후 응답 수집 → 서버 로그 수집. 이어서 승인 후 실행이 실패하도록 대상을 지운 뒤
   같은 절차를 반복해 에러 메시지를 수집. 마지막으로 `kind=Secret`으로 `resource_list` 호출
 - **기대 결과**: 그 난수 문자열이 **승인 요청 `context`에 없고**, 서버 로그에 없고,
   에러 메시지에 없고, `resource_list` 응답에도 없다. 오직 승인 후 정상 `resource_get`
-  응답에만 등장한다. `resource_describe`는 승인 후에도 키 이름과 바이트 수만 반환하고
-  그 문자열을 담지 않는다
+  응답에만 등장한다. **쓰기 경로의 값은 어디에도 등장하지 않는다** — `context` 에는 키
+  이름과 바이트 수만 있다
 - **검증 AC**: AC10
 - **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestSecretValueNeverLeavesResponse`
   (context·로그·에러 3표면 표 기반). 통합 `approval_gate_ac10.py`
+
+### 시나리오 11: 게이트의 읽기가 선언되고 값에 닿지 않는다
+- **사전 조건**: kind 실물 gatekeeper, 값이 고유 난수 토큰인 Secret, apiserver 요청을
+  기록하는 감사 프록시
+- **실행 단계**: (a) `kind=Secret`으로 `resource_get` 호출 → 승인 요청이 뜬 상태에서
+  **거절** → 감사 프록시 기록을 수집. (b) `resource_update`(`subresource=scale`)와
+  `resource_delete_collection`을 호출해 `context` 생성 경로를 태운 뒤 기록을 수집.
+  (c) 정적 검사로 게이트 선언과 `rbac.yaml` 을 대조
+- **기대 결과**: (a) 기록에 Secret 전체 객체 `get` 이 **한 번도 없고**
+  `PartialObjectMetadata` 요청만 있음. 난수 토큰이 서버 어디에도 나타나지 않음 —
+  거절된 승인은 값을 읽지 않은 것이어야 한다. (b) 스케일은 `get`, 일괄 삭제는 `list` 를
+  게이트가 행사하며 그것이 선언과 일치. (c) 게이트 선언을 뺀 변형에서 대조가 실패로 잡힘
+- **검증 AC**: AC11
+- **자동화**: (미작성) — 계획: Go 단위
+  `gatekeeper_test.go::TestPreconditionUsesPartialObjectMetadataForGatedKinds`.
+  통합 `approval_gate_ac11.py`
