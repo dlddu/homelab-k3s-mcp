@@ -24,13 +24,13 @@ type health struct {
 }
 
 // App builds the HTTP handler for the service.
-func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service) http.Handler {
+func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service, mcpOpts ...mcp.Option) http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", root)
 	mux.HandleFunc("GET /healthz", healthz)
 	mux.HandleFunc("GET /readyz", readyz)
 
-	mcpHandler := mcp.NewHandler(k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc)
+	mcpHandler := mcp.NewHandler(k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc, mcpOpts...)
 	if authCfg != nil {
 		if authCfg.OAuthConfigured() {
 			mux.Handle("GET /.well-known/oauth-protected-resource", auth.MetadataHandler(authCfg))

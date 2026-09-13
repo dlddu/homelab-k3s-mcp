@@ -14,12 +14,15 @@ import (
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
+	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
+	"github.com/dlddu/homelab-k3s-mcp/internal/mcp"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
+	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
 
 func main() {
@@ -49,16 +52,30 @@ func main() {
 		}
 	}
 
+	// The tool registry is checked before anything is served. A tool that is
+	// advertised without a declaration of the RBAC pairs it exercises would let
+	// the approval gate judge on a table that does not describe reality, and
+	// that mismatch passes silently at runtime — so it stops the process here
+	// instead (prd-approval-gate AC1).
+	if err := mcp.Validate(); err != nil {
+		slog.Error("refusing to start", "error", err)
+		os.Exit(1)
+	}
+	for tool, reason := range mcp.Exemptions() {
+		slog.Warn("tool exercises a gated verb but runs outside the approval gate", "tool", tool, "reason", reason)
+	}
+
 	k8sSvc := buildK8sService()
 	ghSvc := buildGitHubService()
 	awsSvc := buildAWSService(ctx)
 	grafanaSvc := buildGrafanaService()
 	osSvc := buildOpenSearchService(ctx)
 	sessionSvc := buildSessionPlatformService()
+	gate, gatedKinds := buildGate()
 
 	srv := &http.Server{
 		Addr:    addr,
-		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc),
+		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc, mcp.WithGate(gate, gatedKinds)),
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -158,6 +175,30 @@ func buildSessionPlatformService() sessionplatform.Service {
 	}
 	slog.Info("session platform integration loaded")
 	return client
+}
+
+// buildGate wires the approval gate. An unconfigured gate is not a startup
+// error: the server's degradation rule is that a missing integration disables
+// its own tools and nothing else. Here that "its own tools" happens to be every
+// gated call, which is the intended shape — if the approval path is down,
+// changing the cluster should stop (prd-approval-gate AC5).
+func buildGate() (gatekeeper.Gate, []string) {
+	cfg, err := gatekeeper.FromEnv()
+	if err != nil {
+		slog.Error("invalid approval gate config; gated calls will be refused", "error", err)
+		return gatekeeper.NewUnavailable(err), nil
+	}
+	if cfg == nil {
+		slog.Warn("GATEKEEPER_BASE_URL not set: gated calls will be refused")
+		return gatekeeper.NewUnavailable(nil), nil
+	}
+	slog.Info("approval gate enabled",
+		"timeout", cfg.Timeout,
+		"poll_interval", cfg.PollInterval,
+		"gated_kinds", cfg.GatedKinds,
+		"push_notifications", cfg.UserID != "",
+	)
+	return gatekeeper.New(*cfg, version.Name), cfg.GatedKinds
 }
 
 func buildGrafanaService() grafana.Service {

@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
+	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
@@ -29,6 +30,10 @@ const (
 	dearBabyDefaultSelector  = "app=dear-baby"
 	dearBabyDefaultContainer = "backend"
 	dearBabyResetBin         = "/reset-user"
+
+	// defaultSensitiveKind mirrors RESOURCE_GATED_KINDS' default: reading a
+	// Secret is gated even though reads otherwise are not.
+	defaultSensitiveKind = "v1/Secret"
 )
 
 // Handler serves the MCP JSON-RPC endpoint.
@@ -39,18 +44,52 @@ type Handler struct {
 	grafana         grafana.Service
 	opensearch      opensearch.Service
 	sessionPlatform sessionplatform.Service
+
+	// gate holds gated calls until a human decides. It is never nil: an
+	// unconfigured deployment gets a gate that refuses, because "no approval
+	// backend" has to mean "no state changes", not "no approvals needed".
+	gate           gatekeeper.Gate
+	sensitiveKinds []string
+
+	// registry is the dispatchable tool set. Held on the Handler rather than
+	// read from the package global so a test can dispatch against a tool that
+	// production does not ship.
+	registry map[string]toolEntry
+}
+
+// Option customises a Handler at construction.
+type Option func(*Handler)
+
+// WithGate installs the approval gate. Without it a Handler refuses every gated
+// call (prd-approval-gate AC5).
+func WithGate(gate gatekeeper.Gate, sensitiveKinds []string) Option {
+	return func(h *Handler) {
+		if gate != nil {
+			h.gate = gate
+		}
+		if len(sensitiveKinds) > 0 {
+			h.sensitiveKinds = sensitiveKinds
+		}
+	}
 }
 
 // NewHandler builds an MCP handler backed by the given services.
-func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service) *Handler {
-	return &Handler{
+func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service, opts ...Option) *Handler {
+	h := &Handler{
 		k8s:             k8sSvc,
 		github:          ghSvc,
 		aws:             awsSvc,
 		grafana:         grafanaSvc,
 		opensearch:      osSvc,
 		sessionPlatform: sessionSvc,
+		gate:            gatekeeper.NewUnavailable(nil),
+		sensitiveKinds:  []string{defaultSensitiveKind},
+		registry:        toolRegistry,
 	}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 type rpcRequest struct {
@@ -151,44 +190,23 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 	args := params // arguments are re-decoded per tool from the raw params
 	rawArgs := extractArguments(args)
 
-	switch name {
-	case "ping":
-		return toolText("pong", false), nil
-	case "namespace_list":
-		return h.namespaceList(ctx)
-	case "workload_list":
-		return h.workloadList(ctx, rawArgs)
-	case "workload_restart":
-		return h.workloadRestart(ctx, rawArgs)
-	case "workload_scale":
-		return h.workloadScale(ctx, rawArgs)
-	case "workload_logs":
-		return h.workloadLogs(ctx, rawArgs)
-	case "pod_describe":
-		return h.podDescribe(ctx, rawArgs)
-	case "dear_baby_reset_user":
-		return h.dearBabyResetUser(ctx, rawArgs)
-	case "github_app_installation_token":
-		return h.githubAppInstallationToken(ctx, rawArgs)
-	case "aws_config_get":
-		return h.awsConfigGet(ctx)
-	case "grafana_token":
-		return h.grafanaToken(ctx)
-	case "opensearch_search":
-		return h.opensearchSearch(ctx, rawArgs)
-	case "opensearch_document_put":
-		return h.opensearchDocumentPut(ctx, rawArgs)
-	case "opensearch_document_delete":
-		return h.opensearchDocumentDelete(ctx, rawArgs)
-	case "session_list":
-		return h.sessionList(ctx)
-	case "session_read":
-		return h.sessionRead(ctx, rawArgs)
-	case "session_write":
-		return h.sessionWrite(ctx, rawArgs)
-	default:
+	entry, ok := h.registry[name]
+	if !ok {
 		return nil, errf(-32602, "unknown tool: %s", name)
 	}
+
+	// The gate runs here rather than inside the handlers. A handler that calls
+	// the gate itself is a handler that can forget to (prd-approval-gate AC1).
+	decision, rerr := h.authorize(ctx, name, entry, rawArgs)
+	if rerr != nil {
+		return nil, rerr
+	}
+
+	result, rerr := entry.handle(h, ctx, rawArgs)
+	if rerr != nil {
+		return nil, rerr
+	}
+	return annotateAutoApproval(result, decision), nil
 }
 
 // extractArguments pulls the "arguments" field out of the raw tools/call params.
