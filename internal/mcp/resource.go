@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -183,6 +184,97 @@ func (h *Handler) resourceGet(ctx context.Context, raw json.RawMessage) (any, *r
 		"structuredContent": payload,
 		"isError":           false,
 	}, nil
+}
+
+func (h *Handler) resourcePatch(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	coord, rerr := parseCoordinate(obj)
+	if rerr != nil {
+		return nil, rerr
+	}
+	name := optionalString(obj, "name")
+	if name == nil {
+		return nil, errf(-32602, "name is required; this tool patches one object, not a selection")
+	}
+	patchType := optionalString(obj, "patchType")
+	if patchType == nil {
+		return nil, errf(-32602, "patchType is required (one of %s)", strings.Join(k8s.PatchTypeNames(), ", "))
+	}
+	if !k8s.IsPatchType(*patchType) {
+		return nil, errf(-32602, "patchType must be one of %s", strings.Join(k8s.PatchTypeNames(), ", "))
+	}
+
+	// The body is taken from the raw arguments rather than re-encoded from the
+	// decoded map: what the apiserver receives is then the same bytes the
+	// operator approved, down to key order.
+	body := rawPatchBody(raw)
+	if len(body) == 0 {
+		return nil, errf(-32602, "patch is required (an object, or an array for patchType=json)")
+	}
+
+	// fieldManager is server-side apply's ownership key, not a label, so apply
+	// cannot default it — two callers sharing a name share the fields they own.
+	// The other three types have no use for it, and accepting it there would
+	// advertise an argument that does nothing.
+	fieldManager := optionalString(obj, "fieldManager")
+	if *patchType == "apply" && fieldManager == nil {
+		return nil, errf(-32602, "fieldManager is required for patchType=apply; it is the ownership key server-side apply records")
+	}
+	if *patchType != "apply" && fieldManager != nil {
+		return nil, errf(-32602, "fieldManager applies to patchType=apply only")
+	}
+
+	ref := k8s.PatchRef{
+		APIVersion: coord.apiVersion,
+		Kind:       coord.kind,
+		Namespace:  coord.namespace,
+		Name:       *name,
+		PatchType:  *patchType,
+		Patch:      body,
+	}
+	if fieldManager != nil {
+		ref.FieldManager = *fieldManager
+	}
+
+	result, err := h.k8s.PatchResource(ctx, ref)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	payload := map[string]any{
+		"apiVersion": coord.apiVersion,
+		"kind":       coord.kind,
+		"namespace":  coord.namespace,
+		"name":       *name,
+		"resource":   result.Resource,
+		"patchType":  *patchType,
+		"object":     result.Object,
+	}
+	return map[string]any{
+		"content":           []any{map[string]any{"type": "text", "text": prettyJSON(result.Object)}},
+		"structuredContent": payload,
+		"isError":           false,
+	}, nil
+}
+
+// rawPatchBody lifts the patch out of the raw arguments untouched. A JSON patch
+// is an array and the other three are objects, so the field is taken as raw
+// JSON and handed on as-is.
+func rawPatchBody(raw json.RawMessage) []byte {
+	var args struct {
+		Patch json.RawMessage `json:"patch"`
+	}
+	if err := json.Unmarshal(raw, &args); err != nil {
+		return nil
+	}
+	body := bytes.TrimSpace(args.Patch)
+	if len(body) == 0 || string(body) == "null" {
+		return nil
+	}
+	return body
 }
 
 // parseLogOptions carries workload_logs' bounds over unchanged (AC5).
