@@ -42,6 +42,12 @@ jobs:
       # 클러스터가 필요 없어 여기서 돈다.
       - name: Comment policy ledger
         run: python3 scripts/check_comment_policy.py
+
+      # docs/doc-tracker.md 의 「허브 도달 가능 문서」 집계 <-> docs/ 실측. 문서를 추가하면서
+      # 그 줄을 함께 올리지 않으면 실패하고, 허브(index.html)에서 이행적으로 도달할 수 없는
+      # 문서나 끊긴 .md 링크도 잡는다. 표준 라이브러리 전용에 클러스터가 필요 없어 여기서 돈다.
+      - name: Doc hub inventory
+        run: python3 scripts/check_doc_inventory.py
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
