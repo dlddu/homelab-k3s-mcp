@@ -3,10 +3,8 @@
 검증 시나리오: test-resource-generic.md#시나리오 2
 실행 대상: primary
 
-시나리오의 실행 단계가 「같은 Deployment 목록을 (a) 도구로 조회, (b) 객체 전문 JSON 으로
-직렬화해 크기를 비교」이므로, 이 파일은 **한 목록을 두 경로로 뜬다**. (b) 는 도구를 거치지
-않고 `kubectl get -o json` 으로 뜬다 — 도구의 다른 호출로 대조군을 만들면 두 값이 같은
-축약 로직을 통과해 「현저히 작다」가 공전한다.
+크기 비교의 대조군은 도구를 거치지 않고 `kubectl get -o json` 으로 뜬다 — 도구의 다른
+호출로 대조군을 만들면 두 값이 같은 축약 로직을 통과해 「현저히 작다」가 공전한다.
 
 크기 비교는 **같은 직렬화 규칙**(`separators` 고정) 으로 재서 인코딩 차이가 비율에 섞이지
 않게 했다. 비율 하한은 `MIN_SHRINK_FACTOR` 하나로 모아 두었다 — `managedFields` 때문에
@@ -67,8 +65,7 @@ async def test_resource_generic_ac2_list_comes_back_as_a_table(
     assert columns, f"빈 열 정의 — Table 협상이 성립하지 않았다: {payload}"
     assert rows, f"Deployment 목록이 비었다: {payload}"
 
-    # `kubectl get deploy` 의 NAME/READY 에 대응하는 열. 이 둘은 apiserver 의 Deployment
-    # Table 정의가 항상 내는 것이라 픽스처가 바뀌어도 흔들리지 않는다.
+    # 이 둘은 apiserver 의 Deployment Table 정의가 항상 내는 것이라 픽스처가 바뀌어도 흔들리지 않는다.
     for wanted in ("Name", "Ready"):
         assert wanted in columns, f"kubectl 준하는 열이 아니다: {columns}"
     assert len(columns) >= 4, f"열이 너무 적다 — 표가 축약됐다: {columns}"
@@ -78,7 +75,6 @@ async def test_resource_generic_ac2_list_comes_back_as_a_table(
         f"픽스처 Deployment 가 목록에 없다: {sorted(names)}"
     )
 
-    # 렌더된 텍스트도 표다 — 헤더 행이 대문자 컬럼명으로 시작한다.
     assert result.content, result
     block = result.content[0]
     assert block.type == "text", block
@@ -124,11 +120,7 @@ async def test_resource_generic_ac2_table_is_much_smaller_than_whole_objects(
 async def test_resource_generic_ac2_rows_carry_no_objects(
     session: ClientSession,
 ) -> None:
-    """시나리오 2 — 작아진 이유가 표이기 때문임을 형태로 확인한다.
-
-    크기만 재면 객체를 담은 채 그냥 작은 응답과 구별되지 않는다. 행의 칸이 전부 스칼라이고
-    `managedFields` 가 응답 어디에도 없다는 것이 「표로 온다」의 형태적 형태다.
-    """
+    """시나리오 2 — 작아진 이유가 표이기 때문임을 형태로 확인한다."""
     result = await session.call_tool(
         "resource_list",
         {"apiVersion": "apps/v1", "kind": "Deployment", "namespace": NAMESPACE},
