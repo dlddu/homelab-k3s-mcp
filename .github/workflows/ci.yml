@@ -204,6 +204,17 @@ jobs:
       - name: Apply workload test fixture
         run: kubectl apply -f tests/k8s/kind/test-deployment.yaml
 
+      # workload-test 네임스페이스는 바로 위 스텝이 만든다. CRD 와 그 인스턴스가 두 파일로
+      # 갈린 이유는 픽스처 파일 머리말에 있다 — 사이에 established 대기가 들어가야 한다.
+      # 준비 대기 스텝은 따로 두지 않는다: resource_generic_ac1.py 가 자기 선행 조건을
+      # 멱등 폴링으로 성립시킨다.
+      - name: Apply resource-generic fixture
+        run: |
+          kubectl apply -f tests/k8s/kind/resource-generic-fixture.yaml
+          kubectl wait --for=condition=established --timeout=60s \
+            crd/resourcegenericsamples.homelab-k3s-mcp.test
+          kubectl apply -f tests/k8s/kind/resource-generic-samples.yaml
+
       - name: Apply dear-baby exec fixture
         run: kubectl apply -f tests/k8s/kind/dear-baby-fixture.yaml
 

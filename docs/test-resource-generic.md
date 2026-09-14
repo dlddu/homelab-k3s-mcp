@@ -35,6 +35,13 @@
 (게이트와 값 봉쇄가 실제로 동작하는지 확인하려면 대상이 실재하고 그 값이 전 표면에서
 검색 가능해야 한다).
 
+이 파일은 시나리오가 전용 e2e로 착지할 때마다 그 시나리오가 요구하는 대상만 더하며 자란다.
+2026-09-14 현재 담긴 것은 시나리오 1이 요구하는 몫이다 — Service·ConfigMap·Ingress 각 2
+(하나만 좁히는 레이블을 달아 「셀렉터가 결과 수를 실제로 줄임」이 관측되게 한다)와 CRD 1종 +
+그 인스턴스 2개. CRD와 인스턴스는 `resource-generic-samples.yaml`로 갈라 두었다 —
+`kubectl apply`가 파일을 읽는 시점에 종류를 해석하므로 한 파일에 두면 아직 서지 않은 종류를
+가리켜 파일 전체가 거부된다.
+
 변경 verb 시나리오는 전부 승인이 필요하므로 `test-approval-gate.md`의 gatekeeper 픽스처를
 공유하고, 승인은 forward-auth 헤더로 `PATCH /api/requests/{id}/approve`를 직접 호출해
 대신한다.
@@ -52,8 +59,9 @@
   대상별로 좁혀짐(폐기된 `pod_describe`의 이벤트 부분이 이 경로로 대체됨).
   클러스터 스코프 + `namespace` 조합은 무시되지 않고 거부
 - **검증 AC**: AC1
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestListResolvesArbitraryKinds`,
-  `TestListRejectsNamespaceOnClusterScoped`. 통합 `resource_generic_ac1.py`
+- **자동화**: 통합 `tests/integration/resource_generic_ac1.py`. Go 단위는 아직 없다 — 계획:
+  `resource_test.go::TestListResolvesArbitraryKinds`,
+  `TestListRejectsNamespaceOnClusterScoped`
 
 ### 시나리오 2: 목록은 표로 온다
 - **사전 조건**: 동일
