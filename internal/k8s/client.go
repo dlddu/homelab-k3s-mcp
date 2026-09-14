@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,10 +17,7 @@ import (
 	utilexec "k8s.io/client-go/util/exec"
 )
 
-const (
-	restartAnnotation = "kubectl.kubernetes.io/restartedAt"
-	fieldManager      = "homelab-k3s-mcp"
-)
+const fieldManager = "homelab-k3s-mcp"
 
 // KubeService is the live kubernetes-backed implementation of Service.
 type KubeService struct {
@@ -49,31 +45,6 @@ func New() (*KubeService, error) {
 		return nil, unavailableErr(fmt.Sprintf("init kube client: %v", err))
 	}
 	return &KubeService{clientset: clientset, config: config}, nil
-}
-
-func (s *KubeService) RolloutRestart(ctx context.Context, kind WorkloadKind, namespace, name string) (string, error) {
-	now := time.Now().UTC().Format(time.RFC3339)
-	patch := fmt.Sprintf(
-		`{"spec":{"template":{"metadata":{"annotations":{%q:%q}}}}}`,
-		restartAnnotation, now,
-	)
-	opts := metav1.PatchOptions{FieldManager: fieldManager}
-	var err error
-	switch kind {
-	case Deployment:
-		_, err = s.clientset.AppsV1().Deployments(namespace).
-			Patch(ctx, name, types.StrategicMergePatchType, []byte(patch), opts)
-	case StatefulSet:
-		_, err = s.clientset.AppsV1().StatefulSets(namespace).
-			Patch(ctx, name, types.StrategicMergePatchType, []byte(patch), opts)
-	case DaemonSet:
-		_, err = s.clientset.AppsV1().DaemonSets(namespace).
-			Patch(ctx, name, types.StrategicMergePatchType, []byte(patch), opts)
-	}
-	if err != nil {
-		return "", APIError(err.Error())
-	}
-	return now, nil
 }
 
 func (s *KubeService) ScaleWorkload(ctx context.Context, kind WorkloadKind, namespace, name string, replicas int32) (int32, error) {

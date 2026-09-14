@@ -50,7 +50,6 @@ EXPECTED_TOOLS = {
     "resource_list",
     "resource_get",
     "resource_patch",
-    "workload_restart",
     "workload_scale",
     "dear_baby_reset_user",
     "grafana_token",

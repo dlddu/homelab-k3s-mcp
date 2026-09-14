@@ -68,11 +68,6 @@ func (c *countingK8s) patch() k8s.PatchRef {
 	return c.lastPatch
 }
 
-func (c *countingK8s) RolloutRestart(context.Context, k8s.WorkloadKind, string, string) (string, error) {
-	c.hit()
-	return "now", nil
-}
-
 func (c *countingK8s) ExecInPod(context.Context, string, string, *string, []string) (*k8s.ExecOutcome, error) {
 	c.hit()
 	return &k8s.ExecOutcome{Success: true}, nil
@@ -421,13 +416,11 @@ func TestEveryStateChangingToolIsGatedOrDocumented(t *testing.T) {
 	if reason, ok := exemptions["dear_baby_reset_user"]; !ok || reason != exemptPendingOwnerDecision {
 		t.Errorf("dear_baby_reset_user exemption = %q, want the documented pending-owner-decision reason", reason)
 	}
-	for _, name := range []string{"workload_restart", "workload_scale"} {
-		if reason := exemptions[name]; reason != exemptRetiredPendingRemoval {
-			t.Errorf("%s exemption = %q, want the retired-pending-removal reason", name, reason)
-		}
+	if reason := exemptions["workload_scale"]; reason != exemptRetiredPendingRemoval {
+		t.Errorf("workload_scale exemption = %q, want the retired-pending-removal reason", reason)
 	}
-	if len(exemptions) != 3 {
-		t.Errorf("exemptions = %v, want exactly the three documented ones", exemptions)
+	if len(exemptions) != 2 {
+		t.Errorf("exemptions = %v, want exactly the two documented ones", exemptions)
 	}
 }
 

@@ -223,36 +223,6 @@ func extractArguments(params json.RawMessage) json.RawMessage {
 
 // --- tool implementations ---
 
-func (h *Handler) workloadRestart(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
-	obj, ok := decodeObject(raw)
-	if !ok {
-		return nil, errf(-32602, "arguments must be an object")
-	}
-	kind, rerr := parseKind(obj)
-	if rerr != nil {
-		return nil, rerr
-	}
-	namespace := optionalString(obj, "namespace")
-	if namespace == nil {
-		return nil, errf(-32602, "namespace is required")
-	}
-	name := optionalString(obj, "name")
-	if name == nil {
-		return nil, errf(-32602, "name is required")
-	}
-
-	restartedAt, err := h.k8s.RolloutRestart(ctx, kind, *namespace, *name)
-	if err != nil {
-		return toolError(err), nil
-	}
-	return successResult(map[string]any{
-		"kind":        kind.String(),
-		"namespace":   *namespace,
-		"name":        *name,
-		"restartedAt": restartedAt,
-	}), nil
-}
-
 func (h *Handler) workloadScale(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {

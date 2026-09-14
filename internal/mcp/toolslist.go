@@ -190,37 +190,6 @@ const toolsListJSON = `{
       }
     },
     {
-      "name": "workload_restart",
-      "description": "Trigger a rolling restart of a Kubernetes workload (Deployment, StatefulSet, DaemonSet).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
-            "description": "Workload kind."
-          },
-          "namespace": {
-            "type": "string",
-            "description": "Namespace of the workload."
-          },
-          "name": {
-            "type": "string",
-            "description": "Workload name."
-          }
-        },
-        "required": ["kind", "namespace", "name"],
-        "additionalProperties": false
-      },
-      "annotations": {
-        "title": "Restart Workload",
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": false,
-        "openWorldHint": false
-      }
-    },
-    {
       "name": "workload_scale",
       "description": "Scale a Kubernetes workload by setting spec.replicas. Supports Deployment and StatefulSet. DaemonSets do not have replicas and are rejected.",
       "inputSchema": {
