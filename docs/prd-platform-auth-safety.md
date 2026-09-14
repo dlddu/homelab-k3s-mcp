@@ -10,10 +10,14 @@
 
 ## 범위
 - **포함**: OAuth Bearer 인증 게이트, 정적 API 키 인증(비대화형 자동화용), 인증 메타데이터
-  디스커버리, 클러스터 RBAC 최소권한, 하드닝된 런타임, 서버 수준 graceful degradation,
-  헬스/레디니스.
+  디스커버리, 하드닝된 런타임, 서버 수준 graceful degradation, 헬스/레디니스.
 - **제외**: 사용자·토큰 발급(외부 IdP 책임), 네트워크 인그레스 정책(클러스터 책임),
-  도구별 동작(각 도구 PRD 참조).
+  도구별 동작(각 도구 PRD 참조), **클러스터 RBAC**.
+
+> **AC3(최소권한 권한 경계)은 결번이다.** `k8s/rbac.yaml`이 `cluster-admin` 바인딩으로
+> 바뀌면서 이 PRD가 권한 경계에 대해 주장할 것이 없어졌다. 뒤 번호는 당기지 않는다 —
+> AC4~AC8은 e2e 파일명(`platform_auth_safety_ac{4,5,6,7,8}.py`)과 `comment-policy/ledger.md`의
+> 과거 판정 행에 그 번호로 박혀 있고, 당기면 그 기록들이 소급해서 거짓이 된다.
 
 ## Acceptance Criteria
 
@@ -31,14 +35,6 @@
 - **달성 가치**: V3
 - **검증 방법**: 보호 리소스 메타데이터가 발급자/리소스를 반환하고, 표준 MCP 클라이언트가 이를
   통해 인증을 자동 구성할 수 있다.
-
-### AC3: 최소권한 권한 경계 (RBAC)
-- **설명**: 배포된 RBAC는 워크로드에 `get/list/watch/patch`, 파드에 `get/list`, `pods/log`에
-  `get`, `pods/exec`에 `get/create`, 네임스페이스·이벤트에 `get/list`만 부여한다. 워크로드
-  `delete`/`create`, 시크릿 읽기 권한은 부여하지 않는다.
-- **달성 가치**: V3
-- **검증 방법**: `k8s/rbac.yaml`에 delete/secret/워크로드 create 규칙이 존재하지 않으며, 도구가
-  수행 가능한 최대 동작이 위 동사 집합으로 제한된다.
 
 ### AC4: 하드닝된 런타임
 - **설명**: 컨테이너는 nonroot 사용자, `readOnlyRootFilesystem`, 모든 capability 드롭,

@@ -3,7 +3,6 @@
 ## 검증 대상 AC
 - AC1: 인증 게이트 (PRD: platform)
 - AC2: 인증 디스커버리 (PRD: platform)
-- AC3: 최소권한 권한 경계 RBAC (PRD: platform)
 - AC4: 하드닝된 런타임 (PRD: platform)
 - AC5: 서버 수준 graceful degradation (PRD: platform)
 - AC6: 헬스·레디니스 (PRD: platform)
@@ -40,19 +39,6 @@
   하다는 사실이 증거이며(실패 시 `auth.FromEnv` → `os.Exit(1)`), 그 경로가 실제로 치명적임은
   시나리오 8의 (d)가 관측한다. Go 단위 `internal/auth/auth_test.go::TestMetadataHandlerServesProtectedResource`와
   `internal/server/auth_routing_test.go`의 라우팅 단언과 병행.
-
-### 시나리오 3: 최소권한 RBAC 경계
-- **사전 조건**: 배포된 RBAC(`k8s/rbac.yaml`)
-- **실행 단계**: RBAC 규칙 정적 검토
-- **기대 결과**: 워크로드 get/list/watch/patch, 파드 get/list, pods/log get, pods/exec
-  get/create, namespaces·events get/list만 존재. delete·시크릿 읽기·워크로드 create 없음.
-- **검증 AC**: AC3
-- **자동화**: 배포 identity e2e `tests/integration/platform_auth_safety_ac3.py`
-  ::test_platform_auth_safety_ac3_rbac_boundary — 실제로 바인딩된 ClusterRole을 읽어
-  기대 권한과 **동등**함을 단정하고(추가 권한이 어디에 있어도 실패), apiserver
-  SubjectAccessReview로 허용 동사 전부가 yes·AC가 못박은 금지 동사(워크로드
-  delete/create·시크릿 읽기·네임스페이스 생성/삭제)가 no임을 관측한다. `k8s/rbac.yaml`
-  정적 리뷰는 보조 수단이다.
 
 ### 시나리오 4: 하드닝된 런타임
 - **사전 조건**: 배포 매니페스트(`k8s/deployment.yaml`)

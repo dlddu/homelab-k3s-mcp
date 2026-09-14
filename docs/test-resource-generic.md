@@ -20,7 +20,6 @@
 - AC16: 민감 종류는 읽기도 쓰기도 승인 게이트를 거친다 (PRD: resource-generic)
 - AC17: 값이 새는 경로 봉쇄 (PRD: resource-generic)
 - AC18: 권한 경계의 정직한 보고 (PRD: resource-generic)
-- AC19: RBAC는 도구 표와 게이트 선언의 쌍 집합과 정확히 같다 (PRD: resource-generic)
 - AC20: 종류 해석과 미지원 종류 거부 (PRD: resource-generic)
 
 ## 픽스처
@@ -252,18 +251,6 @@
 - **검증 AC**: AC18
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestForbiddenIsTranslated`.
   통합 `resource_generic_ac18.py`
-
-### 시나리오 19: RBAC 가 도구 표 ∪ 게이트 선언과 정확히 같다
-- **사전 조건**: `k8s/rbac.yaml`, 도구별 쌍 선언, 게이트 선언
-- **실행 단계**: 정적 검사로 (a) `rbac.yaml`의 쌍 집합과 도구 표 ∪ 게이트 선언을 양방향
-  대조 → (b) `rbac.yaml`에 아무 도구도 쓰지 않는 쌍을 하나 넣은 변형 → (c) 도구가 쓰는
-  쌍을 하나 뺀 변형 → (d) 게이트 선언(`get`·`list`)을 계산에서 뺀 변형
-- **기대 결과**: (a) 양방향 어긋남 0. `secrets` 에 일곱 verb 가 모두 있고, `nodes/proxy`·
-  `pods/attach`·`pods/portforward`·`watch`·`deletecollection` 이 전부 **있어야 정상** —
-  금지 목록은 비어 있다. (b)(c)(d) 세 변형 모두 실패로 잡힘
-- **검증 AC**: AC19
-- **자동화**: (미작성) — 계획: 정적 `scripts/check_rbac_matches_tools.py`(뮤테이션 3건 포함).
-  통합 `resource_generic_ac19.py`
 
 ### 시나리오 20: 종류 해석
 - **사전 조건**: 픽스처 CRD 설치 전/후 두 상태

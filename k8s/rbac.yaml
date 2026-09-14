@@ -1,73 +1,19 @@
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: homelab-k3s-mcp:workloads
-  labels:
-    app.kubernetes.io/name: homelab-k3s-mcp
-    app.kubernetes.io/component: server
-    app.kubernetes.io/part-of: homelab
-# The verb set here is pinned by prd-platform-auth-safety AC3, which names it
-# exactly and forbids workload create/delete and secret reads. prd-resource-generic
-# AC19 wants a different rule — the pair set of the resource_* table, secrets
-# included — so the two documents disagree about this file. Until that is
-# resolved by their owner, this stays as AC3 wrote it: resource_list and
-# resource_get address any kind by coordinate, and a kind outside these rules is
-# reported as outside this server's grant (prd-resource-generic AC18) rather
-# than quietly widened here. doc-tracker.md carries the conflict as an open item.
-rules:
-  # resource_list / resource_get over apps workloads. watch is granted but
-  # exercised by nothing: resource_watch is unimplemented, and AC3's equality
-  # assertion (tests/integration/platform_auth_safety_ac3.py) is what keeps the
-  # verb here rather than dropped as dead.
-  - apiGroups: ["apps"]
-    resources:
-      - deployments
-      - statefulsets
-      - daemonsets
-    verbs:
-      - get
-      - list
-      - watch
-      - patch
-  # dear_baby_reset_user execs the bundled /reset-user CLI
-  # inside a running backend pod. List is needed to resolve the label
-  # selector to a pod name; pods/exec is the subresource the apiserver
-  # gates the exec stream on. client-go's SPDY executor opens the stream
-  # with POST (the `create` verb); `get` is retained so a WebSocket
-  # executor fallback keeps working without an RBAC change.
-  - apiGroups: [""]
-    resources:
-      - namespaces
-    verbs:
-      - get
-      - list
-  - apiGroups: [""]
-    resources:
-      - pods
-    verbs:
-      - get
-      - list
-  - apiGroups: [""]
-    resources:
-      - pods/exec
-    verbs:
-      - get
-      - create
-  # resource_get with subresource=log reads container logs from a named pod.
-  - apiGroups: [""]
-    resources:
-      - pods/log
-    verbs:
-      - get
-  # Events are read as a kind of their own now (resource_list on v1/Event with a
-  # fieldSelector), which is what replaces the events half of pod_describe.
-  - apiGroups: [""]
-    resources:
-      - events
-    verbs:
-      - get
-      - list
----
+# 이 서버의 ServiceAccount 는 내장 `cluster-admin` 에 바인딩된다. 전용 ClusterRole 은
+# 없다 — 이 파일이 verb 를 고르던 자리였고, 그 선택을 그만두는 것이 이 개정의 내용이다.
+#
+# 왜 이렇게 됐는지: 이전 판에서 RBAC 는 도구 레이어 판정이 뚫려도 apiserver 가 막아 주는
+# 2차 방어선이었다. `watch`·`deletecollection`·`pods/attach`·`pods/portforward`·
+# `⟨kind⟩/proxy`·`secrets` 쓰기가 차례로 도구가 되면서 금지 목록이 비었고, 남은 역할은
+# 종류 범위를 좁히는 것 하나였다. 그 하나까지 그만둔다.
+#
+# **따라서 승인 게이트가 유일한 경계다.** 게이트에 결함이 생기면 이 ServiceAccount 를
+# 막는 것은 아무것도 없다 — 미설정 게이트는 fail-closed 라 그쪽은 닫혀 있지만(게이트가
+# 없으면 게이트 대상 호출을 거부한다), 게이트가 있는데 **틀린** 경우는 이 파일이 더 이상
+# 잡아 주지 않는다. `internal/gatekeeper` 를 고치는 PR 은 그 사실 위에서 검토한다.
+#
+# 바인딩 이름은 `homelab-k3s-mcp:workloads` 그대로 둔다. 이름이 더는 내용을 설명하지
+# 못하지만, flux-cd-apps 의 PR 프리뷰 오버레이가 클러스터 스코프 RBAC 을 이 이름으로
+# 찾아 PR 번호로 개명한다. 개명은 그 오버레이와 같은 PR 에서만 할 수 있다.
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -79,7 +25,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: homelab-k3s-mcp:workloads
+  name: cluster-admin
 subjects:
   - kind: ServiceAccount
     name: homelab-k3s-mcp

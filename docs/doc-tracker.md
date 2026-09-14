@@ -16,8 +16,8 @@
 
 - 정의된 가치: **5개** (V1~V5)
 - PRD: **14개** (도구 12 + 공통 기반 2)
-- Acceptance Criteria: **80개** (가치 연결됨: 80 / 미연결: 0)
-- 테스트 문서: **14개** (AC 커버됨: 80 / 미커버: 0)
+- Acceptance Criteria: **78개** (가치 연결됨: 78 / 미연결: 0) — AC 번호는 결번을 둔다(platform AC3 · resource-generic AC19)
+- 테스트 문서: **14개** (AC 커버됨: 78 / 미커버: 0)
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있으나,
   ⑴ 폐기된 6종이 아직 코드에 살아 있고 ⑵ `dear_baby_reset_user`가 게이트 밖에 있다
   (아래 "수용된 위험" 참조)
@@ -78,7 +78,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | PRD (도구) | 달성 가치 | AC 수 | 테스트 문서 | 상태 |
 |------------|-----------|:----:|--------------|------|
 | ping | V3 | 1 | test-ping | ✅ 완전 |
-| resource_* (generic) | V1, V3 | 20 | test-resource-generic | ✅ 완전 |
+| resource_* (generic) | V1, V3 | 19 | test-resource-generic | ✅ 완전 (AC19 결번) |
 | dear_baby_reset_user | V5, V3 | 3 | test-dear-baby-reset-user | ✅ 완전 |
 | github_app_installation_token | V2, V3 | 4 | test-github-app-installation-token | ✅ 완전 |
 | grafana_token | V2, V3 | 4 | test-grafana-token | ✅ 완전 |
@@ -89,7 +89,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | session_list | V5, V3 | 3 | test-session-list | ✅ 완전 |
 | session_read | V5, V3 | 4 | test-session-read | ✅ 완전 |
 | session_write | V5, V3 | 5 | test-session-write | ✅ 완전 |
-| platform (인증·안전 공통) | V3 | 8 | test-platform-auth-safety | ✅ 완전 |
+| platform (인증·안전 공통) | V3 | 7 | test-platform-auth-safety | ✅ 완전 (AC3 결번) |
 | approval-gate (승인 게이트 공통) | V3, V1 | 11 | test-approval-gate | ✅ 완전 |
 
 ## 가치 커버리지
@@ -134,7 +134,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 쌍이 분류력을 잃음 | `nodes/proxy` | 경로 제한 없이 열면서 `create nodes/proxy` 하나가 `/healthz` POST 와 임의 파드 exec 을 동시에 뜻하게 됐다. **`(verb, resource)` 쌍이 호출의 권능을 한정하지 못한다** — 한정하는 것은 경로이고 경로는 `context` 에만 있다. RBAC 의 네임스페이스 범위도 파드 수준 조작에는 적용되지 않으며, 민감 종류 게이트도 kubelet `/exec` 경유 읽기는 잡지 못한다(쌍이 `create nodes/proxy` 이므로). | ⚠️ **수용(2026-09-12)** — 경로 허용목록을 두면 「이 경로는 봐준다」는 분류기가 생기고 그 분류기가 곧 우회 경로가 된다. 대신 게이트가 경로를 숨기지 않고 보여 준다. 고권한 kubelet 경로는 `context` 에 **표시**하되 막지 않는다. **그 결과 `context` 의 품질이 곧 보안이며, AC3 가 이 설계에서 가장 무거운 AC 다** |
 | RBAC 백스톱 소멸 | 전체 | `watch`·`deletecollection`·`attach`·`portforward`·`proxy`(`Node` 포함)·`secrets` 쓰기가 차례로 도구가 되면서 **금지 목록이 비었다**. RBAC 가 도구 표와 정확히 같아진다는 것은 곧 **RBAC 가 더는 백스톱이 아니라는 뜻**이다 — 게이트에 결함이 생기면 apiserver 가 막아 줄 것이 없다. | ⚠️ **수용(2026-09-12)** — 완화는 AC1(디스패처 강제)·AC5(fail-closed)·AC11(게이트 권한 선언)이며, 이 셋이 이제 구조 전체를 지탱한다. 구현 시 이 경로들의 테스트 밀도를 다른 곳보다 높게 잡을 것 |
 | 게이트 우회 가능 | `dear_baby_reset_user` | `create` on `pods/exec` 을 행사하므로 게이트 정의에 해당하지만 편입하지 않았다. V5 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user` 의 AC 를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12) |
-| **두 PRD 가 `k8s/rbac.yaml` 을 두고 어긋난다** | `prd-platform-auth-safety` AC3 ↔ `prd-resource-generic` AC19 | AC3 은 부여 집합을 **축자로** 못박고(워크로드 `get/list/watch/patch` · 파드 `get/list` · `pods/log` `get` · `pods/exec` `get/create` · 네임스페이스·이벤트 `get/list`) 「워크로드 `delete`/`create`, **시크릿 읽기** 권한은 부여하지 않는다」로 닫는다. AC19 는 같은 파일의 쌍 집합이 `resource_*` **도구 표 ∪ 게이트 선언과 정확히 같아야** 하고 「`secrets` 에는 일곱 verb 를 모두 준다」고 적는다. **둘을 동시에 만족하는 `rbac.yaml` 은 없다.** `platform_auth_safety_ac3.py` 가 살아 있는 ClusterRole 을 **등가로** 단언하므로 이 어긋남은 산문이 아니라 **CI 가 멈추는 형태**로 존재한다 — 2026-09-13 읽기 축 슬라이스가 AC19 쪽으로 파일을 넓혔다가 그 게이트에 걸려 되돌렸다. **`resource_*` 쓰기 축은 이 결정 없이는 착수할 수 없다**(그 도구들이 요구하는 verb 가 전부 AC3 의 금지 목록에 있다). | ⬜ **미결 — 어느 문서가 이기는지는 소유자 판단** (2026-09-13). 코드가 한쪽을 고르면 다른 쪽이 그 순간 거짓이 되므로, 읽기 축은 **AC3 이 이미 허용한 범위 안에서** 구현했다(권한 확대 0) |
+| ~~두 PRD 가 `k8s/rbac.yaml` 을 두고 어긋난다~~ | `prd-platform-auth-safety` AC3 ↔ `prd-resource-generic` AC19 | AC3 은 부여 집합을 축자로 못박고 AC19 는 도구 표 ∪ 게이트 선언과 같아야 한다고 적어, 둘을 동시에 만족하는 `rbac.yaml` 이 없었다. **어느 쪽도 이기지 않는 것으로 끝났다** — 2026-09-14 에 두 AC 를 결번 처리하고 `rbac.yaml` 을 `cluster-admin` 바인딩으로 바꿨다. | ✅ **해소(2026-09-14)** — 대신 아래 「RBAC 경계 소멸」 행이 열린다 |
+| **RBAC 경계 소멸** | 전체 | `k8s/rbac.yaml` 이 `cluster-admin` 바인딩이라 이 ServiceAccount 에 **권한 상한이 없다**. 직전 행(「RBAC 백스톱 소멸」)은 금지 쌍이 비었다는 것이었고 종류 범위는 남아 있었는데, 그 마지막 층까지 없앴다. 결과 셋: ⑴ 게이트 판정이 **유일한** 경계이고 게이트 결함 시 남는 방어선이 0이다(미설정 게이트는 fail-closed 라 그쪽은 닫혀 있다). ⑵ `resource_exec` 승인 **한 번**이 `/var/run/secrets/**` 의 SA 토큰을 내주고, 그 토큰으로 apiserver 를 직접 치면 게이트를 아예 통과하지 않는다 — 이전 판에서는 같은 유출에 `rbac.yaml` 의 좁은 쌍 집합이 상한을 걸었다. ⑶ `prd-resource-generic` AC18 의 「권한 밖」 진단 경로가 정상 배포에서는 돌지 않는다. | ⚠️ **수용(2026-09-14)** — 소유자 판단. 완화는 게이트 판정의 정확성 하나뿐이므로 `internal/gatekeeper` 변경은 이 사실 위에서 검토한다 |
 | 문서 없는 실행 코드 | 폐기된 6종 중 **남은 2종** (`workload_restart`·`workload_scale`) | #72 는 **문서만** 폐기했고 Go 구현은 그대로였다. 2026-09-13 에 읽기 전용 4종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 대체재 `resource_list`·`resource_get` 과 함께 제거됐다. 남은 둘은 **상태를 바꾸는** 도구라 대체재가 `resource_patch`·`resource_update`(둘 다 게이트 대상)이고, 그것이 설 때까지 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **쓰기 축 구현 선행 대기** (2026-09-13 갱신) |
 
 `session_write` 는 게이트 우회 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 권한을
@@ -171,10 +172,11 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > **`watch` 제거도 같은 이유로 보류했다** — 죽은 권한인 것은 맞지만 AC3의 부여 집합에 축자로
 > 올라 있고 `platform_auth_safety_ac3.py`가 **등가(equality)로** 단언한다. 4번은 손대지 않았다
 > (자매 모델 `scenario-e2e` 소관).
+> **[2026-09-14 정정]** 위 문단의 세 단정이 더는 참이 아니다 — ⑴ 「3번은 열지 못했다 / `rbac.yaml` 은 한 verb 도 바뀌지 않았다」: 바뀌었다(`cluster-admin` 바인딩). ⑵ 「읽기 축은 AC3 이 이미 허용한 범위 위에 세웠다」: 그 범위 제약이 사라져 `resource_list`·`resource_get` 은 이제 모든 종류에 대해 권한 안이다. ⑶ 「`watch` 제거를 보류했다 — AC3 의 부여 집합에 축자로 올라 있고 `platform_auth_safety_ac3.py` 가 등가로 단언한다」: 그 AC 도 그 파일도 없다. 원문은 2026-09-13 슬라이스의 판단 기록이므로 고쳐 쓰지 않고 이 정정만 붙인다.
 >
 > **남은 것**: `resource_*`의 쓰기 축 8종(`create`·`update`·`patch`·`delete`·
 > `delete_collection`·`exec`·`attach`·`port_forward`·`proxy`)과 `resource_watch`, 그리고
-> 그것들이 함께 닫을 `workload_restart`·`workload_scale` 제거. AC6·AC7~AC15·AC19와
+> 그것들이 함께 닫을 `workload_restart`·`workload_scale` 제거. AC6·AC7~AC15와
 > `prd-approval-gate` AC3·AC6·AC10·AC11도 미착수 그대로다. **게이트의 쌍 선언은 이 슬라이스에서
 > 런타임 해석으로 넓어졌다** — 좌표가 인자인 도구는 정적 표로 기술할 수 없어, 호출의 인자에서
 > 쌍을 만들어 낸다. 그 해석은 discovery를 부르지 않는다(AC16이 요구하는 「미승인 시 k8s 호출 0」이
@@ -252,8 +254,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
   빈 id 사전 거부(요청 0건)·unavailable +
   `internal/server/mcp_test.go`의 도구 표면(`destructiveHint=true`·`idempotentHint=false`)·
   인자 검증(거부 시 write 호출 0건)·거부 4종·미설정 거부).
-- 🟡 **정적 검증** (매니페스트 리뷰): platform AC3(RBAC 경계 — `k8s/rbac.yaml`),
-  platform AC4(하드닝 — `k8s/deployment.yaml`).
+- 🟡 **정적 검증** (매니페스트 리뷰): platform AC4(하드닝 — `k8s/deployment.yaml`).
+  platform AC3(RBAC 경계)은 2026-09-14 에 결번 처리돼 이 목록에서 빠졌다 — 검증할 경계
+  자체가 없다(`k8s/rbac.yaml` 은 `cluster-admin` 바인딩).
 - 🔴 **자동화 공백 — 추가 권장**:
   - **session 3종의 통합 e2e — 일부 공백**. 도구 계층은 셋 다 구현·검증됐다
     (`internal/sessionplatform` + `internal/mcp`, 도구 표면 17종). 통합 e2e 쪽의 **현황·잔여·
@@ -294,11 +297,11 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant · oauth-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
 <!-- scenario-e2e-집계 -->
-- 시나리오 전집: 80
+- 시나리오 전집: 78
 - 예외 등재: 1
-- 구현 대기 등재: 32
-- 1:1 대상: 47
-- 매칭 파일(전용): 47
+- 구현 대기 등재: 31
+- 1:1 대상: 46
+- 매칭 파일(전용): 46
 - 분할 대기 파일(규칙 2 위반): 0
 - 공백 시나리오: 0
 <!-- /scenario-e2e-집계 -->
@@ -307,9 +310,10 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### 시나리오 레지스트리 (80) — ✅ 전용 파일 47 · ⬜ 분할 대기 0 · ⏳ 구현 대기 32 · 🚫 예외 1
+### 시나리오 레지스트리 (78) — ✅ 전용 파일 46 · ⬜ 분할 대기 0 · ⏳ 구현 대기 31 · 🚫 예외 1
 
-> 불변식이 여기서 눈으로 닫힌다: **80 − 1(예외) − 32(구현 대기) = 47 = 매칭 파일 47**, 공백 **0**.
+> 불변식이 여기서 눈으로 닫힌다: **78 − 1(예외) − 31(구현 대기) = 46 = 매칭 파일 46**, 공백 **0**.
+> 번호는 결번을 그대로 둔다 — `#시나리오 3`(platform-auth-safety)·`#시나리오 19`(resource-generic)가 비어 있고, 뒤 번호를 당기지 않았다.
 > 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
 | 시나리오 | 제목 | e2e 상태 |
@@ -345,7 +349,6 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-ping.md#시나리오 1 | pong 반환 | ✅ 전용 파일 `ping_ac1.py` |
 | test-platform-auth-safety.md#시나리오 1 | Bearer 인증 게이트 | ✅ 전용 파일 `platform_auth_safety_ac1.py` |
 | test-platform-auth-safety.md#시나리오 2 | 인증 디스커버리 | ✅ 전용 파일 `platform_auth_safety_ac2.py` |
-| test-platform-auth-safety.md#시나리오 3 | 최소권한 RBAC 경계 | ✅ 전용 파일 `platform_auth_safety_ac3.py` |
 | test-platform-auth-safety.md#시나리오 4 | 하드닝된 런타임 | 🚫 예외 등재 (규칙 4 — 정적 매니페스트 검증으로 대체) |
 | test-platform-auth-safety.md#시나리오 5 | 서버 수준 graceful degradation | ✅ 전용 파일 `platform_auth_safety_ac5.py` |
 | test-platform-auth-safety.md#시나리오 6 | 헬스·레디니스 | ✅ 전용 파일 `platform_auth_safety_ac6.py` |
@@ -392,16 +395,15 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-resource-generic.md#시나리오 16 | 민감 종류는 읽기도 쓰기도 승인을 거친다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 17 | 값이 새는 경로가 막혀 있다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 18 | 권한 밖은 권한 밖이라고 말한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 19 | RBAC 가 도구 표 ∪ 게이트 선언과 정확히 같다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 20 | 종류 해석 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 
-### ⏳ 구현 대기 (32) — 규칙 6 등재 (1:1 계수에서 제외)
+### ⏳ 구현 대기 (31) — 규칙 6 등재 (1:1 계수에서 제외)
 
 > **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
 
 > **2026-09-14 — 근거를 행별 실측으로 전면 교체했다.** 직전까지 31행이 「`internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다」를 **축자로 공유**하고 해제 조건도 하나의 연언(`⑴ 도구 계층 구현 ∧ ⑵ gatekeeper 픽스처`)을 공유했다. 2026-09-13 읽기 축이 착지하면서 그 문장이 **거짓이 됐고**(`api_resources`·`resource_list`·`resource_get` 등록), 공유 연언은 읽기 전용 행에 무관한 조건을 얹어 함께 묶어 두는 구조적 원인이었다. **집계와 게이트는 이 어긋남을 원리적으로 보지 못한다** — `check_ac_mapping.py` 는 행을 세고 선언↔등재를 대조할 뿐 각 행의 근거가 코드에 비추어 참인지는 검사하지 않는다. 그래서 행마다 **실제로 막는 것**을 적고 해제 조건을 그 행에 필요한 것만으로 쪼갰다. 그 결과 `#시나리오 2`·`#시나리오 4` 두 행은 막는 것이 남아 있지 않아 이 표에서 빠지고 전용 파일을 얻었다(34 → 32).
 >
-> **반복해서 인용되는 두 벽**: ⑴ `k8s/rbac.yaml` 의 ClusterRole 은 `apps/{deployments,statefulsets,daemonsets}`(`get`·`list`·`watch`·`patch`) · `pods`(`get`·`list`) · `pods/log`(`get`) · `pods/exec`(`get`·`create`) · `namespaces`·`events`(`get`·`list`) 뿐이고, 그 **등가**가 `tests/integration/platform_auth_safety_ac3.py::EXPECTED_GRANT` 에 박혀 있어 조용히 넓힐 수 없다. 넓히는 판단은 위 「수용된 위험」의 **두 PRD `rbac.yaml` 충돌** 행(⬜ 소유자 판단 대기)에 걸려 있다. ⑵ `tests/k8s/kind/` 에 실물 gatekeeper 픽스처가 없어 승인·거절을 사람 대신 태울 수 없다. **어느 행이 어느 벽에 걸려 있는지는 행마다 다르다** — 그것을 적는 것이 이 개정의 요지다.
+> **반복해서 인용되던 두 벽 중 ⑴ 은 2026-09-14 에 무너졌다.** ⑴ **(해소)** `k8s/rbac.yaml` 의 좁은 ClusterRole 과 그 등가를 박아 둔 `platform_auth_safety_ac3.py::EXPECTED_GRANT` 가 권한 확대를 막고 있었고, 넓히는 판단은 두 PRD 충돌에 걸려 있었다. 이제 `rbac.yaml` 은 `cluster-admin` 바인딩이고 그 e2e 는 삭제됐다 — **아래 행들이 「`k8s/rbac.yaml` 의 ClusterRole 밖」이라고 적은 대목은 전부 낡았다**(시나리오 1·3·5·6·8·10·12·13·14·15·17). 각 행은 아직 재실측하지 않았고, 그 축 말고 다른 차단 요인(도구 미등록·픽스처 부재)은 행마다 그대로다. ⑵ **(유효)** `tests/k8s/kind/` 에 실물 gatekeeper 픽스처가 없어 승인·거절을 사람 대신 태울 수 없다. **어느 행이 어느 벽에 걸려 있는지는 행마다 다르다.**
 
 | 시나리오 | 근거 (관측 대상이 없는 이유) | 담당 | 해제 조건 |
 |----------|------------------------------|------|-----------|
@@ -419,14 +421,14 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-approval-gate.md#시나리오 9** | 게이트를 **실제로 태울 수 있는** 호출은 현재 `resource_get(kind=Secret)` 하나뿐이다 — `list` 는 원리상 게이트 밖이고 `get` 은 민감 종류일 때만 탄다(`internal/mcp/gate.go:174-189`, 기본 `RESOURCE_GATED_KINDS=v1/Secret`). 그마저 `secrets` 가 `k8s/rbac.yaml` 의 ClusterRole 밖이라 승인이 떨어져도 apiserver 에 닿지 않는다. `autoResponseMode` 의 `AUTO_APPROVE`·`AUTO_REJECT` 는 gatekeeper 쪽 **사용자 설정**이라 실물이라야 세울 수 있는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. 태울 게이트 대상 도구도 미등록이다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ 실물 gatekeeper 픽스처(사용자별 자동 응답 모드 설정 포함) **그리고** ⑵ 게이트 대상 도구 등록 |
 | **test-approval-gate.md#시나리오 10** | 게이트를 **실제로 태울 수 있는** 호출은 현재 `resource_get(kind=Secret)` 하나뿐이다 — `list` 는 원리상 게이트 밖이고 `get` 은 민감 종류일 때만 탄다(`internal/mcp/gate.go:174-189`, 기본 `RESOURCE_GATED_KINDS=v1/Secret`). 그마저 `secrets` 가 `k8s/rbac.yaml` 의 ClusterRole 밖이라 승인이 떨어져도 apiserver 에 닿지 않는다. 값이 고유 토큰인 Secret 을 `resource_get`·`resource_create`·`resource_patch` 로 훑어야 하는데 뒤의 둘이 미등록이고, `secrets` 가 `k8s/rbac.yaml` 의 ClusterRole 밖이라 승인 후 정상 응답에조차 값이 오지 않는다(= 「오직 그때만 등장한다」를 단정할 수 없다). 픽스처 Secret 도 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `secrets` 부여(두 PRD 충돌 해소 이후), ⑵ Secret 쓰기 도구 등록, ⑶ 난수 토큰 Secret 픽스처, ⑷ 실물 gatekeeper 픽스처 |
 | **test-approval-gate.md#시나리오 11** | 게이트를 **실제로 태울 수 있는** 호출은 현재 `resource_get(kind=Secret)` 하나뿐이다 — `list` 는 원리상 게이트 밖이고 `get` 은 민감 종류일 때만 탄다(`internal/mcp/gate.go:174-189`, 기본 `RESOURCE_GATED_KINDS=v1/Secret`). 그마저 `secrets` 가 `k8s/rbac.yaml` 의 ClusterRole 밖이라 승인이 떨어져도 apiserver 에 닿지 않는다. 게이트 **자신의** 읽기를 관측하는 시나리오다. (a) 는 `secrets` 부여와 apiserver 감사 프록시를 함께 요구하는데 둘 다 없고, (b) 의 `resource_update(scale)`·`resource_delete_collection` 은 미등록이며, (c) 의 정적 대조는 **기준 자체가 ⬜ 미결**이다(위 「수용된 위험」의 두 PRD `rbac.yaml` 충돌 행). | docs-impl(도구) → 이 렌즈(e2e) | ⑴ 두 PRD 의 `rbac.yaml` 충돌 해소로 대조 기준이 하나로 정해지고, ⑵ `secrets` 부여 + apiserver 감사 프록시 픽스처, ⑶ 해당 쓰기 도구 등록, ⑷ 실물 gatekeeper 픽스처 |
-| **test-resource-generic.md#시나리오 1** | 도구(`resource_list`)는 섰지만 기대 결과가 **일곱 종류 모두 목록 반환**이다. `v1/Service`·`v1/ConfigMap`·`networking.k8s.io/v1/Ingress`·픽스처 CRD 가 `k8s/rbac.yaml` 의 ClusterRole 밖이라 AC18 의 「권한 밖」으로 떨어지고, 남는 셋(`v1/Namespace`·`apps/v1/Deployment`·`v1/Event`)만 단정하면 「반쪽 단정」이 된다. 클러스터 스코프 + `namespace` 거부와 `fieldSelector` 경유는 이미 구현돼 있다(`internal/k8s/resource.go:251`). | rbac 소유자 판단 → 이 렌즈(e2e) | 두 PRD 의 `k8s/rbac.yaml` 충돌(위 「수용된 위험」)이 해소돼 `services`·`configmaps`·`ingresses`·픽스처 CRD 의 `list` 가 부여되고, 같은 PR 이 `tests/integration/platform_auth_safety_ac3.py::EXPECTED_GRANT` 를 함께 갱신하면 해제된다. **gatekeeper 픽스처는 무관하다** |
+| **test-resource-generic.md#시나리오 1** | 도구(`resource_list`)는 섰고, 기대 결과의 **일곱 종류 모두 목록 반환**을 막던 RBAC 축은 2026-09-14 에 해소됐다(`cluster-admin` 바인딩이라 `services`·`configmaps`·`ingresses`·픽스처 CRD 의 `list` 가 전부 권한 안이다). 클러스터 스코프 + `namespace` 거부와 `fieldSelector` 경유도 이미 구현돼 있다(`internal/k8s/resource.go:251`). **남은 것은 저작뿐이다** — 픽스처 CRD 설치와 일곱 종류 단정을 쓰면 된다. | 이 렌즈(e2e) | 전용 파일을 저작하면 해제된다. **차단 요인 없음** — gatekeeper 픽스처도 rbac 도 무관하다 |
 | **test-resource-generic.md#시나리오 3** | 두 겹이다. ⑴ 사전 조건인 **ConfigMap 120개** 를 읽을 `configmaps list` 가 `k8s/rbac.yaml` 의 ClusterRole 밖이다. ⑵ 기대 결과의 「`limit=1000` 은 500 으로 **강제 하향**」이 구현과 어긋난다 — `internal/mcp/resource.go:67` 이 상한 초과를 클램프하지 않고 **거부**하고 `internal/k8s/resource.go:41-46` 주석이 그 선택을 의도로 명시한다. 기본 100 과 `continue` 토큰은 서 있다. | rbac 소유자 판단 + 제품 문서/docs-impl(상한 처리) → 이 렌즈(e2e) | ⑴ `configmaps` 의 `get`·`list` 가 부여되고 ⑵ 상한 초과 처리가 시나리오 문면과 일치하면 해제된다. ⑵ 는 구현을 하향으로 고치거나 시나리오를 거부로 고치거나인데 **어느 쪽인지는 이 렌즈가 정하지 않는다** — 시나리오가 이 모델의 SSOT 이므로 문면 변경은 제품 문서 체계의 판단이다 |
-| **test-resource-generic.md#시나리오 5** | 로그 축 다섯(기본 tail·`tailLines=5`·`tailLines=5001` **거부**·`previous=true`·`container` 누락 거부)은 **서 있다**(`pods/log` 의 `get` 부여 + `internal/mcp/resource.go:202-215`). 막는 것은 마지막 하나다 — `subresource=scale` 은 RBAC 쌍 `deployments/scale` 을 요구하는데(서브리소스는 별도 리소스로 평가된다) 그 쌍이 `k8s/rbac.yaml` 의 ClusterRole 밖이라 403 → AC18 번역 에러로 떨어진다. | rbac 소유자 판단 → 이 렌즈(e2e) | `deployments/scale` 의 `get` 이 부여되고 `platform_auth_safety_ac3.py::EXPECTED_GRANT` 가 같은 PR 에서 갱신되면 해제된다. **쓰기 도구·gatekeeper 픽스처는 무관하다** — 이 시나리오의 모든 호출은 `get` verb 다 |
+| **test-resource-generic.md#시나리오 5** | 로그 축 다섯(기본 tail·`tailLines=5`·`tailLines=5001` **거부**·`previous=true`·`container` 누락 거부)은 **서 있다**(`internal/mcp/resource.go:202-215`). 막던 마지막 하나였던 `subresource=scale` 의 `deployments/scale` 쌍도 2026-09-14 RBAC 개정으로 권한 안에 들어왔다. **남은 것은 저작뿐이다.** | 이 렌즈(e2e) | 전용 파일을 저작하면 해제된다. **차단 요인 없음** — 쓰기 도구·gatekeeper 픽스처 무관하고, 이 시나리오의 모든 호출은 `get` verb 다 |
 | **test-resource-generic.md#시나리오 6** | `resource_watch` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `kind=Secret` 미승인/승인 분기는 추가로 `secrets` 부여와 실물 gatekeeper 를 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_watch` 등록, ⑵ 실물 gatekeeper 픽스처, ⑶ `secrets` 의 `watch` 부여(두 PRD 충돌 해소 이후). ⑴ 만으로는 시나리오의 Secret 갈래가 남는다 |
 | **test-resource-generic.md#시나리오 7** | `resource_create` 가 등록돼 있지 않다(레포 전체 grep 0 히트). 세 단계 모두 승인을 요구하므로 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다 는 것도 함께 막는다. `create` 는 `prd-platform-auth-safety` AC3 의 금지 목록에 있어 RBAC 도 열려 있지 않다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ 두 PRD 의 `rbac.yaml` 충돌 해소로 `create` 가 부여되고, ⑵ `resource_create` 가 등록되고, ⑶ 실물 gatekeeper 픽스처가 서면 해제된다(**⑴ 없이는 ⑵ 도 착수할 수 없다** — doc-tracker 「수용된 위험」) |
 | **test-resource-generic.md#시나리오 8** | `resource_update` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `update` 와 `⟨kind⟩/scale` 이 모두 `k8s/rbac.yaml` 의 ClusterRole 밖이고, 각 단계가 승인을 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ `update` 와 `deployments/scale`·`statefulsets/scale` 부여, ⑵ `resource_update` 등록, ⑶ 실물 gatekeeper 픽스처 |
 | **test-resource-generic.md#시나리오 9** | `resource_patch` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `patch` 는 `apps` 세 워크로드에 부여돼 있으나 네 `patchType` 을 태울 도구가 없고, 각 호출이 승인을 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_patch` 등록(네 `patchType` 지원) **그리고** ⑵ 실물 gatekeeper 픽스처. RBAC 는 `patch` 를 이미 준다 — 이 행은 rbac 충돌에 걸려 있지 않다 |
-| **test-resource-generic.md#시나리오 10** | `resource_delete` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `delete` 는 `prd-platform-auth-safety` AC3 이 명시적으로 금지해 RBAC 밖이고, 승인을 태울 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ 두 PRD 충돌 해소로 `delete` 부여, ⑵ `resource_delete` 등록, ⑶ 실물 gatekeeper 픽스처 |
+| **test-resource-generic.md#시나리오 10** | `resource_delete` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `delete` 는 이제 RBAC 안이지만(2026-09-14 개정; AC3 은 결번), 승인을 태울 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ 두 PRD 충돌 해소로 `delete` 부여, ⑵ `resource_delete` 등록, ⑶ 실물 gatekeeper 픽스처 |
 | **test-resource-generic.md#시나리오 11** | `resource_exec` 이 등록돼 있지 않다(레포 전체 grep 0 히트). `pods/exec` 자체는 부여돼 있으나(`dear_baby_reset_user` 가 쓴다) 좌표로 부르는 도구가 없고, 다중 컨테이너 파드 픽스처도 없다. 승인을 태울 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_exec` 등록, ⑵ 다중 컨테이너 파드 픽스처, ⑶ 실물 gatekeeper 픽스처. **RBAC 는 이미 `pods/exec` 을 준다** |
 | **test-resource-generic.md#시나리오 12** | `resource_delete_collection` 이 등록돼 있지 않다(레포 전체 grep 0 히트). `deletecollection` 과 `configmaps` 가 둘 다 `k8s/rbac.yaml` 의 ClusterRole 밖이고, `context` 의 대상 수·이름 목록을 승인 화면에서 읽어야 하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ `configmaps` 의 `list`·`delete`·`deletecollection` 부여, ⑵ `resource_delete_collection` 등록, ⑶ 실물 gatekeeper 픽스처 |
 | **test-resource-generic.md#시나리오 13** | `resource_attach` 가 등록돼 있지 않고(레포 전체 grep 0 히트) `pods/attach` 도 `k8s/rbac.yaml` 의 ClusterRole 밖이다. 「stdout 을 주기 출력하며 stdin 을 읽는 파드」 픽스처도 없고, 승인을 태울 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ `pods/attach` 부여, ⑵ `resource_attach` 등록, ⑶ stdio 파드 픽스처, ⑷ 실물 gatekeeper 픽스처 |
@@ -435,7 +437,6 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-resource-generic.md#시나리오 16** | **읽기 절반은 섰다** — `kind=Secret` 의 `get` 은 민감 종류로 판정돼 게이트를 탄다(`internal/mcp/gate.go:223-243`). 그러나 시나리오는 `get`·`watch`·`create`·`update`·`patch`·`delete` **여섯 verb 전부**와 승인 후 값 확인을 요구하는데 나머지 다섯 도구가 미등록이고(레포 전체 grep 0 히트), `secrets` 가 `k8s/rbac.yaml` 의 ClusterRole 밖이라 승인해도 apiserver 에 닿지 않으며, `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ `secrets` 일곱 verb 부여(두 PRD 충돌 해소 이후), ⑵ 나머지 다섯 도구 등록, ⑶ 난수 토큰 Secret 픽스처, ⑷ 실물 gatekeeper 픽스처 |
 | **test-resource-generic.md#시나리오 17** | (a) `kind=Secret` 의 `resource_list` 가 `k8s/rbac.yaml` 의 ClusterRole 밖이라 「승인 없이 성공하되 값이 없다」를 관측할 수 없다. (c) 스트림 넷(`exec`·`attach`·`port_forward`·`proxy`)이 미등록이고(레포 전체 grep 0 히트), (c')·(d) 도 각각 `nodes/proxy`·`secrets` 의 `watch` 부여를 전제한다. (b) 의 `RESOURCE_GATED_KINDS` 확장 경로만 구현돼 있다. | rbac 소유자 판단 → docs-impl(도구) → 이 렌즈(e2e) | ⑴ `secrets` 의 `list`·`watch` 와 `nodes/proxy` 부여, ⑵ 스트림 도구 넷 등록, ⑶ 난수 토큰 Secret 과 그 토큰을 서빙하는 HTTP 파드 픽스처, ⑷ 실물 gatekeeper 픽스처 |
 | **test-resource-generic.md#시나리오 18** | **문서의 AC 착지 주장이 아니라 시나리오 문면이 판정 기준이다.** 위 「구현 제거가 남긴 일」 노트는 AC18 을 구현됨으로 적지만, 이 시나리오의 실행 단계는 「승인을 받은 뒤 해당 종류로 **`resource_patch`**」이고 그 도구가 미등록이다(레포 전체 grep 0 히트). 403 → 「권한 밖」 번역 자체(`internal/k8s/resource.go:455-462`)는 서 있고 `resource_list`·`resource_get` 경로로는 이미 관측되지만, 그 경로는 이 시나리오가 적은 경로가 아니다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_patch` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처(승인이 실행 단계의 선행이다). RBAC 확대는 필요 없다 — 시나리오가 겨냥하는 것이 **부여되지 않은** 종류다 |
-| **test-resource-generic.md#시나리오 19** | 대조하라는 **등가 자체가 아직 정해지지 않았다** — `prd-platform-auth-safety` AC3 과 `prd-resource-generic` AC19 가 `k8s/rbac.yaml` 을 두고 어긋나 있어(위 「수용된 위험」의 ⬜ 미결 행) 「양방향 어긋남 0」의 기준이 없다. 기대 결과가 요구하는 「`secrets` 에 일곱 verb」·「`nodes/proxy`·`pods/attach`·`pods/portforward`·`watch`·`deletecollection` 이 전부 있어야 정상」은 현재 파일과 정면으로 어긋난다. 대조를 수행할 `scripts/check_rbac_matches_tools.py` 도 없다. | rbac 소유자 판단 → docs-impl(정적 검사) → 이 렌즈(e2e) | ⑴ 두 PRD 충돌이 해소되어 `rbac.yaml` 의 기준이 하나로 정해지고, ⑵ 그 기준을 강제하는 정적 검사(뮤테이션 3건 포함)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 20** | 두 겹이다. ⑴ 「오타 호출에 **후보 제시**」가 서지 않는다 — 후보 산출이 **부분 문자열** 매칭이라(`internal/k8s/resource.go:209`) 시나리오가 지목한 `Deploymnt`(가운데 글자 누락)에는 후보가 0개이고 메시지가 `api_resources` 안내로 떨어진다(로직을 그대로 옮겨 재현 확인). ⑵ 「CRD 설치 후 곧바로 조회」가 그 CRD 종류의 `list` 를 요구하는데 `k8s/rbac.yaml` 의 ClusterRole 밖이다. `api_resources` 자체와 재기동 없는 캐시 무효화(`internal/k8s/resource.go:130-134`)는 서 있다. | docs-impl(후보 산출) + rbac 소유자 판단 → 이 렌즈(e2e) | ⑴ 후보 산출이 문자 누락형 오타를 잡도록 정정되고(부분 문자열 → 편집 거리 등), ⑵ 픽스처 CRD 종류의 `list` 가 부여되면 해제된다. **gatekeeper 픽스처는 무관하다** |
 
 > 아래 산문은 축 개정 전의 실측 기록이다. **AC 기준 표기(`session-read/AC2` 등)를 그대로 두었다** — 자기 시점의 사실을 적은 것이고, 위 표가 그 시나리오 대응을 든다.
@@ -614,6 +615,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-14 | **RBAC 를 경계에서 내렸다 — AC3·AC19 결번, `rbac.yaml` 은 `cluster-admin` 바인딩** — 소유자 판단으로 `prd-platform-auth-safety` AC3(최소권한 권한 경계)과 `prd-resource-generic` AC19(RBAC ≡ 도구 표 ∪ 게이트 선언)를 함께 뺐다. 2026-09-13 부터 ⬜ 로 들고 있던 **두 PRD 의 `rbac.yaml` 충돌이 이로써 닫힌다** — 어느 쪽도 이기지 않았고, 대조할 기준 자체를 없애는 쪽으로 끝냈다. **번호는 결번으로 두고 뒤를 당기지 않았다**: AC4~AC8 은 e2e 파일명(`platform_auth_safety_ac{4,5,6,7,8}.py`)과 `comment-policy/ledger.md` 의 과거 판정 행에 그 번호로 박혀 있어, 당기면 지문이 붙은 historical 기록이 소급해 거짓이 된다. **두 AC 를 지우는 것만으로 끝나지 않았다** — 같이 거짓이 되는 네 자리를 함께 고쳤다: ⑴ `values.md` V3 의 「클러스터 RBAC 가 최소권한으로 제한된다」(가치 수준 근거라 하위 재검증 대상), ⑵ 같은 V3 의 「Secret 은 어떤 도구로도 다루지 않는다」 — 이건 **이미** AC16 과 어긋나 있던 기존 부채라 함께 정정, ⑶ `prd-resource-generic` AC17 의 「`rbac.yaml` 이 `secrets` 에 쓰기 verb 를 주지 않으므로 권한 밖」(AC19 와도 이미 어긋나 있었다), ⑷ `prd-approval-gate` AC11 — 게이트 쌍 선언의 유일한 소비자가 AC19 의 대조였으므로 검증 방법을 요청 기록 관측으로 바꾸고 선언 자체는 남겼다. AC18 은 「권한 경계의 정직한 보고」에서 「403 의 정직한 보고」로 축소했다 — 정상 배포에서는 403 이 나올 조합이 없어 바인딩 부재·부분 적용 때만 도는 진단 경로다. e2e 는 `platform_auth_safety_ac3.py` 삭제(살아 있는 ClusterRole 을 등가로 단언하고 금지 11동사를 관측하던 파일이라 그대로 두면 즉시 빨강), 시나리오 3·19 도 함께 제거하되 **시나리오 번호도 결번**으로 뒀다. **수용 위험이 하나 커졌다** — 「RBAC 백스톱 소멸」(금지 쌍이 빈 것)에서 「RBAC 경계 소멸」(종류 범위마저 없는 것)로 올라갔고, 특히 `resource_exec` 승인 한 번이 내주는 SA 토큰이 이제 `cluster-admin` 이며 그 토큰으로 apiserver 를 직접 치면 게이트를 통과하지 않는다. 부수 효과로 **구현 대기 표의 RBAC 축 차단이 일괄 해소**됐다 — 시나리오 1·5 는 차단 요인이 0 이 되어 저작만 남았고, 3·6·8·10·12·13·14·15·17 은 RBAC 축만 낡았고 다른 차단(도구 미등록·gatekeeper 픽스처)은 그대로다. `internal/` Go 코드 무변경. | 가치 5 / PRD 14 / AC 80 / 시나리오 80 · 매칭 파일 47 · 구현 대기 32 · rbac 충돌 ⬜ 미결 | 가치 5 / PRD 14 / **AC 78**(결번 2) / **시나리오 78**(결번 2) · 매칭 파일 46 · 구현 대기 31 · rbac 충돌 ✅ 해소 |
 | 2026-09-14 | **읽기 축이 연 두 시나리오를 규칙 1로 되돌리고, 남은 32행의 거짓이 된 근거를 행별 실측으로 교체했다** — 2026-09-13 읽기 축 착지로 구현 대기 31행이 공유하던 근거(「게이트를 타는 도구가 하나도 없다」)가 거짓이 됐다. 게이트는 이 어긋남을 **원리적으로 못 본다**(행을 세고 선언↔등재를 대조할 뿐 근거의 참을 검사하지 않는다) — 실제로 개정 직전까지 집계가 부모와 바이트 동일한 채 초록이었다. **해제 후보로 넘어온 6건을 시나리오 문면 기준으로 재측정하니 2건만 남았다**: `#1` 은 Service·ConfigMap·Ingress·CRD 가 RBAC 밖이라 「일곱 종류 모두」가 불성립, `#3` 은 `configmaps` RBAC 밖 **및** `limit` 상한이 강제 하향이 아니라 **거부**로 구현됨, `#5` 는 로그 축 다섯이 섰으나 `subresource=scale` 이 `deployments/scale` 쌍을 요구해 RBAC 밖, `#20` 은 후보 산출이 부분 문자열 매칭이라 시나리오가 지목한 오타 `Deploymnt` 에 후보를 내지 못한다(재현 확인). 남는 2건(`#2` 목록은 표로 온다 · `#4` 단건 조회는 이름을 요구한다)은 Deployment 의 `list`/`get` 만 쓰고 게이트 밖이라 **지금 관측 가능**하므로 전용 파일을 저작했다. 함께 구현 대기 표의 **단일 공유 연언을 행별 조건으로 분해**했다 — 읽기 전용 행에 gatekeeper 픽스처를 얹어 두면 쓰기 축이 설 때까지 함께 가려지고, 그것이 이 사고의 구조적 원인이었다. **RBAC 는 한 verb도 건드리지 않았다**(그 판단은 두 PRD 충돌 행에 걸려 있다). 실행 코드·AC·PRD 도 불변이고, 시나리오 본문도 `자동화` 필드 외에는 손대지 않았다. 판정 근거는 `rct_20260914-0002`. | ✅ 45 · ⏳ 34(근거 31행 축자 공유, 해제 조건 단일 연언) · 1:1 대상 45 · 주석 잔량 0/0 | ✅ 47 · ⏳ 32(근거 32행 전부 행별 실측, 해제 조건 행별 분해) · 1:1 대상 47 · 주석 잔량 9/45 |
 | 2026-09-14 | **`resource_*` 읽기 축 신규 4파일의 주석 109줄 판정 — 두 표면의 잔량을 동시에 0 으로** — 직전 슬라이스(PR #75)가 `internal/k8s/resource{,_test}.go` · `internal/mcp/resource.go` · `tests/integration/resource_read_smoke.py` 넷을 들여오며 주석 **109줄**(줄 주석 87 + docstring 22)을 판정 대신 **잔량 마커**로 선언했고, 그 이유를 원장에 축자로 남겼다(「자기 PR 에서 자기 주석을 판정하는 모양이 되기 때문」). 전수 판정해 **줄 주석 17줄을 제거**하고 세 행으로, docstring 22줄은 **제거 0줄**로 한 행에 등재했다. 제거는 **전부 ② `prd-resource-generic.md` 재진술**이고 자리마다 원문 문장이 하나씩 대응한다 — `tableAccept`·`ListResources`(AC17 의 Table 근거와 「원시 목록 폴백을 두지 않는다」, 게다가 서로 ③ 중복), `GetResource`↔`stripNoise`(AC4 문언이 **한 파일에 두 번**), `ListResult`(AC2), `apiCallError`(AC18), `getSubresources`·`parseLogOptions`(AC5), `renderTable`(AC3), `ListDefaultLimit`(AC3). **판별선은 PR #75 자신이 같은 PR 에서 등재 범위(`mcp_test.go`)에 이미 적용한 것**이다 — 같은 저자·같은 PRD·같은 패턴이 신규 파일에만 적용되지 않은 채 남아 있었다. **AC 포인터는 지우지 않았고**(원장 #23 의 처리), 「거부 대 클램프」의 강한 판은 원장 #4 가 `mcp_test.go` 에서 유지 판정해 둔 것이 살아 있다. 유지 쪽은 apiserver 의 **문서화되지 않은 협상 거동**(파라미터가 어긋나면 실패가 아니라 평범한 List 로 답이 와 전부 0인 표로 디코드된다)과 1차 시도를 죽인 관측된 실패, 그리고 부정 단언이 본체인 이유들이다. 실행 코드는 한 줄도 바뀌지 않았고(주석만), AC·PRD·테스트 문서·e2e 레지스트리·집계도 전부 불변이다. **래칫이 「걸림 → 잔량 선언 → 재감지 → 판정 → 잔량 0」 한 바퀴를 설계대로 돈 첫 사례다.** 판정 근거는 `rct_20260914-0002`. | 줄 주석 1221줄(93.3%) / 잔량 87 · docstring 1002줄(97.9%) / 잔량 22 · 등재 범위 24 + 8 | 줄 주석 1291줄(100.0%) / 잔량 0 · docstring 1024줄(100.0%) / 잔량 0 · 등재 범위 27 + 9 |
 | 2026-09-13 | **승인 게이트 판정 코어의 주석 192줄 판정 + 줄 주석 표면에 잔량 래칫** — 직전 슬라이스(PR #73)가 `internal/gatekeeper/{gatekeeper,gatekeeper_test}.go` · `internal/mcp/{gate,gate_test}.go` 넷을 들여오며 주석 **192줄**을 미판정으로 남겼고(판정 커버리지 100.0% → **84.3%**), 원장은 그 사실을 적었지만 인계받을 주체를 지정하지 않았다. 네 파일을 전수 판정해 **26줄을 제거**하고 두 행으로 등재했다 — 제거는 거의 전부 ② `prd-approval-gate.md` 재진술이고, 이 PRD 가 **요구만이 아니라 근거까지 적는 문서**라 「AC 를 가리키는 주석」과 「AC 를 옮긴 주석」이 한눈에 갈리지 않는 것이 이 판정의 난점이었다(감지가 유지 사례로 든 두 줄이 실제로는 AC1·AC4 본문에 있었다). **AC 포인터는 지우지 않았다** — Go 단위 테스트에는 `검증 AC:` 같은 기계 판독 선언이 없어 그 포인터가 AC ↔ 테스트를 잇는 유일한 자리이고, 등재 범위에 같은 형태가 69줄 살아 있다. 곁가지로 `gatedPairs` doc 이 가리키던 **존재하지 않는 이름 `reportExemptions`**(실제는 `Exemptions`)를 고쳤다. 함께 **구조의 비대칭 하나를 닫았다**: 줄 주석 표면에는 `<!-- docstring-잔량 -->` 에 대응하는 마커가 없어 R1~R4 가 *등재된 행의 범위만* 재측정했고, 그래서 **어느 행에도 없는 새 파일은 원리적으로 검사 대상이 아니었다** — 실측으로 확인했다(#73 트리에서 주석 2줄을 든 미등재 파일을 더 얹어도 rc=0). `<!-- 판정-잔량 -->` 마커를 세우고 R4 에 `합계 + 잔량 == 실측` 을 더해 같은 뮤테이션이 rc=1 이 된다. 실행 코드는 한 줄도 바뀌지 않았고(주석만), AC·PRD·테스트 문서·e2e 레지스트리·집계도 전부 불변이다. 판정 근거는 `rct_20260913-0002`. | 판정 완료 1034줄(84.3%) / 등재 범위 22 · 줄 주석 표면 잔량 마커 없음 · 정책 3 · 허브 33 | 판정 완료 1200줄(100.0%) / 등재 범위 24 · 잔량 0(R4 강제) · 정책 4 · 허브 34 |
