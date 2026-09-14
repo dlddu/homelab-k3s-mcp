@@ -444,7 +444,7 @@ func (s *KubeService) APIResources(ctx context.Context) ([]APIResource, error) {
 func (s *KubeService) apiCallError(err error, verb, resource string) error {
 	if apierrors.IsForbidden(err) {
 		return apiErrorf(
-			"refused: this server has no (%s, %s) grant. k8s/rbac.yaml is the single source for what it may do; retrying will not change the answer",
+			"refused: this server has no (%s, %s) grant; retrying will not change the answer",
 			verb, resource,
 		)
 	}
