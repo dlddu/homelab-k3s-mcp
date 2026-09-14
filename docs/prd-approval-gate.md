@@ -45,7 +45,7 @@
 
 | verb | 도구 | 이유 |
 |------|------|------|
-| `list` | `resource_list` | Table 표현이라 값이 전송되지 않는다(`prd-resource-generic` AC11) |
+| `list` | `resource_list` | Table 표현이라 값이 전송되지 않는다(`prd-resource-generic` AC2·AC17) |
 | `watch` (비민감 종류) | `resource_watch` | 상태를 바꾸지 않고 자격증명도 아니다 |
 | `get` (비민감 종류) | `resource_get` | 상태를 바꾸지 않고 자격증명도 아니다. **`⟨kind⟩/proxy`의 `get`은 여기 해당하지 않는다** — 쿠버네티스 객체를 읽는 것이 아니라 클러스터 내부의 임의 엔드포인트에 도달하는 것이라 성질이 다르다 |
 | — | `api_resources` | 리소스 권한을 행사하지 않는다 |
@@ -261,10 +261,18 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
   객체를 `get`하면 게이트가 승인 전에 값을 읽게 된다 — 승인 여부와 무관하게 이미 서버
   메모리에 값이 들어온 것이고, 그 상태에서 거절이 나면 게이트는 아무것도 막지 못한 셈이다.
   따라서 민감 종류의 프리컨디션은 **PartialObjectMetadata**
-  (`Accept: application/json;as=PartialObjectMetadata;v=1;g=meta.k8s.io`)로 받는다.
+  (`Accept: application/json;as=PartialObjectMetadata;v=v1;g=meta.k8s.io`)로 받는다.
   apiserver가 서버 사이드로 메타데이터만 잘라 보내므로 `data`가 전송되지 않는다.
+
+  **이 문자열이 틀리면 조용히 반대로 동작한다.** 버전·그룹 파라미터가 어긋나도 apiserver는
+  오류를 주지 않고 **전체 객체**로 답한다 — 즉 게이트가 승인 전에 `data`를 읽게 되고,
+  이 AC가 존재하는 이유가 그 자리에서 뒤집힌다. 그래서 `prd-resource-generic` AC2의 Table
+  헤더와 같은 취급을 한다: 값을 손으로 적지 말고 `metav1.SchemeGroupVersion`에서 파생시키며,
+  응답이 PartialObjectMetadata가 아니면 **거부한다**(전체 객체로 폴백하지 않는다).
 - **달성 가치**: V3
 - **검증 방법**: 게이트가 승인 전에 행사하는 쌍이 위 표와 같고 그 밖의 쌍이 없다(요청 기록
   관측 — `rbac.yaml` 대조는 AC19와 함께 없어졌다). Secret 읽기 승인을 **거절**한 뒤 서버
   프로세스의 요청 기록을 보면 전체 객체 `get`이 한 번도 없고 PartialObjectMetadata 요청만
-  있다.
+  있다. 그 요청의 `Accept` 헤더는 모양이 아니라 **값으로** 단언하고, 표현을 협상하는 서버 앞에서
+  확인한다 — 헤더가 어긋나면 요청이 실패하는 것이 아니라 전체 객체가 돌아오므로, 자기가 만든
+  응답을 먹이는 테스트는 그 어긋남을 볼 수 없다.
