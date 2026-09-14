@@ -1,3 +1,17 @@
+# 서버의 base 매니페스트(운영). Flux 가 이 디렉터리를 그대로 적용하고, kind 기반 e2e SUT 와
+# PR 프리뷰가 같은 base 를 오버레이해서 쓴다. 환경 중립적인 기본값만 여기 둔다.
+#
+# 이 base 를 소비하는 곳이 셋이다:
+#   1) 운영    flux-cd-apps/cluster/homelab-k3s-mcp.yaml — main 브랜치를 추적하되,
+#              돌아가는 이미지는 deployment.yaml 에 SHA 로 고정되어 있다(CI 의 `pin`).
+#   2) PR 프리뷰 flux-cd-apps/apps/homelab-k3s-mcp-preview — PR head SHA 에 고정하고,
+#              클러스터 스코프 RBAC 은 PR 번호로 개명해 운영 것과 겹치지 않게 한다.
+#   3) e2e     tests/k8s/kind 오버레이 — 로컬 빌드 이미지 + 인증 해제.
+#
+# `images:` 변환을 여기 두지 않는 것은 의도적이다. 태그의 단일 출처는 deployment.yaml 의
+# image 줄이고(= `pin` 이 쓰는 자리), 프리뷰는 Flux Kustomization 의 spec.images 로 그
+# 자리를 PR head SHA 로 덮는다. base 에도 같은 이름의 항목이 있으면 두 변환이 같은 이미지를
+# 두고 겹친다.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
@@ -9,7 +23,3 @@ resources:
   - rbac.yaml
   - deployment.yaml
   - service.yaml
-
-images:
-  - name: ghcr.io/dlddu/homelab-k3s-mcp
-    newTag: latest
