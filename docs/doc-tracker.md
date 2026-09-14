@@ -296,9 +296,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 <!-- scenario-e2e-집계 -->
 - 시나리오 전집: 80
 - 예외 등재: 1
-- 구현 대기 등재: 34
-- 1:1 대상: 45
-- 매칭 파일(전용): 45
+- 구현 대기 등재: 32
+- 1:1 대상: 47
+- 매칭 파일(전용): 47
 - 분할 대기 파일(규칙 2 위반): 0
 - 공백 시나리오: 0
 <!-- /scenario-e2e-집계 -->
@@ -307,9 +307,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### 시나리오 레지스트리 (80) — ✅ 전용 파일 45 · ⬜ 분할 대기 0 · ⏳ 구현 대기 34 · 🚫 예외 1
+### 시나리오 레지스트리 (80) — ✅ 전용 파일 47 · ⬜ 분할 대기 0 · ⏳ 구현 대기 32 · 🚫 예외 1
 
-> 불변식이 여기서 눈으로 닫힌다: **80 − 1(예외) − 34(구현 대기) = 45 = 매칭 파일 45**, 공백 **0**.
+> 불변식이 여기서 눈으로 닫힌다: **80 − 1(예외) − 32(구현 대기) = 47 = 매칭 파일 47**, 공백 **0**.
 > 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
 | 시나리오 | 제목 | e2e 상태 |
@@ -375,9 +375,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-approval-gate.md#시나리오 10 | 자격증명 값이 응답 밖으로 새지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 11 | 게이트의 읽기가 선언되고 값에 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 1 | 임의 종류를 좌표로 조회한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 2 | 목록은 표로 온다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 2 | 목록은 표로 온다 | ✅ 전용 파일 `resource_generic_ac2.py` |
 | test-resource-generic.md#시나리오 3 | 절단과 이어보기 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 4 | 단건 조회는 이름을 요구한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 4 | 단건 조회는 이름을 요구한다 | ✅ 전용 파일 `resource_generic_ac4.py` |
 | test-resource-generic.md#시나리오 5 | 서브리소스 조회 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 6 | 변경 스트림 관측 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 7 | 생성은 덮어쓰지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
@@ -395,7 +395,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-resource-generic.md#시나리오 19 | RBAC 가 도구 표 ∪ 게이트 선언과 정확히 같다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 20 | 종류 해석 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 
-### ⏳ 구현 대기 (34) — 규칙 6 등재 (1:1 계수에서 제외)
+### ⏳ 구현 대기 (32) — 규칙 6 등재 (1:1 계수에서 제외)
 
 > **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
 >
@@ -418,9 +418,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-approval-gate.md#시나리오 10** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-approval-gate.md#시나리오 11** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 1** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
-| **test-resource-generic.md#시나리오 2** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 3** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
-| **test-resource-generic.md#시나리오 4** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 5** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 6** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
 | **test-resource-generic.md#시나리오 7** | `resource_*` 도구군이 **아직 구현되지 않았다** — 승인 게이트의 판정 코어(`internal/gatekeeper`)와 디스패처 강제는 착지했으나, `internal/mcp` 에 게이트를 타는 도구가 하나도 없어 e2e 가 관측할 대상 자체가 없다. | 이 렌즈 | ⑴ `prd-resource-generic` · `prd-approval-gate` 의 도구 계층이 구현되고, ⑵ kind 에 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`)가 서면 해제된다 |
