@@ -3,13 +3,10 @@
 검증 시나리오: test-resource-generic.md#시나리오 20
 실행 대상: primary
 
-**「설치 전」을 관측 가능하게 만드는 것이 이 파일의 설계 제약이다.** 시나리오의 사전 조건은
-「픽스처 CRD 설치 **전/후** 두 상태」인데, `tests/k8s/kind/` 의 픽스처는 ci.yml 이 셋업에서
-심으므로 그걸 쓰면 테스트가 시작하는 시점에 이미 「후」다. 「전」은 영영 관측되지 않고, 그래도
-케이스는 통과한다. 그래서 이 파일은 **자기 전용 프로브 CRD 를 런타임에 스스로 세우고 스스로
-지운다.** 매니페스트를 `tests/k8s/kind/` 에 파일로 두지 않고 아래 문자열로 들고 있는 이유도
-같다 — 그 디렉터리에 있으면 언젠가 ci.yml 에 배선되고, 그 순간 이 시나리오의 사전 조건이
-소리 없이 사라지며 게이트는 그대로 초록이다. 위치 자체가 그 사고의 방지선이다.
+**매니페스트를 `tests/k8s/kind/` 에 파일로 두지 않고 아래 문자열로 들고 있다.** 그 디렉터리에
+있으면 언젠가 ci.yml 에 배선되고, 그 순간 시나리오의 사전 조건인 「설치 전」이 소리 없이
+사라지는데 케이스는 그대로 통과하고 게이트도 초록이다 — 위치 자체가 그 사고의 방지선이다.
+(전용 프로브 CRD 를 런타임에 세우고 지우는 이유 자체는 시나리오 문서 「자동화」 절에 있다.)
 
 **관측 순서가 곧 단언이다.** 오타 호출을 CRD 설치 **전에** 먼저 태우는 것은 후보 제시를 보기
 위해서이기도 하지만 서버의 RESTMapper 캐시를 **데우기** 위해서이기도 하다. 그래야 설치 뒤의
@@ -23,12 +20,11 @@ apiserver 쪽 전파 시간이 있어 폴링이 필요한데, 폴링만 두면 �
 단언이라 재기동이 끼어들 자리가 없다. 파드 uid 만으로는 부족해 컨테이너 재시작까지 함께 뜬다
 (캐시는 프로세스 안에 있어 파드가 살아 있어도 컨테이너가 죽으면 비워진다).
 
-**범위 밖**: 기대 결과의 「`api_resources` 는 리소스 권한을 행사하지 않으므로 RBAC 대조 대상이
-아님」은 **강한 부정형으로 관측할 수 없다.** 그러려면 「discovery 에는 보이지만 이 서버의 부여
-밖이라 목록을 못 받는 종류」가 필요한데, #83 이 `k8s/rbac.yaml` 을 `cluster-admin` 바인딩
-하나로 바꾼 뒤로 그런 종류가 존재하지 않는다. 아래 케이스는 관측 가능한 최강형까지만 간다 —
-`api_resources` 가 **인스턴스가 하나도 없는 시점의 새 종류**를 이미 알고 있고 그 답이
-discovery 메타데이터(`namespaced`·`verbs`)라는 것, 즉 객체를 세어 답한 것이 아니라는 것이다.
+**범위 밖**: 기대 결과의 마지막 절(`api_resources` 와 RBAC 대조)은 **강한 부정형으로 관측할 수
+없다.** 그러려면 「discovery 에는 보이지만 이 서버의 부여 밖이라 목록을 못 받는 종류」가
+필요한데, #83 이 `k8s/rbac.yaml` 을 `cluster-admin` 바인딩 하나로 바꾼 뒤로 그런 종류가
+존재하지 않는다. 아래 케이스는 관측 가능한 최강형까지만 간다 — `api_resources` 가 **인스턴스가
+하나도 없는 시점의 새 종류**를 discovery 메타데이터(`namespaced`·`verbs`)로 답한다는 것이다.
 """
 
 from __future__ import annotations
@@ -42,7 +38,6 @@ from mcp import ClientSession
 
 from _helpers import base_url, open_session, wait_for_healthz
 
-#: 서버 배포가 사는 곳. 파드 정체(재기동 여부)를 여기서 뜬다.
 SERVER_NAMESPACE = "homelab-k3s-mcp"
 SERVER_SELECTOR = "app.kubernetes.io/name=homelab-k3s-mcp,app.kubernetes.io/component=server"
 
@@ -56,7 +51,6 @@ PROBE_CRD = f"{PROBE_PLURAL}.{PROBE_GROUP}"
 PROBE_API_VERSION = f"{PROBE_GROUP}/v1"
 PROBE_OBJECT = "kind-resolution-probe"
 
-#: 시나리오가 이름으로 지목한 오타와, 그 오타가 데려와야 하는 실존 종류.
 TYPO_KIND = "Deploymnt"
 TYPO_API_VERSION = "apps/v1"
 EXPECTED_CANDIDATE = "apps/v1/Deployment"
@@ -101,8 +95,7 @@ spec:
           jsonPath: .spec.note
 """
 
-# CRD 와 그 CR 을 한 매니페스트에 넣지 않는다 — `kubectl apply` 는 파일을 읽는 시점에
-# 디스커버리로 종류를 해석하므로, 아직 서지 않은 종류를 가리켜 파일 전체가 거부된다.
+# CRD 와 그 CR 을 한 매니페스트에 두지 않는 이유는 `docs/test-resource-generic.md` 「픽스처」 절에 있다.
 PROBE_OBJECT_MANIFEST = f"""
 apiVersion: {PROBE_API_VERSION}
 kind: {PROBE_KIND}
@@ -141,12 +134,7 @@ def install_probe_crd() -> None:
 
 
 def server_pod_identity() -> list[tuple]:
-    """서버 파드의 정체 — (이름, uid, 컨테이너별 재시작 횟수·기동 시각).
-
-    **파드 uid 만으로는 부족하다.** RESTMapper 캐시는 프로세스 안에 있으므로 파드가 그대로여도
-    컨테이너가 한 번 죽었다 살아나면 캐시도 함께 비워진다. 그 경우 uid 는 바뀌지 않는다.
-    그래서 `restartCount` 와 현재 인스턴스의 `startedAt` 까지 함께 뜬다.
-    """
+    """서버 파드의 정체 — (이름, uid, 컨테이너별 재시작 횟수·기동 시각)."""
     raw = _kubectl(
         "get", "pods", "-n", SERVER_NAMESPACE, "-l", SERVER_SELECTOR, "-o", "json"
     )
@@ -265,8 +253,7 @@ async def test_resource_generic_ac20_new_crd_shows_up_in_discovery(
         f"api_resources 에 나타나지 않았다"
     )
 
-    # 답이 discovery 메타데이터라는 것 — 객체를 세어 답한 것이 아니라는 것 — 이 여기서
-    # 보인다. 아래 목록 조회 전이라 이 종류의 객체는 도구 경로로 한 번도 읽히지 않았다.
+    # 아래 목록 조회 전이라 이 종류의 객체는 도구 경로로 한 번도 읽히지 않았다.
     assert entry["namespaced"] is True, entry
     assert entry["name"] == PROBE_PLURAL, entry
     assert "list" in entry["verbs"], entry
