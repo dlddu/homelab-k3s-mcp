@@ -39,7 +39,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: server
-          image: ghcr.io/dlddu/homelab-k3s-mcp:latest
+          # 운영이 도는 커밋. docker-build-push.yaml 의 `pin` job 이 main 푸시마다
+          # 그 커밋 SHA 로 이 줄을 덮어쓰므로, 「운영이 어느 코드를 돌고 있나」는 이
+          # 한 줄이 답이다. 손으로 고칠 일은 없다.
+          #
+          # 부트스트랩 값은 `pin` 이전 CI 가 main 에 발행하던 short-sha 태그
+          # (= main HEAD e2a195d)다. 첫 main 푸시에서 full SHA 로 바뀐다. 둘 다 불변
+          # 태그라 imagePullPolicy 는 기본값(IfNotPresent)이 그대로 옳다.
+          image: ghcr.io/dlddu/homelab-k3s-mcp:sha-e2a195d
           ports:
             - name: http
               containerPort: 3000

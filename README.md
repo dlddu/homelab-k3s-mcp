@@ -11,6 +11,27 @@ Product values, per-tool PRDs, and their test documents are published at
 Start at the hub — it is organized by product value, and each tool row links its
 PRD and test document side by side.
 
+## Deployment
+
+Images are published to `ghcr.io/dlddu/homelab-k3s-mcp` under **one tag only: the
+commit SHA**. There is no `latest`.
+
+- **Production is pinned.** On every push to `main`, `.github/workflows/docker-build-push.yaml`
+  builds the commit, pushes `ghcr.io/dlddu/homelab-k3s-mcp:<sha>`, then commits that
+  SHA back into `k8s/deployment.yaml` (the `pin` job). Flux tracks `main` and applies
+  that file, so the single answer to "which commit is production running?" is the
+  `image:` line in `k8s/deployment.yaml`.
+- **Pull requests get a preview environment.** The same workflow publishes the PR's
+  head SHA on every PR push. Label a PR `deploy/preview` and flux-cd-apps
+  (`apps/homelab-k3s-mcp-preview`) renders a full environment for it at
+  `homelab-k3s-mcp-pr-<number>.<private domain>`, pinned to that head SHA. Removing
+  the label, closing, or merging the PR tears the environment down. Previews carry a
+  copy of production's credential Secrets, so verify against them with an API key from
+  `MCP_API_KEYS` rather than the OAuth flow.
+
+`ci.yml` builds the image too, but only to load it into kind for the integration
+tests — it never pushes.
+
 ## Authentication
 
 The `/mcp` endpoint is protected by default. Two credential paths gate it and
