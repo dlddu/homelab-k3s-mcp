@@ -56,9 +56,19 @@ def _normalized(value):
 
 
 def _kubectl_whole_object() -> dict:
-    """잡음이 붙은 원본 객체 — 도구를 거치지 않은 대조군."""
+    """잡음이 붙은 원본 객체 — 도구를 거치지 않은 대조군.
+
+    ⚠️ `--show-managed-fields` 가 필수다. kubectl 은 v1.21 부터 **출력에서**
+    `managedFields` 를 기본으로 지운다 — 객체에 없는 것이 아니라 프린터가 감추는 것이라,
+    플래그 없이 뜨면 대조군이 이미 잡음 하나를 잃은 상태가 된다. 그러면 아래 사전 조건
+    단언이 「원본에 managedFields 가 없다」로 실패하고(첫 CI 에서 실제로 그랬다),
+    설령 그 단언이 없었다면 **키 집합 등가 비교가 조용히 헐거워졌을** 자리다.
+    """
     raw = subprocess.check_output(
-        ["kubectl", "get", "deployment", WORKLOAD, "-n", NAMESPACE, "-o", "json"],
+        [
+            "kubectl", "get", "deployment", WORKLOAD,
+            "-n", NAMESPACE, "-o", "json", "--show-managed-fields",
+        ],
         text=True,
     )
     return json.loads(raw)
