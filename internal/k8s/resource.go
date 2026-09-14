@@ -25,7 +25,17 @@ import (
 // gets. The columns are computed by the apiserver, so a Secret's table carries
 // NAME/TYPE/DATA/AGE and never the values themselves (prd-resource-generic
 // AC17) — which is why list is the one read verb outside the gate.
-const tableAccept = "application/json;as=Table;v=1;g=meta.k8s.io, application/json"
+//
+// The parameters are derived from metav1 rather than typed out. The apiserver
+// matches them against a GroupVersionKind and treats one it does not recognise
+// as "no alternate representation available", which — because the header also
+// offers plain application/json — is answered with the ordinary list instead of
+// an error. A typo there is therefore not a failed request but an empty table,
+// and no test that feeds this package a Table it wrote itself can see it.
+var tableAccept = fmt.Sprintf(
+	"application/json;as=Table;v=%s;g=%s, application/json",
+	metav1.SchemeGroupVersion.Version, metav1.SchemeGroupVersion.Group,
+)
 
 const (
 	// ListDefaultLimit and ListMaxLimit are AC3's bounds. The cap is enforced
@@ -274,6 +284,19 @@ func (s *KubeService) ListResources(ctx context.Context, q ListQuery) (*ListResu
 	var table metav1.Table
 	if err := json.Unmarshal(raw, &table); err != nil {
 		return nil, APIError(fmt.Sprintf("apiserver returned a list this server cannot render as a table: %v", err))
+	}
+	// An ordinary list decodes into this struct without error and leaves every
+	// field zero, so the only thing separating "the namespace is empty" from
+	// "the table was never negotiated" is the kind the body declares. Falling
+	// back to rendering the objects is not an option: the table is what keeps a
+	// Secret's values out of a list result, and list is outside the gate on
+	// exactly that basis (AC17).
+	if table.Kind != "Table" {
+		return nil, apiErrorf(
+			"apiserver answered %s %s instead of a Table; this server renders only the "+
+				"apiserver's own table and will not fall back to whole objects",
+			table.APIVersion, table.Kind,
+		)
 	}
 
 	columns := make([]ListColumn, 0, len(table.ColumnDefinitions))

@@ -1,11 +1,18 @@
 package k8s
 
 import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/rest"
 )
 
 // AC4: the two fields that dominate an object's size go, and nothing else does.
@@ -116,13 +123,100 @@ func TestSubresourcePathJoinsOnlyWhenThereIsOne(t *testing.T) {
 	}
 }
 
-// The table decoder has to survive an apiserver that answered with something
-// other than a Table, because that is what a misnegotiated Accept looks like.
-func TestTableAcceptAsksForTheTableFirst(t *testing.T) {
-	if !strings.HasPrefix(tableAccept, "application/json;as=Table") {
-		t.Errorf("tableAccept = %q, want the Table representation preferred", tableAccept)
+// tableNegotiatingServer stands in for an apiserver at the one point that
+// matters here: it reads the Accept parameters the way the real one does and
+// answers a Table only when they name a representation it serves. `honor` false
+// is the older apiserver that has no Table for this resource at all. Neither
+// branch ever errors — the fallback to the ordinary list is the documented
+// behaviour of offering plain application/json alongside, and it is what makes
+// a wrong parameter look like an empty result rather than a failed call.
+func tableNegotiatingServer(t *testing.T, honor bool) *httptest.Server {
+	t.Helper()
+	const table = `{"kind":"Table","apiVersion":"meta.k8s.io/v1",` +
+		`"metadata":{"continue":"next-page"},` +
+		`"columnDefinitions":[{"name":"Name","type":"string"},{"name":"Status","type":"string"}],` +
+		`"rows":[{"cells":["kube-system","Active"]},{"cells":["homelab-k3s-mcp","Active"]}]}`
+	const list = `{"kind":"NamespaceList","apiVersion":"v1","metadata":{},` +
+		`"items":[{"metadata":{"name":"kube-system"}},{"metadata":{"name":"homelab-k3s-mcp"}}]}`
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if honor && acceptsTable(r.Header.Get("Accept")) {
+			_, _ = io.WriteString(w, table)
+			return
+		}
+		_, _ = io.WriteString(w, list)
+	}))
+}
+
+func acceptsTable(accept string) bool {
+	for _, media := range strings.Split(accept, ",") {
+		params := strings.Split(strings.TrimSpace(media), ";")
+		got := map[string]string{}
+		for _, param := range params[1:] {
+			key, value, _ := strings.Cut(param, "=")
+			got[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+		if got["as"] == "Table" &&
+			got["g"] == metav1.SchemeGroupVersion.Group &&
+			got["v"] == metav1.SchemeGroupVersion.Version {
+			return true
+		}
 	}
-	if !strings.Contains(tableAccept, "meta.k8s.io") {
-		t.Errorf("tableAccept = %q, want the meta.k8s.io group", tableAccept)
+	return false
+}
+
+// serviceAgainst points a KubeService at a test server with the mapper already
+// resolved, so the case exercises the list round trip and not discovery.
+func serviceAgainst(host string) *KubeService {
+	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{{Version: "v1"}})
+	mapper.Add(schema.GroupVersionKind{Version: "v1", Kind: "Namespace"}, meta.RESTScopeRoot)
+	service := &KubeService{config: &rest.Config{Host: host}}
+	service.mappers.mapper = mapper
+	return service
+}
+
+// The header this package sends has to be one the apiserver actually matches.
+// Asserting its shape ("starts with as=Table", "mentions meta.k8s.io") is what
+// the first version of this test did, and it held for a header carrying v=1 —
+// a version no apiserver serves — for as long as nothing put the string in
+// front of a server that negotiates.
+func TestListResourcesGetsTheTableFromAServerThatNegotiates(t *testing.T) {
+	server := tableNegotiatingServer(t, true)
+	defer server.Close()
+
+	got, err := serviceAgainst(server.URL).ListResources(
+		context.Background(), ListQuery{APIVersion: "v1", Kind: "Namespace"},
+	)
+	if err != nil {
+		t.Fatalf("ListResources: %v", err)
+	}
+	if len(got.Columns) != 2 || got.Columns[0].Name != "Name" {
+		t.Errorf("columns = %+v, want the apiserver's own column definitions", got.Columns)
+	}
+	if len(got.Rows) != 2 {
+		t.Errorf("rows = %+v, want one per object", got.Rows)
+	}
+	if !got.Truncated || got.Continue != "next-page" {
+		t.Errorf("truncated = %v, continue = %q, want the page marker carried through",
+			got.Truncated, got.Continue)
+	}
+}
+
+// The negative half is the point. A decoder that shrugs at a non-Table body
+// reports an empty table, which reads as "there is nothing there" — the one
+// answer a list must never invent.
+func TestListResourcesRefusesABodyThatIsNotATable(t *testing.T) {
+	server := tableNegotiatingServer(t, false)
+	defer server.Close()
+
+	got, err := serviceAgainst(server.URL).ListResources(
+		context.Background(), ListQuery{APIVersion: "v1", Kind: "Namespace"},
+	)
+	if err == nil {
+		t.Fatalf("ListResources returned %+v, want a refusal", got)
+	}
+	if !strings.Contains(err.Error(), "NamespaceList") {
+		t.Errorf("error %q does not name what came back instead", err)
 	}
 }
