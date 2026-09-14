@@ -63,8 +63,8 @@
 - **기대 결과**: 도구 응답이 Table 형식(컬럼 헤더 + 행)이고 객체 전문보다 현저히 작음.
   `NAME`/`READY` 등 `kubectl get`에 준하는 컬럼이 보존됨
 - **검증 AC**: AC2
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestListUsesTableAccept`,
-  `TestTableResponseIsSubstantiallySmaller`. 통합 `resource_generic_ac2.py`
+- **자동화**: 통합 `tests/integration/resource_generic_ac2.py`. Go 단위는 아직 없다 — 계획:
+  `resource_test.go::TestListUsesTableAccept`, `TestTableResponseIsSubstantiallySmaller`
 
 ### 시나리오 3: 절단과 이어보기
 - **사전 조건**: ConfigMap 120개 픽스처
@@ -83,8 +83,8 @@
   없음, 나머지 `spec`/`status`는 온전. `name` 누락 호출은 거부되고 메시지가
   `resource_list`로 먼저 찾으라고 안내함 — 대상 해석 경로가 존재하지 않아야 verb 1:1이 유지됨
 - **검증 AC**: AC4
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestGetStripsNoise`,
-  `TestGetRequiresName`. 통합 `resource_generic_ac4.py`
+- **자동화**: 통합 `tests/integration/resource_generic_ac4.py`. Go 단위는 아직 없다 — 계획:
+  `resource_test.go::TestGetStripsNoise`, `TestGetRequiresName`
 
 ### 시나리오 5: 서브리소스 조회
 - **사전 조건**: `workload-fixture` 기준선, 크래시 루프 파드, 다중 컨테이너 파드
