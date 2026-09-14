@@ -3,12 +3,10 @@
 검증 시나리오: test-resource-generic.md#시나리오 4
 실행 대상: primary
 
-사전 조건이 「`kubectl apply` 로 만들어 `last-applied-configuration` 과 `managedFields` 가
-**모두 붙은** Deployment」다. `workload-fixture` 가 정확히 그것이다 — CI 가
-`kubectl apply -f tests/k8s/kind/test-deployment.yaml` 로 세우므로 두 필드가 다 붙고,
-시나리오 문서의 「픽스처」 절도 이 픽스처를 승계하라고 적는다. 그래서 새로 만들지 않는다.
-대신 **사전 조건 자체를 kubectl 로 먼저 단언한다** — 두 필드가 애초에 없으면 「걷어냈다」가
-공전하므로, 잡음이 실재했음을 확인하고 나서 사라졌음을 확인한다.
+`workload-fixture` 로 족한 것은 CI 가 `kubectl apply -f tests/k8s/kind/test-deployment.yaml`
+로 세워 잡음 두 필드가 다 붙기 때문이다. 그래도 **사전 조건 자체를 kubectl 로 먼저 단언한다**
+— 두 필드가 애초에 없으면 「걷어냈다」가 공전하므로, 잡음이 실재했음을 확인하고 나서
+사라졌음을 확인한다.
 
 「나머지 `spec`/`status` 는 온전」은 포함 관계가 아니라 **등가**로 잰다: `spec` 은 원본과
 완전히 같아야 하고, `metadata` 의 키 집합은 원본에서 **그 둘만** 뺀 것과 같아야 한다.
@@ -75,11 +73,7 @@ def _kubectl_whole_object() -> dict:
 
 
 def test_resource_generic_ac4_precondition_has_both_noise_fields() -> dict:
-    """시나리오 4 사전 조건 — 원본에 잡음 두 필드가 실제로 붙어 있다.
-
-    걷어냈음을 단언하기 전에 걷어낼 것이 있었음을 단언한다. 이것이 없으면 도구가 아무것도
-    하지 않아도 아래 두 케이스가 통과한다.
-    """
+    """시나리오 4 사전 조건 — 원본에 잡음 두 필드가 실제로 붙어 있다."""
     whole = _kubectl_whole_object()
     metadata = whole["metadata"]
     assert metadata.get("managedFields"), (
@@ -120,7 +114,6 @@ async def test_resource_generic_ac4_get_strips_only_the_noise(
         f"{LAST_APPLIED} 가 남아 있다: {sorted(metadata.get('annotations', {}))}"
     )
 
-    # 「그 둘만」 — 키 집합 등가로 과잉 제거까지 잡는다.
     raw_metadata = whole["metadata"]
     expected_annotations = {
         key: value
