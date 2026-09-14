@@ -99,18 +99,6 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourcePatch,
 	},
 
-	"workload_restart": {
-		decl: toolDeclaration{
-			pairs: []gatekeeper.Pair{
-				{Verb: "patch", Resource: "deployments"},
-				{Verb: "patch", Resource: "statefulsets"},
-				{Verb: "patch", Resource: "daemonsets"},
-			},
-			outsideGate: exemptRetiredPendingRemoval,
-		},
-		handle: (*Handler).workloadRestart,
-	},
-
 	"workload_scale": {
 		decl: toolDeclaration{
 			// The scale subresource is not used: the implementation patches

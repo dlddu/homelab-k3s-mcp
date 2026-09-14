@@ -27,12 +27,6 @@ type getResourceCall struct {
 	ref k8s.ResourceRef
 }
 
-type restartCall struct {
-	kind      k8s.WorkloadKind
-	namespace string
-	name      string
-}
-
 type scaleCall struct {
 	kind      k8s.WorkloadKind
 	namespace string
@@ -58,7 +52,6 @@ type fakeK8s struct {
 	listCalls        []listResourceCall
 	getCalls         []getResourceCall
 	patchCalls       []patchResourceCall
-	restarts         []restartCall
 	scales           []scaleCall
 	execCalls        []execCall
 
@@ -100,13 +93,6 @@ func (f *fakeK8s) PatchResource(_ context.Context, ref k8s.PatchRef) (*k8s.Resou
 	defer f.mu.Unlock()
 	f.patchCalls = append(f.patchCalls, patchResourceCall{ref: ref})
 	return &k8s.ResourceResult{Resource: "deployments", Namespace: "default", Object: map[string]any{}}, nil
-}
-
-func (f *fakeK8s) RolloutRestart(_ context.Context, kind k8s.WorkloadKind, namespace, name string) (string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.restarts = append(f.restarts, restartCall{kind: kind, namespace: namespace, name: name})
-	return "2026-05-07T00:00:00Z", nil
 }
 
 func (f *fakeK8s) ScaleWorkload(_ context.Context, kind k8s.WorkloadKind, namespace, name string, replicas int32) (int32, error) {

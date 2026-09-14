@@ -14,8 +14,6 @@ type Service interface {
 
 	PatchResource(ctx context.Context, ref PatchRef) (*ResourceResult, error)
 
-	RolloutRestart(ctx context.Context, kind WorkloadKind, namespace, name string) (string, error)
-
 	// ExecInPod runs command inside the first Running pod matching labelSelector
 	// in namespace. container is required when the pod has more than one
 	// container; pass nil to default to the pod's only container.
@@ -51,10 +49,6 @@ func (u *Unavailable) GetResource(context.Context, ResourceRef) (*ResourceResult
 
 func (u *Unavailable) PatchResource(context.Context, PatchRef) (*ResourceResult, error) {
 	return nil, unavailableErr(u.reason)
-}
-
-func (u *Unavailable) RolloutRestart(context.Context, WorkloadKind, string, string) (string, error) {
-	return "", unavailableErr(u.reason)
 }
 
 func (u *Unavailable) ExecInPod(context.Context, string, string, *string, []string) (*ExecOutcome, error) {

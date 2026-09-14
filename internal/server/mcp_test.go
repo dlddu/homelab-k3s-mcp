@@ -101,12 +101,12 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	if len(tools) != 17 {
-		t.Fatalf("len(tools) = %d, want 17", len(tools))
+	if len(tools) != 16 {
+		t.Fatalf("len(tools) = %d, want 16", len(tools))
 	}
 	for _, name := range []string{
 		"ping", "api_resources", "resource_list", "resource_get", "resource_patch",
-		"workload_restart", "workload_scale",
+		"workload_scale",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
@@ -134,12 +134,12 @@ func TestToolsListAdvertisesAnnotations(t *testing.T) {
 		t.Fatalf("resource_list annotations = %v", list["annotations"])
 	}
 
-	restart := findTool(t, tools, "workload_restart")
-	if at(t, restart, "annotations", "title") != "Restart Workload" ||
-		at(t, restart, "annotations", "readOnlyHint") != false ||
-		at(t, restart, "annotations", "destructiveHint") != true ||
-		at(t, restart, "annotations", "idempotentHint") != false {
-		t.Fatalf("workload_restart annotations = %v", restart["annotations"])
+	patch := findTool(t, tools, "resource_patch")
+	if at(t, patch, "annotations", "title") != "Patch Resource" ||
+		at(t, patch, "annotations", "readOnlyHint") != false ||
+		at(t, patch, "annotations", "destructiveHint") != true ||
+		at(t, patch, "annotations", "idempotentHint") != false {
+		t.Fatalf("resource_patch annotations = %v", patch["annotations"])
 	}
 }
 
@@ -490,36 +490,6 @@ func TestResourceToolsSurfaceK8sErrorsAsToolErrors(t *testing.T) {
 		if !strings.Contains(text, "kubernetes") {
 			t.Fatalf("%s text = %q", call.name, text)
 		}
-	}
-}
-
-func TestWorkloadRestartDispatchesToService(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 20, "workload_restart", map[string]any{
-		"kind": "DaemonSet", "namespace": "kube-system", "name": "kindnet",
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if at(t, body, "result", "structuredContent", "kind") != "DaemonSet" {
-		t.Fatalf("kind = %v", at(t, body, "result", "structuredContent", "kind"))
-	}
-	if _, ok := at(t, body, "result", "structuredContent", "restartedAt").(string); !ok {
-		t.Fatalf("restartedAt should be a string")
-	}
-	if len(fake.restarts) != 1 || fake.restarts[0].kind != k8s.DaemonSet ||
-		fake.restarts[0].namespace != "kube-system" || fake.restarts[0].name != "kindnet" {
-		t.Fatalf("restarts = %+v", fake.restarts)
-	}
-}
-
-func TestWorkloadRestartRequiresNamespaceAndName(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 30, "workload_restart", map[string]any{"kind": "Deployment", "namespace": "default"})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
 	}
 }
 
