@@ -78,9 +78,9 @@ func TestStripNoiseToleratesObjectsWithoutMetadata(t *testing.T) {
 	}
 }
 
-// AC18: a 403 is reported as this server's missing grant, naming the pair and
-// the file that decides it, rather than passed through as the apiserver's own
-// wording — which reads like a transient failure worth retrying.
+// AC18: a 403 is reported as this server's missing grant, naming the pair —
+// not passed through as the apiserver's own wording, which reads like a
+// transient failure worth retrying. AC18 names no file now; neither may this.
 func TestForbiddenBecomesAGrantStatement(t *testing.T) {
 	forbidden := apierrors.NewForbidden(
 		schema.GroupResource{Group: "", Resource: "secrets"},
@@ -91,13 +91,16 @@ func TestForbiddenBecomesAGrantStatement(t *testing.T) {
 
 	err := s.apiCallError(forbidden, "get", "secrets")
 	msg := err.Error()
-	for _, want := range []string{"get", "secrets", "k8s/rbac.yaml"} {
+	for _, want := range []string{"get", "secrets"} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("message %q does not mention %q", msg, want)
 		}
 	}
 	if !strings.Contains(msg, "retrying will not change the answer") {
 		t.Errorf("message %q does not say the call is not worth retrying", msg)
+	}
+	if strings.Contains(msg, "rbac.yaml") {
+		t.Errorf("message %q sends the operator to a file that no longer decides the grant", msg)
 	}
 }
 
@@ -106,7 +109,7 @@ func TestNonForbiddenErrorsArePassedThrough(t *testing.T) {
 	s := &KubeService{}
 
 	msg := s.apiCallError(notFound, "get", "pods").Error()
-	if strings.Contains(msg, "k8s/rbac.yaml") {
+	if strings.Contains(msg, "refused:") {
 		t.Errorf("a 404 was reported as a permission problem: %q", msg)
 	}
 	if !strings.Contains(msg, "api-0") {

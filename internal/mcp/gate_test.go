@@ -469,8 +469,8 @@ func TestGenericCallWithoutACoordinateIsRefused(t *testing.T) {
 	}
 }
 
-// The declaration a generic call resolves to is the one an operator would
-// compare against k8s/rbac.yaml, subresources included.
+// The declaration a generic call resolves to is the pair the approval request
+// puts in front of the reviewer, subresources included.
 func TestGenericPairsFollowTheCoordinate(t *testing.T) {
 	cases := []struct {
 		verb string
