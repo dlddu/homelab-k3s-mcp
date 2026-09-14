@@ -260,8 +260,7 @@ func TestSensitiveReadsAreGated(t *testing.T) {
 }
 
 // AC1/AC3: the gate is handed the pair it is judging and a context that names
-// the tool and carries the arguments in full — a patch body summarised into
-// "a restart" is the server deciding for the operator.
+// the tool and carries the arguments in full.
 func TestApprovedCallReachesKubernetesWithAJudgeableContext(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1", ProcessedByID: "op-1"}}
 	registry := map[string]toolEntry{

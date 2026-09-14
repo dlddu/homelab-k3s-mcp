@@ -25,8 +25,11 @@ docstring 판정은 슬라이스마다 누적할 수 있다.
 * **R2** 각 행의 범위를 **모델 as-is 지문과 동일한 추출·정규화·정렬**로 재측정한 주석 줄 수와
   지문이 등재값과 같다. 다르면 그 범위는 판정 이후 주석이 바뀐 것이므로 재판정 대상이다.
 * **R3** 행 사이에 같은 파일이 두 번 등재되지 않는다(판정 완료량의 이중 계상 방지).
-* **R4** 합계 마커 == 원장 행들의 주석 줄 수 합(양방향 미러). 범위를 더하거나 빼면 같은 PR 에서
-  합계도 움직여야 한다.
+* **R4** 합계 마커 == 원장 행들의 주석 줄 수 합이고, **합계 + 잔량 마커 == 실측 전체**.
+  잔량은 「아직 판정받지 않은 주석 줄 수」다. 뒤의 절반은 나중에 붙였다 — R1~R3 은 **등재된
+  행의 범위만** 재측정하므로 어느 행에도 없는 파일은 원리적으로 검사 대상이 아니고, 승인 게이트
+  슬라이스가 새 파일 넷으로 주석 192 줄을 들고 들어왔을 때 이 게이트는 rc=0 이었다(판정
+  커버리지 100.0% → 84.3%). 아래 R8 이 docstring 표면에서 막던 것을 줄 주석 표면에서도 막는다.
 
 docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본문(빈 줄과 기계가 읽는
 선언 줄은 제외). 모델 as-is 는 **아직 이 표면을 보지 않는다**(bash 스크립트가 파서를 돌리지
@@ -84,6 +87,8 @@ LEDGER_OPEN = "<!-- 판정-원장 -->"
 LEDGER_CLOSE = "<!-- /판정-원장 -->"
 TOTAL_OPEN = "<!-- 판정-합계 -->"
 TOTAL_CLOSE = "<!-- /판정-합계 -->"
+REMAINING_OPEN = "<!-- 판정-잔량 -->"
+REMAINING_CLOSE = "<!-- /판정-잔량 -->"
 DOC_LEDGER_OPEN = "<!-- docstring-원장 -->"
 DOC_LEDGER_CLOSE = "<!-- /docstring-원장 -->"
 DOC_TOTAL_OPEN = "<!-- docstring-합계 -->"
@@ -317,21 +322,31 @@ def main() -> int:
     text = LEDGER.read_text(encoding="utf-8")
     rows = parse_ledger(text, LEDGER_OPEN, LEDGER_CLOSE)
     total = parse_total(text, TOTAL_OPEN, TOTAL_CLOSE)
+    remaining = parse_total(text, REMAINING_OPEN, REMAINING_CLOSE)
     doc_rows = parse_ledger(text, DOC_LEDGER_OPEN, DOC_LEDGER_CLOSE)
     doc_total = parse_total(text, DOC_TOTAL_OPEN, DOC_TOTAL_CLOSE)
     doc_remaining = parse_total(text, DOC_REMAINING_OPEN, DOC_REMAINING_CLOSE)
 
     in_scope = set(scan_files())
+    hits = comment_lines(sorted(in_scope))
 
     # R1·R2·R3 — 줄 주석 표면
     ledger_sum = check_ledger(rows, in_scope, comment_lines, ("R1", "R2", "R3"))
 
-    # R4 — 합계 미러(양방향)
+    # R4 — 합계 미러(양방향) + 미판정 잔량
     if total != ledger_sum:
         fail(
             "R4",
             f"판정 합계 {total} != 원장 행 줄 수 합 {ledger_sum}."
             " 범위를 더하거나 빼면 같은 PR 에서 합계도 움직여야 한다.",
+        )
+    if total + remaining != len(hits):
+        fail(
+            "R4",
+            f"판정 합계 {total} + 잔량 {remaining} != 실측 전체 {len(hits)}."
+            " 어느 원장 행에도 없는 파일이 주석을 들고 들어왔거나 사라졌다 — 그 범위를"
+            " 판정해 행으로 등재하거나, 잔량 마커를 움직여 「이만큼은 아직 판정받지"
+            " 않았다」를 diff 에 남길 것.",
         )
 
     # R5·R6·R7 — docstring 표면
@@ -339,7 +354,6 @@ def main() -> int:
         doc_rows, in_scope, docstring_lines, ("R5", "R6", "R7"), only_python=True
     )
 
-    hits = comment_lines(sorted(in_scope))
     doc_hits = docstring_lines(sorted(in_scope))
 
     # R8 — docstring 합계 미러 + 미판정 잔량
@@ -371,6 +385,7 @@ def main() -> int:
     print(
         f"OK: 규칙 R1~R8 위반 없음 — {census(hits)}"
         f" · 판정 완료 {ledger_sum}줄({share:.1f}%) / 등재 범위 {len(rows)}"
+        f" · 미판정 잔량 {remaining}줄"
     )
     for row in rows:
         print(
