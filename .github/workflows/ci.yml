@@ -1,5 +1,10 @@
 name: CI
 
+# 검증만 한다. 이미지는 여기서 *빌드해서 kind 에 load* 할 뿐 레지스트리로 나가지 않는다 —
+# pull 가능한 태그를 발행하고 main 을 그 SHA 로 고정하는 것은 docker-build-push.yaml 이다.
+# 예전에는 이 파일의 `docker` 잡이 `latest` 까지 밀었고 브랜치 조건이 없어 PR 빌드도 그
+# 태그를 덮어썼다(= 운영이 미머지 코드를 pull 할 수 있었다). 그 잡을 옮기며 없앴다.
+
 on:
   push:
     branches: [main]
@@ -376,47 +381,3 @@ jobs:
           kubectl -n homelab-k3s-mcp-oauth describe deploy/homelab-k3s-mcp-no-auth || true
           kubectl -n homelab-k3s-mcp-oauth logs -l app.kubernetes.io/name=homelab-k3s-mcp-no-auth --tail=200 || true
           kubectl -n homelab-k3s-mcp-oauth logs -l app.kubernetes.io/name=homelab-k3s-mcp-no-auth --tail=200 --previous || true
-
-  docker:
-    name: docker build & push
-    runs-on: ubuntu-24.04-arm
-    needs: [lint, unit-tests, integration-tests]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=sha,format=short
-            type=raw,value=latest
-          labels: |
-            org.opencontainers.image.title=homelab-k3s-mcp
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          provenance: false
