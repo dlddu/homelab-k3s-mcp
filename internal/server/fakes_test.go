@@ -45,6 +45,10 @@ type listCall struct {
 	namespace *string
 }
 
+type patchResourceCall struct {
+	ref k8s.PatchRef
+}
+
 type fakeK8s struct {
 	mu sync.Mutex
 
@@ -53,6 +57,7 @@ type fakeK8s struct {
 	apiResourceCalls int
 	listCalls        []listResourceCall
 	getCalls         []getResourceCall
+	patchCalls       []patchResourceCall
 	restarts         []restartCall
 	scales           []scaleCall
 	execCalls        []execCall
@@ -88,6 +93,13 @@ func (f *fakeK8s) GetResource(_ context.Context, ref k8s.ResourceRef) (*k8s.Reso
 		return f.getResponse()
 	}
 	return &k8s.ResourceResult{Resource: "pods", Namespace: "default", Object: map[string]any{}}, nil
+}
+
+func (f *fakeK8s) PatchResource(_ context.Context, ref k8s.PatchRef) (*k8s.ResourceResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.patchCalls = append(f.patchCalls, patchResourceCall{ref: ref})
+	return &k8s.ResourceResult{Resource: "deployments", Namespace: "default", Object: map[string]any{}}, nil
 }
 
 func (f *fakeK8s) RolloutRestart(_ context.Context, kind k8s.WorkloadKind, namespace, name string) (string, error) {

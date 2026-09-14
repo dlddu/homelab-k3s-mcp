@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -91,6 +92,11 @@ var toolRegistry = map[string]toolEntry{
 	"resource_get": {
 		decl:   toolDeclaration{resolve: genericPairs("get")},
 		handle: (*Handler).resourceGet,
+	},
+
+	"resource_patch": {
+		decl:   toolDeclaration{resolve: genericPairs("patch")},
+		handle: (*Handler).resourcePatch,
 	},
 
 	"workload_restart": {
@@ -224,6 +230,14 @@ func readIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
 	if p.Verb != "get" && p.Verb != "watch" {
 		return false
 	}
+	return resourceIsSensitive(p, sensitiveKinds)
+}
+
+// resourceIsSensitive answers the kind half of that question on its own, with
+// no verb attached. Two callers need it and they need different verbs: the read
+// gate asks about get and watch, and the context masker asks about writes.
+// Splitting it keeps one normalisation rather than two that can drift.
+func resourceIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
 	// A subresource is judged by the object it hangs off: reading
 	// secrets/<anything> is still reading a Secret, and matching the whole
 	// string would let a subresource name walk straight past this.
@@ -350,7 +364,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	call := gatekeeper.Call{
 		Tool:    name,
 		Pair:    gated[0],
-		Context: approvalContext(name, gated, rawArgs),
+		Context: approvalContext(name, gated, rawArgs, h.sensitiveKinds),
 	}
 	decision, err := h.gate.Authorize(ctx, call)
 	if err != nil {
@@ -379,8 +393,9 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 }
 
 // approvalContext renders what the operator sees. Arguments go in verbatim
-// rather than summarised (AC3).
-func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessage) string {
+// rather than summarised (AC3), with one exception the same AC names: a write
+// to a sensitive kind has its values masked first.
+func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessage, sensitiveKinds []string) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "tool: %s\n", name)
 	fmt.Fprintf(&b, "rbac: %s\n", pairsText(gated))
@@ -389,9 +404,155 @@ func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessa
 	args := strings.TrimSpace(string(rawArgs))
 	if args == "" || args == "null" {
 		args = "(none)"
+	} else if writesASensitiveKind(gated, sensitiveKinds) {
+		args = maskCredentialValues(rawArgs)
 	}
 	fmt.Fprintf(&b, "arguments:\n%s", args)
 	return b.String()
+}
+
+// writesASensitiveKind reports whether this call carries credential values into
+// the server. Reads of a sensitive kind carry only a coordinate, so the mask has
+// nothing to do there; writes of an ordinary kind keep their body in full,
+// because AC16 rests the distinction on whether the content is a credential
+// rather than on what the call does.
+func writesASensitiveKind(gated []gatekeeper.Pair, sensitiveKinds []string) bool {
+	for _, p := range gated {
+		if gatedVerbs[p.Verb] && resourceIsSensitive(p, sensitiveKinds) {
+			return true
+		}
+	}
+	return false
+}
+
+// credentialFields are the two places a kubernetes object carries values that
+// must not reach the approval screen (prd-approval-gate AC3, AC10).
+var credentialFields = map[string]bool{"data": true, "stringData": true}
+
+// withheld replaces the whole argument blob when masking cannot be carried out.
+// Refusing to render is the safe direction: a blob whose credential fields
+// cannot be located is a blob that may be all credential.
+const withheld = `"(withheld — arguments could not be parsed, so the credential fields in them could not be located)"`
+
+// maskCredentialValues rewrites a sensitive-kind write so the operator sees
+// which keys change and by how much without seeing the values themselves. AC3
+// asks for "key name and byte count" because a value on the approval screen has
+// already leaked whether or not the operator then clicks reject.
+func maskCredentialValues(rawArgs json.RawMessage) string {
+	dec := json.NewDecoder(strings.NewReader(string(rawArgs)))
+	dec.UseNumber()
+	var args map[string]any
+	if err := dec.Decode(&args); err != nil {
+		return withheld
+	}
+
+	// A JSON patch carries its value beside a path rather than under a "data"
+	// key, so the tree walk below cannot see it. That shape is handled first,
+	// from the declared patchType rather than by guessing at array contents.
+	if patchType, _ := args["patchType"].(string); patchType == "json" {
+		maskJSONPatchOps(args["patch"])
+	}
+	maskCredentialTree(args)
+
+	out, err := json.MarshalIndent(args, "", "  ")
+	if err != nil {
+		return withheld
+	}
+	return string(out)
+}
+
+// maskCredentialTree walks the arguments and masks every data/stringData map it
+// finds, wherever it sits. The field is looked for at any depth rather than at
+// the one place a manifest puts it: the same argument shape reaches here from
+// create, update and patch, and each nests it differently.
+func maskCredentialTree(node any) {
+	switch v := node.(type) {
+	case map[string]any:
+		for key, value := range v {
+			if credentialFields[key] {
+				if entries, ok := value.(map[string]any); ok {
+					v[key] = maskedEntries(entries, key == "data")
+					continue
+				}
+			}
+			maskCredentialTree(value)
+		}
+	case []any:
+		for _, item := range v {
+			maskCredentialTree(item)
+		}
+	}
+}
+
+// maskJSONPatchOps masks the value of every RFC 6902 operation that addresses a
+// credential field, including the whole-map form ("path": "/data").
+func maskJSONPatchOps(node any) {
+	ops, ok := node.([]any)
+	if !ok {
+		return
+	}
+	for _, item := range ops {
+		op, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		path, _ := op["path"].(string)
+		field, rest, found := credentialPath(path)
+		if !found {
+			continue
+		}
+		value, present := op["value"]
+		if !present {
+			continue
+		}
+		if rest == "" {
+			if entries, ok := value.(map[string]any); ok {
+				op["value"] = maskedEntries(entries, field == "data")
+				continue
+			}
+		}
+		op["value"] = maskedValue(value, field == "data")
+	}
+}
+
+// credentialPath splits a JSON pointer into the credential field it addresses
+// and whatever follows it, reporting whether it addresses one at all.
+func credentialPath(path string) (field, rest string, found bool) {
+	for name := range credentialFields {
+		if path == "/"+name {
+			return name, "", true
+		}
+		if strings.HasPrefix(path, "/"+name+"/") {
+			return name, path[len(name)+2:], true
+		}
+	}
+	return "", "", false
+}
+
+func maskedEntries(entries map[string]any, encoded bool) map[string]any {
+	masked := make(map[string]any, len(entries))
+	for key, value := range entries {
+		masked[key] = maskedValue(value, encoded)
+	}
+	return masked
+}
+
+// maskedValue reports a value's size in place of the value. Secret.data is
+// base64 on the wire, so its length is decoded first — the operator is judging
+// "is that the size of the token I meant to rotate", and the encoded length
+// answers a different question.
+func maskedValue(value any, encoded bool) string {
+	text, ok := value.(string)
+	if !ok {
+		return "(masked)"
+	}
+	size := len(text)
+	if encoded {
+		if raw, err := base64.StdEncoding.DecodeString(text); err == nil {
+			size = len(raw)
+		}
+	}
+	return fmt.Sprintf("(masked, %dB)", size)
 }
 
 func pairsText(pairs []gatekeeper.Pair) string {

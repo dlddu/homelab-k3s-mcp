@@ -19,8 +19,9 @@ import (
 // reached. A refused call that still incremented this counter would mean the
 // gate ran after the fact.
 type countingK8s struct {
-	mu    sync.Mutex
-	calls int
+	mu        sync.Mutex
+	calls     int
+	lastPatch k8s.PatchRef
 }
 
 func (c *countingK8s) count() int {
@@ -48,6 +49,23 @@ func (c *countingK8s) ListResources(context.Context, k8s.ListQuery) (*k8s.ListRe
 func (c *countingK8s) GetResource(context.Context, k8s.ResourceRef) (*k8s.ResourceResult, error) {
 	c.hit()
 	return &k8s.ResourceResult{Object: map[string]any{}}, nil
+}
+
+// PatchResource records what it was handed as well as counting the call: a
+// patch is the one verb whose *body* the tests need, because "the server sent
+// the operator's bytes on unchanged" is itself an assertion (AC9).
+func (c *countingK8s) PatchResource(_ context.Context, ref k8s.PatchRef) (*k8s.ResourceResult, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastPatch = ref
+	c.mu.Unlock()
+	return &k8s.ResourceResult{Resource: "deployments", Object: map[string]any{}}, nil
+}
+
+func (c *countingK8s) patch() k8s.PatchRef {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastPatch
 }
 
 func (c *countingK8s) RolloutRestart(context.Context, k8s.WorkloadKind, string, string) (string, error) {
@@ -81,10 +99,12 @@ func (g *scriptedGate) Authorize(_ context.Context, call gatekeeper.Call) (*gate
 	return g.decision, nil
 }
 
-// testHandler builds a handler over a synthetic registry. The write half of the
-// gate has no production tool yet — the resource_* family currently ships its
-// read half only — so the write enforcement path has to be exercised against a
-// tool declared here.
+// testHandler builds a handler over a registry the caller chooses. Most write
+// cases still pass a synthetic one: resource_patch is the only shipped tool that
+// exercises a state-changing verb, so the other five verbs have no production
+// tool to drive them and are declared here instead. The cases that are about
+// resource_patch itself pass toolRegistry — a synthetic stand-in would assert
+// the test's own declaration rather than the shipped one.
 func testHandler(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEntry) (*Handler, *countingK8s) {
 	t.Helper()
 	fake := &countingK8s{}

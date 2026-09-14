@@ -150,9 +150,13 @@
   보존되고 그 어노테이션 외 **어떤 필드도 달라지지 않음**. 재시작 패치도 다른 패치와 똑같이
   승인 요청을 만듦 — 내용으로 예외를 주지 않음
 - **검증 AC**: AC9
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestPatchTypes`,
-  `TestRestartPatchTouchesOnlyAnnotation`, `TestRestartPatchIsGatedLikeAnyPatch`.
-  통합 `resource_generic_ac9.py` (폐기되는 `workload_restart_ac1.py`의 단언을 승계한다)
+- **자동화**: Go 단위 셋은 계획한 이름 그대로 서 있다 —
+  `internal/mcp/resource_test.go::TestPatchTypes`(네 `patchType` + 인자 거부 여섯),
+  `TestRestartPatchTouchesOnlyAnnotation`(서버가 본문을 고쳐 쓰거나 필드를 더하지 않는다),
+  `TestRestartPatchIsGatedLikeAnyPatch`. 파드 교체와 `spec.replicas` 보존은 apiserver 의
+  거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
+  통합은 **(미작성)** — `resource_generic_ac9.py` (폐기되는 `workload_restart_ac1.py`의 단언을
+  승계한다). 네 호출이 각각 승인을 요구하므로 실물 gatekeeper 픽스처가 선행이다
 
 ### 시나리오 10: 삭제는 단건만
 - **사전 조건**: 동일
@@ -229,8 +233,12 @@
   **키 이름과 바이트 수만** 있고 난수 토큰이 없음. 승인 후 Secret이 생성되고 값이 반영됨.
   `list`는 승인 없이 동작. ConfigMap `get`은 승인 요청을 만들지 않음
 - **검증 AC**: AC16
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestGatedKindsGateEveryVerbButList`,
-  `TestSecretWriteContextRedactsValues`. 통합 `resource_generic_ac16.py`
+- **자동화**: 둘 중 하나가 섰다 —
+  `internal/mcp/resource_test.go::TestSecretWriteContextRedactsValues` 가 민감 종류 쓰기의
+  `context` 에 키 이름과 바이트 수만 남는 것을 단언하고, 같은 파일의
+  `TestOrdinaryWriteKeepsItsBodyInTheContext` 가 그 대조군이다(전부 가리는 구현도 막는다).
+  `TestGatedKindsGateEveryVerbButList` 는 **(미작성)** — 여섯 verb 중 `patch` 외 넷의 도구가
+  아직 없다. 통합 `resource_generic_ac16.py` 도 **(미작성)**
 
 ### 시나리오 17: 값이 새는 경로가 막혀 있다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, 그 토큰을 서빙하는 HTTP 파드

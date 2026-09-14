@@ -14,6 +14,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -40,6 +41,35 @@ const (
 	ListDefaultLimit int64 = 100
 	ListMaxLimit     int64 = 500
 )
+
+// patchTypes are AC9's four names and the media types the apiserver knows them
+// by. The names are the tool's vocabulary rather than the wire strings because
+// the wire strings are content types, and an argument that has to be spelled
+// "application/strategic-merge-patch+json" is an argument nobody gets right.
+var patchTypes = map[string]types.PatchType{
+	"merge":     types.MergePatchType,
+	"strategic": types.StrategicMergePatchType,
+	"json":      types.JSONPatchType,
+	"apply":     types.ApplyPatchType,
+}
+
+// PatchTypeNames lists the accepted names in a stable order, so the refusal
+// message does not shuffle between calls the way map iteration would. The tool
+// layer refuses unknown names from this same map rather than its own copy.
+func PatchTypeNames() []string {
+	names := make([]string, 0, len(patchTypes))
+	for name := range patchTypes {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// IsPatchType reports whether name is one of AC9's four.
+func IsPatchType(name string) bool {
+	_, ok := patchTypes[name]
+	return ok
+}
 
 // ListQuery addresses a set of objects by coordinate (prd-resource-generic AC1).
 type ListQuery struct {
@@ -77,6 +107,17 @@ type ResourceRef struct {
 	Name        string
 	Subresource string
 	Log         LogOptions
+}
+
+// PatchRef addresses one object and the change to make to it (AC9).
+type PatchRef struct {
+	APIVersion   string
+	Kind         string
+	Namespace    *string
+	Name         string
+	PatchType    string
+	Patch        []byte
+	FieldManager string
 }
 
 // ResourceResult is one object, or the text a text-typed subresource returns.
@@ -389,19 +430,9 @@ func (s *KubeService) GetResource(ctx context.Context, ref ResourceRef) (*Resour
 	if err != nil {
 		return nil, err
 	}
-	if !res.namespaced && ref.Namespace != nil {
-		return nil, apiErrorf(
-			"%s is cluster-scoped; drop namespace rather than having it silently ignored",
-			ref.Kind,
-		)
-	}
-	if res.namespaced && ref.Namespace == nil {
-		return nil, apiErrorf("%s is namespaced; namespace is required", ref.Kind)
-	}
-
-	namespace := ""
-	if ref.Namespace != nil {
-		namespace = *ref.Namespace
+	namespace, err := objectNamespace(res, ref.Kind, ref.Namespace)
+	if err != nil {
+		return nil, err
 	}
 
 	if ref.Subresource == "log" {
@@ -462,6 +493,75 @@ func (s *KubeService) podLogs(ctx context.Context, res resolved, namespace strin
 		Resource:  "pods/log",
 		Namespace: namespace,
 		Text:      string(raw),
+	}, nil
+}
+
+// objectNamespace applies the scope rules that addressing a single object by
+// coordinate has to obey, and reports the namespace to address it in. Every
+// single-object verb shares them, so they live in one place: a second copy is
+// how get and patch end up disagreeing about what "cluster-scoped" means.
+func objectNamespace(res resolved, kind string, namespace *string) (string, error) {
+	if !res.namespaced && namespace != nil {
+		return "", apiErrorf(
+			"%s is cluster-scoped; drop namespace rather than having it silently ignored",
+			kind,
+		)
+	}
+	if res.namespaced && namespace == nil {
+		return "", apiErrorf("%s is namespaced; namespace is required", kind)
+	}
+	if namespace == nil {
+		return "", nil
+	}
+	return *namespace, nil
+}
+
+// PatchResource applies one patch to one object and answers with the result
+// (AC9). The patch body is passed through byte for byte — deciding what a patch
+// "really" does is the operator's job at the approval screen, and a server that
+// rewrote the body would be approving something other than what it showed.
+func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*ResourceResult, error) {
+	patchType, ok := patchTypes[ref.PatchType]
+	if !ok {
+		return nil, apiErrorf("patchType %q is not one of %s", ref.PatchType, strings.Join(PatchTypeNames(), ", "))
+	}
+	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
+	if err != nil {
+		return nil, err
+	}
+	namespace, err := objectNamespace(res, ref.Kind, ref.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	dyn, err := dynamic.NewForConfig(s.config)
+	if err != nil {
+		return nil, unavailableErr(fmt.Sprintf("init dynamic client: %v", err))
+	}
+	var api dynamic.ResourceInterface = dyn.Resource(res.gvr)
+	if res.namespaced {
+		api = dyn.Resource(res.gvr).Namespace(namespace)
+	}
+
+	// Every write this server makes is attributable in managedFields. Apply
+	// carries the caller's own manager because server-side apply uses it as the
+	// ownership key rather than as a label — two callers sharing one name share
+	// the fields they own.
+	manager := ref.FieldManager
+	if manager == "" {
+		manager = fieldManager
+	}
+	obj, err := api.Patch(ctx, ref.Name, patchType, ref.Patch, metav1.PatchOptions{FieldManager: manager})
+	if err != nil {
+		return nil, s.apiCallError(err, "patch", res.gvr.Resource)
+	}
+
+	object := obj.UnstructuredContent()
+	stripNoise(object)
+	return &ResourceResult{
+		Resource:  res.gvr.Resource,
+		Namespace: namespace,
+		Object:    object,
 	}, nil
 }
 

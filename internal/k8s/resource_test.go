@@ -308,3 +308,36 @@ func TestSimilarKindsDoNotRepeatALabel(t *testing.T) {
 		t.Errorf("rankSimilarKinds(Deploymnt) = %v, want one label per kind", got)
 	}
 }
+
+// AC9: each name the tool accepts has to reach the apiserver as the content
+// type that means what the name says. The media types are asserted by value
+// rather than by round-tripping the constants — a mapping that sent "merge" as
+// a strategic patch would be self-consistent and still apply the wrong
+// semantics to a list field, which is the same class of error the Accept
+// header's v=1 was.
+func TestPatchTypesMapToApiserverMediaTypes(t *testing.T) {
+	want := map[string]string{
+		"merge":     "application/merge-patch+json",
+		"strategic": "application/strategic-merge-patch+json",
+		"json":      "application/json-patch+json",
+		"apply":     "application/apply-patch+yaml",
+	}
+	for name, mediaType := range want {
+		if !IsPatchType(name) {
+			t.Errorf("IsPatchType(%q) = false, want the tool to accept it", name)
+			continue
+		}
+		if got := string(patchTypes[name]); got != mediaType {
+			t.Errorf("patchTypes[%q] = %q, want %q", name, got, mediaType)
+		}
+	}
+	if len(patchTypes) != len(want) {
+		t.Errorf("patchTypes has %d entries, want exactly the %d AC9 names", len(patchTypes), len(want))
+	}
+	if IsPatchType("yaml") {
+		t.Error(`IsPatchType("yaml") = true, want a name outside the four refused`)
+	}
+	if got := strings.Join(PatchTypeNames(), ","); got != "apply,json,merge,strategic" {
+		t.Errorf("PatchTypeNames() = %q, want a stable sorted list so the refusal message does not shuffle", got)
+	}
+}

@@ -101,11 +101,11 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	if len(tools) != 16 {
-		t.Fatalf("len(tools) = %d, want 16", len(tools))
+	if len(tools) != 17 {
+		t.Fatalf("len(tools) = %d, want 17", len(tools))
 	}
 	for _, name := range []string{
-		"ping", "api_resources", "resource_list", "resource_get",
+		"ping", "api_resources", "resource_list", "resource_get", "resource_patch",
 		"workload_restart", "workload_scale",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",

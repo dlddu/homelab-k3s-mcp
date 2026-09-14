@@ -143,6 +143,53 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_patch",
+      "description": "Apply a patch to one Kubernetes object by coordinate and name. Exercises the patch verb only and always requires human approval. patchType selects merge, strategic, json (RFC 6902) or apply (server-side apply, which also requires fieldManager). A rolling restart is this tool with a strategic patch that sets the kubectl.kubernetes.io/restartedAt pod-template annotation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\" or \"apps/v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to patch, e.g. \"Deployment\", \"ConfigMap\"."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for namespaced kinds, rejected for cluster-scoped ones."
+          },
+          "name": {
+            "type": "string",
+            "description": "Object name. Required; this tool patches one object, not a selection."
+          },
+          "patchType": {
+            "type": "string",
+            "enum": ["merge", "strategic", "json", "apply"],
+            "description": "How the body is interpreted. json is an RFC 6902 operation array; the other three are objects."
+          },
+          "patch": {
+            "type": ["object", "array"],
+            "description": "The patch body, sent to the apiserver unchanged. An RFC 6902 array when patchType=json, otherwise a partial object."
+          },
+          "fieldManager": {
+            "type": "string",
+            "description": "patchType=apply only, where it is required. Server-side apply records it as the owner of the fields this patch sets."
+          }
+        },
+        "required": ["apiVersion", "kind", "name", "patchType", "patch"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Patch Resource",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "workload_restart",
       "description": "Trigger a rolling restart of a Kubernetes workload (Deployment, StatefulSet, DaemonSet).",
       "inputSchema": {
