@@ -46,7 +46,7 @@ spec:
           # 부트스트랩 값은 `pin` 이전 CI 가 main 에 발행하던 short-sha 태그
           # (= main HEAD e2a195d)다. 첫 main 푸시에서 full SHA 로 바뀐다. 둘 다 불변
           # 태그라 imagePullPolicy 는 기본값(IfNotPresent)이 그대로 옳다.
-          image: ghcr.io/dlddu/homelab-k3s-mcp:723af136f9fa9c08f5bd7164b4cd50d61b27a2f2
+          image: ghcr.io/dlddu/homelab-k3s-mcp:e30ab7387c7b0acc446c3f2d8bb58081a7891f44
           ports:
             - name: http
               containerPort: 3000
