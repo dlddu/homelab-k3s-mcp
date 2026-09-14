@@ -260,8 +260,15 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
   객체를 `get`하면 게이트가 승인 전에 값을 읽게 된다 — 승인 여부와 무관하게 이미 서버
   메모리에 값이 들어온 것이고, 그 상태에서 거절이 나면 게이트는 아무것도 막지 못한 셈이다.
   따라서 민감 종류의 프리컨디션은 **PartialObjectMetadata**
-  (`Accept: application/json;as=PartialObjectMetadata;v=1;g=meta.k8s.io`)로 받는다.
+  (`Accept: application/json;as=PartialObjectMetadata;v=v1;g=meta.k8s.io`)로 받는다.
   apiserver가 서버 사이드로 메타데이터만 잘라 보내므로 `data`가 전송되지 않는다.
+
+  **버전 토큰이 `v=v1`인 것이 이 AC의 안전 성질을 떠받친다.** apiserver는 모르는 표현을
+  오류로 답하지 않고 `Accept`가 함께 제시한 표현으로 협상한다 — 문자열이 틀리면 요청이
+  실패하는 대신 **전체 객체가 돌아오고**, 그러면 게이트는 승인 전에 `data`를 읽은 것이 된다.
+  즉 이 자리의 오타는 조용한 보안 결함이다(같은 오타가 `prd-resource-generic` AC2에서는
+  빈 표로 나타났다). 구현은 문자열을 손으로 적지 말고 `metav1.SchemeGroupVersion`에서
+  파생하고, 폴백 표현을 함께 제시했다면 응답이 PartialObjectMetadata가 아닐 때 **거부**한다.
 - **달성 가치**: V3
 - **검증 방법**: 게이트 선언이 `rbac.yaml`과 대조되고 양방향 어긋남이 0이다. Secret 읽기
   승인을 **거절**한 뒤 서버 프로세스의 요청 기록을 보면 전체 객체 `get`이 한 번도 없고

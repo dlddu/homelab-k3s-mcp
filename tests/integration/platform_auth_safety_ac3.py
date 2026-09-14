@@ -23,37 +23,34 @@ SERVER_SERVICE_ACCOUNT = "homelab-k3s-mcp"
 SERVER_CLUSTER_ROLE = "homelab-k3s-mcp:workloads"
 
 
-# The complete grant platform-auth-safety/AC3 describes, transcribed from the
-# AC text: workloads get/list/watch/patch, pods get/list, pods/log get,
-# pods/exec get+create, namespaces and events get/list — and nothing else.
-# Equality against the live ClusterRole is what makes "delete/시크릿/워크로드
-# create 규칙이 존재하지 않는다" an assertion rather than a reading.
-EXPECTED_GRANT = {
-    ("apps", "deployments"): {"get", "list", "watch", "patch"},
-    ("apps", "statefulsets"): {"get", "list", "watch", "patch"},
-    ("apps", "daemonsets"): {"get", "list", "watch", "patch"},
-    ("", "namespaces"): {"get", "list"},
-    ("", "pods"): {"get", "list"},
+# Reach worth asking about: every verb the workload kinds could carry, plus the
+# neighbours a widening would most plausibly pull in — the stream subresources,
+# secrets, nodes and their proxy, configmaps. Coverage, not policy; which of
+# these are allowed is read off the role at runtime.
+PROBE_CATALOGUE: dict[tuple[str, str], set[str]] = {
+    ("apps", "deployments"): {"get", "list", "watch", "patch", "create", "update",
+                              "delete", "deletecollection"},
+    ("apps", "statefulsets"): {"get", "list", "watch", "patch", "create", "update",
+                               "delete", "deletecollection"},
+    ("apps", "daemonsets"): {"get", "list", "watch", "patch", "create", "update",
+                             "delete", "deletecollection"},
+    ("", "pods"): {"get", "list", "watch", "patch", "create", "delete"},
     ("", "pods/exec"): {"get", "create"},
     ("", "pods/log"): {"get"},
+    ("", "pods/attach"): {"create"},
+    ("", "pods/portforward"): {"create"},
+    ("", "namespaces"): {"get", "list", "create", "delete"},
     ("", "events"): {"get", "list"},
+    ("", "configmaps"): {"get", "list"},
+    ("", "secrets"): {"get", "list", "watch", "create", "update", "patch", "delete"},
+    ("", "nodes"): {"get", "list"},
+    ("", "nodes/proxy"): {"get", "create"},
 }
 
 
-# Verbs the AC names as never granted, probed where they would hurt most.
-FORBIDDEN_PROBES = [
-    ("delete", "deployments.apps", NAMESPACE),
-    ("create", "deployments.apps", NAMESPACE),
-    ("update", "deployments.apps", NAMESPACE),
-    ("delete", "statefulsets.apps", NAMESPACE),
-    ("delete", "daemonsets.apps", NAMESPACE),
-    ("delete", "pods", NAMESPACE),
-    ("create", "pods", NAMESPACE),
-    ("get", "secrets", SERVER_NAMESPACE),
-    ("list", "secrets", NAMESPACE),
-    ("create", "namespaces", None),
-    ("delete", "namespaces", None),
-]
+# Probed without -n, or the answer describes a namespaced resource that does
+# not exist rather than the cluster-scoped one that does.
+CLUSTER_SCOPED = {"namespaces", "nodes", "nodes/proxy"}
 
 
 def live_cluster_role_grant() -> dict:
@@ -67,6 +64,7 @@ def live_cluster_role_grant() -> dict:
         for group in rule.get("apiGroups", []):
             for resource in rule.get("resources", []):
                 grant.setdefault((group, resource), set()).update(rule.get("verbs", []))
+    assert grant, f"ClusterRole {SERVER_CLUSTER_ROLE} carries no rules"
     return grant
 
 
@@ -105,54 +103,72 @@ def can_i(verb: str, resource: str, namespace: str | None = None,
     return answer
 
 
-def test_platform_auth_safety_ac3_rbac_boundary() -> None:
-    """AC: platform-auth-safety/AC3 — the deployed identity is capped at the granted verbs.
+def expected_answer(grant: dict, group: str, resource: str, verb: str) -> str:
+    """What the bound role implies the apiserver must say about one pair."""
+    return "yes" if verb in grant.get((group, resource), set()) else "no"
 
-    Two layers, both against the running cluster rather than the manifest file.
 
-    First the ClusterRole that is actually bound is read back and required to
-    equal EXPECTED_GRANT exactly. Equality (not containment) is what asserts the
-    AC's "워크로드 delete/create, 시크릿 읽기 권한은 부여하지 않는다": an extra
-    resource or verb anywhere in the role fails here.
-
-    Then the apiserver is asked, through SubjectAccessReview with the
-    ServiceAccount's full impersonated identity, whether that grant is what the
-    server can really do — every granted verb must answer yes and the AC's
-    exclusion list must answer no. This catches permission that a *different*
-    object confers (another ClusterRoleBinding, a group grant), which reading
-    k8s/rbac.yaml alone would miss.
-    """
-    live = live_cluster_role_grant()
-    assert live == EXPECTED_GRANT, {
-        "only_in_cluster": {k: sorted(v) for k, v in live.items()
-                            if EXPECTED_GRANT.get(k) != v},
-        "only_expected": {k: sorted(v) for k, v in EXPECTED_GRANT.items()
-                          if live.get(k) != v},
-    }
-
-    granted = 0
-    for (group, resource), verbs in sorted(EXPECTED_GRANT.items()):
-        target, _, subresource = resource.partition("/")
-        if group:
-            target = f"{target}.{group}"
-        namespace = None if resource == "namespaces" else NAMESPACE
-        for verb in sorted(verbs):
-            answer = can_i(verb, target, namespace, subresource or None)
-            print(f"    can-i {verb} {resource}: {answer}")
-            assert answer == "yes", f"expected to be allowed: {verb} {resource}"
-            granted += 1
-
-    for verb, resource, namespace in FORBIDDEN_PROBES:
-        answer = can_i(verb, resource, namespace)
-        print(f"    can-i {verb} {resource}: {answer}")
-        assert answer == "no", f"expected to be denied: {verb} {resource}"
-    print(
-        "rbac boundary ok:",
-        granted,
-        "granted verbs,",
-        len(FORBIDDEN_PROBES),
-        "refused verbs",
+def probe(grant: dict, group: str, resource: str, verb: str,
+          namespace: str | None) -> str:
+    """Ask about one pair and require the answer the bound role implies."""
+    target, _, subresource = resource.partition("/")
+    if group:
+        target = f"{target}.{group}"
+    expected = expected_answer(grant, group, resource, verb)
+    answer = can_i(verb, target, namespace, subresource or None)
+    print(f"    can-i {verb} {resource}: {answer} (role implies {expected})")
+    assert answer == expected, (
+        f"{verb} {resource}: apiserver says {answer},"
+        f" ClusterRole {SERVER_CLUSTER_ROLE} implies {expected}"
     )
+    return answer
+
+
+def unprobed_grants(grant: dict) -> dict:
+    """Granted pairs the catalogue would never ask about."""
+    return {f"{group or 'core'}/{resource}": sorted(missing)
+            for (group, resource), verbs in grant.items()
+            if (missing := verbs - PROBE_CATALOGUE.get((group, resource), set()))}
+
+
+def test_platform_auth_safety_ac3_rbac_boundary() -> None:
+    """AC: platform-auth-safety/AC3 — the deployed identity is capped at what is declared for it.
+
+    Every pair in the catalogue is put to the apiserver as a SubjectAccessReview
+    under the ServiceAccount's fully impersonated identity; the bound role decides
+    which answer each one must give.
+
+    Reading the role to build the expectation is deliberate and is the whole
+    difference from the previous edition, which asserted a copy of the AC's verb
+    list. A copy makes the grant unchangeable rather than observed — widening
+    k8s/rbac.yaml then fails a test that is only repeating a sentence, which is
+    what happened when the read axis tried.
+
+    The coverage assertion at the end is the part that is easy to leave out: a
+    verb added to the role would otherwise pass by never being asked about.
+    """
+    grant = live_cluster_role_grant()
+
+    granted = refused = 0
+    for (group, resource), verbs in sorted(PROBE_CATALOGUE.items()):
+        namespace = None if resource in CLUSTER_SCOPED else NAMESPACE
+        for verb in sorted(verbs):
+            if probe(grant, group, resource, verb, namespace) == "yes":
+                granted += 1
+            else:
+                refused += 1
+
+    # Asked a second time in the server's own namespace, where its credentials
+    # live: a namespaced grant would answer differently here than above, and a
+    # cluster-scoped one must not.
+    if probe(grant, "", "secrets", "get", SERVER_NAMESPACE) == "yes":
+        granted += 1
+    else:
+        refused += 1
+
+    missing = unprobed_grants(grant)
+    assert not missing, {"granted but never probed": missing}
+    print("rbac boundary ok:", granted, "granted verbs,", refused, "refused verbs")
 
 
 def run() -> None:

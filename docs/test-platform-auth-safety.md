@@ -42,17 +42,19 @@
   `internal/server/auth_routing_test.go`의 라우팅 단언과 병행.
 
 ### 시나리오 3: 최소권한 RBAC 경계
-- **사전 조건**: 배포된 RBAC(`k8s/rbac.yaml`)
-- **실행 단계**: RBAC 규칙 정적 검토
-- **기대 결과**: 워크로드 get/list/watch/patch, 파드 get/list, pods/log get, pods/exec
-  get/create, namespaces·events get/list만 존재. delete·시크릿 읽기·워크로드 create 없음.
+- **사전 조건**: 배포된 RBAC(`k8s/rbac.yaml`이 만든 ClusterRole과 바인딩)
+- **실행 단계**: 바인딩된 ClusterRole에서 부여 집합을 읽고, 배포된 ServiceAccount의
+  identity로 apiserver에 SubjectAccessReview를 묻는다
+- **기대 결과**: 역할이 부여한 쌍은 전부 허용되고, 위험 쌍 카탈로그의 나머지는 전부
+  거부된다. 카탈로그가 부여된 쌍을 하나도 빠뜨리지 않는다.
 - **검증 AC**: AC3
 - **자동화**: 배포 identity e2e `tests/integration/platform_auth_safety_ac3.py`
-  ::test_platform_auth_safety_ac3_rbac_boundary — 실제로 바인딩된 ClusterRole을 읽어
-  기대 권한과 **동등**함을 단정하고(추가 권한이 어디에 있어도 실패), apiserver
-  SubjectAccessReview로 허용 동사 전부가 yes·AC가 못박은 금지 동사(워크로드
-  delete/create·시크릿 읽기·네임스페이스 생성/삭제)가 no임을 관측한다. `k8s/rbac.yaml`
-  정적 리뷰는 보조 수단이다.
+  ::test_platform_auth_safety_ac3_rbac_boundary — 기대 답을 **바인딩된 ClusterRole에서
+  런타임에 읽어 정한다**(AC 문언을 손으로 옮겨 적지 않는다. 사본은 부여가 바뀌는 순간
+  낡고, 낡은 사본을 기계가 강제하면 `k8s/rbac.yaml`을 고칠 수 없게 된다 — 이전 판이 실제로
+  그랬다). 위험 쌍 카탈로그를 부여 집합으로 갈라 허용 쪽 전부가 yes·나머지 전부가 no임을
+  관측하고, 부여됐는데 카탈로그에 없는 쌍이 있으면 실패시킨다(묻지 않은 권한은 통과하므로).
+  부여가 넓어지면 그 쌍은 자동으로 거부 쪽에서 허용 쪽으로 옮겨 간다.
 
 ### 시나리오 4: 하드닝된 런타임
 - **사전 조건**: 배포 매니페스트(`k8s/deployment.yaml`)

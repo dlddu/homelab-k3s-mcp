@@ -6,19 +6,21 @@ metadata:
     app.kubernetes.io/name: homelab-k3s-mcp
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: homelab
-# The verb set here is pinned by prd-platform-auth-safety AC3, which names it
-# exactly and forbids workload create/delete and secret reads. prd-resource-generic
-# AC19 wants a different rule — the pair set of the resource_* table, secrets
-# included — so the two documents disagree about this file. Until that is
-# resolved by their owner, this stays as AC3 wrote it: resource_list and
-# resource_get address any kind by coordinate, and a kind outside these rules is
-# reported as outside this server's grant (prd-resource-generic AC18) rather
-# than quietly widened here. doc-tracker.md carries the conflict as an open item.
+# prd-resource-generic AC19 owns what goes in here: the pair set equals what the
+# registered tools exercise, union the gate's own declarations. Each pair is
+# granted by the PR that lands the tool exercising it, so this file grows with
+# the tool surface rather than ahead of it. prd-platform-auth-safety AC3 owns the
+# step after: that the deployed identity can do exactly this and no more, which
+# only a SubjectAccessReview can observe.
+# resource_list and resource_get address any kind by coordinate, so a kind
+# outside these rules is reported as outside this server's grant
+# (prd-resource-generic AC18) rather than quietly widened here.
 rules:
-  # resource_list / resource_get over apps workloads. watch is granted but
-  # exercised by nothing: resource_watch is unimplemented, and AC3's equality
-  # assertion (tests/integration/platform_auth_safety_ac3.py) is what keeps the
-  # verb here rather than dropped as dead.
+  # resource_list / resource_get over apps workloads. watch is a dead grant:
+  # nothing in the code calls Watch(), and resource_watch is unimplemented. It
+  # survives only because the previous edition of AC3 transcribed it; removing it
+  # is tracked in doc-tracker.md rather than folded into the PR that stopped the
+  # transcription, so that a permission change lands on its own.
   - apiGroups: ["apps"]
     resources:
       - deployments
@@ -33,8 +35,10 @@ rules:
   # inside a running backend pod. List is needed to resolve the label
   # selector to a pod name; pods/exec is the subresource the apiserver
   # gates the exec stream on. client-go's SPDY executor opens the stream
-  # with POST (the `create` verb); `get` is retained so a WebSocket
-  # executor fallback keeps working without an RBAC change.
+  # with POST (the `create` verb). `get` on pods/exec is the second dead grant:
+  # it was kept for a WebSocket executor fallback that the code does not have —
+  # internal/k8s/client.go pins remotecommand.NewSPDYExecutor. Tracked for
+  # removal with `watch`.
   - apiGroups: [""]
     resources:
       - namespaces
