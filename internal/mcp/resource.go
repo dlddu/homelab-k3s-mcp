@@ -14,8 +14,7 @@ const (
 	logsMaxTailLines     int64 = 5000
 )
 
-// getSubresources are the read-only subresources resource_get serves. All three
-// are the get verb, which is what keeps the tool at one verb (AC5).
+// getSubresources are the read-only subresources resource_get serves (AC5).
 var getSubresources = map[string]bool{"log": true, "scale": true, "status": true}
 
 // coordinate is the apiVersion+kind pair every generic tool starts from.
@@ -186,9 +185,7 @@ func (h *Handler) resourceGet(ctx context.Context, raw json.RawMessage) (any, *r
 	}, nil
 }
 
-// parseLogOptions carries workload_logs' bounds over unchanged (AC5): the tail
-// ceiling refuses rather than clamps, so a caller asking for more than the cap
-// is told the cap exists instead of silently receiving less.
+// parseLogOptions carries workload_logs' bounds over unchanged (AC5).
 func parseLogOptions(obj map[string]any) (k8s.LogOptions, *rpcErr) {
 	previous, _, rerr := boolArg(obj, "previous")
 	if rerr != nil {
@@ -236,9 +233,7 @@ func parseLogOptions(obj map[string]any) (k8s.LogOptions, *rpcErr) {
 	}, nil
 }
 
-// renderTable prints the apiserver's columns the way kubectl does, and says so
-// when the page was cut — a list that looks complete but is not would be read
-// as the whole population (AC3).
+// renderTable prints the apiserver's columns the way kubectl does (AC3).
 func renderTable(result *k8s.ListResult, limit int64) string {
 	if len(result.Rows) == 0 {
 		return "(no resources found)"

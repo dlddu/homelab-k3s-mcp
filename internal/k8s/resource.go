@@ -22,9 +22,7 @@ import (
 )
 
 // tableAccept asks the apiserver for the same server-side rendering kubectl
-// gets. The columns are computed by the apiserver, so a Secret's table carries
-// NAME/TYPE/DATA/AGE and never the values themselves (prd-resource-generic
-// AC17) — which is why list is the one read verb outside the gate.
+// gets (prd-resource-generic AC2, AC17).
 //
 // The parameters are derived from metav1 rather than typed out. The apiserver
 // matches them against a GroupVersionKind and treats one it does not recognise
@@ -38,9 +36,7 @@ var tableAccept = fmt.Sprintf(
 )
 
 const (
-	// ListDefaultLimit and ListMaxLimit are AC3's bounds. The cap is enforced
-	// rather than clamped-to silently, so a caller asking for more learns that
-	// the ceiling exists.
+	// ListDefaultLimit and ListMaxLimit are AC3's bounds.
 	ListDefaultLimit int64 = 100
 	ListMaxLimit     int64 = 500
 )
@@ -62,8 +58,7 @@ type ListColumn struct {
 	Type string `json:"type"`
 }
 
-// ListResult is a Table response, carried as columns and rows rather than as
-// whole objects (AC2).
+// ListResult is a Table response (AC2).
 type ListResult struct {
 	Resource   string       `json:"resource"`
 	Namespaced bool         `json:"namespaced"`
@@ -287,10 +282,7 @@ func (s *KubeService) ListResources(ctx context.Context, q ListQuery) (*ListResu
 	}
 	// An ordinary list decodes into this struct without error and leaves every
 	// field zero, so the only thing separating "the namespace is empty" from
-	// "the table was never negotiated" is the kind the body declares. Falling
-	// back to rendering the objects is not an option: the table is what keeps a
-	// Secret's values out of a list result, and list is outside the gate on
-	// exactly that basis (AC17).
+	// "the table was never negotiated" is the kind the body declares.
 	if table.Kind != "Table" {
 		return nil, apiErrorf(
 			"apiserver answered %s %s instead of a Table; this server renders only the "+
@@ -321,8 +313,7 @@ func (s *KubeService) ListResources(ctx context.Context, q ListQuery) (*ListResu
 }
 
 // GetResource reads one object whole, or the text a text-typed subresource
-// returns. Noise that dominates the payload without informing an operational
-// decision is stripped (AC4).
+// returns, with AC4's noise stripped.
 func (s *KubeService) GetResource(ctx context.Context, ref ResourceRef) (*ResourceResult, error) {
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
 	if err != nil {
@@ -449,9 +440,7 @@ func (s *KubeService) APIResources(ctx context.Context) ([]APIResource, error) {
 }
 
 // apiCallError converts a 403 into a statement about this server's grant rather
-// than passing the apiserver's wording through. AC18 asks the message to name
-// the pair that was missing so the operator can compare it against
-// k8s/rbac.yaml, the single source for what is granted.
+// than passing the apiserver's wording through (AC18).
 func (s *KubeService) apiCallError(err error, verb, resource string) error {
 	if apierrors.IsForbidden(err) {
 		return apiErrorf(
@@ -469,8 +458,7 @@ func subresourcePath(resource, subresource string) string {
 	return resource + "/" + subresource
 }
 
-// stripNoise removes the two fields that dominate an object's size without
-// informing an operational decision (AC4).
+// stripNoise removes the two fields AC4 names as noise.
 func stripNoise(object map[string]any) {
 	metadata, ok := object["metadata"].(map[string]any)
 	if !ok {
