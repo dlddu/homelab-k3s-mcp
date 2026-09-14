@@ -12,11 +12,8 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 )
 
-// gatedVerbs are the RBAC verbs that change cluster state. prd-approval-gate
-// AC1 gates them without exception and judges by the verb alone — never by the
-// tool's name, the patch body or the path. Looking at content would mean
-// writing a classifier ("this patch is only a restart, let it through"), and
-// that classifier immediately becomes the way around the gate.
+// gatedVerbs are the RBAC verbs that change cluster state, gated without
+// exception and judged by the verb alone (prd-approval-gate AC1).
 var gatedVerbs = map[string]bool{
 	"create":           true,
 	"update":           true,
@@ -26,9 +23,7 @@ var gatedVerbs = map[string]bool{
 }
 
 // toolDeclaration is one row of the (verb, resource[/subresource]) table AC1
-// requires every tool to publish. The gate reads this table, so a tool whose
-// declaration disagrees with what it actually exercises makes the table lie —
-// and that lie passes silently at runtime.
+// requires every tool to publish.
 type toolDeclaration struct {
 	// pairs is what this tool exercises against the apiserver. Empty means the
 	// tool touches no kubernetes resource at all (the platform integrations).
@@ -45,12 +40,8 @@ type toolDeclaration struct {
 // The two reasons any tool is currently exempt. Both come from the documents,
 // not from this package.
 const (
-	// docs/prd-approval-gate.md, "남은 예외 1건": dear_baby_reset_user exercises
-	// create on pods/exec and so meets the write-gate definition, but it is
-	// held out because it addresses its target by application meaning rather
-	// than by resource coordinates, and folding it in means rewriting
-	// prd-dear-baby-reset-user's ACs. doc-tracker.md carries it as an open item
-	// awaiting the owner's decision — this code does not decide it.
+	// docs/prd-approval-gate.md, "남은 예외 1건" — the reason and its open state
+	// live there; this code only cites them.
 	exemptPendingOwnerDecision = "prd-approval-gate 「남은 예외 1건」 — 소유자 판단 대기 (doc-tracker.md 미결)"
 
 	// docs/prd-approval-gate.md's gate table lists resource_* tools only; the
@@ -180,8 +171,8 @@ type toolEntry struct {
 
 // gatedPairs returns the declared pairs that require approval, or nil when the
 // tool may run unattended. A documented exemption short-circuits the answer but
-// does not erase the pairs — reportExemptions still names what is passing
-// through ungated.
+// does not erase the pairs — Exemptions still names what is passing through
+// ungated.
 func (d toolDeclaration) gatedPairs(sensitiveKinds []string) []gatekeeper.Pair {
 	if d.outsideGate != "" {
 		return nil
@@ -306,8 +297,7 @@ func Exemptions() map[string]string {
 }
 
 // authorize runs the gate for one tool call. It is called by the dispatcher
-// before the handler, never by a handler: AC1 requires that there be no code
-// path in which a gated tool decides for itself whether to ask.
+// before the handler, never by a handler (AC1).
 func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*gatekeeper.Decision, *rpcErr) {
 	gated := entry.decl.gatedPairs(h.sensitiveKinds)
 	if len(gated) == 0 {
@@ -333,8 +323,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		return nil, errf(-32603, "%s", err.Error())
 	}
 
-	// AC8: an executed gated call always leaves this record, so "ran without an
-	// approval" cannot exist in the log.
+	// AC8: an executed gated call always leaves this record.
 	slog.Info("approval granted",
 		"tool", name,
 		"pairs", pairsText(gated),
@@ -346,10 +335,8 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	return decision, nil
 }
 
-// approvalContext renders what the operator sees. AC3 asks for the target and
-// the verb-specific detail in full, so the arguments go in verbatim rather than
-// summarised — deciding which part of a patch matters is the operator's job,
-// and summarising makes the server do it for them.
+// approvalContext renders what the operator sees. Arguments go in verbatim
+// rather than summarised (AC3).
 func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessage) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "tool: %s\n", name)
@@ -373,8 +360,7 @@ func pairsText(pairs []gatekeeper.Pair) string {
 }
 
 // annotateAutoApproval marks a result that reached kubernetes without a human
-// looking at it. AC9 keeps this out of the log alone: an operator who turned on
-// AUTO_APPROVE has disabled the gate, and the tool's own answer should say so.
+// looking at it (AC9).
 func annotateAutoApproval(result any, decision *gatekeeper.Decision) any {
 	if decision == nil || !decision.AutoApproved {
 		return result
