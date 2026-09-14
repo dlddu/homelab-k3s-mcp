@@ -269,4 +269,6 @@
   행사하지 않으므로 RBAC 대조 대상이 아님
 - **검증 AC**: AC20
 - **자동화**: Go 단위 `resource_test.go::TestUnknownKindSuggestsCandidates`(후보 산출).
-  통합 e2e 는 (미작성) — 계획: `resource_generic_ac20.py`
+  통합 `tests/integration/resource_generic_ac20.py` — 전용 프로브 CRD 를 테스트가 런타임에
+  세우고 지운다(픽스처로 두면 설치 「전」 상태가 관측되지 않는다). 「재기동 불필요」는 서버
+  파드의 `uid`·`startTime` 이 그대로임으로 잰다
