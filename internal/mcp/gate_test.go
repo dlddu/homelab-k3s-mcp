@@ -35,11 +35,19 @@ func (c *countingK8s) hit() {
 	c.mu.Unlock()
 }
 
-func (c *countingK8s) ListNamespaces(context.Context) ([]any, error) { c.hit(); return []any{}, nil }
-
-func (c *countingK8s) ListWorkloads(context.Context, k8s.WorkloadKind, *string) ([]any, error) {
+func (c *countingK8s) APIResources(context.Context) ([]k8s.APIResource, error) {
 	c.hit()
-	return []any{}, nil
+	return []k8s.APIResource{}, nil
+}
+
+func (c *countingK8s) ListResources(context.Context, k8s.ListQuery) (*k8s.ListResult, error) {
+	c.hit()
+	return &k8s.ListResult{}, nil
+}
+
+func (c *countingK8s) GetResource(context.Context, k8s.ResourceRef) (*k8s.ResourceResult, error) {
+	c.hit()
+	return &k8s.ResourceResult{Object: map[string]any{}}, nil
 }
 
 func (c *countingK8s) RolloutRestart(context.Context, k8s.WorkloadKind, string, string) (string, error) {
@@ -55,16 +63,6 @@ func (c *countingK8s) ExecInPod(context.Context, string, string, *string, []stri
 func (c *countingK8s) ScaleWorkload(context.Context, k8s.WorkloadKind, string, string, int32) (int32, error) {
 	c.hit()
 	return 1, nil
-}
-
-func (c *countingK8s) WorkloadLogs(context.Context, k8s.WorkloadKind, string, string, k8s.LogOptions) (*k8s.LogResult, error) {
-	c.hit()
-	return &k8s.LogResult{}, nil
-}
-
-func (c *countingK8s) DescribePod(context.Context, string, k8s.PodTarget) (*k8s.PodDescription, error) {
-	c.hit()
-	return &k8s.PodDescription{}, nil
 }
 
 // scriptedGate answers with one prepared decision (or one refusal) and records
@@ -83,10 +81,10 @@ func (g *scriptedGate) Authorize(_ context.Context, call gatekeeper.Call) (*gate
 	return g.decision, nil
 }
 
-// testHandler builds a handler over a synthetic registry. Production ships no
-// gated tool yet — the gate exists for the resource_* family that is still
-// unimplemented — so the enforcement path has to be exercised against a tool
-// declared here.
+// testHandler builds a handler over a synthetic registry. The write half of the
+// gate has no production tool yet — the resource_* family currently ships its
+// read half only — so the write enforcement path has to be exercised against a
+// tool declared here.
 func testHandler(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEntry) (*Handler, *countingK8s) {
 	t.Helper()
 	fake := &countingK8s{}
@@ -102,7 +100,7 @@ func testHandler(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEnt
 // reachesKubernetes is a handler that does nothing but touch the cluster, so a
 // test can tell "the tool ran" from "the tool was refused".
 func reachesKubernetes(h *Handler, ctx context.Context, _ json.RawMessage) (any, *rpcErr) {
-	return h.namespaceList(ctx)
+	return h.apiResources(ctx)
 }
 
 func callTool(t *testing.T, h *Handler, name string, args string) (any, *rpcErr) {
@@ -393,7 +391,8 @@ func TestEveryStateChangingToolIsGatedOrDocumented(t *testing.T) {
 			}
 			continue
 		}
-		if entry.decl.outsideGate == "" && len(entry.decl.gatedPairs([]string{defaultSensitiveKind})) == 0 {
+		gated, err := entry.decl.gatedPairs([]string{defaultSensitiveKind}, json.RawMessage(`{}`))
+		if entry.decl.outsideGate == "" && err == nil && len(gated) == 0 {
 			t.Errorf("%s changes state but is neither gated nor documented as an exception", name)
 		}
 	}
@@ -421,5 +420,93 @@ func TestDefaultHandlerHasARefusingGate(t *testing.T) {
 	}
 	if _, err := h.gate.Authorize(context.Background(), gatekeeper.Call{Tool: "x", Context: "y"}); err == nil {
 		t.Error("default gate approved a call, want a refusal")
+	}
+}
+
+// AC16 (read half): a sensitive kind is decided from the call's own arguments,
+// before anything is asked of the cluster. The counter is the assertion — a
+// refusal that still reached kubernetes would mean the value was already read
+// by the time the operator was asked.
+func TestSensitiveGenericReadIsRefusedBeforeKubernetes(t *testing.T) {
+	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+
+	_, rerr := callTool(t, h, "resource_get", `{"apiVersion":"v1","kind":"Secret","namespace":"default","name":"db"}`)
+	if rerr == nil {
+		t.Fatal("resource_get on a Secret was allowed with no gate configured")
+	}
+	if fake.count() != 0 {
+		t.Errorf("kubernetes calls = %d, want 0 — the read happened before the refusal", fake.count())
+	}
+}
+
+// AC16: the additions stop at the read half of sensitive kinds. Ordinary kinds
+// read ungated, and list stays outside the gate for every kind because the
+// table is rendered server-side and carries no values (AC17).
+func TestOrdinaryReadsAndSecretListsStayUngated(t *testing.T) {
+	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+
+	if _, rerr := callTool(t, h, "resource_get", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"app"}`); rerr != nil {
+		t.Fatalf("resource_get on a ConfigMap was refused: %v", rerr.message)
+	}
+	if _, rerr := callTool(t, h, "resource_list", `{"apiVersion":"v1","kind":"Secret"}`); rerr != nil {
+		t.Fatalf("resource_list on Secrets was refused: %v", rerr.message)
+	}
+	if fake.count() != 2 {
+		t.Errorf("kubernetes calls = %d, want 2 — both ungated reads should have run", fake.count())
+	}
+}
+
+// AC5: a call whose coordinate cannot be read is a call whose pair cannot be
+// named, and an unnamed pair cannot be judged sensitive or not.
+func TestGenericCallWithoutACoordinateIsRefused(t *testing.T) {
+	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+
+	if _, rerr := callTool(t, h, "resource_get", `{"namespace":"default","name":"db"}`); rerr == nil {
+		t.Error("resource_get without apiVersion/kind was allowed")
+	}
+	if fake.count() != 0 {
+		t.Errorf("kubernetes calls = %d, want 0", fake.count())
+	}
+}
+
+// The declaration a generic call resolves to is the one an operator would
+// compare against k8s/rbac.yaml, subresources included.
+func TestGenericPairsFollowTheCoordinate(t *testing.T) {
+	cases := []struct {
+		verb string
+		args string
+		want string
+	}{
+		{"list", `{"apiVersion":"v1","kind":"Pod"}`, "list on pods"},
+		{"list", `{"apiVersion":"networking.k8s.io/v1","kind":"Ingress"}`, "list on ingresses"},
+		{"get", `{"apiVersion":"v1","kind":"Pod","subresource":"log"}`, "get on pods/log"},
+		{"get", `{"apiVersion":"v1","kind":"Secret"}`, "get on secrets"},
+		{"get", `{"apiVersion":"networking.k8s.io/v1","kind":"NetworkPolicy"}`, "get on networkpolicies"},
+	}
+	for _, c := range cases {
+		pairs, err := genericPairs(c.verb)(json.RawMessage(c.args))
+		if err != nil {
+			t.Fatalf("%s: %v", c.args, err)
+		}
+		if got := pairsText(pairs); got != c.want {
+			t.Errorf("%s -> %q, want %q", c.args, got, c.want)
+		}
+	}
+}
+
+// A subresource of a sensitive kind is still that kind. Matching the pair as a
+// whole string would have let "secrets/anything" through the read gate.
+func TestSensitiveReadGateLooksThroughSubresources(t *testing.T) {
+	kinds := []string{defaultSensitiveKind}
+	for _, resource := range []string{"secrets", "secrets/status"} {
+		if !readIsSensitive(gatekeeper.Pair{Verb: "get", Resource: resource}, kinds) {
+			t.Errorf("get on %s was judged insensitive", resource)
+		}
+	}
+	if readIsSensitive(gatekeeper.Pair{Verb: "get", Resource: "pods/log"}, kinds) {
+		t.Error("get on pods/log was judged sensitive")
+	}
+	if readIsSensitive(gatekeeper.Pair{Verb: "list", Resource: "secrets"}, kinds) {
+		t.Error("list on secrets was judged sensitive; AC16 keeps list outside the gate")
 	}
 }

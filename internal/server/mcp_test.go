@@ -101,12 +101,12 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	if len(tools) != 17 {
-		t.Fatalf("len(tools) = %d, want 17", len(tools))
+	if len(tools) != 16 {
+		t.Fatalf("len(tools) = %d, want 16", len(tools))
 	}
 	for _, name := range []string{
-		"ping", "namespace_list", "workload_list", "workload_restart",
-		"workload_scale", "workload_logs", "pod_describe",
+		"ping", "api_resources", "resource_list", "resource_get",
+		"workload_restart", "workload_scale",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
@@ -128,10 +128,10 @@ func TestToolsListAdvertisesAnnotations(t *testing.T) {
 		t.Fatalf("ping annotations = %v", ping["annotations"])
 	}
 
-	list := findTool(t, tools, "workload_list")
-	if at(t, list, "annotations", "title") != "List Workloads" ||
+	list := findTool(t, tools, "resource_list")
+	if at(t, list, "annotations", "title") != "List Resources" ||
 		at(t, list, "annotations", "readOnlyHint") != true {
-		t.Fatalf("workload_list annotations = %v", list["annotations"])
+		t.Fatalf("resource_list annotations = %v", list["annotations"])
 	}
 
 	restart := findTool(t, tools, "workload_restart")
@@ -173,66 +173,31 @@ func TestUnknownToolReturnsError(t *testing.T) {
 	}
 }
 
-func TestWorkloadListDispatchesToService(t *testing.T) {
-	fake := &fakeK8s{items: []any{map[string]any{"name": "api", "namespace": "default", "replicas": 3}}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 10, "workload_list", map[string]any{"kind": "Deployment", "namespace": "default"})
-
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if at(t, body, "result", "structuredContent", "kind") != "Deployment" {
-		t.Fatalf("kind = %v", at(t, body, "result", "structuredContent", "kind"))
-	}
-	if at(t, body, "result", "structuredContent", "namespace") != "default" {
-		t.Fatalf("namespace = %v", at(t, body, "result", "structuredContent", "namespace"))
-	}
-	if at(t, body, "result", "structuredContent", "items", 0, "name") != "api" {
-		t.Fatalf("items[0].name = %v", at(t, body, "result", "structuredContent", "items", 0, "name"))
-	}
-	if fake.lastList == nil || fake.lastList.kind != k8s.Deployment || fake.lastList.namespace == nil || *fake.lastList.namespace != "default" {
-		t.Fatalf("lastList = %+v", fake.lastList)
-	}
-}
-
-func TestWorkloadListWithoutNamespaceListsAll(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 11, "workload_list", map[string]any{"kind": "StatefulSet"})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if at(t, body, "result", "structuredContent", "namespace") != nil {
-		t.Fatalf("namespace should be null, got %v", at(t, body, "result", "structuredContent", "namespace"))
-	}
-	if fake.lastList == nil || fake.lastList.kind != k8s.StatefulSet || fake.lastList.namespace != nil {
-		t.Fatalf("lastList = %+v", fake.lastList)
-	}
-}
-
-func TestToolsListAdvertisesNamespaceList(t *testing.T) {
+func TestToolsListAdvertisesResourceTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	ns := findTool(t, tools, "namespace_list")
-	if at(t, ns, "annotations", "title") != "List Namespaces" {
-		t.Fatalf("title = %v", at(t, ns, "annotations", "title"))
+
+	api := findTool(t, tools, "api_resources")
+	if props := at(t, api, "inputSchema", "properties").(map[string]any); len(props) != 0 {
+		t.Fatalf("api_resources takes no arguments, got %v", props)
 	}
-	props := at(t, ns, "inputSchema", "properties").(map[string]any)
-	if len(props) != 0 {
-		t.Fatalf("properties should be empty, got %v", props)
-	}
+
+	list := findTool(t, tools, "resource_list")
+	wantStrSlice(t, enumStrings(t, at(t, list, "inputSchema", "required")), "apiVersion", "kind")
+
+	get := findTool(t, tools, "resource_get")
+	wantStrSlice(t, enumStrings(t, at(t, get, "inputSchema", "required")), "apiVersion", "kind", "name")
+	wantStrSlice(t, enumStrings(t, at(t, get, "inputSchema", "properties", "subresource", "enum")), "log", "scale", "status")
 }
 
-func TestNamespaceListDispatchesToService(t *testing.T) {
-	fake := &fakeK8s{namespaces: []any{
-		map[string]any{"name": "default", "phase": "Active"},
-		map[string]any{"name": "kube-system", "phase": "Active"},
+func TestAPIResourcesDispatchesToService(t *testing.T) {
+	fake := &fakeK8s{apiResources: []k8s.APIResource{
+		{Group: "", Version: "v1", Kind: "Pod", Name: "pods", Namespaced: true},
+		{Group: "apps", Version: "v1", Kind: "Deployment", Name: "deployments", Namespaced: true},
 	}}
 	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 
-	body := callTool(t, app, 13, "namespace_list", map[string]any{})
+	body := callTool(t, app, 20, "api_resources", map[string]any{})
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
 	}
@@ -240,23 +205,291 @@ func TestNamespaceListDispatchesToService(t *testing.T) {
 	if len(items) != 2 {
 		t.Fatalf("len(items) = %d, want 2", len(items))
 	}
-	if at(t, body, "result", "structuredContent", "items", 0, "name") != "default" {
-		t.Fatalf("items[0].name = %v", at(t, body, "result", "structuredContent", "items", 0, "name"))
-	}
-	if fake.namespaceCalls != 1 {
-		t.Fatalf("namespaceCalls = %d, want 1", fake.namespaceCalls)
+	if fake.apiResourceCalls != 1 {
+		t.Fatalf("apiResourceCalls = %d, want 1", fake.apiResourceCalls)
 	}
 }
 
-func TestNamespaceListUnavailableIsToolError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 14, "namespace_list", map[string]any{})
-	if at(t, body, "result", "isError") != true {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+// The assertion is on the query the service received, not on the rows it
+// answered with: a handler that accepted the selectors and filtered the answer
+// itself would look identical from the outside and would have moved the work
+// off the apiserver.
+func TestResourceListPassesCoordinateAndSelectors(t *testing.T) {
+	fake := &fakeK8s{}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	callTool(t, app, 21, "resource_list", map[string]any{
+		"apiVersion":    "networking.k8s.io/v1",
+		"kind":          "Ingress",
+		"namespace":     "prod",
+		"labelSelector": "app=api",
+		"fieldSelector": "metadata.name=web",
+	})
+
+	if len(fake.listCalls) != 1 {
+		t.Fatalf("listCalls = %d, want 1", len(fake.listCalls))
+	}
+	q := fake.listCalls[0].query
+	if q.APIVersion != "networking.k8s.io/v1" || q.Kind != "Ingress" {
+		t.Fatalf("coordinate = %s/%s", q.APIVersion, q.Kind)
+	}
+	if q.Namespace == nil || *q.Namespace != "prod" {
+		t.Fatalf("namespace = %v", q.Namespace)
+	}
+	if q.LabelSelector == nil || *q.LabelSelector != "app=api" ||
+		q.FieldSelector == nil || *q.FieldSelector != "metadata.name=web" {
+		t.Fatalf("selectors = %v %v", q.LabelSelector, q.FieldSelector)
+	}
+}
+
+func TestResourceListWithoutNamespaceSpansAll(t *testing.T) {
+	fake := &fakeK8s{}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	callTool(t, app, 22, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Namespace"})
+	if fake.listCalls[0].query.Namespace != nil {
+		t.Fatalf("namespace = %v, want nil", fake.listCalls[0].query.Namespace)
+	}
+}
+
+// The negative half carries this test: a renderer that pasted whole objects in
+// would still contain every cell the positive assertions look for.
+func TestResourceListReturnsTheTable(t *testing.T) {
+	fake := &fakeK8s{listResponse: func() (*k8s.ListResult, error) {
+		return &k8s.ListResult{
+			Resource:   "pods",
+			Namespaced: true,
+			Columns:    []k8s.ListColumn{{Name: "Name", Type: "string"}, {Name: "Ready", Type: "string"}},
+			Rows:       [][]any{{"api-0", "1/1"}, {"api-1", "0/1"}},
+		}, nil
+	}}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 23, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Pod", "namespace": "default"})
+	if at(t, body, "result", "structuredContent", "resource") != "pods" {
+		t.Fatalf("resource = %v", at(t, body, "result", "structuredContent", "resource"))
+	}
+	rows := at(t, body, "result", "structuredContent", "rows").([]any)
+	if len(rows) != 2 {
+		t.Fatalf("len(rows) = %d, want 2", len(rows))
 	}
 	text, _ := at(t, body, "result", "content", 0, "text").(string)
-	if !strings.Contains(text, "kubernetes") {
+	if !strings.Contains(text, "NAME") || !strings.Contains(text, "api-0") || !strings.Contains(text, "1/1") {
+		t.Fatalf("rendered table = %q", text)
+	}
+	if strings.Contains(text, "\"metadata\"") {
+		t.Fatalf("table rendering leaked whole objects: %q", text)
+	}
+}
+
+// An over-limit request has to fail. A clamp would pass any assertion phrased
+// as "the call went through", and the caller would never learn it saw less.
+func TestResourceListLimitDefaultsAndCeiling(t *testing.T) {
+	fake := &fakeK8s{}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	callTool(t, app, 24, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Pod"})
+	if fake.listCalls[0].query.Limit != 0 {
+		t.Fatalf("limit = %d, want the service default", fake.listCalls[0].query.Limit)
+	}
+	body := callTool(t, app, 25, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Pod"})
+	if at(t, body, "result", "structuredContent", "limit") != float64(k8s.ListDefaultLimit) {
+		t.Fatalf("reported limit = %v, want %d", at(t, body, "result", "structuredContent", "limit"), k8s.ListDefaultLimit)
+	}
+
+	over := callTool(t, app, 26, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Pod", "limit": 501})
+	if at(t, over, "error", "code") != float64(-32602) {
+		t.Fatalf("limit=501 error = %v, want a rejection rather than a silent clamp", at(t, over, "error"))
+	}
+}
+
+func TestResourceListReportsTruncation(t *testing.T) {
+	remaining := int64(42)
+	fake := &fakeK8s{listResponse: func() (*k8s.ListResult, error) {
+		return &k8s.ListResult{
+			Resource:  "pods",
+			Columns:   []k8s.ListColumn{{Name: "Name", Type: "string"}},
+			Rows:      [][]any{{"api-0"}},
+			Continue:  "eyJ2IjoibWV0YS5rOHMuaW8vdjEi",
+			Truncated: true,
+			Remaining: &remaining,
+		}, nil
+	}}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 27, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Pod", "limit": 1})
+	if at(t, body, "result", "structuredContent", "truncated") != true {
+		t.Fatalf("truncated = %v", at(t, body, "result", "structuredContent", "truncated"))
+	}
+	if at(t, body, "result", "structuredContent", "continue") != "eyJ2IjoibWV0YS5rOHMuaW8vdjEi" {
+		t.Fatalf("continue = %v", at(t, body, "result", "structuredContent", "continue"))
+	}
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if !strings.Contains(text, "truncated") {
+		t.Fatalf("a cut page must say so in the text an operator reads: %q", text)
+	}
+}
+
+func TestResourceListPassesContinueToken(t *testing.T) {
+	fake := &fakeK8s{}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	callTool(t, app, 28, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Pod", "continue": "token-1"})
+	if fake.listCalls[0].query.Continue != "token-1" {
+		t.Fatalf("continue = %q", fake.listCalls[0].query.Continue)
+	}
+}
+
+func TestResourceListRequiresCoordinate(t *testing.T) {
+	app := server.App(nil, &fakeK8s{}, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	for _, args := range []map[string]any{{"kind": "Pod"}, {"apiVersion": "v1"}} {
+		body := callTool(t, app, 29, "resource_list", args)
+		if at(t, body, "error", "code") != float64(-32602) {
+			t.Fatalf("%v error = %v", args, at(t, body, "error"))
+		}
+	}
+}
+
+func TestResourceGetRequiresNameAndSaysWhere(t *testing.T) {
+	app := server.App(nil, &fakeK8s{}, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	body := callTool(t, app, 30, "resource_get", map[string]any{"apiVersion": "v1", "kind": "Pod", "namespace": "default"})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("error = %v", at(t, body, "error"))
+	}
+	msg, _ := at(t, body, "error", "message").(string)
+	if !strings.Contains(msg, "resource_list") {
+		t.Fatalf("message = %q, want it to point at resource_list", msg)
+	}
+}
+
+func TestResourceGetReturnsTheObject(t *testing.T) {
+	fake := &fakeK8s{getResponse: func() (*k8s.ResourceResult, error) {
+		return &k8s.ResourceResult{
+			Resource:  "pods",
+			Namespace: "default",
+			Object: map[string]any{
+				"apiVersion": "v1",
+				"kind":       "Pod",
+				"metadata":   map[string]any{"name": "api-0"},
+				"status":     map[string]any{"phase": "Running"},
+			},
+		}, nil
+	}}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 31, "resource_get", map[string]any{"apiVersion": "v1", "kind": "Pod", "namespace": "default", "name": "api-0"})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if at(t, body, "result", "structuredContent", "object", "status", "phase") != "Running" {
+		t.Fatalf("object = %v", at(t, body, "result", "structuredContent", "object"))
+	}
+	if fake.getCalls[0].ref.Name != "api-0" || fake.getCalls[0].ref.Subresource != "" {
+		t.Fatalf("ref = %+v", fake.getCalls[0].ref)
+	}
+}
+
+func TestResourceGetLogSubresourceCarriesLogOptions(t *testing.T) {
+	fake := &fakeK8s{getResponse: func() (*k8s.ResourceResult, error) {
+		return &k8s.ResourceResult{Resource: "pods/log", Namespace: "default", Text: "hello\n"}, nil
+	}}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 32, "resource_get", map[string]any{
+		"apiVersion": "v1", "kind": "Pod", "namespace": "default", "name": "api-0",
+		"subresource": "log", "container": "server", "tailLines": 10,
+		"previous": true, "timestamps": true, "sinceSeconds": 60,
+	})
+	if text, _ := at(t, body, "result", "content", 0, "text").(string); text != "hello\n" {
 		t.Fatalf("text = %q", text)
+	}
+	ref := fake.getCalls[0].ref
+	if ref.Subresource != "log" {
+		t.Fatalf("subresource = %q", ref.Subresource)
+	}
+	if ref.Log.Container == nil || *ref.Log.Container != "server" {
+		t.Fatalf("container = %v", ref.Log.Container)
+	}
+	if ref.Log.TailLines == nil || *ref.Log.TailLines != 10 {
+		t.Fatalf("tailLines = %v", ref.Log.TailLines)
+	}
+	if !ref.Log.Previous || !ref.Log.Timestamps {
+		t.Fatalf("previous/timestamps = %v/%v", ref.Log.Previous, ref.Log.Timestamps)
+	}
+	if ref.Log.SinceSeconds == nil || *ref.Log.SinceSeconds != 60 {
+		t.Fatalf("sinceSeconds = %v", ref.Log.SinceSeconds)
+	}
+}
+
+func TestResourceGetLogDefaultsTailLines(t *testing.T) {
+	fake := &fakeK8s{getResponse: func() (*k8s.ResourceResult, error) {
+		return &k8s.ResourceResult{Resource: "pods/log", Text: ""}, nil
+	}}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 33, "resource_get", map[string]any{
+		"apiVersion": "v1", "kind": "Pod", "namespace": "default", "name": "api-0", "subresource": "log",
+	})
+	if ref := fake.getCalls[0].ref; ref.Log.TailLines == nil || *ref.Log.TailLines != 200 {
+		t.Fatalf("tailLines = %v, want the documented default of 200", ref.Log.TailLines)
+	}
+	if text, _ := at(t, body, "result", "content", 0, "text").(string); text != "(no output)" {
+		t.Fatalf("empty log text = %q", text)
+	}
+}
+
+func TestResourceGetRejectsTailLinesOverMax(t *testing.T) {
+	app := server.App(nil, &fakeK8s{}, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	body := callTool(t, app, 34, "resource_get", map[string]any{
+		"apiVersion": "v1", "kind": "Pod", "namespace": "default", "name": "api-0",
+		"subresource": "log", "tailLines": 5001,
+	})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("error = %v, want a rejection rather than a clamp", at(t, body, "error"))
+	}
+}
+
+func TestResourceGetRejectsUnknownSubresourceAndStrayLogArgs(t *testing.T) {
+	app := server.App(nil, &fakeK8s{}, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 35, "resource_get", map[string]any{
+		"apiVersion": "v1", "kind": "Pod", "namespace": "default", "name": "api-0", "subresource": "exec",
+	})
+	if at(t, body, "error", "code") != float64(-32602) {
+		t.Fatalf("subresource=exec error = %v", at(t, body, "error"))
+	}
+
+	stray := callTool(t, app, 36, "resource_get", map[string]any{
+		"apiVersion": "v1", "kind": "ConfigMap", "namespace": "default", "name": "app", "tailLines": 10,
+	})
+	if at(t, stray, "error", "code") != float64(-32602) {
+		t.Fatalf("stray log argument error = %v", at(t, stray, "error"))
+	}
+}
+
+// A cluster-side failure is the tool's answer (isError) rather than a JSON-RPC
+// error: the transport layer is for malformed calls, and conflating the two leaves
+// a caller retrying a request that was never going to work.
+func TestResourceToolsSurfaceK8sErrorsAsToolErrors(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	for _, call := range []struct {
+		id   int
+		name string
+		args map[string]any
+	}{
+		{40, "api_resources", map[string]any{}},
+		{41, "resource_list", map[string]any{"apiVersion": "v1", "kind": "Pod"}},
+		{42, "resource_get", map[string]any{"apiVersion": "v1", "kind": "Pod", "namespace": "default", "name": "api-0"}},
+	} {
+		body := callTool(t, app, call.id, call.name, call.args)
+		if at(t, body, "result", "isError") != true {
+			t.Fatalf("%s isError = %v", call.name, at(t, body, "result", "isError"))
+		}
+		text, _ := at(t, body, "result", "content", 0, "text").(string)
+		if !strings.Contains(text, "kubernetes") {
+			t.Fatalf("%s text = %q", call.name, text)
+		}
 	}
 }
 
@@ -358,26 +591,6 @@ func TestToolsListAdvertisesWorkloadScale(t *testing.T) {
 	}
 	kinds := enumStrings(t, at(t, scale, "inputSchema", "properties", "kind", "enum"))
 	wantStrSlice(t, kinds, "Deployment", "StatefulSet")
-}
-
-func TestWorkloadRejectsUnknownKind(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 31, "workload_list", map[string]any{"kind": "Pod"})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-}
-
-func TestUnavailableK8sReturnsToolError(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 40, "workload_list", map[string]any{"kind": "Deployment"})
-	if at(t, body, "result", "isError") != true {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	text, _ := at(t, body, "result", "content", 0, "text").(string)
-	if !strings.Contains(text, "kubernetes") {
-		t.Fatalf("text = %q", text)
-	}
 }
 
 func TestToolsListAdvertisesDearBabyReset(t *testing.T) {
@@ -482,311 +695,6 @@ func TestDearBabyResetRequiresNamespaceAndEmail(t *testing.T) {
 	body := callTool(t, app, 63, "dear_baby_reset_user", map[string]any{"email": "user@example.com"})
 	if at(t, body, "error", "code") != float64(-32602) {
 		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-}
-
-func TestToolsListAdvertisesWorkloadLogs(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	tools := toolsList(t, app)
-	logs := findTool(t, tools, "workload_logs")
-	if at(t, logs, "annotations", "title") != "View Workload Logs" {
-		t.Fatalf("title = %v", at(t, logs, "annotations", "title"))
-	}
-	required := enumStrings(t, at(t, logs, "inputSchema", "required"))
-	wantStrSlice(t, required, "kind", "namespace", "name")
-	kinds := enumStrings(t, at(t, logs, "inputSchema", "properties", "kind", "enum"))
-	wantStrSlice(t, kinds, "Deployment", "StatefulSet", "DaemonSet")
-	if at(t, logs, "inputSchema", "properties", "tail_lines", "maximum") != float64(5000) {
-		t.Fatalf("tail_lines.maximum = %v", at(t, logs, "inputSchema", "properties", "tail_lines", "maximum"))
-	}
-}
-
-func TestWorkloadLogsDispatchesWithDefaults(t *testing.T) {
-	fake := &fakeK8s{logResponse: func() (*k8s.LogResult, error) {
-		return &k8s.LogResult{Pod: "api-7d9c9f6b8b-xyz", Logs: "line one\nline two\n"}, nil
-	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 81, "workload_logs", map[string]any{
-		"kind": "Deployment", "namespace": "default", "name": "api",
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	sc := at(t, body, "result", "structuredContent").(map[string]any)
-	if sc["pod"] != "api-7d9c9f6b8b-xyz" || sc["tailLines"] != float64(200) ||
-		sc["previous"] != false || sc["timestamps"] != false || sc["sinceSeconds"] != nil ||
-		sc["logs"] != "line one\nline two\n" {
-		t.Fatalf("structuredContent = %v", sc)
-	}
-	if at(t, body, "result", "content", 0, "text") != "line one\nline two\n" {
-		t.Fatalf("text = %v", at(t, body, "result", "content", 0, "text"))
-	}
-	c := fake.logCalls[0]
-	if c.kind != k8s.Deployment || c.namespace != "default" || c.name != "api" {
-		t.Fatalf("logCall = %+v", c)
-	}
-	if c.options.TailLines == nil || *c.options.TailLines != 200 || c.options.Container != nil ||
-		c.options.Previous || c.options.Timestamps || c.options.SinceSeconds != nil {
-		t.Fatalf("options = %+v", c.options)
-	}
-}
-
-func TestWorkloadLogsHonoursOverrides(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 82, "workload_logs", map[string]any{
-		"kind": "StatefulSet", "namespace": "data", "name": "redis",
-		"container": "redis", "tail_lines": 500, "previous": true,
-		"timestamps": true, "since_seconds": 3600,
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	c := fake.logCalls[0]
-	if c.kind != k8s.StatefulSet || c.namespace != "data" || c.name != "redis" {
-		t.Fatalf("logCall = %+v", c)
-	}
-	if c.options.Container == nil || *c.options.Container != "redis" ||
-		c.options.TailLines == nil || *c.options.TailLines != 500 ||
-		!c.options.Previous || !c.options.Timestamps ||
-		c.options.SinceSeconds == nil || *c.options.SinceSeconds != 3600 {
-		t.Fatalf("options = %+v", c.options)
-	}
-}
-
-func TestWorkloadLogsRejectsTailLinesOverMax(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 83, "workload_logs", map[string]any{
-		"kind": "Deployment", "namespace": "default", "name": "api", "tail_lines": 100000,
-	})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-	msg, _ := at(t, body, "error", "message").(string)
-	if !strings.Contains(msg, "tail_lines") {
-		t.Fatalf("message = %q", msg)
-	}
-}
-
-func TestWorkloadLogsRequiresNamespaceAndName(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 84, "workload_logs", map[string]any{"kind": "Deployment"})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-}
-
-func TestWorkloadLogsEmptyOutputPlaceholder(t *testing.T) {
-	fake := &fakeK8s{logResponse: func() (*k8s.LogResult, error) {
-		return &k8s.LogResult{Pod: "api-1", Logs: ""}, nil
-	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 85, "workload_logs", map[string]any{
-		"kind": "Deployment", "namespace": "default", "name": "api",
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if at(t, body, "result", "content", 0, "text") != "(no log output)" {
-		t.Fatalf("text = %v", at(t, body, "result", "content", 0, "text"))
-	}
-	if at(t, body, "result", "structuredContent", "logs") != "" {
-		t.Fatalf("logs = %v", at(t, body, "result", "structuredContent", "logs"))
-	}
-}
-
-func TestToolsListAdvertisesPodDescribe(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	tools := toolsList(t, app)
-	describe := findTool(t, tools, "pod_describe")
-	if at(t, describe, "annotations", "title") != "Describe Pod" {
-		t.Fatalf("title = %v", at(t, describe, "annotations", "title"))
-	}
-	required := enumStrings(t, at(t, describe, "inputSchema", "required"))
-	wantStrSlice(t, required, "namespace")
-	props := at(t, describe, "inputSchema", "properties").(map[string]any)
-	for _, key := range []string{"name", "selector", "workload_kind", "workload_name"} {
-		if _, ok := props[key]; !ok {
-			t.Fatalf("missing property %s", key)
-		}
-	}
-	kinds := enumStrings(t, at(t, describe, "inputSchema", "properties", "workload_kind", "enum"))
-	wantStrSlice(t, kinds, "Deployment", "StatefulSet", "DaemonSet")
-}
-
-func TestPodDescribeRendersStructuredPayload(t *testing.T) {
-	fake := &fakeK8s{describeResponse: func() (*k8s.PodDescription, error) {
-		return &k8s.PodDescription{
-			Name:            "api-7d9c9f6b8b-xyz",
-			Namespace:       "default",
-			Node:            strptr("k3s-node-1"),
-			Phase:           strptr("Running"),
-			PodIP:           strptr("10.0.0.42"),
-			HostIP:          strptr("192.168.1.10"),
-			ServiceAccount:  strptr("default"),
-			Priority:        int32Ptr(0),
-			QOSClass:        strptr("BestEffort"),
-			StartTime:       strptr("2026-05-10T12:00:00Z"),
-			Labels:          map[string]string{"app": "api"},
-			Annotations:     map[string]string{},
-			NodeSelector:    map[string]string{},
-			OwnerReferences: []any{},
-			Conditions:      []k8s.PodConditionInfo{{Type: "Ready", Status: "True"}},
-			InitContainers:  []k8s.ContainerInfo{},
-			Containers: []k8s.ContainerInfo{{
-				Name:         "api",
-				Image:        "ghcr.io/example/api:1.2.3",
-				Ready:        true,
-				Started:      boolPtr(true),
-				RestartCount: 2,
-				State:        strptr("running"),
-				StartedAt:    strptr("2026-05-10T12:00:01Z"),
-				LastState:    strptr("terminated"),
-				LastReason:   strptr("Error"),
-				LastExitCode: int32Ptr(137),
-			}},
-			Events: []k8s.PodEventInfo{{
-				Type:           "Warning",
-				Reason:         "BackOff",
-				Message:        "Back-off restarting failed container",
-				Count:          5,
-				FirstTimestamp: strptr("2026-05-10T11:00:00Z"),
-				LastTimestamp:  strptr("2026-05-10T11:55:00Z"),
-				Source:         strptr("kubelet"),
-			}},
-		}, nil
-	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 91, "pod_describe", map[string]any{
-		"namespace": "default", "name": "api-7d9c9f6b8b-xyz",
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	sc := at(t, body, "result", "structuredContent").(map[string]any)
-	if sc["name"] != "api-7d9c9f6b8b-xyz" || sc["node"] != "k3s-node-1" ||
-		sc["phase"] != "Running" || sc["pod_ip"] != "10.0.0.42" {
-		t.Fatalf("structuredContent = %v", sc)
-	}
-	if at(t, sc, "containers", 0, "image") != "ghcr.io/example/api:1.2.3" ||
-		at(t, sc, "containers", 0, "state") != "running" ||
-		at(t, sc, "containers", 0, "restart_count") != float64(2) ||
-		at(t, sc, "containers", 0, "last_state") != "terminated" ||
-		at(t, sc, "containers", 0, "last_exit_code") != float64(137) {
-		t.Fatalf("containers = %v", sc["containers"])
-	}
-	if at(t, sc, "conditions", 0, "type") != "Ready" || at(t, sc, "events", 0, "type") != "Warning" {
-		t.Fatalf("conditions/events = %v / %v", sc["conditions"], sc["events"])
-	}
-
-	text := at(t, body, "result", "content", 0, "text").(string)
-	for _, want := range []string{
-		"Name:         api-7d9c9f6b8b-xyz", "Namespace:    default",
-		"Node:         k3s-node-1", "ghcr.io/example/api:1.2.3", "BackOff",
-	} {
-		if !strings.Contains(text, want) {
-			t.Fatalf("text missing %q:\n%s", want, text)
-		}
-	}
-
-	if len(fake.describeCalls) != 1 || fake.describeCalls[0].namespace != "default" ||
-		fake.describeCalls[0].target != (k8s.PodTarget{Mode: k8s.TargetName, Name: "api-7d9c9f6b8b-xyz"}) {
-		t.Fatalf("describeCalls = %+v", fake.describeCalls)
-	}
-}
-
-func TestPodDescribeAcceptsSelectorTarget(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 95, "pod_describe", map[string]any{"namespace": "default", "selector": "app=api"})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if fake.describeCalls[0].target != (k8s.PodTarget{Mode: k8s.TargetSelector, Selector: "app=api"}) {
-		t.Fatalf("target = %+v", fake.describeCalls[0].target)
-	}
-}
-
-func TestPodDescribeAcceptsWorkloadTarget(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 96, "pod_describe", map[string]any{
-		"namespace": "default", "workload_kind": "Deployment", "workload_name": "api",
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	want := k8s.PodTarget{Mode: k8s.TargetWorkload, Kind: k8s.Deployment, WorkloadName: "api"}
-	if fake.describeCalls[0].target != want {
-		t.Fatalf("target = %+v", fake.describeCalls[0].target)
-	}
-}
-
-func TestPodDescribeRejectsMutuallyExclusiveTargets(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 97, "pod_describe", map[string]any{
-		"namespace": "default", "name": "api-0", "selector": "app=api",
-	})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-	msg, _ := at(t, body, "error", "message").(string)
-	if !strings.Contains(msg, "mutually exclusive") {
-		t.Fatalf("message = %q", msg)
-	}
-}
-
-func TestPodDescribeRejectsPartialWorkloadTarget(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 98, "pod_describe", map[string]any{
-		"namespace": "default", "workload_kind": "Deployment",
-	})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-}
-
-func TestPodDescribeNoEventsPlaceholder(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 92, "pod_describe", map[string]any{"namespace": "default", "name": "api-0"})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	text := at(t, body, "result", "content", 0, "text").(string)
-	if !strings.Contains(text, "Events:       <none>") {
-		t.Fatalf("text = %q", text)
-	}
-}
-
-func TestPodDescribeRequiresTarget(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 93, "pod_describe", map[string]any{"namespace": "default"})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-	msg, _ := at(t, body, "error", "message").(string)
-	if !strings.Contains(msg, "name") || !strings.Contains(msg, "selector") {
-		t.Fatalf("message = %q", msg)
-	}
-}
-
-func TestPodDescribeSurfacesK8sErrorAsToolError(t *testing.T) {
-	fake := &fakeK8s{describeResponse: func() (*k8s.PodDescription, error) {
-		return nil, k8s.APIError("pods \"missing\" not found")
-	}}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 94, "pod_describe", map[string]any{"namespace": "default", "name": "missing"})
-	if at(t, body, "result", "isError") != true {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	text, _ := at(t, body, "result", "content", 0, "text").(string)
-	if !strings.Contains(text, "not found") {
-		t.Fatalf("text = %q", text)
 	}
 }
 

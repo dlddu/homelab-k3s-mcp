@@ -6,7 +6,19 @@ metadata:
     app.kubernetes.io/name: homelab-k3s-mcp
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: homelab
+# The verb set here is pinned by prd-platform-auth-safety AC3, which names it
+# exactly and forbids workload create/delete and secret reads. prd-resource-generic
+# AC19 wants a different rule — the pair set of the resource_* table, secrets
+# included — so the two documents disagree about this file. Until that is
+# resolved by their owner, this stays as AC3 wrote it: resource_list and
+# resource_get address any kind by coordinate, and a kind outside these rules is
+# reported as outside this server's grant (prd-resource-generic AC18) rather
+# than quietly widened here. doc-tracker.md carries the conflict as an open item.
 rules:
+  # resource_list / resource_get over apps workloads. watch is granted but
+  # exercised by nothing: resource_watch is unimplemented, and AC3's equality
+  # assertion (tests/integration/platform_auth_safety_ac3.py) is what keeps the
+  # verb here rather than dropped as dead.
   - apiGroups: ["apps"]
     resources:
       - deployments
@@ -23,7 +35,6 @@ rules:
   # gates the exec stream on. client-go's SPDY executor opens the stream
   # with POST (the `create` verb); `get` is retained so a WebSocket
   # executor fallback keeps working without an RBAC change.
-  # namespace_list enumerates namespaces in the cluster.
   - apiGroups: [""]
     resources:
       - namespaces
@@ -42,15 +53,14 @@ rules:
     verbs:
       - get
       - create
-  # workload_logs streams container logs from a pod backing a workload.
+  # resource_get with subresource=log reads container logs from a named pod.
   - apiGroups: [""]
     resources:
       - pods/log
     verbs:
       - get
-  # pod_describe surfaces events alongside the pod snapshot. Listing events
-  # in the pod's namespace is best-effort; describing still works without
-  # this rule but with an empty events array.
+  # Events are read as a kind of their own now (resource_list on v1/Event with a
+  # fieldSelector), which is what replaces the events half of pod_describe.
   - apiGroups: [""]
     resources:
       - events

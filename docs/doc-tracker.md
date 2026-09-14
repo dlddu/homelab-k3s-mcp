@@ -134,7 +134,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 쌍이 분류력을 잃음 | `nodes/proxy` | 경로 제한 없이 열면서 `create nodes/proxy` 하나가 `/healthz` POST 와 임의 파드 exec 을 동시에 뜻하게 됐다. **`(verb, resource)` 쌍이 호출의 권능을 한정하지 못한다** — 한정하는 것은 경로이고 경로는 `context` 에만 있다. RBAC 의 네임스페이스 범위도 파드 수준 조작에는 적용되지 않으며, 민감 종류 게이트도 kubelet `/exec` 경유 읽기는 잡지 못한다(쌍이 `create nodes/proxy` 이므로). | ⚠️ **수용(2026-09-12)** — 경로 허용목록을 두면 「이 경로는 봐준다」는 분류기가 생기고 그 분류기가 곧 우회 경로가 된다. 대신 게이트가 경로를 숨기지 않고 보여 준다. 고권한 kubelet 경로는 `context` 에 **표시**하되 막지 않는다. **그 결과 `context` 의 품질이 곧 보안이며, AC3 가 이 설계에서 가장 무거운 AC 다** |
 | RBAC 백스톱 소멸 | 전체 | `watch`·`deletecollection`·`attach`·`portforward`·`proxy`(`Node` 포함)·`secrets` 쓰기가 차례로 도구가 되면서 **금지 목록이 비었다**. RBAC 가 도구 표와 정확히 같아진다는 것은 곧 **RBAC 가 더는 백스톱이 아니라는 뜻**이다 — 게이트에 결함이 생기면 apiserver 가 막아 줄 것이 없다. | ⚠️ **수용(2026-09-12)** — 완화는 AC1(디스패처 강제)·AC5(fail-closed)·AC11(게이트 권한 선언)이며, 이 셋이 이제 구조 전체를 지탱한다. 구현 시 이 경로들의 테스트 밀도를 다른 곳보다 높게 잡을 것 |
 | 게이트 우회 가능 | `dear_baby_reset_user` | `create` on `pods/exec` 을 행사하므로 게이트 정의에 해당하지만 편입하지 않았다. V5 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user` 의 AC 를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12) |
-| 문서 없는 실행 코드 | 폐기된 6종 | 이 PR 은 **문서만** 폐기했고 Go 구현은 그대로다. 6종이 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **구현 제거 선행 대기** (2026-09-12) |
+| **두 PRD 가 `k8s/rbac.yaml` 을 두고 어긋난다** | `prd-platform-auth-safety` AC3 ↔ `prd-resource-generic` AC19 | AC3 은 부여 집합을 **축자로** 못박고(워크로드 `get/list/watch/patch` · 파드 `get/list` · `pods/log` `get` · `pods/exec` `get/create` · 네임스페이스·이벤트 `get/list`) 「워크로드 `delete`/`create`, **시크릿 읽기** 권한은 부여하지 않는다」로 닫는다. AC19 는 같은 파일의 쌍 집합이 `resource_*` **도구 표 ∪ 게이트 선언과 정확히 같아야** 하고 「`secrets` 에는 일곱 verb 를 모두 준다」고 적는다. **둘을 동시에 만족하는 `rbac.yaml` 은 없다.** `platform_auth_safety_ac3.py` 가 살아 있는 ClusterRole 을 **등가로** 단언하므로 이 어긋남은 산문이 아니라 **CI 가 멈추는 형태**로 존재한다 — 2026-09-13 읽기 축 슬라이스가 AC19 쪽으로 파일을 넓혔다가 그 게이트에 걸려 되돌렸다. **`resource_*` 쓰기 축은 이 결정 없이는 착수할 수 없다**(그 도구들이 요구하는 verb 가 전부 AC3 의 금지 목록에 있다). | ⬜ **미결 — 어느 문서가 이기는지는 소유자 판단** (2026-09-13). 코드가 한쪽을 고르면 다른 쪽이 그 순간 거짓이 되므로, 읽기 축은 **AC3 이 이미 허용한 범위 안에서** 구현했다(권한 확대 0) |
+| 문서 없는 실행 코드 | 폐기된 6종 중 **남은 2종** (`workload_restart`·`workload_scale`) | #72 는 **문서만** 폐기했고 Go 구현은 그대로였다. 2026-09-13 에 읽기 전용 4종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 대체재 `resource_list`·`resource_get` 과 함께 제거됐다. 남은 둘은 **상태를 바꾸는** 도구라 대체재가 `resource_patch`·`resource_update`(둘 다 게이트 대상)이고, 그것이 설 때까지 **PRD 도 e2e 도 없이 계속 서빙된다**. | ⬜ **쓰기 축 구현 선행 대기** (2026-09-13 갱신) |
 
 `session_write` 는 게이트 우회 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 권한을
 행사하지 않으므로 게이트의 정의 범위 밖이고, 그 도구의 안전장치는 `prd-session-write` 가 맡는다.
@@ -151,6 +152,47 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > `dear_baby_reset_user`는 코드에 `Exemptions()`로 등재돼 기동 로그에 매번 이름이 찍힌다
 > (각각 위 "문서 없는 실행 코드"·"게이트 우회 가능" 미결 행에 대응한다). AC3은 게이트 대상 호출이
 > 아직 없어 verb별 상세를 겨룰 대상이 없고, AC6·AC10·AC11은 미착수다.
+
+> **2026-09-13 — 1번의 읽기 절반이 착지했다.** `api_resources`·`resource_list`·`resource_get`이
+> `internal/mcp`에 등록되고, 그 셋이 흡수하는 **읽기 전용 폐기 도구 4종**
+> (`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 등록·디스패치·핸들러·
+> `k8s.Service`에서 사라졌다. 도구 표면 17 → 16. 구현된 AC는
+> `prd-resource-generic` **AC1·AC2·AC3·AC4·AC5·AC18·AC20**이고, **AC16은 읽기 절반만**
+> (민감 종류의 `get`이 게이트를 탄다 — 쓰기 verb는 아직 도구가 없다), **AC17도 절반만**
+> (`resource_list`가 Table 전용이라 값이 전송되지 않는다; 원시 목록 폴백 경로는 두지 않았다)이다.
+> 2번은 같은 커밋에서 닫았다(`EXPECTED_TOOLS` 4종 제거 / 3종 추가).
+> **3번은 열지 못했다 — `k8s/rbac.yaml`은 한 verb도 바뀌지 않았다.** 이 슬라이스가 발견한
+> 것은 **두 문서가 이 파일을 두고 어긋나 있다**는 사실이다(아래 「수용된 위험」의 새 미결 행).
+> `prd-platform-auth-safety` AC3이 부여 집합을 축자로 못박고 시크릿 읽기를 금지하는데,
+> `prd-resource-generic` AC19는 그 집합이 `resource_*` 도구 표와 같아야 한다고(시크릿 7 verb
+> 포함) 적는다. 한쪽을 코드가 골라 버리면 그 순간 다른 한쪽이 거짓이 되므로, **읽기 축은 AC3이
+> 이미 허용한 범위 위에 세웠다** — 폐기 4종이 쓰던 바로 그 권한이라 권한 확대가 0이다.
+> 그 결과 `resource_list`·`resource_get`은 그 범위 밖 종류에 대해 AC18의 「권한 밖」으로 답한다.
+> **`watch` 제거도 같은 이유로 보류했다** — 죽은 권한인 것은 맞지만 AC3의 부여 집합에 축자로
+> 올라 있고 `platform_auth_safety_ac3.py`가 **등가(equality)로** 단언한다. 4번은 손대지 않았다
+> (자매 모델 `scenario-e2e` 소관).
+>
+> **남은 것**: `resource_*`의 쓰기 축 8종(`create`·`update`·`patch`·`delete`·
+> `delete_collection`·`exec`·`attach`·`port_forward`·`proxy`)과 `resource_watch`, 그리고
+> 그것들이 함께 닫을 `workload_restart`·`workload_scale` 제거. AC6·AC7~AC15·AC19와
+> `prd-approval-gate` AC3·AC6·AC10·AC11도 미착수 그대로다. **게이트의 쌍 선언은 이 슬라이스에서
+> 런타임 해석으로 넓어졌다** — 좌표가 인자인 도구는 정적 표로 기술할 수 없어, 호출의 인자에서
+> 쌍을 만들어 낸다. 그 해석은 discovery를 부르지 않는다(AC16이 요구하는 「미승인 시 k8s 호출 0」이
+> 깨지므로).
+
+> **2026-09-14 — 그 읽기 절반은 한 번 머지 직전에 멈춰 섰다.** 위 슬라이스는 게이트 일곱을 전부
+> 통과한 채 **`resource_list`가 모든 좌표에 대해 빈 표를 돌려주는 상태로** 검증에 들어갔고, 실
+> 클러스터 확인에서 그것이 드러나 머지 전에 멈췄다(`rct_20260913-0002` 1차 시도, main 무변경).
+> 원인은 Table 표현을 요구하는 `Accept` 파라미터의 버전이 `v=1`이었던 것이다 — apiserver는 자신이
+> 모르는 표현을 **오류로 답하지 않고** 평범한 List로 답하며(헤더가 `application/json`을 함께
+> 제시하므로), 그 본문은 `metav1.Table`로 **전부 0인 값으로** 디코드된다. 그래서 어긋남이 실패한
+> 호출이 아니라 **빈 목록**으로 나타났다.
+> **두 가지를 고쳤고, 둘 다 「다시 일어나도 보이게 하는」 쪽이다**: ⑴ 파라미터를 `metav1`에서
+> 파생시켜 손으로 적지 않는다. ⑵ 본문이 Table이 아니면 **거부한다** — 객체를 대신 렌더링하는
+> 폴백은 두지 않는다(그 폴백이 곧 Secret 값을 목록에 싣는 경로이고, `list`가 게이트 밖인 근거가
+> AC17이다). 그리고 **이 레포에서 실 apiserver가 도는 유일한 자리**인 통합 잡에 스모크 한 건을
+> 세웠다(`resource_read_smoke.py`, 위 「비-시나리오 파일」). Go 단위 테스트는 자기가 만든 Table을
+> 먹이므로 이 계열의 어긋남을 **원리상** 볼 수 없다는 것이 이 시도가 남기는 교훈이다.
 
 1. `internal/mcp`에서 6종 도구 등록·디스패치를 제거하고 `resource_*` 13종
    (`list`·`get`·`watch`·`create`·`update`·`patch`·`delete`·`delete_collection`·
@@ -548,12 +590,15 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 > **파괴적 작업 표기(5) — ✅ 완료(2026-07-21)**: 파괴 동작을 실제로 실행하지 않고 배포 서버 `tools/list`의 `annotations.destructiveHint == true`(및 `readOnlyHint == false`)를 e2e로 단언하는 per-AC 전용 케이스를 신설해 위 레지스트리에서 ✅로 승격했다(`internal/server/mcp_test.go`의 in-process 단언을 배포 서버 통합 e2e로 승격). 케이스: `dear_baby.py::test_dear_baby_reset_user_ac3_destructive_hint`, `opensearch.py::test_opensearch_document_{put,delete}_ac3_destructive_hint`, `workload.py::test_workload_{restart_ac2,scale_ac3}_destructive_hint`. 남은 backlog 14건은 no-config 배포 변형·신규 픽스처가 필요한 후속 슬라이스.
 
-### 비-시나리오 파일 (스모크·인프라) (1)
+### 비-시나리오 파일 (스모크·인프라) (2)
 
 > 시나리오 대신 스모크/인프라 확인(서버 기동·`/healthz`·도구 표면 존재)을 주검증한다고 선언한 매칭 단위 파일의 등재 자리다(규칙 3). 이 목록에 없는 비-시나리오 파일은 고아이고, 여기 등재됐는데 실재하지 않거나 시나리오를 선언하는 파일도 고아 등재다 — 체커가 양방향으로 검사한다.
 
-- **`smoke.py`** — primary 배포의 **도구 표면 존재 확인**(`_helpers.EXPECTED_TOOLS` 14개가 `tools/list`에 광고되는지). `실행 순서: 0`으로 primary 그룹 맨 앞에서 돌아, 배포가 깨졌을 때 뒤따르는 AC 파일들이 차례로 모호하게 죽는 대신 한 번에 원인을 말하는 **공유 선행 조건**이다(파일 수는 분할이 진행될수록 늘어나므로 여기 적지 않는다 — 세는 것은 러너와 체커의 몫이다). 2026-08-31 분할 전에는 이 확인이 ping/AC1·platform-auth-safety/AC6과 한 파일에 섞여 있었고(= 분할 대기), 두 AC를 각자의 전용 파일(위 레지스트리 참조)로 떼어낸 뒤 남은 것이 이 파일이다.
+- **`smoke.py`** — primary 배포의 **도구 표면 존재 확인**(`_helpers.EXPECTED_TOOLS` 전부가 `tools/list`에 광고되는지 — 개수는 적지 않는다. 도구가 드나들 때마다 낡고, 세는 것은 그 상수와 체커의 몫이다). `실행 순서: 0`으로 primary 그룹 맨 앞에서 돌아, 배포가 깨졌을 때 뒤따르는 AC 파일들이 차례로 모호하게 죽는 대신 한 번에 원인을 말하는 **공유 선행 조건**이다(파일 수는 분할이 진행될수록 늘어나므로 여기 적지 않는다 — 세는 것은 러너와 체커의 몫이다). 2026-08-31 분할 전에는 이 확인이 ping/AC1·platform-auth-safety/AC6과 한 파일에 섞여 있었고(= 분할 대기), 두 AC를 각자의 전용 파일(위 레지스트리 참조)로 떼어낸 뒤 남은 것이 이 파일이다.
   - **이것은 `test-platform-auth-safety.md#시나리오 5`가 아니다**: 주 배포는 모든 통합이 구성돼 있어 정상적인 `tools/list`가 degradation에 대해 아무것도 말해 주지 않는다. 그 시나리오는 자격증명이 없는 배포에서만 관측되므로 전용 파일이 `auth-variant`에서 같은 상수를 단언한다.
+
+- **`resource_read_smoke.py`** — `resource_list`·`resource_get` 이 **실 apiserver 를 상대로 값을 가져오는지** 확인(`실행 순서: 1`, `smoke.py` 바로 뒤). 광고 확인과 나눈 이유는 **광고된 채로 빈 표를 돌려주는 상태가 실재했기 때문이다**(`rct_20260913-0002` 1차 시도): Table 표현을 요구하는 `Accept` 파라미터가 apiserver 가 아는 것과 어긋나면 요청은 실패하지 않고 **평범한 List 로 답이 오며**, 그 본문은 `metav1.Table` 로 전부 0인 값으로 디코드된다. 이 레포에서 **실 apiserver 가 도는 유일한 자리**가 통합 잡의 kind 클러스터라, Go 단위 테스트로는 원리상 볼 수 없는 어긋남을 여기서만 잴 수 있다. 단언은 「행이 있다」에 걸려 있다 — 열 정의만으로는 렌더러가 섰는지는 알아도 협상이 성립했는지는 알 수 없다. 목록 → 이름 → `subresource=log` 를 한 케이스로 이은 것도 같은 이유다(두 도구를 따로 재면 목록이 빈 표인 동안에도 각자는 통과로 보인다).
+  - **AC 단위 검증이 아니다**: `prd-resource-generic` 의 AC별 시나리오 e2e 는 자매 모델 `tbm_homelab-k3s-mcp-scenario-e2e` 소관이고 위 「⏳ 구현 대기」 표에 등재돼 있다. 이 파일은 그 공백을 메우지 않으며 계수에도 들어가지 않는다.
 
 > 이 절의 백틱 파일명은 체커가 **등재 목록으로 읽는다**(`FILE_REF_RE`). 다른 파일을 예로 들 때는 백틱을 쓰지 말 것 — 고아 등재로 잡힌다.
 

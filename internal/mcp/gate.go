@@ -9,6 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 )
 
@@ -28,6 +31,14 @@ type toolDeclaration struct {
 	// pairs is what this tool exercises against the apiserver. Empty means the
 	// tool touches no kubernetes resource at all (the platform integrations).
 	pairs []gatekeeper.Pair
+
+	// resolve derives the pair from one call's own arguments, for the generic
+	// tools whose resource is an argument rather than a constant. A static table
+	// cannot describe them: it would have to name every kind in the cluster, or
+	// name none and lie. What it may not do is consult discovery — the gate has
+	// to reach its verdict before the apiserver is touched, so the resource name
+	// comes from the kind by apimachinery's own guess.
+	resolve func(json.RawMessage) ([]gatekeeper.Pair, error)
 
 	// outsideGate, when non-empty, is the documented reason this tool stays
 	// outside the gate even though its pairs would otherwise select it. It is
@@ -64,20 +75,22 @@ var toolRegistry = map[string]toolEntry{
 		},
 	},
 
-	"namespace_list": {
-		decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "list", Resource: "namespaces"}}},
+	"api_resources": {
+		// Discovery is not a resource permission, so this tool declares no pair
+		// (prd-resource-generic AC20).
 		handle: func(h *Handler, ctx context.Context, _ json.RawMessage) (any, *rpcErr) {
-			return h.namespaceList(ctx)
+			return h.apiResources(ctx)
 		},
 	},
 
-	"workload_list": {
-		decl: toolDeclaration{pairs: []gatekeeper.Pair{
-			{Verb: "list", Resource: "deployments"},
-			{Verb: "list", Resource: "statefulsets"},
-			{Verb: "list", Resource: "daemonsets"},
-		}},
-		handle: (*Handler).workloadList,
+	"resource_list": {
+		decl:   toolDeclaration{resolve: genericPairs("list")},
+		handle: (*Handler).resourceList,
+	},
+
+	"resource_get": {
+		decl:   toolDeclaration{resolve: genericPairs("get")},
+		handle: (*Handler).resourceGet,
 	},
 
 	"workload_restart": {
@@ -104,28 +117,6 @@ var toolRegistry = map[string]toolEntry{
 			outsideGate: exemptRetiredPendingRemoval,
 		},
 		handle: (*Handler).workloadScale,
-	},
-
-	"workload_logs": {
-		decl: toolDeclaration{pairs: []gatekeeper.Pair{
-			// The workload is read to resolve its pod selector before the log
-			// stream is opened, so those gets belong to this tool too.
-			{Verb: "get", Resource: "deployments"},
-			{Verb: "get", Resource: "statefulsets"},
-			{Verb: "get", Resource: "daemonsets"},
-			{Verb: "list", Resource: "pods"},
-			{Verb: "get", Resource: "pods/log"},
-		}},
-		handle: (*Handler).workloadLogs,
-	},
-
-	"pod_describe": {
-		decl: toolDeclaration{pairs: []gatekeeper.Pair{
-			{Verb: "get", Resource: "pods"},
-			{Verb: "list", Resource: "pods"},
-			{Verb: "list", Resource: "events"},
-		}},
-		handle: (*Handler).podDescribe,
 	},
 
 	"dear_baby_reset_user": {
@@ -169,21 +160,61 @@ type toolEntry struct {
 	handle func(*Handler, context.Context, json.RawMessage) (any, *rpcErr)
 }
 
-// gatedPairs returns the declared pairs that require approval, or nil when the
-// tool may run unattended. A documented exemption short-circuits the answer but
+func (d toolDeclaration) callPairs(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+	if d.resolve == nil {
+		return d.pairs, nil
+	}
+	return d.resolve(rawArgs)
+}
+
+// gatedPairs returns the pairs of this call that require approval, or nil when
+// it may run unattended. A documented exemption short-circuits the answer but
 // does not erase the pairs — Exemptions still names what is passing through
 // ungated.
-func (d toolDeclaration) gatedPairs(sensitiveKinds []string) []gatekeeper.Pair {
+func (d toolDeclaration) gatedPairs(sensitiveKinds []string, rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
 	if d.outsideGate != "" {
-		return nil
+		return nil, nil
+	}
+	pairs, err := d.callPairs(rawArgs)
+	if err != nil {
+		return nil, err
 	}
 	var gated []gatekeeper.Pair
-	for _, p := range d.pairs {
+	for _, p := range pairs {
 		if gatedVerbs[p.Verb] || readIsSensitive(p, sensitiveKinds) {
 			gated = append(gated, p)
 		}
 	}
-	return gated
+	return gated, nil
+}
+
+// genericPairs reads one call's coordinate and reports the single pair it
+// exercises. The resource name is apimachinery's guess from the kind rather
+// than discovery's answer, because a sensitive read has to be refused with the
+// kubernetes call count still at zero (prd-resource-generic AC16) — asking the
+// cluster what "Secret" is called would already be one.
+func genericPairs(verb string) func(json.RawMessage) ([]gatekeeper.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+		obj, ok := decodeObject(rawArgs)
+		if !ok {
+			return nil, fmt.Errorf("arguments must be an object")
+		}
+		apiVersion, _ := obj["apiVersion"].(string)
+		kind, _ := obj["kind"].(string)
+		if apiVersion == "" || kind == "" {
+			return nil, fmt.Errorf("apiVersion and kind are required before this call can be judged")
+		}
+		gv, err := schema.ParseGroupVersion(apiVersion)
+		if err != nil {
+			return nil, fmt.Errorf("apiVersion %q is not a group/version", apiVersion)
+		}
+		plural, _ := meta.UnsafeGuessKindToResource(gv.WithKind(kind))
+		resource := plural.Resource
+		if sub, _ := obj["subresource"].(string); sub != "" {
+			resource += "/" + sub
+		}
+		return []gatekeeper.Pair{{Verb: verb, Resource: resource}}, nil
+	}
 }
 
 // readIsSensitive decides the read half of the gate: get and watch are gated
@@ -193,13 +224,20 @@ func readIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
 	if p.Verb != "get" && p.Verb != "watch" {
 		return false
 	}
+	// A subresource is judged by the object it hangs off: reading
+	// secrets/<anything> is still reading a Secret, and matching the whole
+	// string would let a subresource name walk straight past this.
+	resource := p.Resource
+	if idx := strings.Index(resource, "/"); idx >= 0 {
+		resource = resource[:idx]
+	}
 	for _, kind := range sensitiveKinds {
 		// RESOURCE_GATED_KINDS is written as group/version/Kind ("v1/Secret");
 		// a declaration names the RBAC resource ("secrets"). Compare on the
 		// trailing kind, lowercased and pluralised the way RBAC spells it.
 		idx := strings.LastIndex(kind, "/")
 		name := strings.ToLower(kind[idx+1:])
-		if p.Resource == name+"s" || p.Resource == name {
+		if resource == name+"s" || resource == name {
 			return true
 		}
 	}
@@ -299,7 +337,12 @@ func Exemptions() map[string]string {
 // authorize runs the gate for one tool call. It is called by the dispatcher
 // before the handler, never by a handler (AC1).
 func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*gatekeeper.Decision, *rpcErr) {
-	gated := entry.decl.gatedPairs(h.sensitiveKinds)
+	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, rawArgs)
+	if err != nil {
+		// A call whose pair cannot be named is a call whose gating cannot be
+		// decided, and AC5 makes every undecided path a refusal.
+		return nil, errf(-32602, "%s", err.Error())
+	}
 	if len(gated) == 0 {
 		return nil, nil
 	}

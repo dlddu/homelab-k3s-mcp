@@ -20,41 +20,123 @@ const toolsListJSON = `{
       }
     },
     {
-      "name": "namespace_list",
-      "description": "List all Kubernetes namespaces with their phase (Active, Terminating) and creation timestamp.",
+      "name": "api_resources",
+      "description": "List the resource kinds this cluster actually serves (group, version, kind, plural name, namespaced). Use it to resolve a kind before calling resource_list or resource_get.",
       "inputSchema": {
         "type": "object",
         "properties": {},
         "additionalProperties": false
       },
       "annotations": {
-        "title": "List Namespaces",
+        "title": "API Resources",
         "readOnlyHint": true,
         "idempotentHint": true,
         "openWorldHint": false
       }
     },
     {
-      "name": "workload_list",
-      "description": "List Kubernetes workloads (Deployment, StatefulSet, DaemonSet). Namespace is optional; omit it to list across all namespaces.",
+      "name": "resource_list",
+      "description": "List any Kubernetes resource by coordinate (apiVersion + kind), returned as the apiserver's table rendering. Namespace is optional; omit it to list across all namespaces. Exercises the list verb only. A kind outside this server's RBAC grant is reported as such rather than retried.",
       "inputSchema": {
         "type": "object",
         "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\" or \"apps/v1\"."
+          },
           "kind": {
             "type": "string",
-            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
-            "description": "Workload kind."
+            "description": "Kind to list, e.g. \"Pod\", \"Deployment\", \"Ingress\"."
           },
           "namespace": {
             "type": "string",
-            "description": "Namespace. Optional; omitted = all namespaces."
+            "description": "Namespace. Optional; omitted = all namespaces. Rejected for cluster-scoped kinds."
+          },
+          "labelSelector": {
+            "type": "string",
+            "description": "Label selector, applied server-side."
+          },
+          "fieldSelector": {
+            "type": "string",
+            "description": "Field selector, applied server-side."
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500,
+            "description": "Page size. Default 100, maximum 500."
+          },
+          "continue": {
+            "type": "string",
+            "description": "Continue token from a previous truncated page."
           }
         },
-        "required": ["kind"],
+        "required": ["apiVersion", "kind"],
         "additionalProperties": false
       },
       "annotations": {
-        "title": "List Workloads",
+        "title": "List Resources",
+        "readOnlyHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "resource_get",
+      "description": "Read one Kubernetes object whole by coordinate and name, or one of its log/scale/status subresources. Exercises the get verb only; name is required, so find the object with resource_list first. Sensitive kinds (Secret) require human approval, and a kind outside this server's RBAC grant is reported as such.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\" or \"apps/v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to read, e.g. \"Pod\", \"Deployment\", \"ConfigMap\"."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for namespaced kinds, rejected for cluster-scoped ones."
+          },
+          "name": {
+            "type": "string",
+            "description": "Object name."
+          },
+          "subresource": {
+            "type": "string",
+            "enum": ["log", "scale", "status"],
+            "description": "Subresource to read instead of the object itself."
+          },
+          "container": {
+            "type": "string",
+            "description": "subresource=log only. Required when the pod has more than one container."
+          },
+          "tailLines": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5000,
+            "description": "subresource=log only. Lines from the end of the log. Default 200."
+          },
+          "previous": {
+            "type": "boolean",
+            "description": "subresource=log only. Read the previous terminated container instance."
+          },
+          "timestamps": {
+            "type": "boolean",
+            "description": "subresource=log only. Prefix each line with an RFC3339 timestamp."
+          },
+          "sinceSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "subresource=log only. Only return logs newer than this many seconds."
+          }
+        },
+        "required": ["apiVersion", "kind", "name"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Get Resource",
         "readOnlyHint": true,
         "idempotentHint": true,
         "openWorldHint": false
@@ -123,97 +205,6 @@ const toolsListJSON = `{
         "title": "Scale Workload",
         "readOnlyHint": false,
         "destructiveHint": true,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "workload_logs",
-      "description": "Fetch container logs from a Kubernetes workload (Deployment, StatefulSet, DaemonSet). Resolves the workload's pod selector and returns logs from the first Running pod (or any matching pod when none is Running, so previous=true works after a crash loop).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
-            "description": "Workload kind."
-          },
-          "namespace": {
-            "type": "string",
-            "description": "Namespace of the workload."
-          },
-          "name": {
-            "type": "string",
-            "description": "Workload name."
-          },
-          "container": {
-            "type": "string",
-            "description": "Container name. Required when the pod has more than one container."
-          },
-          "tail_lines": {
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 5000,
-            "description": "Number of trailing log lines to return. Defaults to 200; capped at 5000."
-          },
-          "previous": {
-            "type": "boolean",
-            "description": "Return logs from a previously terminated container instance. Defaults to false."
-          },
-          "timestamps": {
-            "type": "boolean",
-            "description": "Prefix each log line with an RFC3339 timestamp. Defaults to false."
-          },
-          "since_seconds": {
-            "type": "integer",
-            "minimum": 1,
-            "description": "Only return logs newer than this many seconds. Optional."
-          }
-        },
-        "required": ["kind", "namespace", "name"],
-        "additionalProperties": false
-      },
-      "annotations": {
-        "title": "View Workload Logs",
-        "readOnlyHint": true,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
-      "name": "pod_describe",
-      "description": "Return a kubectl-describe-style snapshot of a single pod: metadata, container statuses (state, reason, restart count, exit code), conditions, and recent events. Events are best-effort and may be empty if the apiserver does not expose them to this service account. Provide exactly one of: 'name' (exact pod name), 'selector' (label selector; first Running pod wins), or 'workload_kind' + 'workload_name' (resolves the workload's pod selector).",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "namespace": {
-            "type": "string",
-            "description": "Namespace of the pod."
-          },
-          "name": {
-            "type": "string",
-            "description": "Exact pod name. Mutually exclusive with 'selector' and 'workload_kind'+'workload_name'."
-          },
-          "selector": {
-            "type": "string",
-            "description": "Label selector (e.g. 'app=api'). Resolves to the first Running pod matching the selector, falling back to any matching pod when none is Running."
-          },
-          "workload_kind": {
-            "type": "string",
-            "enum": ["Deployment", "StatefulSet", "DaemonSet"],
-            "description": "Workload kind to resolve a pod from. Requires 'workload_name'."
-          },
-          "workload_name": {
-            "type": "string",
-            "description": "Workload name. Requires 'workload_kind'."
-          }
-        },
-        "required": ["namespace"],
-        "additionalProperties": false
-      },
-      "annotations": {
-        "title": "Describe Pod",
-        "readOnlyHint": true,
         "idempotentHint": true,
         "openWorldHint": false
       }

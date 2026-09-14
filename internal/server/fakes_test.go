@@ -19,16 +19,12 @@ type execCall struct {
 	command   []string
 }
 
-type logCall struct {
-	kind      k8s.WorkloadKind
-	namespace string
-	name      string
-	options   k8s.LogOptions
+type listResourceCall struct {
+	query k8s.ListQuery
 }
 
-type describeCall struct {
-	namespace string
-	target    k8s.PodTarget
+type getResourceCall struct {
+	ref k8s.ResourceRef
 }
 
 type restartCall struct {
@@ -52,35 +48,46 @@ type listCall struct {
 type fakeK8s struct {
 	mu sync.Mutex
 
-	items      []any
-	namespaces []any
+	apiResources []k8s.APIResource
 
-	namespaceCalls int
-	lastList       *listCall
-	restarts       []restartCall
-	scales         []scaleCall
-	execCalls      []execCall
-	logCalls       []logCall
-	describeCalls  []describeCall
+	apiResourceCalls int
+	listCalls        []listResourceCall
+	getCalls         []getResourceCall
+	restarts         []restartCall
+	scales           []scaleCall
+	execCalls        []execCall
 
-	scaleResponse    func() (int32, error)
-	execResponse     func() (*k8s.ExecOutcome, error)
-	logResponse      func() (*k8s.LogResult, error)
-	describeResponse func() (*k8s.PodDescription, error)
+	scaleResponse func() (int32, error)
+	execResponse  func() (*k8s.ExecOutcome, error)
+	listResponse  func() (*k8s.ListResult, error)
+	getResponse   func() (*k8s.ResourceResult, error)
 }
 
-func (f *fakeK8s) ListNamespaces(context.Context) ([]any, error) {
+func (f *fakeK8s) APIResources(context.Context) ([]k8s.APIResource, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.namespaceCalls++
-	return f.namespaces, nil
+	f.apiResourceCalls++
+	return f.apiResources, nil
 }
 
-func (f *fakeK8s) ListWorkloads(_ context.Context, kind k8s.WorkloadKind, namespace *string) ([]any, error) {
+func (f *fakeK8s) ListResources(_ context.Context, query k8s.ListQuery) (*k8s.ListResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.lastList = &listCall{kind: kind, namespace: namespace}
-	return f.items, nil
+	f.listCalls = append(f.listCalls, listResourceCall{query: query})
+	if f.listResponse != nil {
+		return f.listResponse()
+	}
+	return &k8s.ListResult{Resource: "pods", Namespaced: true}, nil
+}
+
+func (f *fakeK8s) GetResource(_ context.Context, ref k8s.ResourceRef) (*k8s.ResourceResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.getCalls = append(f.getCalls, getResourceCall{ref: ref})
+	if f.getResponse != nil {
+		return f.getResponse()
+	}
+	return &k8s.ResourceResult{Resource: "pods", Namespace: "default", Object: map[string]any{}}, nil
 }
 
 func (f *fakeK8s) RolloutRestart(_ context.Context, kind k8s.WorkloadKind, namespace, name string) (string, error) {
@@ -98,46 +105,6 @@ func (f *fakeK8s) ScaleWorkload(_ context.Context, kind k8s.WorkloadKind, namesp
 		return f.scaleResponse()
 	}
 	return replicas, nil
-}
-
-func (f *fakeK8s) WorkloadLogs(_ context.Context, kind k8s.WorkloadKind, namespace, name string, opts k8s.LogOptions) (*k8s.LogResult, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.logCalls = append(f.logCalls, logCall{kind: kind, namespace: namespace, name: name, options: opts})
-	if f.logResponse != nil {
-		return f.logResponse()
-	}
-	return &k8s.LogResult{Pod: name + "-pod-0", Container: opts.Container, Logs: ""}, nil
-}
-
-func (f *fakeK8s) DescribePod(_ context.Context, namespace string, target k8s.PodTarget) (*k8s.PodDescription, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.describeCalls = append(f.describeCalls, describeCall{namespace: namespace, target: target})
-	if f.describeResponse != nil {
-		return f.describeResponse()
-	}
-	var inferred string
-	switch target.Mode {
-	case k8s.TargetName:
-		inferred = target.Name
-	case k8s.TargetSelector:
-		inferred = "pod-for-" + target.Selector
-	case k8s.TargetWorkload:
-		inferred = target.Kind.String() + "-" + target.WorkloadName + "-0"
-	}
-	return &k8s.PodDescription{
-		Name:            inferred,
-		Namespace:       namespace,
-		Labels:          map[string]string{},
-		Annotations:     map[string]string{},
-		NodeSelector:    map[string]string{},
-		OwnerReferences: []any{},
-		Conditions:      []k8s.PodConditionInfo{},
-		InitContainers:  []k8s.ContainerInfo{},
-		Containers:      []k8s.ContainerInfo{},
-		Events:          []k8s.PodEventInfo{},
-	}, nil
 }
 
 func (f *fakeK8s) ExecInPod(_ context.Context, namespace, labelSelector string, container *string, command []string) (*k8s.ExecOutcome, error) {
