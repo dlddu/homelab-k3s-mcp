@@ -1,0 +1,140 @@
+# resource_* 도구군 전용 픽스처. `docs/test-resource-generic.md` 의 「픽스처」 절이 이 파일을
+# 계획으로 적어 두었고, 시나리오가 전용 e2e 로 착지할 때마다 **그 시나리오가 요구하는 대상만**
+# 여기 더한다. 지금 담긴 것은 시나리오 1(임의 종류를 좌표로 조회한다)이 요구하는 것 —
+# 도구가 좌표로 물어볼 종류들의 실물과, 그 종류마다 **셀렉터로 잘라 낼 수 있는 대조군**이다.
+#
+# 종류마다 객체를 둘씩 두는 이유: 시나리오의 기대 결과가 「셀렉터가 결과 수를 **실제로**
+# 줄임」이다. 객체가 하나뿐이면 셀렉터를 붙여도 1 → 1 이라 줄었다는 것이 관측되지 않고,
+# 셀렉터를 통째로 무시하는 구현도 그대로 통과한다. `-selected` 쪽에만 좁히는 레이블을 단다.
+#
+# CRD 인스턴스는 여기 두지 않고 `resource-generic-samples.yaml` 에 있다 — `kubectl apply` 는
+# 파일을 읽을 때 디스커버리로 종류를 해석하므로, 같은 파일에 CRD 와 그 CR 을 넣으면 아직
+# 서지 않은 종류를 가리켜 파일 전체가 거부된다.
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: resourcegenericsamples.homelab-k3s-mcp.test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  group: homelab-k3s-mcp.test
+  scope: Namespaced
+  names:
+    kind: ResourceGenericSample
+    listKind: ResourceGenericSampleList
+    plural: resourcegenericsamples
+    singular: resourcegenericsample
+  versions:
+    - name: v1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              properties:
+                note:
+                  type: string
+      # 프린터 컬럼을 하나 준다. 이 종류의 목록도 apiserver 의 Table 로 오는지를 보는 것이
+      # 시나리오의 「일곱 종류 모두 목록 반환」이고, 기본 컬럼(NAME/AGE)만 있으면 CRD 가
+      # 자기 컬럼을 실어 보낼 수 있는지가 이 경로에서 관측되지 않는다.
+      additionalPrinterColumns:
+        - name: Note
+          type: string
+          jsonPath: .spec.note
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resource-generic-selected
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: resource-generic-selected
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  # 셀렉터도 엔드포인트도 두지 않는다. 이 Service 는 트래픽을 받으려고 있는 것이 아니라
+  # `v1/Service` 좌표로 조회될 대상으로 있는 것이다.
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: resource-generic-other
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-selected
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: resource-generic-selected
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+data:
+  note: selected
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-other
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+data:
+  note: other
+---
+# kind 클러스터에는 인그레스 컨트롤러가 없다. 그래도 되는 이유는 이 시나리오가 재는 것이
+# 「이 종류를 좌표로 목록 조회할 수 있는가」이지 라우팅이 아니기 때문이다 — 백엔드가
+# 실제로 서비스되는지는 apiserver 가 묻지 않는다.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: resource-generic-selected
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: resource-generic-selected
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  rules:
+    - host: selected.resource-generic.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: resource-generic-selected
+                port:
+                  number: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: resource-generic-other
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  rules:
+    - host: other.resource-generic.test
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: resource-generic-other
+                port:
+                  number: 80
