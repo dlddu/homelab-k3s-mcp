@@ -501,13 +501,32 @@ func (s *KubeService) podLogs(ctx context.Context, res resolved, namespace strin
 
 	raw, err := s.clientset.CoreV1().Pods(namespace).GetLogs(ref.Name, opts).DoRaw(ctx)
 	if err != nil {
-		return nil, s.apiCallError(err, "get", "pods/log")
+		return nil, s.podLogsError(err, raw)
 	}
 	return &ResourceResult{
 		Resource:  "pods/log",
 		Namespace: namespace,
 		Text:      string(raw),
 	}, nil
+}
+
+// podLogsError answers with the apiserver's own refusal rather than the generic
+// one client-go puts in its place. DoRaw hands back the response body alongside
+// the error but only reads that body as a message when the response is text,
+// and the apiserver answers pods/log with a JSON Status — so a 400 surfaces as
+// "the server rejected our request for an unknown reason" and the sentence AC5
+// asks for ("a container name must be specified for pod x, choose one of: [a
+// b]") is dropped while sitting in the bytes this already has. Forbidden is
+// left to apiCallError: which grant is missing is a fact about this server's
+// own RBAC, and the apiserver's wording does not carry it.
+func (s *KubeService) podLogsError(err error, body []byte) error {
+	if !apierrors.IsForbidden(err) {
+		var status metav1.Status
+		if json.Unmarshal(body, &status) == nil && status.Kind == "Status" && status.Message != "" {
+			return APIError(status.Message)
+		}
+	}
+	return s.apiCallError(err, "get", "pods/log")
 }
 
 // objectNamespace applies the scope rules that addressing a single object by

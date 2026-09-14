@@ -104,8 +104,12 @@
   없어도 동작). `container` 누락이 거부되고 후보 이름이 제시됨. `subresource=scale`이
   현재 레플리카를 반환. 모든 호출이 `get` verb만 행사하므로 승인 요청이 생기지 않음
 - **검증 AC**: AC5
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestGetLogTailBounds`,
-  `TestGetLogPreviousInstance`, `TestSubresourceGetIsUngated`.
+- **자동화**: (미작성) — `container` 누락 축만 Go 단위로 서 있다:
+  `internal/k8s/resource_test.go::TestPodLogsKeepsTheApiserversContainerCandidates`와
+  그 대조군 `TestPodLogsForbiddenStillReportsTheMissingGrant`·
+  `TestPodLogsFallsBackWhenTheBodyIsNotAStatus`. 나머지는 계획: Go 단위
+  `resource_test.go::TestGetLogTailBounds`, `TestGetLogPreviousInstance`,
+  `TestSubresourceGetIsUngated`.
   통합 `resource_generic_ac5.py` (폐기되는 `workload_logs_ac{1,2,3,4}.py`의 단언을 승계한다)
 
 ### 시나리오 6: 변경 스트림 관측

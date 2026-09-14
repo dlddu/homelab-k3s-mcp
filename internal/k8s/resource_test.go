@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
@@ -417,5 +418,103 @@ func TestScaleObjectOmitsAnEmptyNamespace(t *testing.T) {
 	metadata := scaleObject("", "node-pool", 1)["metadata"].(map[string]any)
 	if _, ok := metadata["namespace"]; ok {
 		t.Errorf("metadata = %v, want no namespace key at all", metadata)
+	}
+}
+
+// podLogServer answers pods/log the way the apiserver does. The JSON content
+// type is load-bearing rather than incidental — it is what sends client-go down
+// the branch podLogsError exists for — so a tidying pass must not drop it.
+func podLogServer(t *testing.T, code int, status string) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasSuffix(r.URL.Path, "/log") {
+			t.Errorf("request path = %q, want the log subresource", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		_, _ = io.WriteString(w, status)
+	}))
+}
+
+// logServiceAgainst is serviceAgainst for the one verb that goes through the
+// typed clientset rather than the dynamic client.
+func logServiceAgainst(t *testing.T, host string) *KubeService {
+	t.Helper()
+	mapper := meta.NewDefaultRESTMapper([]schema.GroupVersion{{Version: "v1"}})
+	mapper.Add(schema.GroupVersionKind{Version: "v1", Kind: "Pod"}, meta.RESTScopeNamespace)
+	clientset, err := kubernetes.NewForConfig(&rest.Config{Host: host})
+	if err != nil {
+		t.Fatalf("NewForConfig: %v", err)
+	}
+	service := &KubeService{clientset: clientset, config: &rest.Config{Host: host}}
+	service.mappers.mapper = mapper
+	return service
+}
+
+func podLogRef(namespace string) ResourceRef {
+	return ResourceRef{APIVersion: "v1", Kind: "Pod", Namespace: &namespace, Name: "api-0", Subresource: "log"}
+}
+
+// AC5: the refusal has to name the containers to choose between. Asserting only
+// that the call failed would hold for the message this replaces, which failed
+// without telling the caller anything they could act on.
+func TestPodLogsKeepsTheApiserversContainerCandidates(t *testing.T) {
+	const status = `{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure",` +
+		`"message":"a container name must be specified for pod api-0, choose one of: [app sidecar]",` +
+		`"reason":"BadRequest","code":400}`
+	server := podLogServer(t, http.StatusBadRequest, status)
+	defer server.Close()
+
+	_, err := logServiceAgainst(t, server.URL).GetResource(context.Background(), podLogRef("ops"))
+	if err == nil {
+		t.Fatal("GetResource = nil error, want the ambiguous container refused")
+	}
+	msg := err.Error()
+	for _, want := range []string{"container name must be specified", "app", "sidecar"} {
+		if !strings.Contains(msg, want) {
+			t.Errorf("message %q does not carry %q", msg, want)
+		}
+	}
+	if strings.Contains(msg, "unknown reason") {
+		t.Errorf("message %q is still client-go's placeholder", msg)
+	}
+}
+
+// The control half. A version that answered every failure out of the body would
+// pass the case above and quietly replace this server's own grant statement
+// with the apiserver's wording, which does not say which grant is missing.
+func TestPodLogsForbiddenStillReportsTheMissingGrant(t *testing.T) {
+	const status = `{"kind":"Status","apiVersion":"v1","metadata":{},"status":"Failure",` +
+		`"message":"pods \"api-0\" is forbidden: User \"x\" cannot get resource \"pods/log\"",` +
+		`"reason":"Forbidden","code":403}`
+	server := podLogServer(t, http.StatusForbidden, status)
+	defer server.Close()
+
+	_, err := logServiceAgainst(t, server.URL).GetResource(context.Background(), podLogRef("ops"))
+	if err == nil {
+		t.Fatal("GetResource = nil error, want the forbidden read refused")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "no (get, pods/log) grant") {
+		t.Errorf("message %q lost this server's own grant statement", msg)
+	}
+	if !strings.Contains(msg, "retrying will not change the answer") {
+		t.Errorf("message %q does not say the call is not worth retrying", msg)
+	}
+}
+
+// A body that is not a Status — a proxy's HTML error page, a truncated
+// response — must not become the message. Falling through to apiCallError is
+// what keeps a garbled body from being reported as the apiserver's reasoning.
+func TestPodLogsFallsBackWhenTheBodyIsNotAStatus(t *testing.T) {
+	server := podLogServer(t, http.StatusBadGateway, "<html>502 Bad Gateway</html>")
+	defer server.Close()
+
+	_, err := logServiceAgainst(t, server.URL).GetResource(context.Background(), podLogRef("ops"))
+	if err == nil {
+		t.Fatal("GetResource = nil error, want the gateway failure refused")
+	}
+	if strings.Contains(err.Error(), "<html>") {
+		t.Errorf("message %q reported a non-Status body as the apiserver's reasoning", err.Error())
 	}
 }
