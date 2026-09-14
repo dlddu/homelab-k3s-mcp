@@ -1,7 +1,5 @@
-# `resource-generic-fixture.yaml` 의 CRD 인스턴스. 별도 파일인 이유는 그 파일 머리말에 있다
-# (`kubectl apply` 는 파일을 읽는 시점에 종류를 해석하므로 CRD 와 그 CR 이 한 파일에 있으면
-# 아직 서지 않은 종류를 가리켜 파일 전체가 거부된다). ci.yml 이 CRD 적용 → `established`
-# 대기 → 이 파일 적용 순으로 세운다.
+# `resource-generic-fixture.yaml` 의 CRD 인스턴스 — 갈라 둔 이유는
+# `docs/test-resource-generic.md` 「픽스처」 절에 있다. ci.yml 이 CRD → `established` → 이 파일 순.
 apiVersion: homelab-k3s-mcp.test/v1
 kind: ResourceGenericSample
 metadata:

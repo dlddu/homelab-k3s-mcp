@@ -3,20 +3,17 @@
 검증 시나리오: test-resource-generic.md#시나리오 1
 실행 대상: primary
 
-종류마다 **셀렉터를 붙인 목록과 붙이지 않은 목록을 같은 호출로 둘 다 떠서 비교**한다.
-셀렉터 붙인 쪽만 보면 「줄었다」가 성립하지 않기 때문이다 — 셀렉터를 통째로 무시하는 구현도
-그 단독 관측은 통과한다. 그래서 단정은 개수의 **엄격한 감소**이고, 픽스처가 대조군을 갖는
-네 종류(Service·ConfigMap·Ingress·CRD)에서는 **어느 객체가 남고 어느 객체가 빠졌는지**까지
-이름으로 본다.
+셀렉터 붙인 쪽만 보면 「줄었다」가 성립하지 않는다 — 셀렉터를 통째로 무시하는 구현도 그
+단독 관측은 통과한다. 그래서 두 목록을 나란히 떠서 단정은 개수의 **엄격한 감소**로 걸고,
+픽스처가 대조군을 갖는 네 종류(Service·ConfigMap·Ingress·CRD)에서는 **어느 객체가 남고
+어느 객체가 빠졌는지**까지 이름으로 본다.
 
-`v1/Event` 만 레이블이 아니라 `fieldSelector` 로 좁힌다. 이벤트에는 대상별 레이블이 없고,
-시나리오가 이벤트에 요구하는 것도 「대상별로 좁혀짐」이라 축이 다르다. 여기서 폐기된
-`pod_describe` 의 이벤트 절이 이 경로로 대체됐다는 문면이 실제로 성립하는지가 갈린다 —
-그래서 개수만 보지 않고 **남은 행이 전부 그 파드를 가리키는지**를 Object 칸으로 확인한다.
+`v1/Event` 만 레이블이 아니라 `fieldSelector` 로 좁힌다 — 이벤트에는 대상별 레이블이 없어
+좁히는 축 자체가 다르다. 그래서 개수만 보지 않고 **남은 행이 전부 그 파드를 가리키는지**를
+Object 칸으로 확인한다.
 
-클러스터 스코프 + `namespace` 는 「무시되지 않고 거부」가 요점이라 **거부 사실만으로는
-부족하다** — 같은 종류를 `namespace` 없이 부르면 성공한다는 것을 나란히 보여야, 거부가
-스코프 때문이지 그 종류를 못 읽어서가 아님이 성립한다.
+**거부 사실만으로는 부족하다** — 같은 종류를 `namespace` 없이 부르면 성공한다는 것을 나란히
+보여야, 거부가 스코프 때문이지 그 종류를 못 읽어서가 아님이 성립한다.
 
 픽스처 CRD 는 서버가 뜬 **뒤에** 설치될 수 있다. 그래도 재기동이 필요 없는 것은 종류 해석이
 미지의 종류에 대해 디스커버리를 정확히 한 번 다시 타기 때문이다(`internal/k8s/resource.go`
@@ -48,8 +45,6 @@ CRD_KIND = "ResourceGenericSample"
 #: 픽스처 전체에 걸린 레이블. 클러스터 스코프 종류(Namespace)를 좁히는 데 쓴다.
 TESTS_SELECTOR = "app.kubernetes.io/part-of=homelab-k3s-mcp-tests"
 
-#: 시나리오가 「일곱 종류」로 세는 좌표와, 그 종류를 좁히는 셀렉터.
-#: `v1/Event` 만 셀렉터가 None 이다 — 좁히는 축이 fieldSelector 라 별도 케이스로 간다.
 KINDS = (
     ("v1", "Namespace", None, TESTS_SELECTOR),
     ("v1", "Service", NAMESPACE, SELECTOR),
@@ -60,10 +55,8 @@ KINDS = (
     (CRD_API_VERSION, CRD_KIND, NAMESPACE, SELECTOR),
 )
 
-#: 픽스처가 대조군(`-other`)을 갖는 종류 — 이름 단위 단정까지 가능한 집합.
 PAIRED_KINDS = ("Service", "ConfigMap", "Ingress", CRD_KIND)
 
-#: 세는 목록이 잘리면 개수 비교가 무의미해진다. 도구 상한이 500 이므로 그 값으로 뜬다.
 PAGE = 500
 
 
@@ -208,7 +201,6 @@ async def test_resource_generic_ac1_cluster_scoped_kind_rejects_namespace(
     message = refused.content[0].text
     assert "cluster-scoped" in message, message
 
-    # 거부가 스코프 때문임을 보이는 대조군: 같은 종류가 namespace 없이는 읽힌다.
     accepted = await _list(session, "v1", "Namespace")
     assert NAMESPACE in _names(accepted), _names(accepted)
     print(f"cluster-scope rejection ok: {message.strip()[:120]}")
