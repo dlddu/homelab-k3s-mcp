@@ -7,8 +7,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 )
 
-// restartPatch is what AC9 calls a rolling restart: a strategic patch that
-// stamps the pod template, and nothing else.
+// restartPatch is AC9's rolling restart.
 const restartPatch = `{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"2026-09-14T12:00:00Z"}}}}}`
 
 func approvingHandler(t *testing.T) (*Handler, *countingK8s) {
@@ -16,9 +15,8 @@ func approvingHandler(t *testing.T) (*Handler, *countingK8s) {
 	return testHandler(t, &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}, toolRegistry)
 }
 
-// AC9: all four patchTypes work, and the name the caller uses is the one that
-// reaches the cluster layer. The refusals are in the same test because a tool
-// that accepts a fifth name is a tool whose enum is decoration.
+// AC9. The refusals share this test because a tool that accepts a fifth name
+// is a tool whose enum is decoration.
 func TestPatchTypes(t *testing.T) {
 	for _, patchType := range []string{"merge", "strategic", "json", "apply"} {
 		t.Run(patchType, func(t *testing.T) {
@@ -78,12 +76,9 @@ func TestPatchTypes(t *testing.T) {
 	}
 }
 
-// AC9: the restart is the caller's patch, not the server's. Whether the pods
-// are actually replaced is an apiserver behaviour that only the integration
-// suite can see; what this level can assert is the half that would make that
-// behaviour impossible — that the server neither rewrites the body nor adds a
-// field of its own, so the object receives exactly the annotation stamp and
-// nothing beside it.
+// AC9. The integration suite owns the half this level cannot see; what is left
+// here is its complement — the assertion that would have to fail first for the
+// replaced pods to be carrying anything the caller did not send.
 func TestRestartPatchTouchesOnlyAnnotation(t *testing.T) {
 	h, fake := approvingHandler(t)
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api",` +
@@ -104,9 +99,7 @@ func TestRestartPatchTouchesOnlyAnnotation(t *testing.T) {
 	}
 }
 
-// AC1/AC9: the gate judges by verb, so a restart is approved like any other
-// patch. This is the assertion that fails if someone ever decides a restart is
-// "harmless enough" to wave through — the exception itself is the bypass.
+// AC1/AC9.
 func TestRestartPatchIsGatedLikeAnyPatch(t *testing.T) {
 	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api",` +
@@ -128,10 +121,7 @@ const (
 	secretTokenEncoded = "c3VwZXItc2VjcmV0LWJ5dGVz" // "super-secret-bytes"
 )
 
-// AC3/AC10/AC16: a write to a sensitive kind is approved on key names and
-// sizes, never on values. The approval screen and the push notification are
-// where the operator reads this string, so a value here has leaked whether or
-// not the answer is "reject".
+// AC3/AC10/AC16.
 func TestSecretWriteContextRedactsValues(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
 	h, _ := testHandler(t, gate, toolRegistry)
@@ -151,9 +141,6 @@ func TestSecretWriteContextRedactsValues(t *testing.T) {
 			t.Errorf("approval context carries the credential value %q:\n%s", leaked, ctx)
 		}
 	}
-	// The operator still has to be able to judge it, so what replaces the value
-	// has to name the key and its size. "super-secret-bytes" is 18 bytes once
-	// decoded; reporting the base64 length would answer a different question.
 	for _, want := range []string{"token", "ca.crt", "(masked, 21B)", "(masked, 18B)", "patch on secrets"} {
 		if !strings.Contains(ctx, want) {
 			t.Errorf("approval context is missing %q:\n%s", want, ctx)
@@ -161,10 +148,8 @@ func TestSecretWriteContextRedactsValues(t *testing.T) {
 	}
 }
 
-// The control group for the case above. Masking everything would pass a
-// leak test and fail the operator: AC3 puts the patch body in verbatim, and
-// AC16 rests the exception on whether the content is a credential rather than
-// on what the call does.
+// The control group for the case above: a masker that hid everything would
+// pass a leak test and fail the operator.
 func TestOrdinaryWriteKeepsItsBodyInTheContext(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
 	h, _ := testHandler(t, gate, toolRegistry)
@@ -196,8 +181,7 @@ func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
 	if strings.Contains(ctx, secretTokenEncoded) {
 		t.Errorf("approval context carries a json-patch credential value:\n%s", ctx)
 	}
-	// The path stays — it is what tells the operator which key is being
-	// rewritten — and the operation on an ordinary field is untouched.
+	// The path stays — it is what tells the operator which key is being rewritten.
 	for _, want := range []string{"/data/token", "(masked, 18B)", "/metadata/labels/rotated", "true"} {
 		if !strings.Contains(ctx, want) {
 			t.Errorf("approval context is missing %q:\n%s", want, ctx)
