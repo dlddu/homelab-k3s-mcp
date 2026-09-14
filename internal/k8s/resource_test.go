@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -221,5 +222,89 @@ func TestListResourcesRefusesABodyThatIsNotATable(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "NamespaceList") {
 		t.Errorf("error %q does not name what came back instead", err)
+	}
+}
+
+func servedKinds() []APIResource {
+	return []APIResource{
+		{Group: "apps", Version: "v1", Kind: "Deployment"},
+		{Group: "apps", Version: "v1", Kind: "DaemonSet"},
+		{Group: "apps", Version: "v1", Kind: "StatefulSet"},
+		{Group: "", Version: "v1", Kind: "Pod"},
+		{Group: "", Version: "v1", Kind: "ConfigMap"},
+		{Group: "policy", Version: "v1", Kind: "PodDisruptionBudget"},
+	}
+}
+
+// AC20: the refusal carries candidates. The middle-of-the-word typo is the case
+// the scenario names and the one containment alone never answered, so each row
+// here is a shape of wrongness rather than a repetition of the same one.
+func TestUnknownKindSuggestsCandidates(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		kind string
+	}{
+		{"letter dropped from the middle", "Deploymnt"},
+		{"cut short", "Deploymen"},
+		{"letter doubled", "Deploymentt"},
+		{"typo in the wrong case", "deploymnt"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := rankSimilarKinds(servedKinds(), tc.kind)
+			if len(got) == 0 || got[0] != "apps/v1/Deployment" {
+				t.Errorf("rankSimilarKinds(%q) = %v, want apps/v1/Deployment first", tc.kind, got)
+			}
+		})
+	}
+}
+
+// The negative half: a budget wide enough to reach every kind would make the
+// message noise, and the empty answer is what routes the caller to the
+// api_resources listing instead.
+func TestUnrelatedKindGetsNoCandidates(t *testing.T) {
+	for _, kind := range []string{"Fluxcapacitor", "Xyzzy", "Quux"} {
+		if got := rankSimilarKinds(servedKinds(), kind); len(got) != 0 {
+			t.Errorf("rankSimilarKinds(%q) = %v, want no candidates", kind, got)
+		}
+	}
+}
+
+// Ordering is what makes the cut safe: sorted by label alone, the longest
+// containment match would take a seat from a kind one letter away.
+func TestCandidatesAreNearestFirstAndBounded(t *testing.T) {
+	served := []APIResource{
+		{Group: "", Version: "v1", Kind: "Pod"},
+		{Group: "", Version: "v1", Kind: "PodTemplate"},
+		{Group: "policy", Version: "v1", Kind: "PodDisruptionBudget"},
+		{Group: "policy", Version: "v1beta1", Kind: "PodSecurityPolicy"},
+		{Group: "metrics.k8s.io", Version: "v1beta1", Kind: "PodMetrics"},
+		{Group: "scheduling.volcano.sh", Version: "v1beta1", Kind: "PodGroup"},
+		{Group: "chaos-mesh.org", Version: "v1alpha1", Kind: "PodChaos"},
+	}
+
+	got := rankSimilarKinds(served, "Pod")
+	if len(got) != 5 {
+		t.Fatalf("rankSimilarKinds(Pod) = %v, want the list cut at five", got)
+	}
+	for _, want := range []string{
+		"chaos-mesh.org/v1alpha1/PodChaos",
+		"scheduling.volcano.sh/v1beta1/PodGroup",
+	} {
+		if !slices.Contains(got, want) {
+			t.Errorf("rankSimilarKinds(Pod) = %v, dropped the near candidate %q", got, want)
+		}
+	}
+	if slices.Contains(got, "policy/v1/PodDisruptionBudget") {
+		t.Errorf("rankSimilarKinds(Pod) = %v, kept the farthest match over a nearer one", got)
+	}
+}
+
+func TestSimilarKindsDoNotRepeatALabel(t *testing.T) {
+	served := []APIResource{
+		{Group: "apps", Version: "v1", Kind: "Deployment", Name: "deployments"},
+		{Group: "apps", Version: "v1", Kind: "Deployment", Name: "deployments/scale"},
+	}
+	if got := rankSimilarKinds(served, "Deploymnt"); len(got) != 1 {
+		t.Errorf("rankSimilarKinds(Deploymnt) = %v, want one label per kind", got)
 	}
 }

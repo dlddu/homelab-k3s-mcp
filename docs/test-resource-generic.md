@@ -260,5 +260,5 @@
   `api_resources`에 나타나고 곧바로 조회됨(재기동 불필요). `api_resources`는 리소스 권한을
   행사하지 않으므로 RBAC 대조 대상이 아님
 - **검증 AC**: AC20
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestUnknownKindSuggestsCandidates`.
-  통합 `resource_generic_ac20.py`
+- **자동화**: Go 단위 `resource_test.go::TestUnknownKindSuggestsCandidates`(후보 산출).
+  통합 e2e 는 (미작성) — 계획: `resource_generic_ac20.py`

@@ -196,12 +196,36 @@ func (s *KubeService) similarKinds(ctx context.Context, kind string) []string {
 	if err != nil {
 		return nil
 	}
+	return rankSimilarKinds(all, kind)
+}
+
+// rankSimilarKinds is the candidate half of AC20's refusal, split from discovery
+// so the ranking can be exercised without a cluster.
+//
+// Containment answers prefixes and suffixes only. A name whose letters go
+// missing in the middle — `Deploymnt`, the input test-resource-generic.md
+// scenario 20 names — neither contains nor is contained by `deployment`, so the
+// refusal used to fall through to "call api_resources" on exactly the case AC20
+// exists for. Edit distance covers that class. Containment stays beside it
+// because a deliberate fragment like `Deploy` is a partial name rather than a
+// typo, and sits too far from any kind to survive the budget.
+func rankSimilarKinds(all []APIResource, kind string) []string {
 	want := strings.ToLower(kind)
+	budget := kindEditBudget(want)
+	type candidate struct {
+		label    string
+		distance int
+	}
 	seen := map[string]bool{}
-	var out []string
+	var found []candidate
 	for _, r := range all {
 		lower := strings.ToLower(r.Kind)
-		if lower == want || !strings.Contains(lower, want) && !strings.Contains(want, lower) {
+		if lower == want {
+			continue
+		}
+		distance := editDistance(lower, want)
+		contained := strings.Contains(lower, want) || strings.Contains(want, lower)
+		if !contained && distance > budget {
 			continue
 		}
 		label := r.Kind
@@ -212,13 +236,59 @@ func (s *KubeService) similarKinds(ctx context.Context, kind string) []string {
 			continue
 		}
 		seen[label] = true
-		out = append(out, label)
+		found = append(found, candidate{label: label, distance: distance})
 	}
-	sort.Strings(out)
+	// Nearest first, so that cutting the list at five cannot drop the kind the
+	// caller meant in favour of an alphabetically earlier containment match.
+	sort.Slice(found, func(i, j int) bool {
+		if found[i].distance != found[j].distance {
+			return found[i].distance < found[j].distance
+		}
+		return found[i].label < found[j].label
+	})
+	var out []string
+	for _, c := range found {
+		out = append(out, c.label)
+	}
 	if len(out) > 5 {
 		out = out[:5]
 	}
 	return out
+}
+
+// kindEditBudget scales with the name's length. A fixed budget either misses a
+// letter dropped from `PodDisruptionBudget` or answers `Pod` with everything the
+// cluster serves within two edits of three letters.
+func kindEditBudget(want string) int {
+	switch n := len([]rune(want)); {
+	case n <= 4:
+		return 1
+	case n <= 9:
+		return 2
+	default:
+		return 3
+	}
+}
+
+// editDistance is Levenshtein over runes, two rows at a time.
+func editDistance(a, b string) int {
+	ar, br := []rune(a), []rune(b)
+	prev, curr := make([]int, len(br)+1), make([]int, len(br)+1)
+	for j := range prev {
+		prev[j] = j
+	}
+	for i := 1; i <= len(ar); i++ {
+		curr[0] = i
+		for j := 1; j <= len(br); j++ {
+			cost := 1
+			if ar[i-1] == br[j-1] {
+				cost = 0
+			}
+			curr[j] = min(prev[j]+1, min(curr[j-1]+1, prev[j-1]+cost))
+		}
+		prev, curr = curr, prev
+	}
+	return prev[len(br)]
 }
 
 func (s *KubeService) restClientFor(gvr schema.GroupVersionResource) (rest.Interface, error) {
