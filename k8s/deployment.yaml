@@ -79,6 +79,16 @@ spec:
             # the optional OPENSEARCH_* overrides for the opensearch_* tools.
             - secretRef:
                 name: homelab-k3s-mcp-opensearch
+            # GATEKEEPER_BASE_URL and GATEKEEPER_API_KEY for the approval gate,
+            # plus the optional GATEKEEPER_USER_ID (push notifications) and the
+            # timeout/poll overrides. Optional because an unconfigured gate
+            # already fails closed — it refuses gated calls instead of taking
+            # the whole endpoint down — so a missing secret degrades one
+            # boundary rather than crashlooping, and the flux-cd-apps side that
+            # creates it can land in either order.
+            - secretRef:
+                name: homelab-k3s-mcp-gatekeeper
+                optional: true
             # MCP_API_KEYS: comma-separated static bearer keys that let
             # non-interactive clients authenticate to /mcp without the OAuth
             # flow. Optional so OAuth-only (and MCP_AUTH_DISABLED) deployments
