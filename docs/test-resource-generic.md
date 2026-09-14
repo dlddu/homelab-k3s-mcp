@@ -77,10 +77,11 @@
 - **사전 조건**: ConfigMap 120개 픽스처
 - **실행 단계**: `limit` 미지정으로 조회 → `continue` 토큰으로 재조회 → `limit=1000`으로 조회
 - **기대 결과**: 1회차에 100건 + 절단 표시 + `continue` 토큰. 2회차에 나머지 20건.
-  `limit=1000`은 500으로 강제 하향
+  `limit=1000`은 클램프되지 않고 **거부**(시나리오 5의 `tailLines=5001`과 같은 처리)
 - **검증 AC**: AC3
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestListDefaultAndMaxLimit`.
-  통합 `resource_generic_ac3.py`
+- **자동화**: (미작성) — 상한 처리는 Go 단위
+  `internal/server/mcp_test.go::TestResourceListLimitDefaultsAndCeiling`이 이미 고정한다
+  (기본 100 · 초과 거부). 통합 `resource_generic_ac3.py`
 
 ### 시나리오 4: 단건 조회는 이름을 요구한다
 - **사전 조건**: `kubectl apply`로 만들어 `last-applied-configuration`과 `managedFields`가

@@ -64,7 +64,7 @@ const toolsListJSON = `{
             "type": "integer",
             "minimum": 1,
             "maximum": 500,
-            "description": "Page size. Default 100, maximum 500."
+            "description": "Page size. Defaults to 100; values above 500 are rejected, not clamped."
           },
           "continue": {
             "type": "string",
