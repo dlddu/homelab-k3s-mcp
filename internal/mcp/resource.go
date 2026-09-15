@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
@@ -184,6 +185,138 @@ func (h *Handler) resourceGet(ctx context.Context, raw json.RawMessage) (any, *r
 		"structuredContent": payload,
 		"isError":           false,
 	}, nil
+}
+
+func (h *Handler) resourceUpdate(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	coord, rerr := parseCoordinate(obj)
+	if rerr != nil {
+		return nil, rerr
+	}
+	name := optionalString(obj, "name")
+	if name == nil {
+		return nil, errf(-32602, "name is required; this tool replaces one object, not a selection")
+	}
+	subresource, replicas, rerr := parseUpdateTarget(obj)
+	if rerr != nil {
+		return nil, rerr
+	}
+
+	ref := k8s.UpdateRef{
+		APIVersion:  coord.apiVersion,
+		Kind:        coord.kind,
+		Namespace:   coord.namespace,
+		Name:        *name,
+		Subresource: subresource,
+	}
+	if subresource == k8s.ScaleSubresource {
+		n := replicas
+		ref.Replicas = &n
+	} else {
+		manifest, rerr := parseManifest(obj, coord, *name)
+		if rerr != nil {
+			return nil, rerr
+		}
+		ref.Manifest = manifest
+	}
+
+	result, err := h.k8s.UpdateResource(ctx, ref)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	payload := map[string]any{
+		"apiVersion":  coord.apiVersion,
+		"kind":        coord.kind,
+		"namespace":   coord.namespace,
+		"name":        *name,
+		"resource":    result.Resource,
+		"subresource": subresource,
+		"object":      result.Object,
+	}
+	return map[string]any{
+		"content":           []any{map[string]any{"type": "text", "text": prettyJSON(result.Object)}},
+		"structuredContent": payload,
+		"isError":           false,
+	}, nil
+}
+
+// parseUpdateTarget reads which of AC8's two shapes a call is — a whole-object
+// replacement, or a replica count on the scale subresource — and reports the
+// bounds the scale half carries over from workload_scale.
+//
+// One function rather than a copy on each side, because both sides run it: the
+// gate runs it before an approval request exists, and the handler runs it again
+// after. `docs/test-resource-generic.md` scenario 8 wants a negative or missing
+// replicas refused with **no approval request made at all**, and the handler is
+// downstream of authorize, so the handler alone cannot deliver that. A second
+// copy is how the refusal the operator never saw and the refusal they did stop
+// agreeing about what a valid call is.
+func parseUpdateTarget(obj map[string]any) (string, int64, *rpcErr) {
+	subresource := ""
+	if s := optionalString(obj, "subresource"); s != nil {
+		if *s != k8s.ScaleSubresource {
+			return "", 0, errf(-32602, "subresource must be %s; without it this tool replaces the whole object", k8s.ScaleSubresource)
+		}
+		subresource = *s
+	}
+	_, hasManifest := obj["manifest"]
+	rv, hasReplicas := obj["replicas"]
+
+	if subresource == "" {
+		if hasReplicas {
+			return "", 0, errf(-32602, "replicas applies to subresource=%s only", k8s.ScaleSubresource)
+		}
+		if !hasManifest {
+			return "", 0, errf(-32602, "manifest is required; to change a replica count pass subresource=%s with replicas", k8s.ScaleSubresource)
+		}
+		return "", 0, nil
+	}
+
+	if hasManifest {
+		return "", 0, errf(-32602, "manifest replaces the whole object and does not apply to subresource=%s", k8s.ScaleSubresource)
+	}
+	if !hasReplicas {
+		return "", 0, errf(-32602, "replicas is required for subresource=%s", k8s.ScaleSubresource)
+	}
+	n, ok := intValue(rv)
+	if !ok {
+		return "", 0, errf(-32602, "replicas must be an integer")
+	}
+	if n < 0 {
+		return "", 0, errf(-32602, "replicas must be >= 0")
+	}
+	if n > math.MaxInt32 {
+		return "", 0, errf(-32602, "replicas is too large")
+	}
+	return subresource, n, nil
+}
+
+// parseManifest reads the replacement object and refuses one that describes a
+// different object than the coordinate does. The apiserver refuses that
+// mismatch too, but its answer arrives after the approval has been spent
+// (prd-approval-gate AC7), and an approval spent on a call that was never going
+// to run is an approval the operator has to grant twice.
+func parseManifest(obj map[string]any, coord coordinate, name string) (map[string]any, *rpcErr) {
+	manifest, ok := obj["manifest"].(map[string]any)
+	if !ok || len(manifest) == 0 {
+		return nil, errf(-32602, "manifest must be a non-empty object")
+	}
+	if got, ok := manifest["apiVersion"].(string); ok && got != coord.apiVersion {
+		return nil, errf(-32602, "manifest apiVersion is %q but the coordinate says %q", got, coord.apiVersion)
+	}
+	if got, ok := manifest["kind"].(string); ok && got != coord.kind {
+		return nil, errf(-32602, "manifest kind is %q but the coordinate says %q", got, coord.kind)
+	}
+	if metadata, ok := manifest["metadata"].(map[string]any); ok {
+		if got, ok := metadata["name"].(string); ok && got != name {
+			return nil, errf(-32602, "manifest metadata.name is %q but name is %q", got, name)
+		}
+	}
+	return manifest, nil
 }
 
 func (h *Handler) resourcePatch(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {

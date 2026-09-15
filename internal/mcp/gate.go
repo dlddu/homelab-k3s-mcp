@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"sort"
@@ -92,6 +93,11 @@ var toolRegistry = map[string]toolEntry{
 	"resource_get": {
 		decl:   toolDeclaration{resolve: genericPairs("get")},
 		handle: (*Handler).resourceGet,
+	},
+
+	"resource_update": {
+		decl:   toolDeclaration{resolve: updatePairs()},
+		handle: (*Handler).resourceUpdate,
 	},
 
 	"resource_patch": {
@@ -208,6 +214,26 @@ func genericPairs(verb string) func(json.RawMessage) ([]gatekeeper.Pair, error) 
 			resource += "/" + sub
 		}
 		return []gatekeeper.Pair{{Verb: verb, Resource: resource}}, nil
+	}
+}
+
+// updatePairs is genericPairs("update") with AC8's own argument checks run
+// first. They cannot wait for the handler: authorize runs before it, so a call
+// the handler would reject has already cost an approval request by then, and
+// scenario 8 asks for a negative or missing replicas to be refused without one
+// ever being made. Pair resolution is the only thing that runs earlier, and a
+// resolve error is already a refusal (authorize turns it into -32602).
+func updatePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
+	generic := genericPairs("update")
+	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+		obj, ok := decodeObject(rawArgs)
+		if !ok {
+			return nil, fmt.Errorf("arguments must be an object")
+		}
+		if _, _, rerr := parseUpdateTarget(obj); rerr != nil {
+			return nil, errors.New(rerr.message)
+		}
+		return generic(rawArgs)
 	}
 }
 

@@ -12,6 +12,8 @@ type Service interface {
 
 	GetResource(ctx context.Context, ref ResourceRef) (*ResourceResult, error)
 
+	UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error)
+
 	PatchResource(ctx context.Context, ref PatchRef) (*ResourceResult, error)
 
 	// ExecInPod runs command inside the first Running pod matching labelSelector
@@ -44,6 +46,10 @@ func (u *Unavailable) ListResources(context.Context, ListQuery) (*ListResult, er
 }
 
 func (u *Unavailable) GetResource(context.Context, ResourceRef) (*ResourceResult, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) UpdateResource(context.Context, UpdateRef) (*ResourceResult, error) {
 	return nil, unavailableErr(u.reason)
 }
 

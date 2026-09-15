@@ -49,6 +49,7 @@ EXPECTED_TOOLS = {
     "api_resources",
     "resource_list",
     "resource_get",
+    "resource_update",
     "resource_patch",
     "workload_scale",
     "dear_baby_reset_user",

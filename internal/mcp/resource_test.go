@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -186,5 +187,126 @@ func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
 		if !strings.Contains(ctx, want) {
 			t.Errorf("approval context is missing %q:\n%s", want, ctx)
 		}
+	}
+}
+
+// AC8. The accepted values and the refused ones share a test because the tool's
+// bounds are one statement: 0 is a replica count and -1 is not.
+//
+// The refusals assert the gate was never called, which is the half scenario 8
+// spells out — "승인 요청조차 만들지 않음". It holds only because these checks run
+// during pair resolution rather than in the handler, and the handler is
+// downstream of authorize. The set that gets this treatment is exactly the set
+// scenario 8 names; a missing `name` is still refused in the handler, the way
+// resource_patch refuses it.
+func TestUpdateScaleBounds(t *testing.T) {
+	for _, replicas := range []int64{3, 0, 1} {
+		t.Run(fmt.Sprintf("replicas=%d", replicas), func(t *testing.T) {
+			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			h, fake := testHandler(t, gate, toolRegistry)
+			args := fmt.Sprintf(
+				`{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api",`+
+					`"subresource":"scale","replicas":%d}`, replicas)
+
+			if _, rerr := callTool(t, h, "resource_update", args); rerr != nil {
+				t.Fatalf("tools/call(replicas=%d) = %v, want it to run", replicas, rerr)
+			}
+			ref := fake.update()
+			if ref.Replicas == nil || *ref.Replicas != replicas {
+				t.Errorf("replicas reaching the cluster layer = %v, want %d", ref.Replicas, replicas)
+			}
+			if ref.Subresource != "scale" {
+				t.Errorf("subresource = %q, want scale — a replica change written to the object itself is a different verb's business", ref.Subresource)
+			}
+			if ref.Manifest != nil {
+				t.Errorf("manifest = %v, want nil; the scale body is this server's, not the caller's", ref.Manifest)
+			}
+			if len(gate.calls) != 1 {
+				t.Errorf("gate calls = %d, want 1 — every replica change is approved", len(gate.calls))
+			}
+			if got := gate.calls[0].Pair.Resource; got != "deployments/scale" {
+				t.Errorf("approved pair resource = %q, want deployments/scale", got)
+			}
+		})
+	}
+
+	refusals := []struct {
+		name string
+		args string
+		want string
+	}{
+		{"negative replicas", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale","replicas":-1}`, "replicas must be >= 0"},
+		{"missing replicas", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale"}`, "replicas is required"},
+		{"non-integer replicas", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale","replicas":"two"}`, "replicas must be an integer"},
+		{"replicas without the subresource", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","replicas":3}`, "subresource=scale only"},
+		{"manifest with the subresource", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale","manifest":{"spec":{}}}`, "does not apply to subresource=scale"},
+		{"neither manifest nor replicas", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api"}`, "manifest is required"},
+		{"a subresource this tool does not write", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"status","replicas":1}`, "subresource must be scale"},
+	}
+	for _, tc := range refusals {
+		t.Run(tc.name, func(t *testing.T) {
+			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			h, fake := testHandler(t, gate, toolRegistry)
+
+			_, rerr := callTool(t, h, "resource_update", tc.args)
+			if rerr == nil {
+				t.Fatal("tools/call = nil error, want a refusal")
+			}
+			if !strings.Contains(rerr.message, tc.want) {
+				t.Errorf("error = %q, want it to mention %q", rerr.message, tc.want)
+			}
+			if len(gate.calls) != 0 {
+				t.Errorf("gate calls = %d, want 0 — an argument that can never be executed must not be put in front of a human", len(gate.calls))
+			}
+			if fake.count() != 0 {
+				t.Errorf("kubernetes calls = %d, want 0", fake.count())
+			}
+		})
+	}
+}
+
+// AC8. The whole-object half: what the caller wrote is what gets PUT, and a
+// manifest describing some other object is refused here rather than by the
+// apiserver — whose refusal would arrive after the approval was spent (AC7).
+func TestUpdateReplacesWithTheCallersManifest(t *testing.T) {
+	h, fake := approvingHandler(t)
+	args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app",` +
+		`"manifest":{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"app"},"data":{"LOG_LEVEL":"debug"}}}`
+
+	if _, rerr := callTool(t, h, "resource_update", args); rerr != nil {
+		t.Fatalf("tools/call = %v, want the replacement to run", rerr)
+	}
+	ref := fake.update()
+	if ref.Subresource != "" {
+		t.Errorf("subresource = %q, want empty for a whole-object replacement", ref.Subresource)
+	}
+	data, _ := ref.Manifest["data"].(map[string]any)
+	if data["LOG_LEVEL"] != "debug" {
+		t.Errorf("manifest = %v, want the caller's body carried through", ref.Manifest)
+	}
+
+	mismatches := []struct {
+		name string
+		args string
+		want string
+	}{
+		{"name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","manifest":{"metadata":{"name":"other"}}}`, "metadata.name"},
+		{"kind", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","manifest":{"kind":"Secret","metadata":{"name":"app"}}}`, "manifest kind"},
+		{"empty manifest", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","manifest":{}}`, "non-empty object"},
+	}
+	for _, tc := range mismatches {
+		t.Run(tc.name, func(t *testing.T) {
+			h, fake := approvingHandler(t)
+			_, rerr := callTool(t, h, "resource_update", tc.args)
+			if rerr == nil {
+				t.Fatal("tools/call = nil error, want a refusal")
+			}
+			if !strings.Contains(rerr.message, tc.want) {
+				t.Errorf("error = %q, want it to mention %q", rerr.message, tc.want)
+			}
+			if fake.count() != 0 {
+				t.Errorf("kubernetes calls = %d, want 0", fake.count())
+			}
+		})
 	}
 }
