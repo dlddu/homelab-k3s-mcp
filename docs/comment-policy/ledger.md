@@ -61,7 +61,7 @@
 | 2026-09-15 | `tests/integration/_gatekeeper.py` · `tests/integration/approval_gate_ac2.py` · `tests/integration/approval_gate_ac4.py` · `tests/integration/resource_generic_ac8.py` · `tests/integration/resource_generic_ac10.py` | 15 | `8d5c02cc7a82` | **신규 범위 첫 판정**(`rct_20260915-0008`). 전부 `#:` 상수 doc 이고 **이름과 값으로 복원되지 않는 것만** 담는다 — `E2E_USER` 는 시드 스텝과 같아야 한다는 계약의 앵커, `CREATE_BODY_FIELDS` 는 시나리오 2 의 본문 계약 목록, `VARIANT_TIMEOUT_SECONDS` 는 gatekeeper-variant.yaml 값과의 교차 제약, `REPLICA_LESS_REASON` 는 k8s 층 거부 문면의 앵커(원장 #29 의 「픽스처 ↔ 상수 매핑」 선례), `GRACE_SECONDS`/`GRACE_OBSERVATION_BUDGET` 는 「시나리오가 부르는 값이 0 이고, 기본 유예보다 짧은 예산이어야 판별식이 성립한다」를 진다. 나머지 세 파일(ac2·ac4)은 대상 이름 상수의 픽스처 매핑뿐이다 |
 <!-- /판정-원장 -->
 
-판정 완료 합계 **<!-- 판정-합계 -->0<!-- /판정-합계 -->줄**, 미판정 잔량
+판정 완료 합계 **<!-- 판정-합계 -->2106<!-- /판정-합계 -->줄**, 미판정 잔량
 **<!-- 판정-잔량 -->0<!-- /판정-잔량 -->줄**. 전체 대비 비율은 게이트가 출력한다(프로즈에
 적으면 낡는다).
 
