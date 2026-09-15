@@ -26,6 +26,8 @@ import json
 import subprocess
 import time
 
+from mcp.shared.exceptions import McpError
+
 from _gatekeeper import (
     decide,
     gatekeeper_url,
@@ -110,7 +112,15 @@ async def test_approved_verdict_is_observed_by_polling(session, gate, trace) -> 
 
 
 async def test_expired_verdict_is_observed(session, gate, trace) -> None:
-    """(b) 아무 판정도 없으면 거부가 만료 근처에 오고 기록은 EXPIRED 로 읽힌다."""
+    """(b) 아무 판정도 없으면 거부가 만료 근처에 오고 기록은 EXPIRED 로 읽힌다.
+
+    거부는 도구 결과가 아니라 JSON-RPC 에러로 온다(`internal/mcp/gate.go` 의
+    `errf(-32603)`), 그래서 `McpError` 로 잡는다. 그 **문면은 단정하지 않는다** —
+    클라이언트의 폴링 마감과 gatekeeper 의 만료가 같은 `GATEKEEPER_TIMEOUT_SECONDS`
+    에서 파생해 어느 쪽이 먼저 닫는지가 타이 레이스이고, 그에 따라
+    「approval expired」 와 「no approval within …」 가 갈린다. 둘 다 정당한 거부라
+    아래의 지연·기록·폴링 수가 이 절의 계약을 진다.
+    """
     started = time.monotonic()
     task = asyncio.create_task(_patch(session, TARGET_EXPIRED, "must-not-apply"))
     row = await wait_for_pending(gate, TARGET_EXPIRED)
@@ -121,8 +131,11 @@ async def test_expired_verdict_is_observed(session, gate, trace) -> None:
             f"판정 없는 호출이 {EXPIRY_BUDGET}초 안에도 돌아오지 않았다 — "
             "폴링 마감이 만료를 따라가지 못했다"
         ) from exc
+    except McpError:
+        pass
+    else:
+        raise AssertionError(f"판정 없는 호출이 거부되지 않았다: {result}")
     wall = time.monotonic() - started
-    assert result.isError is True, result
     assert wall >= LATENCY_FLOOR, (
         f"거부가 {wall:.1f}초에 왔다 — 타임아웃 {VARIANT_TIMEOUT_SECONDS}초를 "
         "기다리지 않은 구현이다(최초 응답만 보고 끝냈을 수 있다)"

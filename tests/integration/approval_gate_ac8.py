@@ -20,6 +20,8 @@ import asyncio
 import json
 import subprocess
 
+from mcp.shared.exceptions import McpError
+
 from _gatekeeper import decide, gatekeeper_url, get_request, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
@@ -91,8 +93,15 @@ async def run() -> None:
             rejected_task = _patch(session, TARGET_REJECTED)
             rejected_row = await wait_for_pending(gate, TARGET_REJECTED)
             await decide(gate, rejected_row["id"], "REJECTED")
-            rejected = await rejected_task
-            assert rejected.isError is True, rejected
+            try:
+                await rejected_task
+            except McpError as exc:
+                assert "approval rejected" in str(exc), exc
+            else:
+                raise AssertionError(
+                    "거절된 승인인데 호출이 거부되지 않았다 — 거부는 도구 결과가 아니라 "
+                    "JSON-RPC 에러로 온다(internal/mcp/gate.go 의 errf(-32603))"
+                )
 
         print("--- approval-gate/시나리오 8 (로그 감사 레코드) ---")
         log = _server_log_lines()
