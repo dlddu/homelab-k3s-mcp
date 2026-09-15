@@ -360,7 +360,7 @@ async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
     payload, _ = await _logs(session, pod, container=LOG_CONTAINER)
     assert _lines(payload["text"]), payload
 
-    async with gatekeeper_url() as gate:
+    with gatekeeper_url() as gate:
         task = asyncio.create_task(
             session.call_tool(
                 "resource_get",

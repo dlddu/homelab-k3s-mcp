@@ -57,7 +57,7 @@ def _server_log_lines() -> str:
     )
 
 
-async def _patch(session, name: str):
+def _patch(session, name: str):
     return asyncio.create_task(
         session.call_tool(
             "resource_patch",
