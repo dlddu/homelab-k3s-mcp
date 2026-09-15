@@ -730,6 +730,13 @@ const ScaleSubresource = "scale"
 // empty resourceVersion is an unconditional update, which is that same write
 // without the precondition. The precondition that AC8's callers actually want
 // is the gate's (prd-approval-gate AC6), and it is not this one.
+//
+// That gate check now exists, and it stops short of where this comment used to
+// point (mcp.confirmTargetUnchanged has the extent). Carrying the approved
+// resourceVersion into the call below is what would close the rest, and it is
+// tracked as a residual in doc-tracker.md's open items — the same field is a
+// conflict condition under patchType=apply, so the two verbs do not get one
+// answer.
 func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error) {
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
 	if err != nil {

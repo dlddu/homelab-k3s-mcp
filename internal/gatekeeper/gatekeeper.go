@@ -133,11 +133,39 @@ func gatedKindsFromEnv() []string {
 }
 
 // Call describes the single kubernetes operation an approval is being sought
-// for. Context is the operator-facing text of AC3.
+// for.
 type Call struct {
-	Tool    string
-	Pair    Pair
-	Context string
+	Tool string
+	Pair Pair
+
+	// Describe renders the operator-facing text of AC3. It is a function rather
+	// than a string because building that text now reads the target from the
+	// cluster (AC3's "현재 → 목표 레플리카", AC6's precondition), and AC5 puts a
+	// hard order on that read: an unconfigured gate has to refuse "쿠버네티스
+	// API를 호출하지 않고". A gate that cannot ask anyone therefore never calls
+	// this, and the ordering is a property of the types rather than a rule each
+	// implementation has to remember.
+	//
+	// An error is a refusal: AC3 ends by saying a call whose detail cannot be
+	// built gets no approval request at all, because an approval screen that
+	// cannot say what it is approving makes the button a formality.
+	Describe func(context.Context) (string, error)
+}
+
+// describe renders the call's context, treating a missing renderer and an empty
+// rendering the same way: there is nothing approvable to show.
+func (c Call) describe(ctx context.Context) (string, error) {
+	if c.Describe == nil {
+		return "", fmt.Errorf("refusing %s: no approvable context could be built", c.Tool)
+	}
+	text, err := c.Describe(ctx)
+	if err != nil {
+		return "", fmt.Errorf("refusing %s: %w", c.Tool, err)
+	}
+	if strings.TrimSpace(text) == "" {
+		return "", fmt.Errorf("refusing %s: no approvable context could be built", c.Tool)
+	}
+	return text, nil
 }
 
 // Decision is an observed APPROVED verdict, carrying the audit fields of AC8
@@ -186,6 +214,9 @@ func NewUnavailable(reason error) *Unavailable {
 	return &Unavailable{reason: reason}
 }
 
+// Authorize refuses without calling call.Describe. That omission is the point:
+// AC5 requires an unconfigured gate to refuse without touching the kubernetes
+// API, and Describe is where the pre-approval read lives (AC6, AC11).
 func (u *Unavailable) Authorize(context.Context, Call) (*Decision, error) {
 	return nil, u.reason
 }
@@ -241,8 +272,11 @@ type requestResponse struct {
 // Authorize implements Gate. Every return path other than an observed APPROVED
 // is an error, and none of them reaches kubernetes (AC5).
 func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
-	if strings.TrimSpace(call.Context) == "" {
-		return nil, fmt.Errorf("refusing %s: no approvable context could be built", call.Tool)
+	// The first point at which the gate knows it has a backend to ask, which is
+	// why Describe is called here rather than by the caller (see Call.Describe).
+	context, err := call.describe(ctx)
+	if err != nil {
+		return nil, err
 	}
 
 	externalID, err := c.newID()
@@ -250,7 +284,7 @@ func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
 		return nil, fmt.Errorf("refusing %s: %w", call.Tool, err)
 	}
 
-	created, err := c.create(ctx, call, externalID)
+	created, err := c.create(ctx, call, context, externalID)
 	if err != nil {
 		return nil, err
 	}
@@ -272,10 +306,10 @@ func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
 	return c.poll(ctx, call, created.ID, externalID)
 }
 
-func (c *Client) create(ctx context.Context, call Call, externalID string) (*requestResponse, error) {
+func (c *Client) create(ctx context.Context, call Call, approvalContext, externalID string) (*requestResponse, error) {
 	body := createRequestBody{
 		ExternalID:     externalID,
-		Context:        call.Context,
+		Context:        approvalContext,
 		RequesterName:  c.requester,
 		TimeoutSeconds: int(c.cfg.Timeout / time.Second),
 		UserID:         c.cfg.UserID,

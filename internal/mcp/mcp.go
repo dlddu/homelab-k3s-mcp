@@ -44,7 +44,14 @@ type Handler struct {
 	// gate holds gated calls until a human decides. It is never nil: an
 	// unconfigured deployment gets a gate that refuses, because "no approval
 	// backend" has to mean "no state changes", not "no approvals needed".
-	gate           gatekeeper.Gate
+	gate gatekeeper.Gate
+
+	// gateReader is how the gate reads a target on its own behalf before the
+	// verdict exists (prd-approval-gate AC11). A separate field from k8s above
+	// because it is a separate permission; k8s.TargetReader holds the reason.
+	// Never nil — a deployment without a cluster client gets one that refuses.
+	gateReader k8s.TargetReader
+
 	sensitiveKinds []string
 
 	// registry is the dispatchable tool set. Held on the Handler rather than
@@ -69,6 +76,19 @@ func WithGate(gate gatekeeper.Gate, sensitiveKinds []string) Option {
 	}
 }
 
+// WithGateReader installs the reader the gate uses for AC11's two pairs. It is
+// a separate option from WithGate because the gate and its reader fail
+// independently: an approval backend can be up while the cluster client is not,
+// and that combination has to refuse gated calls rather than describe them from
+// nothing.
+func WithGateReader(reader k8s.TargetReader) Option {
+	return func(h *Handler) {
+		if reader != nil {
+			h.gateReader = reader
+		}
+	}
+}
+
 // NewHandler builds an MCP handler backed by the given services.
 func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service, opts ...Option) *Handler {
 	h := &Handler{
@@ -79,6 +99,7 @@ func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Servi
 		opensearch:      osSvc,
 		sessionPlatform: sessionSvc,
 		gate:            gatekeeper.NewUnavailable(nil),
+		gateReader:      k8s.NewUnavailableTargetReader("the approval gate has no kubernetes client to read a target with"),
 		sensitiveKinds:  []string{defaultSensitiveKind},
 		registry:        toolRegistry,
 	}

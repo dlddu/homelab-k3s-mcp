@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
 // gatedVerbs are the RBAC verbs that change cluster state, gated without
@@ -41,6 +42,26 @@ type toolDeclaration struct {
 	// to reach its verdict before the apiserver is touched, so the resource name
 	// comes from the kind by apimachinery's own guess.
 	resolve func(json.RawMessage) ([]gatekeeper.Pair, error)
+
+	// target derives the object this call addresses, so the gate can read it
+	// before describing it (AC3's verb detail, AC6's precondition). It is
+	// separate from resolve because the two answer different questions at
+	// different times: resolve names a permission and must not touch the
+	// cluster, target names an object and is read from only once the gate knows
+	// it has someone to ask.
+	//
+	// A gated *write* that leaves this nil is refused at authorize rather than
+	// approved (see authorize) — AC6's precondition has no substitute, and a
+	// write whose object the gate cannot read is a write nobody can describe.
+	//
+	// A gated *read* may leave it nil, and that is not an oversight. AC3 asks a
+	// sensitive read for "어떤 종류의 어떤 대상을 읽는지", which the arguments
+	// already carry, and a collection watch has no single object to hold a
+	// resourceVersion — AC6 words its read half around one Secret being swapped,
+	// not around a selector's membership changing. Requiring a target here would
+	// refuse every collection watch of a sensitive kind on the strength of a
+	// precondition the documents do not define for it.
+	target func(json.RawMessage) (*k8s.TargetRef, error)
 
 	// outsideGate, when non-empty, is the documented reason this tool stays
 	// outside the gate even though its pairs would otherwise select it. It is
@@ -83,7 +104,7 @@ var toolRegistry = map[string]toolEntry{
 	},
 
 	"resource_get": {
-		decl:   toolDeclaration{resolve: genericPairs("get")},
+		decl:   toolDeclaration{resolve: genericPairs("get"), target: genericTarget()},
 		handle: (*Handler).resourceGet,
 	},
 
@@ -96,17 +117,17 @@ var toolRegistry = map[string]toolEntry{
 	},
 
 	"resource_update": {
-		decl:   toolDeclaration{resolve: updatePairs()},
+		decl:   toolDeclaration{resolve: updatePairs(), target: genericTarget()},
 		handle: (*Handler).resourceUpdate,
 	},
 
 	"resource_patch": {
-		decl:   toolDeclaration{resolve: genericPairs("patch")},
+		decl:   toolDeclaration{resolve: genericPairs("patch"), target: genericTarget()},
 		handle: (*Handler).resourcePatch,
 	},
 
 	"resource_delete": {
-		decl:   toolDeclaration{resolve: deletePairs()},
+		decl:   toolDeclaration{resolve: deletePairs(), target: genericTarget()},
 		handle: (*Handler).resourceDelete,
 	},
 
@@ -373,6 +394,33 @@ func Exemptions() map[string]string {
 	return out
 }
 
+// gateTargetKind is how AC11's table spells the resource of the gate's own two
+// pairs. It stays a placeholder rather than a list of kinds for the reason
+// genericPairs gives: the kind is whatever the gated call names, and a static
+// list would either enumerate the cluster or lie about it.
+const gateTargetKind = "⟨kind⟩"
+
+// GatePairs reports the kubernetes permissions the gate exercises on its own
+// behalf, before any verdict exists (prd-approval-gate AC11).
+//
+// AC19 of prd-resource-generic used to compare this against rbac.yaml and is
+// now a결번, so nothing machine-checks the list any more. It is still published
+// because the question it answers — what does the gate read before it asks
+// anyone — is one a reviewer has to be able to answer without reading this
+// file, and main prints it at startup beside Exemptions.
+//
+// `list` is declared and not yet exercised: its only caller is
+// deletecollection's target count, and resource_delete_collection is not
+// registered. Declaring ahead of the call site is the direction AC11 asks for
+// ("선언은 남긴다"); the reverse — exercising a pair nobody declared — is the
+// hole AC1 closes.
+func GatePairs() []gatekeeper.Pair {
+	return []gatekeeper.Pair{
+		{Verb: "get", Resource: gateTargetKind},
+		{Verb: "list", Resource: gateTargetKind},
+	}
+}
+
 // authorize runs the gate for one tool call. It is called by the dispatcher
 // before the handler, never by a handler (AC1).
 func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*gatekeeper.Decision, *rpcErr) {
@@ -385,11 +433,37 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	if len(gated) == 0 {
 		return nil, nil
 	}
+	if entry.decl.resolve != nil && entry.decl.target == nil && changesState(gated) {
+		// Fail closed rather than approve blind, over exactly the set where
+		// "no target" means "a target was forgotten": a tool that resolves its
+		// coordinate per call is addressing one named object, and a write to one
+		// has no substitute for AC6's precondition.
+		//
+		// The two exclusions are not oversights. A read is excluded because AC3
+		// wants only the coordinate from it and a collection watch has no single
+		// object (see toolDeclaration.target). A tool whose pairs are constants
+		// is excluded because it declares no coordinate argument at all — there
+		// is nothing there to forget, and dear_baby_reset_user, the only such
+		// gated writer, addresses pods by selector rather than by name.
+		return nil, errf(-32603, "refusing %s: it resolves a coordinate per call and changes state, but declares no target for the gate to read, so the approval could not be tied to a state (prd-approval-gate AC6)", name)
+	}
+
+	// approved holds what the gate read while the operator was deciding. AC6
+	// compares against it once, just before the handler runs.
+	var approved *k8s.TargetState
+	var ref *k8s.TargetRef
 
 	call := gatekeeper.Call{
-		Tool:    name,
-		Pair:    gated[0],
-		Context: approvalContext(name, gated, rawArgs, h.sensitiveKinds),
+		Tool: name,
+		Pair: gated[0],
+		Describe: func(ctx context.Context) (string, error) {
+			var err error
+			ref, approved, err = h.readGateTarget(ctx, entry.decl, gated, rawArgs)
+			if err != nil {
+				return "", err
+			}
+			return approvalContext(name, gated, rawArgs, h.sensitiveKinds, ref, approved), nil
+		},
 	}
 	decision, err := h.gate.Authorize(ctx, call)
 	if err != nil {
@@ -405,6 +479,13 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		return nil, errf(-32603, "%s", err.Error())
 	}
 
+	// AC6: the approval was for that object in that state. This is the last
+	// point before the handler runs, so it is where "still that state?" is
+	// asked.
+	if rerr := h.confirmTargetUnchanged(ctx, name, decision, gated, ref, approved); rerr != nil {
+		return nil, rerr
+	}
+
 	// AC8: an executed gated call always leaves this record.
 	slog.Info("approval granted",
 		"tool", name,
@@ -417,14 +498,93 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	return decision, nil
 }
 
+// readGateTarget reads the object a gated call addresses, on the gate's own
+// permission (AC11). It returns (nil, nil, nil) for a declaration with no
+// target: the tools whose pairs are constants address no object this layer can
+// name, and inventing one would be worse than describing the call from its
+// arguments alone.
+func (h *Handler) readGateTarget(ctx context.Context, decl toolDeclaration, gated []gatekeeper.Pair, rawArgs json.RawMessage) (*k8s.TargetRef, *k8s.TargetState, error) {
+	if decl.target == nil {
+		return nil, nil, nil
+	}
+	ref, err := decl.target(rawArgs)
+	if err != nil {
+		// AC3's closing clause: no approval request is made for a call whose
+		// target cannot be named. Authorize turns this into a refusal before it
+		// POSTs anything.
+		return nil, nil, err
+	}
+
+	// AC11's exception. The kind decides this, not the verb: a Secret read
+	// whole to learn its resourceVersion has leaked it whether the call that
+	// prompted the read was a get or a patch.
+	ref.MetadataOnly = resourceIsSensitive(gated[0], h.sensitiveKinds)
+
+	state, err := h.gateReader.ReadTarget(ctx, *ref)
+	if err != nil {
+		return nil, nil, err
+	}
+	return ref, state, nil
+}
+
+// confirmTargetUnchanged re-reads the target and refuses when it has moved
+// since the approval was written (AC6).
+//
+// This narrows the window from the operator's deliberation — up to
+// GATEKEEPER_TIMEOUT_SECONDS, five minutes by default — to the gap between this
+// read and the handler's write. It does not close it: doing that needs the
+// resourceVersion carried into the write itself as a precondition, which is a
+// different mechanism with a different answer per patch type (see
+// doc-tracker.md).
+func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decision *gatekeeper.Decision, gated []gatekeeper.Pair, ref *k8s.TargetRef, approved *k8s.TargetState) *rpcErr {
+	if ref == nil || approved == nil {
+		return nil
+	}
+	current, err := h.gateReader.ReadTarget(ctx, *ref)
+	if err != nil {
+		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
+		return errf(-32603, "refusing %s: the approved target could not be re-read before execution: %s", name, err.Error())
+	}
+	if current.ResourceVersion == approved.ResourceVersion && current.UID == approved.UID {
+		return nil
+	}
+
+	reason := fmt.Sprintf(
+		"refusing %s: %s changed after it was approved "+
+			"(resourceVersion %s → %s); the approval was for the earlier state, so this needs a new one",
+		name, targetText(ref), approved.ResourceVersion, current.ResourceVersion,
+	)
+	slog.Warn("approval refused",
+		"tool", name,
+		"pairs", pairsText(gated),
+		"request_id", decision.RequestID,
+		"error", reason,
+	)
+	return errf(-32603, "%s", reason)
+}
+
 // approvalContext renders what the operator sees. Arguments go in verbatim
-// rather than summarised (AC3), with one exception the same AC names: a write
-// to a sensitive kind has its values masked first.
-func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessage, sensitiveKinds []string) string {
+// rather than summarised (AC3), with two exceptions the same AC names: a write
+// to a sensitive kind has its values masked first, and a verb whose detail
+// cannot be read off the arguments gets that detail from the target.
+func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessage, sensitiveKinds []string, ref *k8s.TargetRef, state *k8s.TargetState) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "tool: %s\n", name)
 	fmt.Fprintf(&b, "rbac: %s\n", pairsText(gated))
 	fmt.Fprintf(&b, "requested at: %s\n", time.Now().UTC().Format(time.RFC3339))
+	if ref != nil {
+		fmt.Fprintf(&b, "target: %s\n", targetText(ref))
+	}
+	if state != nil {
+		fmt.Fprintf(&b, "target resourceVersion: %s\n", state.ResourceVersion)
+	}
+	if detail := replicaChange(rawArgs, ref, state); detail != "" {
+		// AC3 asks update(subresource=scale) for "현재 → 목표 레플리카". The
+		// arguments carry only the target, so this line is the one piece of the
+		// approval screen that cannot come from listing them verbatim: "3 → 10"
+		// and "9 → 10" are the same request and different decisions.
+		fmt.Fprintf(&b, "replicas: %s\n", detail)
+	}
 
 	args := strings.TrimSpace(string(rawArgs))
 	if args == "" || args == "null" {
@@ -434,6 +594,91 @@ func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessa
 	}
 	fmt.Fprintf(&b, "arguments:\n%s", args)
 	return b.String()
+}
+
+// targetText writes a coordinate the way AC3 asks for it — apiVersion, kind,
+// namespace, name — in one line.
+func targetText(ref *k8s.TargetRef) string {
+	coordinate := ref.Kind
+	if ref.Subresource != "" {
+		coordinate += "/" + ref.Subresource
+	}
+	place := ref.Name
+	if ref.Namespace != nil {
+		place = *ref.Namespace + "/" + ref.Name
+	}
+	return fmt.Sprintf("%s %s %s", ref.APIVersion, coordinate, place)
+}
+
+// replicaChange renders "current → target" for a scale update, and nothing at
+// all for every other call. An unreadable current count is reported as unknown
+// rather than omitted: "the server could not tell you" and "this field does not
+// apply here" are different facts, and only the first of them should give an
+// operator pause.
+func replicaChange(rawArgs json.RawMessage, ref *k8s.TargetRef, state *k8s.TargetState) string {
+	if ref == nil || ref.Subresource != k8s.ScaleSubresource {
+		return ""
+	}
+	obj, ok := decodeObject(rawArgs)
+	if !ok {
+		return ""
+	}
+	_, want, rerr := parseUpdateTarget(obj)
+	if rerr != nil {
+		return ""
+	}
+	if state == nil || state.Replicas == nil {
+		return fmt.Sprintf("(current unknown) → %d", want)
+	}
+	return fmt.Sprintf("%d → %d", *state.Replicas, want)
+}
+
+// genericTarget reads the object coordinate out of one call's arguments. It
+// shares decodeObject with genericPairs but not its tolerance: a pair can be
+// named from apiVersion and kind alone, while an object cannot be read without
+// a name, and AC3 would rather refuse than describe a call it cannot address.
+func genericTarget() func(json.RawMessage) (*k8s.TargetRef, error) {
+	return func(rawArgs json.RawMessage) (*k8s.TargetRef, error) {
+		obj, ok := decodeObject(rawArgs)
+		if !ok {
+			return nil, fmt.Errorf("arguments must be an object")
+		}
+		apiVersion, _ := obj["apiVersion"].(string)
+		kind, _ := obj["kind"].(string)
+		nameValue, _ := obj["name"].(string)
+		if apiVersion == "" || kind == "" {
+			return nil, fmt.Errorf("apiVersion and kind are required before this call can be described for approval")
+		}
+		// Worded to match the handlers' own refusal. The gate now reaches this
+		// check first for a gated call, and an operator should not get a
+		// different sentence about the same missing argument depending on which
+		// layer noticed. The handlers keep their copy: an ungated call never
+		// passes through here at all.
+		if nameValue == "" {
+			return nil, fmt.Errorf("name is required; the approval screen has to name the object it asks about")
+		}
+		ref := &k8s.TargetRef{APIVersion: apiVersion, Kind: kind, Name: nameValue}
+		if sub, _ := obj["subresource"].(string); sub != "" {
+			ref.Subresource = sub
+		}
+		if ns, ok := obj["namespace"].(string); ok && ns != "" {
+			ref.Namespace = &ns
+		}
+		return ref, nil
+	}
+}
+
+// changesState reports whether any of this call's gated pairs is a write. The
+// question is asked of the resolved pairs rather than the declaration because a
+// generic tool's verb is the same for every call while its kind is not, and it
+// is the verb that decides this.
+func changesState(gated []gatekeeper.Pair) bool {
+	for _, p := range gated {
+		if gatedVerbs[p.Verb] {
+			return true
+		}
+	}
+	return false
 }
 
 // writesASensitiveKind reports whether this call carries credential values into

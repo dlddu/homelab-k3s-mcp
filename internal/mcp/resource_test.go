@@ -137,7 +137,7 @@ func TestSecretWriteContextRedactsValues(t *testing.T) {
 		t.Fatalf("gate calls = %d, want 1", len(gate.calls))
 	}
 
-	ctx := gate.calls[0].Context
+	ctx := gate.context(0)
 	for _, leaked := range []string{secretTokenPlain, secretTokenEncoded} {
 		if strings.Contains(ctx, leaked) {
 			t.Errorf("approval context carries the credential value %q:\n%s", leaked, ctx)
@@ -161,7 +161,7 @@ func TestOrdinaryWriteKeepsItsBodyInTheContext(t *testing.T) {
 	if _, rerr := callTool(t, h, "resource_patch", args); rerr != nil {
 		t.Fatalf("tools/call = %v, want the approved patch to run", rerr)
 	}
-	ctx := gate.calls[0].Context
+	ctx := gate.context(0)
 	if !strings.Contains(ctx, "debug") {
 		t.Errorf("approval context dropped an ordinary kind's patch body:\n%s", ctx)
 	}
@@ -179,7 +179,7 @@ func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
 	if _, rerr := callTool(t, h, "resource_patch", args); rerr != nil {
 		t.Fatalf("tools/call = %v, want the approved patch to run", rerr)
 	}
-	ctx := gate.calls[0].Context
+	ctx := gate.context(0)
 	if strings.Contains(ctx, secretTokenEncoded) {
 		t.Errorf("approval context carries a json-patch credential value:\n%s", ctx)
 	}
