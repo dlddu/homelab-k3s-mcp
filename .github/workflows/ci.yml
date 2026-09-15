@@ -248,6 +248,10 @@ jobs:
             --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
             --from-literal=GATEKEEPER_USER_ID="$GK_USER_ID" \
             --dry-run=client -o yaml | kubectl apply -f -
+          # The e2e's record reads need the same key: GET /api/requests/{id} is
+          # API-key protected (only the list is public), and that route is where
+          # the read-time EXPIRED evaluation happens.
+          echo "GATEKEEPER_E2E_API_KEY=$GK_KEY" >> "$GITHUB_ENV"
 
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind

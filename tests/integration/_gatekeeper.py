@@ -15,6 +15,7 @@ PENDING 요청이 마커를 담는다는 것만으로 충분하다.
 from __future__ import annotations
 
 import contextlib
+import os
 import time
 from collections.abc import Iterator
 
@@ -68,6 +69,23 @@ def _user_headers(user: str = E2E_USER) -> dict[str, str]:
     return {"Remote-User": user}
 
 
+def _api_key() -> str:
+    """gatekeeper API 키 — ci.yml 이 생성해 GITHUB_ENV 로 실행자에게 넘겨 준다.
+
+    gatekeeper 의 경로 인가는 갈려 있다: 목록(GET /api/requests)은 공개지만
+    단건 조회(GET /api/requests/{id})는 API 키를 요구한다. 단건 조회가 유일하게
+    만료를 조회 시점에 평가하므로(PENDING → EXPIRED 전이) 이 헬퍼는 키 없이는
+    성립하지 않는다.
+    """
+    key = os.environ.get("GATEKEEPER_E2E_API_KEY", "").strip()
+    if not key:
+        raise AssertionError(
+            "GATEKEEPER_E2E_API_KEY 가 비어 있다 — ci.yml 의 시드 스텝이 "
+            "GITHUB_ENV 에 넘겨 주는 키가 이 실행에 도달하지 않았다"
+        )
+    return key
+
+
 def me(url: str, user: str = E2E_USER) -> dict:
     """forward-auth 경로로 사용자를 upsert 하고 그 레코드를 돌려준다."""
     response = httpx.get(f"{url}/api/me/", headers=_user_headers(user), timeout=10.0)
@@ -86,8 +104,13 @@ def list_requests(url: str, status: str | None = None) -> list[dict]:
 
 def get_request(url: str, request_id: str) -> dict:
     """요청 레코드 하나. gatekeeper 는 조회 시점에 만료를 평가하므로 이 호출이
-    PENDING → EXPIRED 전이를 일으키는 유일한 경로다."""
-    response = httpx.get(f"{url}/api/requests/{request_id}", timeout=10.0)
+    PENDING → EXPIRED 전이를 일으키는 유일한 경로다. 이 경로는 API 키를 요구한다
+    (공개인 것은 목록뿐이다)."""
+    response = httpx.get(
+        f"{url}/api/requests/{request_id}",
+        headers={"x-api-key": _api_key()},
+        timeout=10.0,
+    )
     response.raise_for_status()
     return response.json()
 

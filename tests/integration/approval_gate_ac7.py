@@ -18,6 +18,7 @@ primary 가 이 파일의 배포다 — 변형 배포의 관측면(기록 프록
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import subprocess
 
@@ -129,10 +130,14 @@ async def run() -> None:
 
             print("--- approval-gate/시나리오 7 (같은 Secret 의 재조회) ---")
             value = await _approved_secret_read(session, gate)
-            assert SECRET_VALUE in value, "승인된 Secret 읽기가 값을 돌려주지 않았다"
+            encoded = base64.b64encode(SECRET_VALUE.encode()).decode()
+            assert encoded in value, (
+                "승인된 Secret 읽기가 값을 돌려주지 않았다 — apiserver 응답의 값은 "
+                "base64 인코딩 그대로다(SUT 는 디코딩하지 않는다)"
+            )
             third_record = get_request(gate, APPROVED_IDS[2])
             value_again = await _approved_secret_read(session, gate)
-            assert SECRET_VALUE in value_again
+            assert encoded in value_again
             fourth_record = get_request(gate, APPROVED_IDS[3])
             assert APPROVED_IDS[2] != APPROVED_IDS[3], "재조회가 승인을 재사용했다"
             assert third_record["externalId"] != fourth_record["externalId"], (
