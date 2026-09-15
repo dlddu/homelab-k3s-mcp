@@ -247,7 +247,13 @@ jobs:
           kubectl -n gatekeeper run gatekeeper-seed --quiet --restart=Never \
             --image=curlimages/curl --image-pull-policy=IfNotPresent \
             --command -- curl -sS -H 'Remote-User: gatekeeper-e2e' http://gatekeeper/api/me/
-          kubectl -n gatekeeper wait --for=condition=complete --timeout=120s pod/gatekeeper-seed
+          # Pods carry no "complete" condition (that is a Job condition) -- wait
+          # on the phase instead. A Failed pod has no useful log to parse, so
+          # surface it before the JSON read.
+          kubectl -n gatekeeper wait --for=jsonpath='{.status.phase}'=Succeeded \
+            --timeout=120s pod/gatekeeper-seed \
+            || { kubectl -n gatekeeper describe pod gatekeeper-seed || true; \
+                 kubectl -n gatekeeper logs pod/gatekeeper-seed || true; exit 1; }
           kubectl -n gatekeeper logs pod/gatekeeper-seed > /tmp/gk-me.json
           kubectl -n gatekeeper delete pod gatekeeper-seed --wait=false --quiet || true
           echo "seed response: $(cat /tmp/gk-me.json)"
