@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""E2E 모킹 정책 ↔ 실제 모킹 지점 양방향 1:1 체커.
+"""E2E 모킹 지점 대조와 차단 원장 완비 체커.
 
 정합성 모델 `tbm_homelab-k3s-mcp-e2e-mock-policy`는 **허용목록에 등재된 모킹 지점의 집합 ==
 코드에 실재하는 모킹 지점의 집합**을 요구한다. 이 스크립트는 그 판정을 사람의 자기신고가
@@ -23,6 +23,8 @@ as-is 지문 범위와 정확히 같다. `internal/` 의 Go 단위 테스트(htt
   예외는 그 계층이 가리는 성질을 되찾는 수단과 **함께만** 존재할 수 있다.
 * **R6** 등재 상한 == 허용목록 행 수(양방향). 예외를 늘리려면 같은 PR 에서 상한을 명시적으로
   올려야 하고, 예외가 사라지면 같이 내려야 한다.
+* **B2** 차단 원장의 출처·해소 방향·소관·선행·재검토 시점은 기계 판독 가능한 셀이다.
+  외부 인계 누락(B1)과 이력·사건의 실제 해소 여부(B3)는 reconciler 판정으로 남는다.
 
 허용목록이 실측과 다르면 실패하므로, 모킹을 더하거나 지운 PR 은 **같은 PR 에서** 정책 문서를
 갱신해야 한다. 그것이 이 모델이 요구하는 양방향 1:1 이다.
@@ -30,6 +32,7 @@ as-is 지문 범위와 정확히 같다. `internal/` 의 Go 단위 테스트(htt
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import re
 import subprocess
@@ -47,6 +50,11 @@ LEDGER_OPEN = "<!-- mock-exception-원장 -->"
 LEDGER_CLOSE = "<!-- /mock-exception-원장 -->"
 CAP_OPEN = "<!-- mock-exception-상한 -->"
 CAP_CLOSE = "<!-- /mock-exception-상한 -->"
+BLOCKERS_OPEN = "<!-- mock-blocker-원장 -->"
+BLOCKERS_CLOSE = "<!-- /mock-blocker-원장 -->"
+BLOCKER_COLUMNS = ("ID", "출처", "등록일", "해소 방향", "소관", "선행", "재검토")
+MODEL_PATTERN = r"tbm_[a-z0-9][a-z0-9_-]*"
+TASK_PATTERN = MODEL_PATTERN + r"/rct_[a-z0-9][a-z0-9_-]*"
 
 # 모킹 지점을 가리키는 토큰. 모델 as-is 지문의 패턴에서 주석 대안만 뺀 것이다
 # (주석은 ANNOTATION_RE 로 따로 읽는다).
@@ -145,6 +153,68 @@ def next_content_line(lines: list[str], index: int) -> str | None:
     return None
 
 
+def parse_blockers(text: str) -> list[dict[str, str]]:
+    if text.count(BLOCKERS_OPEN) != 1 or text.count(BLOCKERS_CLOSE) != 1:
+        raise ValueError("차단 원장 마커는 시작·끝 각각 하나가 필요하다.")
+    start = text.index(BLOCKERS_OPEN) + len(BLOCKERS_OPEN)
+    end = text.index(BLOCKERS_CLOSE)
+    if end < start:
+        raise ValueError("차단 원장 마커 순서가 뒤집혔다.")
+    lines = [line.strip() for line in text[start:end].splitlines() if line.strip()]
+    table = []
+    for line in lines:
+        if not line.startswith("|") or not line.endswith("|"):
+            raise ValueError("차단 원장 마커 안에는 표만 둘 수 있다.")
+        cells = [cell.strip().strip("`").strip() for cell in line[1:-1].split("|")]
+        if len(cells) != len(BLOCKER_COLUMNS):
+            raise ValueError("차단 원장 행은 7개 열이어야 한다.")
+        table.append(cells)
+    if len(table) < 2 or tuple(table[0]) != BLOCKER_COLUMNS:
+        raise ValueError("차단 원장 헤더가 없거나 열 이름·순서가 다르다.")
+    if not all(re.fullmatch(r":?-{3,}:?", cell) for cell in table[1]):
+        raise ValueError("차단 원장 헤더 구분선이 올바르지 않다.")
+
+    rows = []
+    seen = set()
+    for cells in table[2:]:
+        row = dict(zip(BLOCKER_COLUMNS, cells))
+        identifier = row["ID"]
+        if not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", identifier) or identifier in seen:
+            raise ValueError(f"차단 ID가 잘못됐거나 중복됐다: {identifier!r}")
+        seen.add(identifier)
+        if any(cell.casefold() in {"", "—", "-", "tbd", "todo", "미정"} for cell in cells):
+            raise ValueError(f"{identifier}: 빈 계획 셀 또는 미정 값이 있다.")
+        if not re.fullmatch(TASK_PATTERN + r"|policy:#[a-z0-9-]+", row["출처"]):
+            raise ValueError(f"{identifier}: 출처는 모델/task ID 또는 policy:#앵커여야 한다.")
+        if row["해소 방향"] not in {"real-environment", "exception-registration"}:
+            raise ValueError(f"{identifier}: 해소 방향이 허용 값이 아니다.")
+        if not re.fullmatch(MODEL_PATTERN, row["소관"]):
+            raise ValueError(f"{identifier}: 소관은 받는 모델 ID여야 한다.")
+        try:
+            registered = datetime.date.fromisoformat(row["등록일"])
+        except ValueError as exc:
+            raise ValueError(f"{identifier}: 등록일이 ISO 날짜가 아니다.") from exc
+        if registered.isoformat() != row["등록일"]:
+            raise ValueError(f"{identifier}: 등록일은 YYYY-MM-DD여야 한다.")
+        review = row["재검토"]
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", review):
+            try:
+                deadline = datetime.date.fromisoformat(review)
+            except ValueError as exc:
+                raise ValueError(f"{identifier}: 재검토 날짜가 유효하지 않다.") from exc
+            if not 0 <= (deadline - registered).days <= 90:
+                raise ValueError(f"{identifier}: 재검토 날짜는 등록일부터 90일 안이어야 한다.")
+        elif review.startswith("file:"):
+            path = review.removeprefix("file:")
+            parts = path.split("/")
+            if not path or any(part in {"", ".", ".."} for part in parts) or re.search(r"\s|[\\:#]", path):
+                raise ValueError(f"{identifier}: file 사건은 레포 상대 경로여야 한다.")
+        elif not re.fullmatch(r"task:" + TASK_PATTERN + r"|pr:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+#[1-9][0-9]*", review):
+            raise ValueError(f"{identifier}: 재검토는 ISO 날짜 또는 file:/task:/pr: 사건이어야 한다.")
+        rows.append(row)
+    return rows
+
+
 def main() -> int:
     if not POLICY.exists():
         print(f"[R3] 정책 SSOT 가 없다: {POLICY.relative_to(REPO_ROOT)}", file=sys.stderr)
@@ -153,6 +223,11 @@ def main() -> int:
     text = POLICY.read_text(encoding="utf-8")
     rows = parse_ledger(text)
     cap = parse_cap(text)
+    blockers = []
+    try:
+        blockers = parse_blockers(text)
+    except ValueError as exc:
+        fail("B2", str(exc))
 
     by_id: dict[str, dict] = {}
     for row in rows:
@@ -291,6 +366,9 @@ def main() -> int:
     for row in rows:
         alternative = ", ".join(row["alternative"]) or NO_VALUE
         print(f"  {row['category']:<4} {row['id']:<24} 대체 검증: {alternative}")
+    print(f"OK: B2 차단 원장 {len(blockers)}행 완비 (등재 상한과 별도; B1·B3는 reconciler 판정)")
+    for row in blockers:
+        print(f"  {row['ID']}: 소관={row['소관']} · 선행={row['선행']} · 재검토={row['재검토']}")
     return 0
 
 
