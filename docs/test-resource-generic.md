@@ -181,8 +181,18 @@ Service·ConfigMap·Ingress 각 2(하나만 좁히는 레이블을 달아 「셀
 - **기대 결과**: 지정 객체만 사라지고 같은 레이블의 다른 객체는 남음. `gracePeriodSeconds`가
   반영됨. 셀렉터 전용 호출 경로가 존재하지 않아 인자 검증에서 거부됨
 - **검증 AC**: AC10
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestDeleteIsSingleObjectOnly`.
-  통합 `resource_generic_ac10.py`
+- **자동화**: Go 단위는 계획한 이름 그대로 서 있다 —
+  `internal/mcp/resource_test.go::TestDeleteIsSingleObjectOnly`(좌표·`gracePeriodSeconds`
+  가 클러스터 층에 닿는 것 + 거부 일곱. 셀렉터 둘·`fieldSelector`·`subresource` 는
+  **승인 요청이 만들어지기 전에** 거부된다 — 「셀렉터 전용 호출 경로가 존재하지 않는다」의
+  단위 층 표현이다). 그 거부 단언들이 공허해지지 않는다는 대조군은
+  `TestDeleteIsRefusedWithoutApproval` 이 선다(게이트를 아예 타지 않는 도구는 「게이트가
+  안 불렸다」를 전부 통과한다). 광고 표면에 셀렉터 인자가 없다는 것은
+  `internal/server/mcp_test.go::TestToolsListAdvertisesResourceTools` 가 단언한다.
+  지정 객체만 사라지고 같은 레이블의 다른 객체가 남는지, `gracePeriodSeconds` 가 실제로
+  반영되는지는 apiserver 의 거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
+  통합은 **(미작성)** — `resource_generic_ac10.py`. 두 호출이 승인을 요구하므로 실물
+  gatekeeper 픽스처가 선행이다
 
 ### 시나리오 11: 컨테이너 안에서 명령 실행
 - **사전 조건**: kind 실물 gatekeeper, `workload-fixture` 기준선, 다중 컨테이너 파드

@@ -101,17 +101,23 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	if len(tools) != 16 {
-		t.Fatalf("len(tools) = %d, want 16", len(tools))
-	}
-	for _, name := range []string{
+	// want is the whole advertised surface, and the count is taken from it
+	// rather than written out: a literal here is a number two slices landing in
+	// the same week both have to edit, and this list is what the assertion is
+	// actually about. Naming every tool still fails on a surprise addition —
+	// len(tools) != len(want) — and on a removal, via findTool.
+	want := []string{
 		"ping", "api_resources", "resource_list", "resource_get",
-		"resource_update", "resource_patch",
+		"resource_update", "resource_patch", "resource_delete",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 		"session_list", "session_read", "session_write",
-	} {
+	}
+	if len(tools) != len(want) {
+		t.Fatalf("len(tools) = %d, want %d", len(tools), len(want))
+	}
+	for _, name := range want {
 		findTool(t, tools, name)
 	}
 }
@@ -188,6 +194,18 @@ func TestToolsListAdvertisesResourceTools(t *testing.T) {
 	get := findTool(t, tools, "resource_get")
 	wantStrSlice(t, enumStrings(t, at(t, get, "inputSchema", "required")), "apiVersion", "kind", "name")
 	wantStrSlice(t, enumStrings(t, at(t, get, "inputSchema", "properties", "subresource", "enum")), "log", "scale", "status")
+
+	// AC10 rests on an absence, so the advertised schema is asserted for one:
+	// a client that is offered a selector will send one, and the refusal that
+	// follows is a worse answer than never having advertised it.
+	del := findTool(t, tools, "resource_delete")
+	wantStrSlice(t, enumStrings(t, at(t, del, "inputSchema", "required")), "apiVersion", "kind", "name")
+	props := at(t, del, "inputSchema", "properties").(map[string]any)
+	for _, absent := range []string{"labelSelector", "fieldSelector", "subresource"} {
+		if _, ok := props[absent]; ok {
+			t.Errorf("resource_delete advertises %q; deleting a selection is the deletecollection verb", absent)
+		}
+	}
 }
 
 func TestAPIResourcesDispatchesToService(t *testing.T) {
