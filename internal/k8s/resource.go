@@ -167,13 +167,15 @@ type UpdateRef struct {
 
 // PatchRef addresses one object and the change to make to it (AC9).
 type PatchRef struct {
-	APIVersion   string
-	Kind         string
-	Namespace    *string
-	Name         string
-	PatchType    string
-	Patch        []byte
-	FieldManager string
+	APIVersion              string
+	Kind                    string
+	Namespace               *string
+	Name                    string
+	PatchType               string
+	Patch                   []byte
+	FieldManager            string
+	ApprovedResourceVersion string
+	ApprovedUID             string
 }
 
 // DeleteRef addresses the single object to remove (AC10). There is no selector
@@ -815,14 +817,15 @@ func scaleObject(namespace, name string, replicas int64) map[string]any {
 	}
 }
 
-// PatchResource applies one patch to one object and answers with the result
-// (AC9). The patch body is passed through byte for byte — deciding what a patch
-// "really" does is the operator's job at the approval screen, and a server that
-// rewrote the body would be approving something other than what it showed.
+// PatchResource applies a conditional patch to one approved object (AC9).
 func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*ResourceResult, error) {
 	patchType, ok := patchTypes[ref.PatchType]
 	if !ok {
 		return nil, apiErrorf("patchType %q is not one of %s", ref.PatchType, strings.Join(PatchTypeNames(), ", "))
+	}
+	body, err := approvedPatch(ref)
+	if err != nil {
+		return nil, err
 	}
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
 	if err != nil {
@@ -832,36 +835,39 @@ func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*Resourc
 	if err != nil {
 		return nil, err
 	}
-
-	dyn, err := dynamic.NewForConfig(s.config)
+	client, err := s.restClientFor(res.gvr)
 	if err != nil {
-		return nil, unavailableErr(fmt.Sprintf("init dynamic client: %v", err))
+		return nil, err
 	}
-	var api dynamic.ResourceInterface = dyn.Resource(res.gvr)
-	if res.namespaced {
-		api = dyn.Resource(res.gvr).Namespace(namespace)
-	}
-
-	// Every write this server makes is attributable in managedFields. Apply
-	// carries the caller's own manager because server-side apply uses it as the
-	// ownership key rather than as a label — two callers sharing one name share
-	// the fields they own.
 	manager := ref.FieldManager
 	if manager == "" {
 		manager = fieldManager
 	}
-	obj, err := api.Patch(ctx, ref.Name, patchType, ref.Patch, metav1.PatchOptions{FieldManager: manager})
-	if err != nil {
-		return nil, s.apiCallError(err, "patch", res.gvr.Resource)
+	req := client.Patch(patchType).Resource(res.gvr.Resource).Name(ref.Name).
+		Param("fieldManager", manager).Body(body).MaxRetries(0)
+	if res.namespaced {
+		req = req.Namespace(namespace)
 	}
-
+	raw, err := req.DoRaw(ctx)
+	if err != nil {
+		if apierrors.IsForbidden(err) {
+			return nil, s.apiCallError(err, "patch", res.gvr.Resource)
+		}
+		if apierrors.IsConflict(err) {
+			return nil, APIError("patch refused: approved target version or field ownership conflicts; call ended without retry or automatic reapproval")
+		}
+		if apierrors.IsInvalid(err) || apierrors.IsBadRequest(err) {
+			return nil, APIError("patch refused: invalid patch or failed approved-target precondition; call ended without retry or automatic reapproval")
+		}
+		return nil, APIError("patch failed; outcome may be uncertain; call ended without retry or automatic reapproval")
+	}
+	obj := &unstructured.Unstructured{}
+	if obj.UnmarshalJSON(raw) != nil || obj.Object == nil {
+		return nil, APIError("patch response could not be decoded; outcome may be uncertain; call ended without retry or automatic reapproval")
+	}
 	object := obj.UnstructuredContent()
 	stripNoise(object)
-	return &ResourceResult{
-		Resource:  res.gvr.Resource,
-		Namespace: namespace,
-		Object:    object,
-	}, nil
+	return &ResourceResult{Resource: res.gvr.Resource, Namespace: namespace, Object: object}, nil
 }
 
 // DeleteResource removes one object (AC10).

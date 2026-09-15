@@ -426,15 +426,15 @@ func GatePairs() []gatekeeper.Pair {
 
 // authorize runs the gate for one tool call. It is called by the dispatcher
 // before the handler, never by a handler (AC1).
-func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*gatekeeper.Decision, *rpcErr) {
+func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*gatekeeper.Decision, *k8s.TargetState, *rpcErr) {
 	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, rawArgs)
 	if err != nil {
 		// A call whose pair cannot be named is a call whose gating cannot be
 		// decided, and AC5 makes every undecided path a refusal.
-		return nil, errf(-32602, "%s", err.Error())
+		return nil, nil, errf(-32602, "%s", err.Error())
 	}
 	if len(gated) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 	if entry.decl.resolve != nil && entry.decl.target == nil && changesState(gated) {
 		// Fail closed rather than approve blind, over exactly the set where
@@ -448,7 +448,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		// is excluded because it declares no coordinate argument at all — there
 		// is nothing there to forget, and dear_baby_reset_user, the only such
 		// gated writer, addresses pods by selector rather than by name.
-		return nil, errf(-32603, "refusing %s: it resolves a coordinate per call and changes state, but declares no target for the gate to read, so the approval could not be tied to a state (prd-approval-gate AC6)", name)
+		return nil, nil, errf(-32603, "refusing %s: it resolves a coordinate per call and changes state, but declares no target for the gate to read, so the approval could not be tied to a state (prd-approval-gate AC6)", name)
 	}
 
 	// approved holds what the gate read while the operator was deciding. AC6
@@ -475,18 +475,18 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 			"pairs", pairsText(gated),
 			"error", err.Error(),
 		)
-		return nil, errf(-32603, "%s", err.Error())
+		return nil, nil, errf(-32603, "%s", err.Error())
 	}
 	if err := decision.Consume(); err != nil {
 		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
-		return nil, errf(-32603, "%s", err.Error())
+		return nil, nil, errf(-32603, "%s", err.Error())
 	}
 
 	// AC6: the approval was for that object in that state. This is the last
 	// point before the handler runs, so it is where "still that state?" is
 	// asked.
 	if rerr := h.confirmTargetUnchanged(ctx, name, decision, gated, ref, approved); rerr != nil {
-		return nil, rerr
+		return nil, nil, rerr
 	}
 
 	// AC8: an executed gated call always leaves this record.
@@ -498,8 +498,10 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		"processed_by_id", decision.ProcessedByID,
 		"auto_approved", decision.AutoApproved,
 	)
-	return decision, nil
+	return decision, approved, nil
 }
+
+type approvedTargetKey struct{}
 
 // readGateTarget reads the object a gated call addresses, on the gate's own
 // permission (AC11). It returns (nil, nil, nil) for a declaration with no
