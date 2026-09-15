@@ -105,6 +105,11 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourcePatch,
 	},
 
+	"resource_delete": {
+		decl:   toolDeclaration{resolve: deletePairs()},
+		handle: (*Handler).resourceDelete,
+	},
+
 	"dear_baby_reset_user": {
 		decl: toolDeclaration{
 			pairs: []gatekeeper.Pair{
@@ -217,6 +222,26 @@ func updatePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 			return nil, fmt.Errorf("arguments must be an object")
 		}
 		if _, _, rerr := parseUpdateTarget(obj); rerr != nil {
+			return nil, errors.New(rerr.message)
+		}
+		return generic(rawArgs)
+	}
+}
+
+// deletePairs is genericPairs("delete") with AC10's own argument checks run
+// first, for the reason updatePairs states: authorize runs before the handler,
+// so a call the handler would reject has already cost an approval request by
+// then. Scenario 10 wants a selector-only call refused at argument validation,
+// and pair resolution is the only thing that runs earlier (a resolve error is
+// already a refusal — authorize turns it into -32602).
+func deletePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
+	generic := genericPairs("delete")
+	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+		obj, ok := decodeObject(rawArgs)
+		if !ok {
+			return nil, fmt.Errorf("arguments must be an object")
+		}
+		if _, _, rerr := parseDeleteTarget(obj); rerr != nil {
 			return nil, errors.New(rerr.message)
 		}
 		return generic(rawArgs)

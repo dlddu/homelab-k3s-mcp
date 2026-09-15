@@ -101,12 +101,14 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	// The count is derived from the list rather than written beside it: a
-	// number typed here has to be edited by every slice that registers a tool,
-	// and a slice that forgets is a slice whose rebase is arithmetic.
+	// want is the whole advertised surface, and the count is taken from it
+	// rather than written out: a literal here is a number two slices landing in
+	// the same week both have to edit, and this list is what the assertion is
+	// actually about. Naming every tool still fails on a surprise addition —
+	// len(tools) != len(want) — and on a removal, via findTool.
 	want := []string{
 		"ping", "api_resources", "resource_list", "resource_get", "resource_watch",
-		"resource_update", "resource_patch",
+		"resource_update", "resource_patch", "resource_delete",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
@@ -202,6 +204,18 @@ func TestToolsListAdvertisesResourceTools(t *testing.T) {
 	}
 	if at(t, watch, "annotations", "readOnlyHint") != true {
 		t.Fatalf("resource_watch annotations = %v, want a read-only tool", watch["annotations"])
+	}
+
+	// AC10 rests on an absence, so the advertised schema is asserted for one:
+	// a client that is offered a selector will send one, and the refusal that
+	// follows is a worse answer than never having advertised it.
+	del := findTool(t, tools, "resource_delete")
+	wantStrSlice(t, enumStrings(t, at(t, del, "inputSchema", "required")), "apiVersion", "kind", "name")
+	props := at(t, del, "inputSchema", "properties").(map[string]any)
+	for _, absent := range []string{"labelSelector", "fieldSelector", "subresource"} {
+		if _, ok := props[absent]; ok {
+			t.Errorf("resource_delete advertises %q; deleting a selection is the deletecollection verb", absent)
+		}
 	}
 }
 

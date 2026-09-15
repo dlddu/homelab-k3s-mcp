@@ -182,6 +182,18 @@ type PatchRef struct {
 	FieldManager string
 }
 
+// DeleteRef addresses the single object to remove (AC10). There is no selector
+// field, and that absence is the contract rather than an omission: selecting a
+// set is the deletecollection verb, so a caller who wants one cannot express it
+// through this type.
+type DeleteRef struct {
+	APIVersion         string
+	Kind               string
+	Namespace          *string
+	Name               string
+	GracePeriodSeconds *int64
+}
+
 // ResourceResult is one object, or the text a text-typed subresource returns.
 type ResourceResult struct {
 	Resource  string         `json:"resource"`
@@ -859,6 +871,46 @@ func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*Resourc
 		Namespace: namespace,
 		Object:    object,
 	}, nil
+}
+
+// DeleteResource removes one object (AC10).
+//
+// The answer says the apiserver accepted the removal, not that the object is
+// gone: finalizers and a termination grace period both run after the call
+// returns, so a tool that reported "deleted" would be telling the operator
+// something it did not observe. What it can report is the request it made.
+func (s *KubeService) DeleteResource(ctx context.Context, ref DeleteRef) (*ResourceResult, error) {
+	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
+	if err != nil {
+		return nil, err
+	}
+	namespace, err := objectNamespace(res, ref.Kind, ref.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	dyn, err := dynamic.NewForConfig(s.config)
+	if err != nil {
+		return nil, unavailableErr(fmt.Sprintf("init dynamic client: %v", err))
+	}
+	var api dynamic.ResourceInterface = dyn.Resource(res.gvr)
+	if res.namespaced {
+		api = dyn.Resource(res.gvr).Namespace(namespace)
+	}
+
+	// No Preconditions: carrying a uid or resourceVersion would mean reading the
+	// object first, and get is a second verb this tool does not hold. The
+	// precondition AC10's callers want is the gate's (prd-approval-gate AC6).
+	opts := metav1.DeleteOptions{}
+	if ref.GracePeriodSeconds != nil {
+		grace := *ref.GracePeriodSeconds
+		opts.GracePeriodSeconds = &grace
+	}
+	if err := api.Delete(ctx, ref.Name, opts); err != nil {
+		return nil, s.apiCallError(err, "delete", res.gvr.Resource)
+	}
+
+	return &ResourceResult{Resource: res.gvr.Resource, Namespace: namespace}, nil
 }
 
 // APIResources reports what the cluster actually serves.

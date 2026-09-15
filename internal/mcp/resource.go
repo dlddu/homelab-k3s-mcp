@@ -454,6 +454,110 @@ func (h *Handler) resourcePatch(ctx context.Context, raw json.RawMessage) (any, 
 	}, nil
 }
 
+func (h *Handler) resourceDelete(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	coord, rerr := parseCoordinate(obj)
+	if rerr != nil {
+		return nil, rerr
+	}
+	name, grace, rerr := parseDeleteTarget(obj)
+	if rerr != nil {
+		return nil, rerr
+	}
+
+	ref := k8s.DeleteRef{
+		APIVersion:         coord.apiVersion,
+		Kind:               coord.kind,
+		Namespace:          coord.namespace,
+		Name:               name,
+		GracePeriodSeconds: grace,
+	}
+
+	result, err := h.k8s.DeleteResource(ctx, ref)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	payload := map[string]any{
+		"apiVersion": coord.apiVersion,
+		"kind":       coord.kind,
+		"namespace":  coord.namespace,
+		"name":       name,
+		"resource":   result.Resource,
+		"accepted":   true,
+	}
+	if grace != nil {
+		payload["gracePeriodSeconds"] = *grace
+	}
+	return map[string]any{
+		"content":           []any{map[string]any{"type": "text", "text": deletionText(result, name, grace)}},
+		"structuredContent": payload,
+		"isError":           false,
+	}, nil
+}
+
+// deletionText says what was asked for rather than what happened. The apiserver
+// answers a delete before finalizers and the grace period have run, so "deleted"
+// would be a claim this server did not observe — and the operator who reads it
+// is deciding whether to wait or to look.
+func deletionText(result *k8s.ResourceResult, name string, grace *int64) string {
+	target := name
+	if result.Namespace != "" {
+		target = result.Namespace + "/" + name
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "accepted for deletion: %s %s", result.Resource, target)
+	if grace != nil {
+		fmt.Fprintf(&b, " (gracePeriodSeconds=%d)", *grace)
+	}
+	b.WriteString("\nThe object is removed once its grace period and finalizers are done.")
+	return b.String()
+}
+
+// parseDeleteTarget reads AC10's one shape — a single object, optionally with a
+// grace period — and refuses every argument that would make it a selection.
+//
+// Both sides run it, for the reason parseUpdateTarget sets out above: a refusal
+// the operator never had to look at is only reachable ahead of authorize.
+//
+// Refusing a stray subresource is not tidiness. genericPairs appends one to the
+// pair it resolves, so a subresource here would have the operator approve
+// "delete on <resource>/<sub>" while this handler deletes the object itself:
+// approving one thing and executing another (prd-approval-gate AC6).
+func parseDeleteTarget(obj map[string]any) (string, *int64, *rpcErr) {
+	for _, key := range []string{"labelSelector", "fieldSelector"} {
+		if _, present := obj[key]; present {
+			return "", nil, errf(-32602,
+				"%s does not apply to resource_delete, which removes one named object; "+
+					"deleting a selection is the deletecollection verb and resource_delete_collection holds it", key)
+		}
+	}
+	if _, present := obj["subresource"]; present {
+		return "", nil, errf(-32602, "subresource does not apply to resource_delete; this tool removes the object itself")
+	}
+
+	name := optionalString(obj, "name")
+	if name == nil {
+		return "", nil, errf(-32602, "name is required; this tool removes one object, not a selection")
+	}
+
+	var grace *int64
+	if v, present := obj["gracePeriodSeconds"]; present {
+		n, ok := intValue(v)
+		if !ok {
+			return "", nil, errf(-32602, "gracePeriodSeconds must be an integer")
+		}
+		if n < 0 {
+			return "", nil, errf(-32602, "gracePeriodSeconds must be >= 0; 0 deletes without waiting")
+		}
+		grace = &n
+	}
+	return *name, grace, nil
+}
+
 // rawPatchBody lifts the patch out of the raw arguments untouched. A JSON patch
 // is an array and the other three are objects, so the field is taken as raw
 // JSON and handed on as-is.

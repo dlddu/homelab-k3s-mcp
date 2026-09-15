@@ -285,6 +285,45 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_delete",
+      "description": "Delete one Kubernetes object by coordinate and name. Exercises the delete verb only and always requires human approval. name is required and there is no selector argument: deleting a selection is the deletecollection verb, which resource_delete_collection holds. gracePeriodSeconds overrides the kind's own termination grace period, and 0 means do not wait. The call is answered when the apiserver accepts it, which is before finalizers and the grace period have run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\" or \"apps/v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to delete, e.g. \"Pod\", \"ConfigMap\"."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for namespaced kinds, rejected for cluster-scoped ones."
+          },
+          "name": {
+            "type": "string",
+            "description": "Object name. Required; this tool removes one object, not a selection."
+          },
+          "gracePeriodSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds to wait before the object is removed, overriding the kind's default. 0 removes it without waiting."
+          }
+        },
+        "required": ["apiVersion", "kind", "name"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Delete Resource",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "dear_baby_reset_user",
       "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-user CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
       "inputSchema": {

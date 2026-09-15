@@ -21,6 +21,8 @@ type Service interface {
 
 	PatchResource(ctx context.Context, ref PatchRef) (*ResourceResult, error)
 
+	DeleteResource(ctx context.Context, ref DeleteRef) (*ResourceResult, error)
+
 	// ExecInPod runs command inside the first Running pod matching labelSelector
 	// in namespace. container is required when the pod has more than one
 	// container; pass nil to default to the pod's only container.
@@ -61,6 +63,10 @@ func (u *Unavailable) UpdateResource(context.Context, UpdateRef) (*ResourceResul
 }
 
 func (u *Unavailable) PatchResource(context.Context, PatchRef) (*ResourceResult, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) DeleteResource(context.Context, DeleteRef) (*ResourceResult, error) {
 	return nil, unavailableErr(u.reason)
 }
 

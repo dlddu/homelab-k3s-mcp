@@ -24,6 +24,7 @@ type countingK8s struct {
 	lastPatch  k8s.PatchRef
 	lastUpdate k8s.UpdateRef
 	lastWatch  k8s.WatchQuery
+	lastDelete k8s.DeleteRef
 	// updateErr lets a case make the cluster layer refuse. The one refusal AC8
 	// names — a kind with no replicas — is discovery's answer rather than an
 	// argument this level can see, so a fake that only ever succeeds cannot
@@ -112,6 +113,23 @@ func (c *countingK8s) patch() k8s.PatchRef {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.lastPatch
+}
+
+// DeleteResource records its ref for the same reason the two above do: what the
+// tool sent is the assertion (AC10), and a nil grace period and a zero one are
+// different requests that a counter cannot tell apart.
+func (c *countingK8s) DeleteResource(_ context.Context, ref k8s.DeleteRef) (*k8s.ResourceResult, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastDelete = ref
+	c.mu.Unlock()
+	return &k8s.ResourceResult{Resource: "configmaps", Namespace: "ops"}, nil
+}
+
+func (c *countingK8s) delete() k8s.DeleteRef {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastDelete
 }
 
 func (c *countingK8s) ExecInPod(context.Context, string, string, *string, []string) (*k8s.ExecOutcome, error) {
