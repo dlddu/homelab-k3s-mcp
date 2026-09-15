@@ -341,3 +341,81 @@ func TestPatchTypesMapToApiserverMediaTypes(t *testing.T) {
 		t.Errorf("PatchTypeNames() = %q, want a stable sorted list so the refusal message does not shuffle", got)
 	}
 }
+
+// discoveryServer answers the one group-version endpoint requireSubresource
+// reads. apps/v1 is the honest case: the apiserver serves deployments/scale and
+// does not serve daemonsets/scale, which is the whole of AC8's DaemonSet rule.
+func discoveryServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	const resources = `{"kind":"APIResourceList","apiVersion":"v1","groupVersion":"apps/v1","resources":[` +
+		`{"name":"deployments","kind":"Deployment","namespaced":true},` +
+		`{"name":"deployments/scale","kind":"Scale","namespaced":true},` +
+		`{"name":"daemonsets","kind":"DaemonSet","namespaced":true}]}`
+
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/apis/apps/v1" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, resources)
+	}))
+}
+
+// AC8: a kind with no replicas is refused for having no replicas. The negative
+// half carries the criterion — the refusal an operator acts on is the one that
+// says which of "no permission", "no object" and "no such thing" it was, and a
+// bare PUT would have produced the same 404 for all three.
+func TestUpdateScaleRejectsReplicalessKind(t *testing.T) {
+	server := discoveryServer(t)
+	defer server.Close()
+	service := serviceAgainst(server.URL)
+	gvr := func(resource string) schema.GroupVersionResource {
+		return schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: resource}
+	}
+
+	if err := service.requireSubresource(context.Background(), gvr("deployments"), ScaleSubresource, "Deployment"); err != nil {
+		t.Fatalf("requireSubresource(deployments/scale) = %v, want it served", err)
+	}
+
+	err := service.requireSubresource(context.Background(), gvr("daemonsets"), ScaleSubresource, "DaemonSet")
+	if err == nil {
+		t.Fatal("requireSubresource(daemonsets/scale) = nil, want a refusal")
+	}
+	for _, want := range []string{"DaemonSet", "no replicas", "daemonsets/scale", "not about permission"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("refusal %q does not mention %q", err, want)
+		}
+	}
+}
+
+// The scale body carries no resourceVersion: this tool holds the update verb
+// alone, so there is no get to read one from. An assertion on its absence is
+// the only thing standing between that design and a get-then-put creeping back
+// in as "just one read".
+func TestScaleObjectIsAnUnconditionalWrite(t *testing.T) {
+	body := scaleObject("ops", "api", 3)
+
+	metadata := body["metadata"].(map[string]any)
+	if _, ok := metadata["resourceVersion"]; ok {
+		t.Error("the scale body carries a resourceVersion, which this tool has no verb to read")
+	}
+	if metadata["name"] != "api" || metadata["namespace"] != "ops" {
+		t.Errorf("metadata = %v, want the coordinate", metadata)
+	}
+	if body["apiVersion"] != "autoscaling/v1" || body["kind"] != "Scale" {
+		t.Errorf("body = %v, want an autoscaling/v1 Scale", body)
+	}
+	if body["spec"].(map[string]any)["replicas"] != int64(3) {
+		t.Errorf("spec = %v, want replicas 3", body["spec"])
+	}
+}
+
+// A cluster-scoped kind gets no namespace in the body, rather than an empty
+// string the apiserver would read as a namespace named "".
+func TestScaleObjectOmitsAnEmptyNamespace(t *testing.T) {
+	metadata := scaleObject("", "node-pool", 1)["metadata"].(map[string]any)
+	if _, ok := metadata["namespace"]; ok {
+		t.Errorf("metadata = %v, want no namespace key at all", metadata)
+	}
+}

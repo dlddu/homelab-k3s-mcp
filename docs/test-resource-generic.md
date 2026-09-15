@@ -136,9 +136,16 @@
 - **기대 결과**: 3·0·1이 그대로 반영됨. 음수와 누락은 거부(승인 요청조차 만들지 않음).
   DaemonSet은 **레플리카 부재**를 사유로 거부. 전체 교체가 PUT으로 반영됨
 - **검증 AC**: AC8
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestUpdateScaleBounds`,
-  `TestUpdateScaleRejectsReplicalessKind`. 통합 `resource_generic_ac8.py`
-  (폐기되는 `workload_scale_ac{1,2}.py`의 단언을 승계한다)
+- **자동화**: Go 단위 둘은 계획한 이름 그대로 서 있다 —
+  `internal/mcp/resource_test.go::TestUpdateScaleBounds`(3·0·1 반영 + 거부 일곱, 그중
+  음수·누락은 **승인 요청이 만들어지기 전에** 거부된다),
+  `internal/k8s/resource_test.go::TestUpdateScaleRejectsReplicalessKind`(사유가 권한도
+  존재 여부도 아닌 **레플리카 부재**임을 단언한다). 전체 교체 경로는
+  `internal/mcp/resource_test.go::TestUpdateReplacesWithTheCallersManifest` 가 덮는다.
+  레플리카가 실제로 그 수로 수렴하는지와 파드가 그에 맞춰 뜨고 지는지는 apiserver 의
+  거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
+  통합은 **(미작성)** — `resource_generic_ac8.py` (폐기되는 `workload_scale_ac{1,2}.py`의
+  단언을 승계한다). 각 호출이 승인을 요구하므로 실물 gatekeeper 픽스처가 선행이다
 
 ### 시나리오 9: 부분 수정과 롤링 재시작
 - **사전 조건**: 동일, `workload-fixture`를 replicas=2로 세팅

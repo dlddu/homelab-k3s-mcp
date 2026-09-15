@@ -143,6 +143,54 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_update",
+      "description": "Replace one Kubernetes object whole (PUT) by coordinate and name, or set a replica count through subresource=scale. Exercises the update verb only and always requires human approval. Without subresource it takes a manifest; with subresource=scale it takes replicas (0 is allowed, negative and missing are rejected, and a kind with no scale subresource such as DaemonSet is refused for having no replicas). Rolling restarts and partial edits are resource_patch, not this tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\" or \"apps/v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to replace, e.g. \"Deployment\", \"ConfigMap\"."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for namespaced kinds, rejected for cluster-scoped ones."
+          },
+          "name": {
+            "type": "string",
+            "description": "Object name. Required; this tool replaces one object, not a selection."
+          },
+          "subresource": {
+            "type": "string",
+            "enum": ["scale"],
+            "description": "Omit to replace the whole object. scale writes a replica count instead."
+          },
+          "manifest": {
+            "type": "object",
+            "description": "The replacement object, sent as a PUT. Whole-object replacement only; rejected with subresource=scale. Its apiVersion, kind and metadata.name must agree with the coordinate."
+          },
+          "replicas": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "subresource=scale only, where it is required. 0 is allowed; negative is rejected."
+          }
+        },
+        "required": ["apiVersion", "kind", "name"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Update Resource",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "resource_patch",
       "description": "Apply a patch to one Kubernetes object by coordinate and name. Exercises the patch verb only and always requires human approval. patchType selects merge, strategic, json (RFC 6902) or apply (server-side apply, which also requires fieldManager). A rolling restart is this tool with a strategic patch that sets the kubectl.kubernetes.io/restartedAt pod-template annotation.",
       "inputSchema": {

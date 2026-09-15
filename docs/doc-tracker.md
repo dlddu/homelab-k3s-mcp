@@ -18,9 +18,10 @@
 - PRD: **14개** (도구 12 + 공통 기반 2)
 - Acceptance Criteria: **78개** (가치 연결됨: 78 / 미연결: 0) — AC 번호는 결번을 둔다(platform AC3 · resource-generic AC19)
 - 테스트 문서: **14개** (AC 커버됨: 78 / 미커버: 0)
-- 등록 도구: **16종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_patch` 1종이고, 게이트 밖 예외는 2종(`workload_scale`·`dear_baby_reset_user`)이다
+- 등록 도구: **17종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_update`·`resource_patch` 2종이고, 게이트 밖 예외는 2종(`workload_scale`·`dear_baby_reset_user`)이다
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있으나,
-  ⑴ 폐기된 6종 중 **남은 1종**(`workload_scale`)이 아직 코드에 살아 있고
+  ⑴ 폐기된 6종 중 **남은 1종**(`workload_scale`)이 아직 코드에 살아 있고 — 그 대체재
+  `resource_update(subresource=scale)`는 2026-09-15 에 섰으므로 이제 **제거 가능**하다
   ⑵ `dear_baby_reset_user`가 게이트 밖에 있다 (아래 "수용된 위험" 참조)
 
 > 문서 체계의 모든 화살표가 연결되었다(고아 가치·미정렬 문서·무가치 PRD·AC 없는 PRD·
@@ -143,7 +144,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 게이트 우회 가능 | `dear_baby_reset_user` | `create` on `pods/exec` 을 행사하므로 게이트 정의에 해당하지만 편입하지 않았다. V5 도구라 좌표가 아니라 앱 의미로 대상을 지정하고, 편입하려면 `prd-dear-baby-reset-user` 의 AC 를 함께 고쳐야 한다. | ⬜ **미결 — 소유자 판단 대기** (2026-09-12) |
 | ~~두 PRD 가 `k8s/rbac.yaml` 을 두고 어긋난다~~ | `prd-platform-auth-safety` AC3 ↔ `prd-resource-generic` AC19 | AC3 은 부여 집합을 축자로 못박고 AC19 는 도구 표 ∪ 게이트 선언과 같아야 한다고 적어, 둘을 동시에 만족하는 `rbac.yaml` 이 없었다. **어느 쪽도 이기지 않는 것으로 끝났다** — 2026-09-14 에 두 AC 를 결번 처리하고 `rbac.yaml` 을 `cluster-admin` 바인딩으로 바꿨다. | ✅ **해소(2026-09-14)** — 대신 아래 「RBAC 경계 소멸」 행이 열린다 |
 | **RBAC 경계 소멸** | 전체 | `k8s/rbac.yaml` 이 `cluster-admin` 바인딩이라 이 ServiceAccount 에 **권한 상한이 없다**. 직전 행(「RBAC 백스톱 소멸」)은 금지 쌍이 비었다는 것이었고 종류 범위는 남아 있었는데, 그 마지막 층까지 없앴다. 결과 셋: ⑴ 게이트 판정이 **유일한** 경계이고 게이트 결함 시 남는 방어선이 0이다(미설정 게이트는 fail-closed 라 그쪽은 닫혀 있다). ⑵ `resource_exec` 승인 **한 번**이 `/var/run/secrets/**` 의 SA 토큰을 내주고, 그 토큰으로 apiserver 를 직접 치면 게이트를 아예 통과하지 않는다 — 이전 판에서는 같은 유출에 `rbac.yaml` 의 좁은 쌍 집합이 상한을 걸었다. ⑶ `prd-resource-generic` AC18 의 「권한 밖」 진단 경로가 정상 배포에서는 돌지 않는다. | ⚠️ **수용(2026-09-14)** — 소유자 판단. 완화는 게이트 판정의 정확성 하나뿐이므로 `internal/gatekeeper` 변경은 이 사실 위에서 검토한다 |
-| 문서 없는 실행 코드 | 폐기된 6종 중 **남은 1종** (`workload_scale`) | #72 는 **문서만** 폐기했고 Go 구현은 그대로였다. 2026-09-13 에 읽기 전용 4종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 대체재 `resource_list`·`resource_get` 과 함께 제거됐다. 남은 둘은 **상태를 바꾸는** 도구라 대체재가 `resource_patch`·`resource_update`(둘 다 게이트 대상)이고, 그것이 설 때까지 **PRD 도 e2e 도 없이 계속 서빙된다**. **2026-09-14 — 둘 중 하나의 대체재가 섰고, 같은 날 그 하나가 제거됐다**: `resource_patch` 등록으로 `workload_restart` 의 대체 경로(`patchType=strategic` + `restartedAt` 어노테이션)가 실재하게 됐고, 그 다음 슬라이스가 `workload_restart` 의 등록·디스패치·핸들러·`k8s.Service` 경로와 `EXPECTED_TOOLS` 등재를 함께 걷었다(등록 도구 17 → **16종**). `workload_scale` 의 대체재는 `resource_update(subresource=scale)` 이고 **아직 없다**. | ⬜ **쓰기 축 구현 선행 대기 — `workload_scale` 하나만 남았다.** **순서를 지킨다: 대체재가 먼저, 제거는 그 뒤다** — 뒤집으면 그 사이 운영자가 수단을 잃는다. `workload_restart` 가 그 순서를 지켜 닫힌 선례다(대체재 착지 → 제거). `workload_scale` 은 대체재가 설 때까지 게이트 밖에서 계속 서빙되므로 이 행은 열려 있다 (2026-09-14 갱신) |
+| 문서 없는 실행 코드 | 폐기된 6종 중 **남은 1종** (`workload_scale`) | #72 는 **문서만** 폐기했고 Go 구현은 그대로였다. 2026-09-13 에 읽기 전용 4종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`)이 대체재 `resource_list`·`resource_get` 과 함께 제거됐다. 남은 둘은 **상태를 바꾸는** 도구라 대체재가 `resource_patch`·`resource_update`(둘 다 게이트 대상)이고, 그것이 설 때까지 **PRD 도 e2e 도 없이 계속 서빙된다**. **2026-09-14 — 둘 중 하나의 대체재가 섰고, 같은 날 그 하나가 제거됐다**: `resource_patch` 등록으로 `workload_restart` 의 대체 경로(`patchType=strategic` + `restartedAt` 어노테이션)가 실재하게 됐고, 그 다음 슬라이스가 `workload_restart` 의 등록·디스패치·핸들러·`k8s.Service` 경로와 `EXPECTED_TOOLS` 등재를 함께 걷었다(등록 도구 17 → **16종**). `workload_scale` 의 대체재는 `resource_update(subresource=scale)` 이고 **아직 없다**. | ⬜ **제거 대기 — 선행 조건은 해소됐다.** **2026-09-15 — 대체재가 섰다**: `resource_update(subresource=scale)` 가 등록되어 `workload_scale` 이 하던 일(레플리카를 0 포함 임의 수로 바꾸고, 음수·누락을 거부하고, 레플리카 없는 종류를 그 사유로 거부한다)이 게이트 **안**에서 가능해졌다. **순서를 지킨다: 대체재가 먼저, 제거는 그 뒤다** — 뒤집으면 그 사이 운영자가 수단을 잃는다. `workload_restart` 가 그 순서를 지켜 닫힌 선례다(대체재 착지 → 제거, 서로 다른 PR). 이제 남은 것은 뒤쪽 절반뿐이고, 그것이 착지할 때까지 `workload_scale` 은 게이트 밖에서 계속 서빙되므로 이 행은 열려 있다 (2026-09-15 갱신) |
 
 `session_write` 는 게이트 우회 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 권한을
 행사하지 않으므로 게이트의 정의 범위 밖이고, 그 도구의 안전장치는 `prd-session-write` 가 맡는다.
@@ -184,7 +185,35 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > **남은 것**: `resource_*`의 쓰기 축 8종(`create`·`update`·`patch`·`delete`·
 > `delete_collection`·`exec`·`attach`·`port_forward`·`proxy`)과 `resource_watch`, 그리고
 > 그것들이 함께 닫을 `workload_restart`·`workload_scale` 제거. AC6·AC7~AC15와
-> `prd-approval-gate` AC3·AC6·AC10·AC11도 미착수 그대로다. **게이트의 쌍 선언은 이 슬라이스에서
+> `prd-approval-gate` AC3·AC6·AC10·AC11도 미착수 그대로다.
+
+> **2026-09-15 — 쓰기 축의 둘째 도구가 섰다: `resource_update`(AC8).** `resource_patch`(#89)에
+> 이어 **한 도구만** 등록했다 — 「수용된 위험」의 「RBAC 경계 소멸」 아래서 선언 오류의 비용이
+> 표면 크기에 정비례하므로, 직전 두 슬라이스와 같은 보폭을 유지한다. 전 계층이 함께 섰다:
+> `toolslist.go` 선언 · `gate.go` 의 `toolRegistry` 등재 · `mcp.go` 디스패치(레지스트리 경유) ·
+> `internal/mcp/resource.go` 핸들러 · `k8s.Service` 인터페이스와 두 구현. **`EXPECTED_TOOLS` 는
+> 같은 커밋에서** 움직였다(등록 도구 16 → **17종**) — 이 상수는 부분집합이라 깨지지 않고 조용히
+> 약해지는 전례가 두 번 있다(2026-09-03 · 09-04).
+> **설계 결정 셋을 기록해 둔다.** ⑴ **스케일은 `scale` 서브리소스에 PUT 한다.** `kubectl scale`
+> 은 `resourceVersion` 을 실어 나르려 get-후-put 을 하지만 `get` 은 둘째 verb 이고 이 도구는
+> 하나만 든다(PRD 머리말의 「도구 하나가 verb 하나」). `resourceVersion` 이 비면 무조건 갱신이라
+> 읽지 않아도 같은 쓰기가 된다 — 이 도구의 호출자가 실제로 원하는 프리컨디션은 게이트의 것이고
+> (`prd-approval-gate` AC6), 그것은 이 프리컨디션이 아니다. ⑵ **인자 검증이 게이트보다 앞선다.**
+> `docs/test-resource-generic.md` 시나리오 8 이 음수·누락 `replicas` 에 대해 「**승인 요청조차
+> 만들지 않음**」을 기대 결과로 적는데, 핸들러는 `toolsCall` 에서 `authorize` **뒤에** 돈다.
+> 게이트보다 이른 유일한 자리가 선언의 쌍 해석이라 거기서 검증한다(`updatePairs`) — 해석 오류는
+> 이미 거부이고(AC5), 승인 요청은 만들어지지 않는다. ⑶ **레플리카 없는 종류는 discovery 로
+> 가린다.** `workload_scale` 처럼 kind 열거를 두면 임의 종류를 받는 도구 안에 분류기를 새로
+> 만드는 셈이고, 그냥 PUT 하면 404 가 「객체가 없다」와 구별되지 않는다 — 운영자가 행동을 고르는
+> 것은 바로 그 구별이다. 클러스터가 `<plural>/scale` 를 서빙하는지 묻고 아니면 「그 종류에
+> 레플리카가 없다」를 사유로 거부한다(discovery 는 리소스 권한이 아니다 — AC20 선례).
+> **범위 밖(근거와 함께)**: `workload_scale` 구현 제거 — 순서 제약의 뒤쪽 절반이고, `workload_restart`
+> 선례대로 **다른 PR** 이다(`internal/` 이 움직였으므로 재감지가 그 슬라이스를 연다). 쓰기·스트림
+> 잔여 8종, `prd-approval-gate` AC6(TOCTOU)·AC11, 통합 e2e `resource_generic_ac8.py`(자매 모델
+> `tbm_homelab-k3s-mcp-scenario-e2e` 소관 — 시나리오 8 은 「⏳ 구현 대기」에 그대로 둔다).
+> **집계는 한 숫자도 움직이지 않는다** — 시나리오도 e2e 파일도 만들지 않았으므로
+> `check_ac_mapping.py` 일곱 값은 부모와 같다. `check_comment_policy.py` 는 다르다: 등재 범위
+> 넷에 주석이 늘어 **같은 PR 에서 재판정**했고, 새 범위는 없다. **게이트의 쌍 선언은 이 슬라이스에서
 > 런타임 해석으로 넓어졌다** — 좌표가 인자인 도구는 정적 표로 기술할 수 없어, 호출의 인자에서
 > 쌍을 만들어 낸다. 그 해석은 discovery를 부르지 않는다(AC16이 요구하는 「미승인 시 k8s 호출 0」이
 > 깨지므로).
@@ -281,6 +310,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > 원문은 2026-09-12 시점의 기록이므로 고쳐 쓰지 않고 이 정정만 붙인다.
 > **[2026-09-14 재정정]** 그 2종도 더는 참이 아니다 — 같은 날 `workload_restart` 가 구현·단위
 > 테스트와 함께 제거돼 **남은 것은 1종**(`workload_scale`)이다.
+> **[2026-09-15 주]** 그 1종의 **대체재**가 섰다(`resource_update(subresource=scale)`) — 구현
+> 제거 자체는 아직이므로 위 수(1종)는 그대로다.
 
 - 🟢 **자동 검증됨** (Go 단위 `internal/server/mcp_test.go`·`health_test.go`·
   `internal/auth/auth_test.go`, `internal/awsconfig`·`internal/github`·`internal/grafana`·
@@ -314,7 +345,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
   자체가 없다(`k8s/rbac.yaml` 은 `cluster-admin` 바인딩).
 - 🔴 **자동화 공백 — 추가 권장**:
   - **session 3종의 통합 e2e — 일부 공백**. 도구 계층은 셋 다 구현·검증됐다
-    (`internal/sessionplatform` + `internal/mcp`, 도구 표면 16종). 통합 e2e 쪽의 **현황·잔여·
+    (`internal/sessionplatform` + `internal/mcp`, 도구 표면 17종). 통합 e2e 쪽의 **현황·잔여·
     선행 조건은 아래 "테스트 시나리오 ↔ e2e 1:1 정합성" 절이 단일 사실 원천**이고(집계 블록 ·
     레지스트리 표 · 구현 대기 표), 그 축의 소유자는 자매 모델
     `tbm_homelab-k3s-mcp-scenario-e2e`다.
@@ -677,6 +708,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-15 | **`resource_update` 등록 — 쓰기 축 둘째 도구(AC8), `workload_scale` 의 대체재가 섰다** — `prd-resource-generic` 쓰기·스트림 9종 중 `resource_update` 를 고른 이유는 그것이 **기준 1(미구현 AC)과 기준 3(문서 없는 구현)을 동시에 여는 유일한 슬라이스**이기 때문이다: AC8 을 닫으면서, 위 「문서 없는 실행 코드」 행이 `workload_scale` 의 대체재로 축자 지정한 도구가 실재하게 된다. ⑴ **한 도구만** 갔다 — 「수용된 위험」의 「RBAC 경계 소멸」(`rbac.yaml` 이 `cluster-admin` 바인딩 ⇒ 게이트 판정이 유일한 경계) 아래서 선언 오류의 비용이 표면 크기에 정비례하고, 직전 두 슬라이스(#89 등록 · #91 제거)가 같은 근거로 한 도구씩 갔다. ⑵ **전 계층이 함께 섰다**: `toolslist.go` 선언 · `gate.go` 의 `toolRegistry` 등재(`updatePairs()` 로 쌍을 좌표에서 해석 — `update deployments/scale`) · `internal/mcp/resource.go` 핸들러 · `internal/k8s` 의 `UpdateRef`·`UpdateResource` · `k8s.Service` 인터페이스와 두 구현. **`EXPECTED_TOOLS` 를 같은 커밋에서** 갱신해 등록 도구가 16 → **17종**이 됐고, `toolslist.go` 의 `"name"` 전수와 집합 동일(17==17)을 기계로 대조했다. ⑶ **설계 결정 셋**: 스케일은 `scale` 서브리소스에 **PUT**(get-후-put 은 둘째 verb 라 「도구 하나가 verb 하나」를 깬다 — `resourceVersion` 이 비면 무조건 갱신이다) · **인자 검증을 게이트보다 앞에** 두어 음수·누락 `replicas` 가 **승인 요청조차 만들지 않는다**(시나리오 8 의 기대 결과, 핸들러는 `authorize` 뒤라 그 자리로는 불가능하다) · 레플리카 없는 종류는 **discovery** 로 가려 거부 사유가 권한도 존재 여부도 아닌 **레플리카 부재**임을 밝힌다. ⑷ **보안 효과**: 스케일이 게이트 **안**에서 가능해졌다 — 지금까지 레플리카 변경의 유일한 경로는 `outsideGate` 예외인 `workload_scale` 이었고, 그것은 무승인 상태 변경이었다. 예외 자체가 걷히는 것은 다음 슬라이스다. **범위 밖(근거와 함께)**: `workload_scale` 구현 제거(순서 제약의 뒤쪽 절반 — `workload_restart` 선례대로 다른 PR, `internal/` 이 움직였으므로 재감지가 인계한다), 쓰기·스트림 잔여 8종, `prd-approval-gate` AC6(TOCTOU)·AC11, 통합 e2e `resource_generic_ac8.py`(자매 모델 소관 — 시나리오 8 은 「⏳ 구현 대기」 그대로). ⚠️ **운영 영향**: 아직 없다 — `workload_scale` 이 그대로 서빙되므로 기존 호출 형태는 변하지 않고, 새 경로가 하나 더 열렸을 뿐이다. **집계**: `check_ac_mapping.py` 일곱 값(`78·1·29·48·48·0·0`)과 `check_doc_inventory.py`(`40/40` — 이 브랜치를 #95 위로 리베이스한 뒤의 값이고, 그 PR 이 판정 기록 문서 하나를 더했다)는 부모와 같고, `check_comment_policy.py` 는 등재 범위 넷의 주석이 늘어 같은 PR 에서 재판정했다(원장 참조). | 등록 도구 16종 · 게이트 대상 쓰기 도구 1종(`resource_patch`) · 쓰기 축 미구현 9종 · `workload_scale` 대체재 없음 | 등록 도구 17종 · 게이트 대상 쓰기 도구 2종(`resource_update`·`resource_patch`) · 쓰기 축 미구현 8종 · `workload_scale` **제거 가능**(대체재 실재) |
 | 2026-09-14 | **`workload_restart` 구현 제거 — 「문서 없는 실행 코드」 2종 → 1종, 게이트 밖 예외 3 → 2** — #72 가 문서만 폐기하고 남긴 여섯 중 다섯째다. 이 제거의 선행 조건은 **대체재의 실재** 하나였고, 그것이 하루 전 `cfa024e`(#89)로 섰다 — 재시작은 `resource_patch` 의 `patchType=strategic` + `kubectl.kubernetes.io/restartedAt` 어노테이션 패치로 표현된다(`prd-resource-generic` AC9 가 「전용 도구를 두지 않는다」를 축자로 정한 그 경로). 위 「문서 없는 실행 코드」 행의 **순서 제약(대체재가 먼저, 제거는 그 뒤)** 을 지킨 것이고, 같은 행이 「`workload_restart` 는 제거 가능해졌다」고 스스로 적어 둔 다음 순번이다. ⑴ **제거 범위는 한 도구의 전 계층**: `toolslist.go` 선언 · `gate.go` 의 `toolRegistry` 등재(`patch` 3쌍 + `outsideGate: exemptRetiredPendingRemoval`) · `mcp.go` 핸들러 · `k8s.Service` 인터페이스와 두 구현(`KubeService`·`Unavailable`) · 함께 죽는 `restartAnnotation` 상수와 `time` import. `exemptRetiredPendingRemoval` 상수 자체는 `workload_scale` 이 계속 쓰므로 남겼다. ⑵ **`EXPECTED_TOOLS` 를 같은 커밋에서** 갱신했다 — 위 「구현 제거가 남긴 일」 2번이 못박은 자리이고, 이 상수는 부분집합이라 **깨지지 않고 조용히 약해지는** 전례가 두 번 있었다(2026-09-03 · 09-04). `toolslist.go` 집합과 `EXPECTED_TOOLS` 를 파싱해 **집합 동일(16==16)** 을 기계로 대조했다. ⑶ **단위 테스트는 지우기만 하지 않았다** — `TestToolsListAdvertisesAnnotations` 의 파괴적 도구 자리를 `workload_restart` 에서 **대체재 `resource_patch` 로 옮겼다**. 그 자리를 비우면 파괴적 표기 단언이 읽기 전용 두 도구만 남아 조용히 약해지고, `session_write_ac3.py` 가 그 테스트를 「같은 단언의 in-process 판」으로 가리키는 포인터도 함께 낡는다. ⑷ **보안 효과 — 무승인 상태 변경 경로 하나가 닫힌다**: 이 도구는 `patch` 를 행사하면서 `outsideGate` 예외로 **게이트를 타지 않았다**. 수용 위험 「RBAC 경계 소멸」(`rbac.yaml` 이 `cluster-admin` 바인딩 ⇒ 게이트 판정이 유일한 경계) 아래서 이 예외는 그대로 무인 상태 변경이었다. 이제 재시작은 `resource_patch` 로 하며 **다른 patch 와 똑같이 승인을 받는다**(AC1 — 게이트는 내용이 아니라 verb 로 판정한다). ⚠️ **운영 영향**: 재시작 호출 형태가 바뀌고 승인이 필요해진다. **범위 밖(근거와 함께)**: `workload_scale` 제거(대체재 `resource_update(subresource=scale)` 이 아직 없다 — 같은 순서 제약), 쓰기·스트림 축 9종, `prd-approval-gate` AC6(TOCTOU)·AC11, `dear_baby_reset_user` 게이트 편입(⬜ 소유자 판단 대기). **집계는 한 숫자도 움직이지 않는다** — 시나리오도 e2e 파일도 만들지 않았고 제거 구간에 줄 주석이 0줄이라, `check_ac_mapping.py` 일곱 값과 `check_comment_policy.py` 두 전체 지문이 부모와 **바이트 동일**함을 실측으로 확인했다(움직였다면 그것이 오류 신호다). `prd-*.md`·`test-*.md`·`values.md`·`comment-policy/` **0바이트 변경**. 판정 근거는 `rct_20260914-0011`. | 등록 도구 **17종** · 게이트 밖 예외 **3건** · 「문서 없는 실행 코드」 **2종** · `workload_restart` 가 PRD 도 e2e 도 없이 **게이트 밖에서** 서빙 | 등록 도구 **16종**(`toolslist.go` == `EXPECTED_TOOLS`) · 게이트 밖 예외 **2건**(`workload_scale`·`dear_baby_reset_user`) · 「문서 없는 실행 코드」 **1종** · 재시작은 `resource_patch` 로 하며 승인을 받는다. 집계 **78·1·29·48·48·0·0**(기여 0) |
 | 2026-09-14 | **쓰기 축의 첫 도구 — `resource_patch`(AC9) 등록 + 민감 종류 쓰기의 값 가림** — 직전 4개 슬라이스가 쓰기 축을 미룬 사유는 단 하나, 「`prd-platform-auth-safety` AC3 ↔ `prd-resource-generic` AC19 의 `rbac.yaml` 모순이 풀리기 전에는 착수할 수 없다」였다. #83 이 두 AC 를 결번 처리했고 #84 가 「구현 제거가 남긴 일」 3번을 닫으며 **그 선행 제약의 해제를 축자로 적었다** — 같은 유예를 반복하는 것은 근거 없는 파킹이므로 착수했다. **쓰기 축 10종을 한 번에 세우지 않고 한 도구만** 골랐다: 수용 위험 「RBAC 경계 소멸」(`cluster-admin` 바인딩이라 게이트 판정이 **유일한** 경계, apiserver 백스톱 0) 위에서 선언 오류의 비용이 표면 크기에 정비례한다. `resource_patch` 를 고른 이유는 **기준 1(미구현 AC)과 기준 3(문서 없는 구현)이 한 슬라이스 위에서 이어지기 때문** — `workload_restart` 의 문서화된 대체재가 정확히 이 도구다. ⑴ 네 `patchType`(`merge`·`strategic`·`json`·`apply`, `apply` 는 `fieldManager` 필수)이 각각 동작하고 패치 본문은 **바이트 그대로** 전달된다(서버가 본문을 고쳐 쓰면 승인 화면이 보여 준 것과 다른 것을 승인한 셈이 된다). ⑵ `patch` 는 `gatedVerbs` 라 재시작 패치를 포함해 **모든 호출이 게이트를 탄다** — 내용으로 예외를 주면 그 분류기가 곧 우회 경로다(AC1). ⑶ 🔴 **`approvalContext` 의 축자 인자 경로가 첫 쓰기 도구와 함께 유출 경로가 된다는 것을 계획 중에 발견해 같은 커밋에서 막았다** — `kind=Secret` 패치의 `stringData` 가 gatekeeper 요청 본문·승인 화면·푸시 알림에 그대로 실릴 참이었다(AC3·AC10·AC16 이 셋 다 금지). `data`·`stringData` 를 키 이름 + 바이트 수로 대체하되 **비-민감 종류의 본문은 전문 유지** — AC16 은 근거를 「내용이 자격증명인가」에 두지 「무엇을 하는 호출인가」에 두지 않는다. RFC 6902 의 `{"op":...,"path":"/data/token","value":...}` 모양은 트리 탐색으로는 안 잡혀 따로 다뤘다. ⑷ `toolslist.go` 와 `EXPECTED_TOOLS` 를 같은 커밋에서 갱신(16 → **17종**). 단위 테스트는 시나리오 9 의 `자동화` 필드가 **이미 이름으로 계획해 둔 셋**(`TestPatchTypes`·`TestRestartPatchTouchesOnlyAnnotation`·`TestRestartPatchIsGatedLikeAnyPatch`)을 그대로 세웠고, 마스킹은 **누설 단언과 대조군을 쌍으로** 두어 「전부 가린다」와 「전부 싣는다」가 둘 다 실패하게 했다. **범위 밖(근거와 함께)**: `workload_restart`·`workload_scale` 제거(순서 제약 — 대체재가 먼저, 제거는 그 뒤. `workload_scale` 의 대체재 `resource_update(subresource=scale)` 은 아직 없다), 나머지 쓰기 도구 9종, AC6(TOCTOU)·AC11(게이트 권한 선언), 통합 e2e `resource_generic_ac9.py`(자매 모델 소관이고 gatekeeper 픽스처가 없어 열리지 않는다 — 그래서 **구현 대기 표의 행은 그대로 두고 근거만 갱신**했고 **이 슬라이스는 집계 일곱 숫자를 하나도 움직이지 않는다**). ⚠️ **계획 중 #87 이 머지돼 리베이스했다** — 집계는 그쪽이 시나리오 20 을 전용 파일로 닫으며 `⏳ 30→29 · 1:1 대상 47→48 · 매칭 파일 47→48` 로 움직였고, 이 행의 「이후 상태」 숫자는 **손으로 더하지 않고 리베이스 후 `check_ac_mapping.py` 출력에서 다시 뽑은 값**이다. 판정 근거는 `rct_20260914-0008`. | 등록 도구 16종 · 게이트 대상 쓰기 도구 **0종** · 시나리오 9·18 이 `resource_patch` 미등록을 차단 근거로 인용 · 민감 종류 쓰기의 `context` 마스킹 없음 | 등록 도구 **17종** · 게이트 대상 쓰기 도구 **1종** · 시나리오 9·18 의 남은 차단은 gatekeeper 픽스처 하나 · 민감 종류 쓰기의 값이 `context` 에서 가려짐. 집계 **78·1·29·48·48·0·0**(#87 이 움직인 값 그대로 — 이 슬라이스의 기여 0) |
 | 2026-09-14 | **시나리오 20 이 구현 대기에서 빠지고 전용 e2e 를 얻었다 — 직전 슬라이스가 자기 손으로 만든 등재 공백을 닫는다** — `rct_20260914-0004`(#82)가 후보 산출을 편집 거리로 고치며 시나리오 20 의 마지막 **살아 있는** 차단 요인을 죽였고, 남은 것은 「전용 e2e 가 아직 없다」 하나였다. 그것은 규칙 4 가 **명시적으로 예외 사유에서 배제**하는 것이고 정의상 규칙 6 이 아니라 규칙 1 의 공백이라, 행이 표에 앉은 채 1:1 계수에서 빠져 있었다. **게이트는 이 축을 원리적으로 보지 못한다** — `check_ac_mapping.py` 는 행을 세고 선언↔등재를 대조할 뿐 각 행의 근거가 코드에 비추어 참인지 검사하지 않아, 직전까지 집계가 부모와 바이트 동일한 채 초록이었다. **저작에서 하나가 설계를 좌우했다**: 시나리오의 사전 조건이 「픽스처 CRD 설치 **전/후** 두 상태」인데 `tests/k8s/kind/` 픽스처는 ci.yml 이 셋업에서 심으므로 그걸 쓰면 테스트가 시작하는 시점이 이미 「후」다 — 「전」은 영영 관측되지 않고 케이스는 그래도 통과한다. 그래서 **전용 프로브 CRD 를 테스트가 런타임에 스스로 세우고 `finally` 로 지우며, 매니페스트를 픽스처 파일이 아니라 테스트 파일 안 문자열로 들고 있다**(그 디렉터리에 두면 언젠가 ci.yml 에 배선되어 사전 조건이 소리 없이 사라진다). **오타 호출을 설치 전에 먼저 태우는 것도 순서가 곧 단언이다** — 후보 제시를 보는 동시에 RESTMapper 캐시를 데워, 설치 뒤의 목록 조회가 「캐시가 무효화됐다」를 재게 한다(데우지 않으면 「처음 만들었다」를 잰다). 「재기동 불필요」는 서버 파드의 `uid`·`startTime` 이 처음과 끝에 같음으로 재 폴링 창 전체를 덮는다 — 폴링만 두면 재기동 뒤 다시 읽은 경우와 구별되지 않는다. **기대 결과 중 「`api_resources` 는 RBAC 대조 대상이 아님」은 강한 부정형으로 담지 못했다** — #83 이후 부여 밖 종류가 존재하지 않아 대조군을 만들 수 없어서이고, 관측 가능한 최강형(인스턴스가 하나도 없는 새 종류를 discovery 메타데이터로 답한다)까지만 담고 그 한계를 파일 docstring 에 적었다. `internal/`·`k8s/`·`.github/workflows/` 는 한 줄도 바뀌지 않았고 AC·PRD·시나리오 본문도 불변이다(`자동화` 필드만 규칙 7 대로 갱신). 판정 근거는 `rct_20260914-0007`. | ✅ 47 · ⏳ 30(#20 = 전용 e2e 미작성) · 1:1 대상 47 · 매칭 파일 47 | ✅ 48 · ⏳ 29 · 1:1 대상 48 · 매칭 파일 48 · 공백 0 |

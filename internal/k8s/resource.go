@@ -12,6 +12,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
@@ -107,6 +108,19 @@ type ResourceRef struct {
 	Name        string
 	Subresource string
 	Log         LogOptions
+}
+
+// UpdateRef addresses one object and the state to write over it (AC8). Exactly
+// one of Manifest and Replicas is set: the tool layer refuses a call that names
+// both or neither before this type is built.
+type UpdateRef struct {
+	APIVersion  string
+	Kind        string
+	Namespace   *string
+	Name        string
+	Subresource string
+	Manifest    map[string]any
+	Replicas    *int64
 }
 
 // PatchRef addresses one object and the change to make to it (AC9).
@@ -514,6 +528,114 @@ func objectNamespace(res resolved, kind string, namespace *string) (string, erro
 		return "", nil
 	}
 	return *namespace, nil
+}
+
+// ScaleSubresource is the one subresource resource_update writes (AC8). The
+// tool layer refuses any other name, and this package answers what that name
+// means: the autoscaling/v1 Scale hanging off the workload.
+const ScaleSubresource = "scale"
+
+// UpdateResource replaces one object whole, or writes a replica count to its
+// scale subresource (AC8).
+//
+// The scale path writes without reading first. kubectl's scale does a
+// get-then-put so it can carry the object's resourceVersion as a
+// precondition, but get is a second verb and this tool holds exactly one; an
+// empty resourceVersion is an unconditional update, which is that same write
+// without the precondition. The precondition that AC8's callers actually want
+// is the gate's (prd-approval-gate AC6), and it is not this one.
+func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error) {
+	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
+	if err != nil {
+		return nil, err
+	}
+	namespace, err := objectNamespace(res, ref.Kind, ref.Namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	body := ref.Manifest
+	if ref.Subresource == ScaleSubresource {
+		if err := s.requireSubresource(ctx, res.gvr, ScaleSubresource, ref.Kind); err != nil {
+			return nil, err
+		}
+		body = scaleObject(namespace, ref.Name, *ref.Replicas)
+	}
+
+	dyn, err := dynamic.NewForConfig(s.config)
+	if err != nil {
+		return nil, unavailableErr(fmt.Sprintf("init dynamic client: %v", err))
+	}
+	var api dynamic.ResourceInterface = dyn.Resource(res.gvr)
+	if res.namespaced {
+		api = dyn.Resource(res.gvr).Namespace(namespace)
+	}
+
+	var subresources []string
+	if ref.Subresource != "" {
+		subresources = append(subresources, ref.Subresource)
+	}
+	obj, err := api.Update(
+		ctx,
+		&unstructured.Unstructured{Object: body},
+		metav1.UpdateOptions{FieldManager: fieldManager},
+		subresources...,
+	)
+	if err != nil {
+		return nil, s.apiCallError(err, "update", subresourcePath(res.gvr.Resource, ref.Subresource))
+	}
+
+	object := obj.UnstructuredContent()
+	stripNoise(object)
+	return &ResourceResult{
+		Resource:  subresourcePath(res.gvr.Resource, ref.Subresource),
+		Namespace: namespace,
+		Object:    object,
+	}, nil
+}
+
+// requireSubresource asks discovery whether the cluster serves
+// <resource>/<sub>, so that AC8's DaemonSet is refused for not having replicas
+// rather than for a 404. The apiserver cannot make that distinction for us —
+// a PUT to daemonsets/<name>/scale and a PUT to a deleted deployment's scale
+// are the same status code, and the second reading is the one an operator acts
+// on. Discovery is not a resource permission (AC20), so asking costs this tool
+// no second verb.
+func (s *KubeService) requireSubresource(ctx context.Context, gvr schema.GroupVersionResource, sub, kind string) error {
+	dc, err := s.discoveryClient()
+	if err != nil {
+		return err
+	}
+	list, err := dc.ServerResourcesForGroupVersion(gvr.GroupVersion().String())
+	if err != nil {
+		return APIError(fmt.Sprintf("discovery failed: %v", err))
+	}
+	want := subresourcePath(gvr.Resource, sub)
+	for _, r := range list.APIResources {
+		if r.Name == want {
+			return nil
+		}
+	}
+	return apiErrorf(
+		"%s has no replicas: this cluster serves no %s. This is not about permission, "+
+			"and not about whether the object exists",
+		kind, want,
+	)
+}
+
+// scaleObject is the body a replica change is written as. It carries no
+// resourceVersion on purpose (see UpdateResource).
+func scaleObject(namespace, name string, replicas int64) map[string]any {
+	metadata := map[string]any{"name": name}
+	if namespace != "" {
+		metadata["namespace"] = namespace
+	}
+	return map[string]any{
+		"apiVersion": "autoscaling/v1",
+		"kind":       "Scale",
+		"metadata":   metadata,
+		"spec":       map[string]any{"replicas": replicas},
+	}
 }
 
 // PatchResource applies one patch to one object and answers with the result

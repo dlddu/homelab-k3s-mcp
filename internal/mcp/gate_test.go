@@ -19,9 +19,15 @@ import (
 // reached. A refused call that still incremented this counter would mean the
 // gate ran after the fact.
 type countingK8s struct {
-	mu        sync.Mutex
-	calls     int
-	lastPatch k8s.PatchRef
+	mu         sync.Mutex
+	calls      int
+	lastPatch  k8s.PatchRef
+	lastUpdate k8s.UpdateRef
+	// updateErr lets a case make the cluster layer refuse. The one refusal AC8
+	// names — a kind with no replicas — is discovery's answer rather than an
+	// argument this level can see, so a fake that only ever succeeds cannot
+	// exercise it.
+	updateErr error
 }
 
 func (c *countingK8s) count() int {
@@ -60,6 +66,27 @@ func (c *countingK8s) PatchResource(_ context.Context, ref k8s.PatchRef) (*k8s.R
 	c.lastPatch = ref
 	c.mu.Unlock()
 	return &k8s.ResourceResult{Resource: "deployments", Object: map[string]any{}}, nil
+}
+
+// UpdateResource records its ref for the same reason PatchResource does: what
+// the tool sent is the assertion (AC8), and the scale half of this tool builds
+// a body the caller never wrote.
+func (c *countingK8s) UpdateResource(_ context.Context, ref k8s.UpdateRef) (*k8s.ResourceResult, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastUpdate = ref
+	err := c.updateErr
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	return &k8s.ResourceResult{Resource: "deployments/scale", Object: map[string]any{}}, nil
+}
+
+func (c *countingK8s) update() k8s.UpdateRef {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastUpdate
 }
 
 func (c *countingK8s) patch() k8s.PatchRef {
