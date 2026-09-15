@@ -114,7 +114,7 @@ async def run() -> None:
         granted_line = granted_lines[-1]
         for expected in (
             "tool=resource_patch",
-            "update on configmaps",
+            "patch on configmaps",
             f"external_id={get_request(gate, granted_row['id'])['externalId']}",
             f"processed_by_id={decided['processedById']}",
             "auto_approved=false",
@@ -130,7 +130,7 @@ async def run() -> None:
         rejected_line = rejected_lines[-1]
         for expected in (
             "tool=resource_patch",
-            "update on configmaps",
+            "patch on configmaps",
             "error=",
             "approval rejected (request",
         ):
