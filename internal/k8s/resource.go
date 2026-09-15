@@ -51,12 +51,6 @@ const (
 	WatchMaxSeconds     int64 = 60
 
 	// WatchMaxEvents is the event ceiling AC6 asks for without naming a number.
-	// The value is this implementation's, and it is a hundred for the reason
-	// ListDefaultLimit is: a watch event carries the whole object, so a hundred
-	// of them is already the largest answer a caller can read before the
-	// response stops being a part of the context and becomes all of it.
-	// Reaching it is reported rather than silently dropped, which is what AC3
-	// asks of a truncated list.
 	WatchMaxEvents = 100
 )
 
@@ -498,12 +492,6 @@ func (s *KubeService) ListResources(ctx context.Context, q ListQuery) (*ListResu
 }
 
 // WatchResources collects one window of change events and closes (AC6).
-//
-// The window is the apiserver's own: TimeoutSeconds makes it end the watch, so
-// the stream is not held open across calls. The local timer beside it is not a
-// second policy but the same one made true when the connection does not
-// cooperate — a proxy that keeps a closed stream open would otherwise leave
-// this blocked past the window the caller was promised.
 func (s *KubeService) WatchResources(ctx context.Context, q WatchQuery) (*WatchResult, error) {
 	res, err := s.resolve(ctx, q.APIVersion, q.Kind)
 	if err != nil {
@@ -583,10 +571,6 @@ func (s *KubeService) WatchResources(ctx context.Context, q WatchQuery) (*WatchR
 				)
 			}
 			content := object.UnstructuredContent()
-			// The same two fields AC4 calls noise, for the same reason: they
-			// are noise because of what they are, not because of which verb
-			// read them. A window of a hundred objects is where that matters
-			// most.
 			stripNoise(content)
 			result.Events = append(result.Events, WatchEvent{
 				Type:   string(event.Type),
