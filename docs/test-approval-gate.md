@@ -163,3 +163,12 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **자동화**: (미작성) — 계획: Go 단위
   `gatekeeper_test.go::TestPreconditionUsesPartialObjectMetadataForGatedKinds`.
   통합 `approval_gate_ac11.py`
+
+- **내부 목록 읽기 선행 회귀(2026-09-15)**:
+  `internal/k8s/collection_precondition_test.go`의 `TestCollectionSnapshot*`는 로컬 HTTP
+  서버로 `CollectionTargetReader`를 직접 검증한다. Secret/Deployment의 namespace 경로,
+  `PartialObjectMetadataList` 협상과 폴백 거부, 모든 페이지의 셀렉터/커서, 일관된 목록 버전,
+  정렬된 이름·uid·버전, 0건, 범위 밖 좌표, 불완전/중복/변경된 페이지, 만료/오류, 상한과
+  취소를 검사한다. 실행: `go test ./internal/k8s -run '^TestCollectionSnapshot' -count=1`.
+  이것은 실제 gatekeeper·apiserver나 도구 경로의 증거가 아니다. 위 (a)·(b)·(c)의 실물
+  시나리오와 `approval_gate_ac11.py`는 계속 대기하며, 도구 등록·승인·삭제는 이 회귀에 없다.
