@@ -145,6 +145,10 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
 
 ### AC7: 생성
 - **설명**: `resource_create`는 매니페스트를 받아 객체를 만들며 `create` verb만 행사한다.
+  인자는 `manifest` 하나다: JSON 객체 또는 YAML/JSON 문자열을 받으며, 문자열의 여러
+  문서는 `---`로 구분한다. 각 문서는 `apiVersion`·`kind`·`metadata.name`을 명시하고,
+  네임스페이스 범위 객체는 `metadata.namespace`도 명시한다(기본값을 추측하지 않는다).
+  `generateName`만으로는 승인 화면의 대상 이름을 확정할 수 없어 거부한다.
   이미 존재하면 409를 그대로 알리고 덮어쓰지 않는다 — 덮어쓰기는 `update`나 `patch`의
   일이고, 생성 승인을 받은 호출이 갱신까지 하면 운영자가 승인한 것과 달라진다.
   여러 문서가 담긴 매니페스트는 문서마다 별도 승인을 받는다.
@@ -168,6 +172,12 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
   건너뛰는 것이고, 그런 예외는 그 자체가 우회 경로가 된다. 되돌리는 대신 응답이
   **만들어진 것 · 실패한 것 · 시도하지 않은 것**을 각각 좌표로 보고해, 운영자가 무엇이
   남았는지 읽고 다음 수를 직접 고르게 한다.
+
+  응답의 `structuredContent`는 문서 순서의 `created` 배열, 실패 좌표와 `error`를 담은
+  `failed` 객체(전부 성공하면 null), `unattempted` 배열로 구분한다. 좌표는
+  `apiVersion`·`kind`·`namespace`·`name`이며 매니페스트 값은 응답에 다시 담지 않는다.
+  실패하면 `isError=true`다. 네트워크 오류나 서버 5xx는 생성 여부가 불확실할 수 있으므로
+  그 사실을 알리고, 대상 확인 후 새 승인으로 다음 작업을 정한다. 자동 재시도하지 않는다.
 
   **`create`의 TOCTOU 프리컨디션은 apiserver의 409다.** `prd-approval-gate` AC6은 승인
   시점에 읽은 `resourceVersion`을 실행 직전에 재확인하라고 하지만, `create`에는 승인
