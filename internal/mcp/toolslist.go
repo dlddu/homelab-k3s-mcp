@@ -82,6 +82,53 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_watch",
+      "description": "Observe change events (ADDED/MODIFIED/DELETED) for a coordinate over one bounded window, then return them. Exercises the watch verb only. The stream is not held open across calls: the window closes and the collected events come back, so this is how you wait for a rollout or for a pod to go Ready without polling resource_list. Pass resourceVersion to resume after a previous window. Sensitive kinds (Secret) require human approval, because a stream hands over the whole object exactly as a read does.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\" or \"apps/v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to watch, e.g. \"Pod\", \"Deployment\", \"Event\"."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Optional; omitted = all namespaces. Rejected for cluster-scoped kinds."
+          },
+          "labelSelector": {
+            "type": "string",
+            "description": "Label selector, applied server-side."
+          },
+          "fieldSelector": {
+            "type": "string",
+            "description": "Field selector, applied server-side."
+          },
+          "watchSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 60,
+            "description": "Length of the observation window. Defaults to 10; values above 60 are rejected, not clamped."
+          },
+          "resourceVersion": {
+            "type": "string",
+            "description": "Receive only changes after this version. Take it from metadata.resourceVersion of the last event of a previous window."
+          }
+        },
+        "required": ["apiVersion", "kind"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Watch Resources",
+        "readOnlyHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "resource_get",
       "description": "Read one Kubernetes object whole by coordinate and name, or one of its log/scale/status subresources. Exercises the get verb only; name is required, so find the object with resource_list first. Sensitive kinds (Secret) require human approval, and a kind outside this server's RBAC grant is reported as such.",
       "inputSchema": {

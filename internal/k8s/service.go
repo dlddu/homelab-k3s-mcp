@@ -10,6 +10,11 @@ type Service interface {
 
 	ListResources(ctx context.Context, query ListQuery) (*ListResult, error)
 
+	// WatchResources collects the change events of one bounded window and
+	// returns them; it does not hand back a stream, because the tool layer
+	// answers one request at a time (prd-resource-generic AC6).
+	WatchResources(ctx context.Context, query WatchQuery) (*WatchResult, error)
+
 	GetResource(ctx context.Context, ref ResourceRef) (*ResourceResult, error)
 
 	UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error)
@@ -40,6 +45,10 @@ func (u *Unavailable) APIResources(context.Context) ([]APIResource, error) {
 }
 
 func (u *Unavailable) ListResources(context.Context, ListQuery) (*ListResult, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) WatchResources(context.Context, WatchQuery) (*WatchResult, error) {
 	return nil, unavailableErr(u.reason)
 }
 

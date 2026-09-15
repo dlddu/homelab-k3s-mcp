@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -309,4 +310,129 @@ func TestUpdateReplacesWithTheCallersManifest(t *testing.T) {
 			}
 		})
 	}
+}
+
+// AC6. The window is the one bound this level owns whole — how long the
+// apiserver is asked to push for, and what happens to a value past the
+// ceiling. The refusals share the table with the accepted values on purpose:
+// "61 is refused" only means something beside "60 is not".
+func TestWatchWindowBounds(t *testing.T) {
+	accepted := []struct {
+		name string
+		args string
+		want int64
+	}{
+		{"default", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops"}`, 10},
+		{"explicit", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","watchSeconds":30}`, 30},
+		{"ceiling", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","watchSeconds":60}`, 60},
+	}
+	for _, tc := range accepted {
+		t.Run(tc.name, func(t *testing.T) {
+			h, fake := approvingHandler(t)
+			if _, rerr := callTool(t, h, "resource_watch", tc.args); rerr != nil {
+				t.Fatalf("tools/call = %v, want the watch to run", rerr)
+			}
+			if got := fake.watch().Seconds; got != tc.want {
+				t.Errorf("window reaching the cluster layer = %ds, want %ds", got, tc.want)
+			}
+		})
+	}
+
+	refusals := []struct {
+		name string
+		args string
+		want string
+	}{
+		{"above the ceiling", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","watchSeconds":61}`, "watchSeconds must be <= 60"},
+		{"zero", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","watchSeconds":0}`, "watchSeconds must be >= 1"},
+		{"not an integer", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","watchSeconds":"ten"}`, "watchSeconds must be an integer"},
+		{"no coordinate", `{"kind":"Deployment","namespace":"ops"}`, "apiVersion"},
+	}
+	for _, tc := range refusals {
+		t.Run(tc.name, func(t *testing.T) {
+			h, fake := approvingHandler(t)
+			_, rerr := callTool(t, h, "resource_watch", tc.args)
+			if rerr == nil {
+				t.Fatal("tools/call = nil error, want a refusal rather than a silent clamp")
+			}
+			if !strings.Contains(rerr.message, tc.want) {
+				t.Errorf("error = %q, want it to mention %q", rerr.message, tc.want)
+			}
+			if fake.count() != 0 {
+				t.Errorf("kubernetes calls = %d, want 0 — a refused window must not reach the cluster", fake.count())
+			}
+		})
+	}
+}
+
+// AC6 carries the resume point through untouched: a window the caller cannot
+// continue from is a window that has to start over, and starting over is where
+// a change goes missing.
+func TestWatchCarriesTheResumePoint(t *testing.T) {
+	h, fake := approvingHandler(t)
+	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops",` +
+		`"resourceVersion":"4816","labelSelector":"app=api"}`
+
+	if _, rerr := callTool(t, h, "resource_watch", args); rerr != nil {
+		t.Fatalf("tools/call = %v, want the watch to run", rerr)
+	}
+	query := fake.watch()
+	if query.ResourceVersion != "4816" {
+		t.Errorf("resourceVersion reaching the cluster layer = %q, want %q", query.ResourceVersion, "4816")
+	}
+	if query.LabelSelector == nil || *query.LabelSelector != "app=api" {
+		t.Errorf("labelSelector = %v, want it passed through for the apiserver to apply", query.LabelSelector)
+	}
+}
+
+// AC6/AC16/AC17. A watch of a sensitive kind is gated for the reason a get is:
+// the stream hands over the whole object. The ordinary kind is in the same
+// test because "Secret is refused" is only an assertion about the gate if
+// something else is not.
+func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
+	secret := `{"apiVersion":"v1","kind":"Secret","namespace":"ops"}`
+	ordinary := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops"}`
+
+	t.Run("refused without approval", func(t *testing.T) {
+		gate := &scriptedGate{err: errors.New("no approval")}
+		h, fake := testHandler(t, gate, toolRegistry)
+		_, rerr := callTool(t, h, "resource_watch", secret)
+		if rerr == nil {
+			t.Fatal("tools/call = nil error, want the gate to refuse")
+		}
+		if fake.count() != 0 {
+			t.Errorf("kubernetes calls = %d, want 0 — AC16 refuses before the cluster is touched", fake.count())
+		}
+		if len(gate.calls) != 1 {
+			t.Fatalf("approval requests = %d, want 1", len(gate.calls))
+		}
+		if got := gate.calls[0].Pair.String(); got != "watch on secrets" {
+			t.Errorf("gated pair = %q, want %q", got, "watch on secrets")
+		}
+	})
+
+	t.Run("runs once approved", func(t *testing.T) {
+		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		h, fake := testHandler(t, gate, toolRegistry)
+		if _, rerr := callTool(t, h, "resource_watch", secret); rerr != nil {
+			t.Fatalf("tools/call = %v, want the approved watch to run", rerr)
+		}
+		if fake.count() != 1 {
+			t.Errorf("kubernetes calls = %d, want 1", fake.count())
+		}
+	})
+
+	t.Run("ordinary kind needs no approval", func(t *testing.T) {
+		gate := &scriptedGate{err: errors.New("no approval")}
+		h, fake := testHandler(t, gate, toolRegistry)
+		if _, rerr := callTool(t, h, "resource_watch", ordinary); rerr != nil {
+			t.Fatalf("tools/call = %v, want an ungated watch to run", rerr)
+		}
+		if len(gate.calls) != 0 {
+			t.Errorf("approval requests = %d, want 0 — watch is not a state-changing verb", len(gate.calls))
+		}
+		if fake.count() != 1 {
+			t.Errorf("kubernetes calls = %d, want 1", fake.count())
+		}
+	})
 }

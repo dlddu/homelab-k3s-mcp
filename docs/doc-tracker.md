@@ -18,7 +18,7 @@
 - PRD: **14개** (도구 12 + 공통 기반 2)
 - Acceptance Criteria: **78개** (가치 연결됨: 78 / 미연결: 0) — AC 번호는 결번을 둔다(platform AC3 · resource-generic AC19)
 - 테스트 문서: **14개** (AC 커버됨: 78 / 미커버: 0)
-- 등록 도구: **16종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_update`·`resource_patch` 2종이고, 게이트 밖 예외는 **1종**(`dear_baby_reset_user`)이다
+- 등록 도구: **17종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_update`·`resource_patch` 2종이고, 게이트 밖 예외는 **1종**(`dear_baby_reset_user`)이다. `resource_watch` 는 쓰기가 아니므로 이 둘 어디에도 들어가지 않는다 — 민감 종류(`RESOURCE_GATED_KINDS`)를 대상으로 할 때만 `resource_get` 과 같은 조건으로 게이트를 탄다
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있고,
   ⑴ **폐기된 6종은 2026-09-15 에 전부 코드에서 나갔다**(마지막 1종 `workload_scale` 제거 —
   대체재 `resource_update(subresource=scale)`가 같은 날 먼저 섰다). 「문서 없는 실행 코드」는 **0종**이다.
@@ -259,6 +259,43 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > 테스트·`EXPECTED_TOOLS` 등재가 제거돼 **등록 도구는 16종**이고 게이트 밖 예외는 2건이다.
 > 재시작은 이제 `resource_patch` 로 하며 **승인 게이트를 탄다**. 남은 쓰기·스트림 축 9종과
 > AC6·AC11 은 그대로다. 원문은 그 시점의 계획 기록이므로 고쳐 쓰지 않고 이 정정만 붙인다.
+
+> **2026-09-15 — 읽기 축의 마지막 도구가 섰다: `resource_watch`(AC6).** 직전 세 슬라이스와 같은
+> 보폭으로 **한 도구만** 등록했다(등록 도구 16 → **17종**). 전 계층이 함께 섰다: `toolslist.go`
+> 선언 · `gate.go` 의 `toolRegistry` 등재 · `internal/mcp/resource.go` 핸들러 · `k8s.Service`
+> 인터페이스와 두 구현 · `EXPECTED_TOOLS` 등재(같은 커밋).
+> **이 슬라이스를 고른 근거는 게이트를 건드리지 않는다는 것이다.** `readIsSensitive` 가 이미
+> `watch` 를 `get` 과 나란히 판정하고 있었으므로(「스트림은 `get` 과 같은 노출이다」 — AC6·AC17),
+> 민감 종류 게이트는 **등록만으로** 성립했다. `gate.go` 의 변경은 레지스트리 한 항목뿐이고
+> `gatedVerbs`·`authorize`·`approvalContext`·값 가림 경로는 한 줄도 움직이지 않았다. 남은
+> 후보들은 그렇지 않다 — `create`(AC7)의 「문서마다 별도 승인」은 `authorize` 가 한 호출에
+> `gatekeeper.Call` 을 하나만 만드는 현 구조를 바꾸고, `delete_collection`(AC11)의 승인
+> `context` 는 게이트가 `list` 를 행사해야 하며 그 권한 선언은 `prd-approval-gate` AC11 이다.
+> **게이트 대상 쓰기 도구 수와 게이트 밖 예외 수는 움직이지 않았다** — `watch` 는 `gatedVerbs`
+> 가 아니라 민감 종류에서만 게이트를 탄다.
+> **설계 결정 셋을 기록해 둔다.** ⑴ **창은 apiserver 의 것이다.** `ListOptions.TimeoutSeconds`
+> 로 서버가 스트림을 닫게 하고, 그 옆의 로컬 타이머는 두 번째 정책이 아니라 **연결이 협조하지
+> 않을 때도 같은 약속을 참으로 만드는 것**이다(닫힌 스트림을 열어 두는 프록시). ⑵ **이벤트 수
+> 상한은 100 이고 그 값은 이 구현의 선택이다** — AC6 은 「상한을 둔다」만 요구하고 수를 말하지
+> 않는다. 근거는 `ListDefaultLimit` 과 같다: watch 이벤트는 객체 전문을 싣기 때문에 100 이면
+> 이미 응답이 컨텍스트의 일부가 아니라 전부가 되는 크기다. 상한에 닿으면 **조용히 버리지 않고
+> `truncated` 로 알린다**(AC3 의 절단 처리). ⑶ **이벤트 객체에도 AC4 의 잡음 두 필드를
+> 제거한다** — `managedFields` 와 `last-applied-configuration` 이 잡음인 것은 **그 필드의
+> 성질**이지 어떤 verb 가 읽었는지가 아니고, 100 개가 한 응답에 실리는 자리가 그 성질이 가장
+> 크게 드러나는 곳이다. 이것은 AC4 가 `resource_get` 에 대해 적은 것을 확장 적용한 것이므로
+> **검토자가 뒤집을 수 있는 결정으로 여기 남긴다.** 응답 텍스트는 이벤트당 한 줄
+> (`TYPE ns/name rv=…`)이고 객체 전문은 `structuredContent` 에만 둔다 — 같은 이유다.
+> **범위 밖(근거와 함께)**: 통합 e2e `resource_generic_ac6.py` 는 자매 모델
+> `tbm_homelab-k3s-mcp-scenario-e2e` 소관이라 시나리오 6 을 「⏳ 구현 대기」에 그대로 둔다
+> (`check_ac_mapping.py` 의 일곱 집계는 한 숫자도 움직이지 않는다). `prd-resource-generic` 의
+> 나머지 미구현 7종 중 `delete`(AC10)는 형제 슬라이스가 들고 있고, `create`·`delete_collection`·
+> `exec`·`attach`·`port_forward` 는 다음 슬라이스들의 몫이며, **`proxy`(AC15)는 코드 슬라이스로
+> 들어가면 안 된다** — AC15 가 `nodes/proxy` 를 경로 제한 없이 열라고 적는 반면
+> `values.md`(2026-09-12 행)와 아래 「수용된 위험」의 「스트림 표면 확대」 행은 「`nodes/proxy` 는
+> 열지 않는다」고 적어 **문서 계층 안에서 어긋나 있다**. 어느 쪽이 SSOT 인지 제품 문서가 먼저
+> 정해야 한다.
+> `check_comment_policy.py` 는 등재 범위 여섯에 주석이 늘어 **같은 PR 에서 재판정**했고, 새
+> 범위는 없다(새 파일 0개).
 
 1. `internal/mcp`에서 6종 도구 등록·디스패치를 제거하고 `resource_*` 13종
    (`list`·`get`·`watch`·`create`·`update`·`patch`·`delete`·`delete_collection`·
@@ -712,6 +749,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-15 | **`resource_watch` 등록 — 읽기 축의 마지막 도구(AC6)** — `prd-resource-generic` 이 이름으로 약속한 12 도구 중 미등록 8종에 대응하는 AC 여덟 가운데, **공유 게이트 경로를 한 줄도 건드리지 않는 유일한 자리**를 골랐다. `internal/mcp/gate.go` 의 `readIsSensitive` 가 이미 `watch` 를 `get` 과 나란히 판정하고 있어(「스트림은 `get` 과 같은 노출이다」 — AC6·AC17), 민감 종류 게이트가 **등록만으로** 성립한다. 전 계층이 함께 섰다: `toolslist.go` 선언(`watchSeconds` 의 상한 60 을 스키마에도 못박는다) · `toolRegistry` 등재 한 항목 · `internal/mcp/resource.go` 핸들러 · `k8s.WatchQuery`/`WatchEvent`/`WatchResult` 와 `KubeService.WatchResources` · `Service` 인터페이스와 `Unavailable` · `EXPECTED_TOOLS`. 경계는 AC6 이 못박은 그대로다 — 창 기본 10초 · 상한 60 초과는 **클램프 없이 거부**(AC3 의 `limit` 처리와 같다) · `resourceVersion` 이후만 수신 · 이벤트 수 상한(100, 이 구현의 선택)과 `truncated` 표시. Go 단위는 `docs/test-resource-generic.md` 시나리오 6 이 계획한 이름 그대로 섰다(`TestWatchWindowBounds` · `TestWatchOnGatedKindRequiresApproval`). `TestToolsListIncludesAllTools` 의 손으로 적은 총수는 `len(want)` 로 바꿨다 — 총수를 박아 두면 도구가 늘 때마다 모양 규칙으로 풀리지 않는 산술 충돌이 된다. 판정 근거는 `rct_20260915-0006`. | 등록 도구 16종, `resource_*` 4종(`list`·`get`·`patch`·`update`), 읽기 축 미완 | 등록 도구 **17종**, `resource_*` **5종**, **읽기 축 완결**(`list`·`get`·`watch`) — 남은 것은 쓰기·스트림 축 7종이고 `delete`(AC10)는 형제 슬라이스가, `proxy`(AC15)는 문서 모순 해소가 선행이다 |
 | 2026-09-15 | **`workload_scale` 구현 제거 — 「문서 없는 실행 코드」 1종 → 0종, 게이트 밖 예외 2 → 1** — #72 가 문서만 폐기하고 남긴 **여섯 중 마지막**이다. 이 제거의 선행 조건은 `workload_restart` 때와 똑같이 **대체재의 실재** 하나였고, 그것이 같은 날 `d00ab22`(#97)로 섰다 — 레플리카 변경은 `resource_update(subresource=scale)` 로 표현된다. 위 「문서 없는 실행 코드」 행이 **순서 제약(대체재가 먼저, 제거는 그 뒤)** 과 함께 「이제 제거 가능하다」를 스스로 적어 둔 다음 순번이고, #97 의 「범위 밖」이 **재감지에 축자로 인계**한 슬라이스다. ⑴ **대체재가 진짜 상위집합인지 먼저 확인했다**(계획 단계). `workload_scale` 이 하던 넷이 전부 후계자에 있다 — 임의 레플리카 수(0 포함) 적용 · 음수 거부 · 누락 거부 · 레플리카 없는 종류를 **그 사유로** 거부. 앞의 셋은 `parseUpdateTarget` 이 지고(그 doc 이 「the bounds the scale half carries over from workload_scale」이라 축자로 적고 있었다), 넷째는 `requireSubresource` 가 discovery 로 진다(`workload_scale` 의 kind enum 보다 **넓다** — 후계자는 임의 좌표를 받고 `ReplicaSet` 이나 scale 을 서빙하는 CRD 도 덮는다). 기능 손실 0. ⑵ **제거 범위는 한 도구의 전 계층**: `toolslist.go` 선언 · `gate.go` 의 `toolRegistry` 등재 · `mcp.go` 핸들러 · `k8s.Service` 인터페이스와 두 구현(`KubeService`·`Unavailable`) · `EXPECTED_TOOLS` 등재. **함께 죽은 것 넷**: `exemptRetiredPendingRemoval` 상수(#91 이 「`workload_scale` 이 계속 쓰므로 남겼다」고 적어 둔 그 상수 — 마지막 사용처가 나갔다), `k8s.WorkloadKind` 타입군 전체(`Deployment`·`StatefulSet`·`DaemonSet`·`String()`·`ParseWorkloadKind` — 이 도구가 마지막 사용처였다), `mcp.parseKind` 헬퍼, 그리고 죽은 import 둘(`k8s.io/apimachinery/pkg/types` · `math`). `fakes_test.go` 의 이미 고아였던 `listCall` 도 `WorkloadKind` 와 함께 나갔다. ⑶ **단위 테스트는 지우기만 하지 않았다** — #91 의 ⑶ 을 그대로 따랐다. 서버 층 케이스 넷(`TestWorkloadScale*`)은 **단언이 이미 승계돼 있어** 지웠다: `internal/mcp/resource_test.go::TestUpdateScaleBounds` 가 0·음수·누락·비정수를 전부 덮고 **게이트 호출 0 까지 더 단언**하며, `internal/k8s/resource_test.go::TestUpdateScaleRejectsReplicalessKind` 가 DaemonSet 거부를 덮는다(게이트 대상 쓰기 도구를 mcp 층에서 디스패치 검증하는 것은 `resource_patch`·`resource_update` 가 이미 세운 관례다 — 서버 층에는 둘 다 디스패치 케이스가 없다). 반면 `TestToolsListAdvertisesWorkloadScale` 의 **표기 단언은 옮겼다** — `resource_update` 가 같은 `destructive+idempotent` 짝을 들고 있고 옆의 `resource_patch` 는 **멱등하지 않아서**, 그 자리를 비우면 「파괴적이면서 멱등」을 아무도 단언하지 않고 `idempotentHint` 를 조용히 떨어뜨린 후계자가 통과한다. kind enum 반절은 후계자가 없어 도구와 함께 죽었다(임의 좌표가 곧 더 넓은 대체재인 이유다). ⑷ **보안 효과 — 마지막 무승인 상태 변경 경로가 닫힌다**: 이 도구는 `patch deployments`·`patch statefulsets` 를 행사하면서 `outsideGate` 예외로 **게이트를 타지 않았다**. 수용 위험 「RBAC 경계 소멸」(`rbac.yaml` 이 `cluster-admin` ⇒ 게이트 판정이 유일한 경계) 아래서 이것은 그대로 무인 상태 변경이었다. 이제 레플리카 변경은 `resource_update` 로 하며 **다른 update 와 똑같이 승인을 받는다**. 게이트 밖에 남은 것은 `dear_baby_reset_user` **하나**다. ⚠️ **운영 영향**: 스케일 호출 형태가 바뀌고 **승인이 필요해진다** — `workload_scale{kind,namespace,name,replicas}` → `resource_update{apiVersion,kind,namespace,name,subresource:"scale",replicas}`. `workload_restart` 때와 같은 성질의 변화다. **범위 밖(근거와 함께)**: 쓰기·스트림 잔여 8종(`resource_watch`·`_create`·`_delete`·`_delete_collection`·`_exec`·`_attach`·`_port_forward`·`_proxy` — 전부 비-테스트 Go 0 히트), `prd-approval-gate` AC6(TOCTOU)·AC11, `dear_baby_reset_user` 게이트 편입(⬜ 소유자 판단 대기), 통합 e2e `resource_generic_ac8.py`(자매 모델 `scenario-e2e` 소관 — 시나리오 8 은 「⏳ 구현 대기」 그대로), 그리고 `tests/` 산문이 폐기된 e2e 파일명을 가리키는 자리들(`_workload.py`·`session_write_ac3.py`·`test-deployment.yaml` — #91 이 같은 자리를 남긴 선례대로, 그것들은 과거의 파일을 역사적으로 가리킬 뿐이라 이 슬라이스의 완료 기준(**비-테스트 Go 0 히트**) 밖이다). **집계**: `check_ac_mapping.py` 일곱 값(`78·1·29·48·48·0·0`)과 `check_doc_inventory.py`(`40/40 · 끊긴 링크 0`)는 부모와 같고 `check_comment_policy.py` 의 **docstring 전체 지문도 부모와 바이트 동일**하다(`1741ca71de4bdab5…`) — 시나리오도 e2e 파일도 만들지 않았다. 움직인 것은 줄 주석 표면 하나뿐이라 등재 범위 넷을 같은 PR 에서 재판정했다(원장 #4·#5·#24·#26, 합계 1532 → **1528**; 숫자는 손으로 짓지 않고 게이트 출력에서 뽑았다). 판정 근거는 `rct_20260915-0002`. | 등록 도구 **17종** · 게이트 밖 예외 **2건** · 「문서 없는 실행 코드」 **1종** · `workload_scale` 이 PRD 도 e2e 도 없이 **게이트 밖에서** 서빙 | 등록 도구 **16종**(`toolslist.go` == `EXPECTED_TOOLS`, 대칭차집합 ∅) · 게이트 밖 예외 **1건**(`dear_baby_reset_user`) · 「문서 없는 실행 코드」 **0종**(#72 의 여섯이 모두 코드에서 나갔다) · 레플리카 변경은 `resource_update` 로 하며 승인을 받는다. 집계 **78·1·29·48·48·0·0**(기여 0) |
 | 2026-09-15 | **`test-resource-generic.md#시나리오 3`(절단과 이어보기)을 전용 e2e 저작으로 닫았다 — 「구현 대기」가 아니라 **규칙 1의 공백**이었다.** 직전 판(`52de32c5`, #96)이 이 행의 마지막 차단 요인을 죽이면서 남은 것은 **이 렌즈 자신의 저작 하나**가 됐고, 그 행 자신이 「docs-impl 쪽 차단 요인은 0이다 … 이 행은 정의상 규칙 1의 공백」이라고 적었다. 규칙 4가 「아직 자동화하지 못했다」를 예외 사유에서 배제하는 것과 같은 이유로 그것은 규칙 6의 등재 사유도 아니다 — **개수가 움직이지 않아 `check_ac_mapping.py`는 이 축을 원리적으로 못 본다**(그 체커는 `⏳` 시나리오가 표에 행으로 있는지와 제목·집계만 보고 행의 근거·담당·해제 조건 칸은 읽지 않는다). 그래서 근거를 고쳐 쓰는 대신 **저작으로 닫았다**: `tests/integration/resource_generic_ac3.py`(1회차 100건 + 절단 표시 + `continue` 토큰 → 이어보기가 나머지 20건이고 두 페이지의 합집합이 전집이며 겹침 0 → `limit=1000`은 클램프가 아니라 거부, 상한값 500은 정상 응답)와 `tests/k8s/kind/resource-generic-fixture.yaml`의 페이징 ConfigMap 120개. ⚠️ 모집단을 전용 레이블로 좁히는 이유와, 좁히면 apiserver가 `remainingItemCount`를 싣지 않아 남은 건수를 2회차 행 수로 재야 하는 이유는 픽스처와 e2e의 머리말에 적었다. 같은 계열의 `#시나리오 5` 행은 **별 슬라이스**로 남긴다 — 러닝 다중 컨테이너 파드라는 다른 픽스처 축과 삭제된 `workload_logs_ac{1,2,3,4}.py`의 단언 승계를 지고 있어 성격이 다르고, 한 PR에 묶으면 kind 통합 잡에서 한쪽의 실패가 다른 쪽의 착지를 막는다. 판정 근거는 `rct_20260915-0003` | 구현 대기 29 · 1:1 대상 48 · 매칭 파일 48 (시나리오 3은 ⏳) | 구현 대기 28 · 1:1 대상 49 · 매칭 파일 49 (시나리오 3은 ✅ `resource_generic_ac3.py`), 공백 0 유지 |
 | 2026-09-15 | **`⏳ 구현 대기` 의 `test-resource-generic.md#시나리오 8` 행을 실측으로 다시 썼다 — 그 행의 근거가 같은 날 거짓이 됐다.** 직전 문면은 「`resource_update` 가 등록돼 있지 않다(레포 전체 grep 0 히트)」였는데 바로 그 도구를 `d00ab224`(#97)가 등록했다(부모 지점 Go 히트 0 · `toolslist.go` 0 · `gate.go` 0 · `EXPECTED_TOOLS` 0 → 트리거 8 · 1 · 1 · 1). 규칙 6 은 구현 대기 행에 **근거·담당·해제 조건**을 요구하고 규칙 5 는 등재가 실제 상태와 일치할 것을 요구하는데, 세 칸이 모두 낡아 있었다 — 근거는 거짓, 담당은 `docs-impl(도구) → 이 렌즈`(도구 몫은 착지했고 #97 본문 자신이 남은 통합 e2e 를 자매 모델 `tbm_homelab-k3s-mcp-scenario-e2e` 소관으로 귀속한다), 해제 조건은 ⑴ 이 충족됐는데도 미충족으로 서 있었다. **하루 전 `resource_patch` 착지(#89) 때 시나리오 9 행에 쓴 형태를 그대로 따랐다** — ⑴ 충족과 그 증거, 담당 「이 렌즈(e2e)」 단독, 「남은 차단은 ⑵ 하나」, 「도구 축은 더는 차단 요인이 아니다」. **게이트가 이 축을 원리적으로 보지 못한다**: 행이 표에 남아 개수가 안 움직이므로 `check_ac_mapping.py` 는 부모·트리거 양 지점에서 rc=0 이고, 그 체커는 행의 제목·`⏳` 표시·집계만 대조할 뿐 **근거가 코드에 비추어 참인지는 검사하지 않는다**. 고치지 않으면 영구히 초록인 어긋남이었다. **집계는 한 숫자도 움직이지 않는다** — 시나리오 8 은 ⑵ 가 남아 여전히 구현 대기다. `78 · 1 · 29 · 48 · 48 · 0 · 0` 과 불변식 `78 − 1 − 29 = 48 = 48` 이 그대로이며, 움직였다면 그것이 오류 신호다. **범위 밖(근거와 함께)**: 실물 gatekeeper 픽스처 저작과 `resource_generic_ac8.py` 신설(이 표의 여러 행이 함께 인용하는 구조적 선행이라 크기를 따로 정한다 — 이 트리거가 만든 문제가 아니다), 레지스트리 표의 괄호 라벨 「(규칙 6 — 도구 미구현)」(부모에서 이미 시나리오 9 에도 붙어 있던 체커 비대조 칸), 쓰기·스트림 잔여 8종 행(「등록 0」 주장이 트리거 지점에서도 전부 참). (reconciler `rct_20260915-0002`) | 시나리오 8 행: 근거 「`resource_update` 미등록(grep 0 히트)」 · 담당 `docs-impl(도구) → 이 렌즈(e2e)` · 해제 조건 ⑴ 등록 **그리고** ⑵ 픽스처 | 시나리오 8 행: 근거 「⑴ 2026-09-15 충족」 + 등록 4계층 증거 · 담당 「이 렌즈(e2e)」 단독 · 해제 조건 ⑵ 실물 gatekeeper 픽스처 하나. 집계·불변식·게이트 일곱 값 불변 |

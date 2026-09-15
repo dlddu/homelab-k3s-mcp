@@ -87,6 +87,14 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourceGet,
 	},
 
+	// watch needs no entry of its own in the gate's rules: readIsSensitive
+	// already judges it beside get, because a stream hands over the whole
+	// object exactly as a read does (prd-resource-generic AC6, AC17).
+	"resource_watch": {
+		decl:   toolDeclaration{resolve: genericPairs("watch")},
+		handle: (*Handler).resourceWatch,
+	},
+
 	"resource_update": {
 		decl:   toolDeclaration{resolve: updatePairs()},
 		handle: (*Handler).resourceUpdate,

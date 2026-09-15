@@ -125,8 +125,16 @@ Service·ConfigMap·Ingress 각 2(하나만 좁히는 레이블을 달아 「셀
   61은 거부. `resourceVersion` 이후 변경만 옴. Secret 은 미승인 시 거부되고 승인 후에는
   이벤트가 오되 수·창 상한이 그대로 적용됨
 - **검증 AC**: AC6
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestWatchWindowBounds`,
-  `TestWatchOnGatedKindRequiresApproval`. 통합 `resource_generic_ac6.py`
+- **자동화**: (미작성) — 통합 `resource_generic_ac6.py` 는 아직 없다. Go 단위 둘은 계획한
+  이름 그대로 섰다: `internal/mcp/resource_test.go::TestWatchWindowBounds`(기본 10 · 60 통과 ·
+  61·0·비정수 거부, 그리고 거부마다 k8s 호출 0)와
+  `::TestWatchOnGatedKindRequiresApproval`(`kind=Secret` 은 미승인 시 거부되고 k8s 호출 0,
+  승인 후 실행되며, 평범한 종류는 승인 요청 자체가 생기지 않는다). 곁에
+  `::TestWatchCarriesTheResumePoint`(`resourceVersion`·셀렉터 통과)와
+  `internal/server/mcp_test.go::TestResourceWatchReturnsEventsWithoutDumpingObjects`
+  (이벤트는 `structuredContent` 에, 텍스트는 이벤트당 한 줄)가 있다.
+  **이 수준이 못 보는 것**은 실 apiserver 가 창 안에서 실제로 `MODIFIED` 를 밀어 주는지와
+  이벤트 수 상한이 실물 스트림에서 닫히는지이며, 그것이 통합 파일이 남아 있는 이유다.
 
 ### 시나리오 7: 생성은 덮어쓰지 않는다
 - **사전 조건**: kind 실물 gatekeeper
