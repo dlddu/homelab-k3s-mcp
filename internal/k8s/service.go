@@ -20,8 +20,6 @@ type Service interface {
 	// in namespace. container is required when the pod has more than one
 	// container; pass nil to default to the pod's only container.
 	ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*ExecOutcome, error)
-
-	ScaleWorkload(ctx context.Context, kind WorkloadKind, namespace, name string, replicas int32) (int32, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -59,8 +57,4 @@ func (u *Unavailable) PatchResource(context.Context, PatchRef) (*ResourceResult,
 
 func (u *Unavailable) ExecInPod(context.Context, string, string, *string, []string) (*ExecOutcome, error) {
 	return nil, unavailableErr(u.reason)
-}
-
-func (u *Unavailable) ScaleWorkload(context.Context, WorkloadKind, string, string, int32) (int32, error) {
-	return 0, unavailableErr(u.reason)
 }

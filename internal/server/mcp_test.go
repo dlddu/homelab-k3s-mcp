@@ -101,13 +101,12 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	if len(tools) != 17 {
-		t.Fatalf("len(tools) = %d, want 17", len(tools))
+	if len(tools) != 16 {
+		t.Fatalf("len(tools) = %d, want 16", len(tools))
 	}
 	for _, name := range []string{
 		"ping", "api_resources", "resource_list", "resource_get",
 		"resource_update", "resource_patch",
-		"workload_scale",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
@@ -494,74 +493,22 @@ func TestResourceToolsSurfaceK8sErrorsAsToolErrors(t *testing.T) {
 	}
 }
 
-func TestWorkloadScaleDispatchesToService(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 70, "workload_scale", map[string]any{
-		"kind": "Deployment", "namespace": "default", "name": "api", "replicas": 3,
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if at(t, body, "result", "structuredContent", "replicas") != float64(3) {
-		t.Fatalf("replicas = %v", at(t, body, "result", "structuredContent", "replicas"))
-	}
-	if len(fake.scales) != 1 || fake.scales[0].kind != k8s.Deployment ||
-		fake.scales[0].namespace != "default" || fake.scales[0].name != "api" || fake.scales[0].replicas != 3 {
-		t.Fatalf("scales = %+v", fake.scales)
-	}
-}
-
-func TestWorkloadScaleSupportsZeroReplicas(t *testing.T) {
-	fake := &fakeK8s{}
-	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 71, "workload_scale", map[string]any{
-		"kind": "StatefulSet", "namespace": "data", "name": "redis", "replicas": 0,
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if at(t, body, "result", "structuredContent", "replicas") != float64(0) {
-		t.Fatalf("replicas = %v", at(t, body, "result", "structuredContent", "replicas"))
-	}
-	if fake.scales[0].kind != k8s.StatefulSet || fake.scales[0].replicas != 0 {
-		t.Fatalf("scales[0] = %+v", fake.scales[0])
-	}
-}
-
-func TestWorkloadScaleRejectsNegativeReplicas(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 72, "workload_scale", map[string]any{
-		"kind": "Deployment", "namespace": "default", "name": "api", "replicas": -1,
-	})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-}
-
-func TestWorkloadScaleRequiresReplicas(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	body := callTool(t, app, 73, "workload_scale", map[string]any{
-		"kind": "Deployment", "namespace": "default", "name": "api",
-	})
-	if at(t, body, "error", "code") != float64(-32602) {
-		t.Fatalf("error.code = %v", at(t, body, "error", "code"))
-	}
-}
-
-func TestToolsListAdvertisesWorkloadScale(t *testing.T) {
+// The idempotent-destructive slot workload_scale used to hold. resource_update
+// inherits it rather than leaving it empty: resource_patch next door is
+// destructive but *not* idempotent, so without this case no tool asserts that
+// the pair can be both, and a successor that quietly dropped idempotentHint
+// would still pass. The kind-enum half of the old case has no successor — this
+// tool takes arbitrary coordinates on purpose, which is why it is the wider
+// replacement.
+func TestToolsListAdvertisesUpdateAnnotations(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	scale := findTool(t, tools, "workload_scale")
-	if at(t, scale, "annotations", "title") != "Scale Workload" ||
-		at(t, scale, "annotations", "destructiveHint") != true ||
-		at(t, scale, "annotations", "idempotentHint") != true {
-		t.Fatalf("scale annotations = %v", scale["annotations"])
+	update := findTool(t, tools, "resource_update")
+	if at(t, update, "annotations", "title") != "Update Resource" ||
+		at(t, update, "annotations", "destructiveHint") != true ||
+		at(t, update, "annotations", "idempotentHint") != true {
+		t.Fatalf("resource_update annotations = %v", update["annotations"])
 	}
-	kinds := enumStrings(t, at(t, scale, "inputSchema", "properties", "kind", "enum"))
-	wantStrSlice(t, kinds, "Deployment", "StatefulSet")
 }
 
 func TestToolsListAdvertisesDearBabyReset(t *testing.T) {

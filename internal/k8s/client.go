@@ -8,7 +8,6 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
@@ -45,27 +44,6 @@ func New() (*KubeService, error) {
 		return nil, unavailableErr(fmt.Sprintf("init kube client: %v", err))
 	}
 	return &KubeService{clientset: clientset, config: config}, nil
-}
-
-func (s *KubeService) ScaleWorkload(ctx context.Context, kind WorkloadKind, namespace, name string, replicas int32) (int32, error) {
-	if kind == DaemonSet {
-		return 0, APIError("DaemonSet does not have replicas; cannot scale")
-	}
-	patch := fmt.Sprintf(`{"spec":{"replicas":%d}}`, replicas)
-	opts := metav1.PatchOptions{FieldManager: fieldManager}
-	var err error
-	switch kind {
-	case Deployment:
-		_, err = s.clientset.AppsV1().Deployments(namespace).
-			Patch(ctx, name, types.StrategicMergePatchType, []byte(patch), opts)
-	case StatefulSet:
-		_, err = s.clientset.AppsV1().StatefulSets(namespace).
-			Patch(ctx, name, types.StrategicMergePatchType, []byte(patch), opts)
-	}
-	if err != nil {
-		return 0, APIError(err.Error())
-	}
-	return replicas, nil
 }
 
 func (s *KubeService) ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*ExecOutcome, error) {

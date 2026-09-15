@@ -238,42 +238,6 @@ const toolsListJSON = `{
       }
     },
     {
-      "name": "workload_scale",
-      "description": "Scale a Kubernetes workload by setting spec.replicas. Supports Deployment and StatefulSet. DaemonSets do not have replicas and are rejected.",
-      "inputSchema": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "type": "string",
-            "enum": ["Deployment", "StatefulSet"],
-            "description": "Workload kind."
-          },
-          "namespace": {
-            "type": "string",
-            "description": "Namespace of the workload."
-          },
-          "name": {
-            "type": "string",
-            "description": "Workload name."
-          },
-          "replicas": {
-            "type": "integer",
-            "minimum": 0,
-            "description": "Desired replica count (>= 0)."
-          }
-        },
-        "required": ["kind", "namespace", "name", "replicas"],
-        "additionalProperties": false
-      },
-      "annotations": {
-        "title": "Scale Workload",
-        "readOnlyHint": false,
-        "destructiveHint": true,
-        "idempotentHint": true,
-        "openWorldHint": false
-      }
-    },
-    {
       "name": "dear_baby_reset_user",
       "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-user CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
       "inputSchema": {

@@ -50,20 +50,12 @@ type toolDeclaration struct {
 	outsideGate string
 }
 
-// The two reasons any tool is currently exempt. Both come from the documents,
+// The one reason any tool is currently exempt. It comes from the documents,
 // not from this package.
 const (
 	// docs/prd-approval-gate.md, "남은 예외 1건" — the reason and its open state
 	// live there; this code only cites them.
 	exemptPendingOwnerDecision = "prd-approval-gate 「남은 예외 1건」 — 소유자 판단 대기 (doc-tracker.md 미결)"
-
-	// docs/prd-approval-gate.md's gate table lists resource_* tools only; the
-	// six V1 workload tools were retired from the documentation entirely by
-	// PR #72 and survive in code alone, pending removal. Gating them would mean
-	// inventing a rule the documents do not state, so instead they are named
-	// here and reported at startup, which is what doc-tracker.md already tracks
-	// as "문서 없는 실행 코드 ⬜ 구현 제거 선행 대기".
-	exemptRetiredPendingRemoval = "문서에서 폐기됨(PR #72) — doc-tracker.md 「문서 없는 실행 코드」 구현 제거 대기"
 )
 
 // toolRegistry binds each tool's handler to the pairs it exercises. Handler and
@@ -103,20 +95,6 @@ var toolRegistry = map[string]toolEntry{
 	"resource_patch": {
 		decl:   toolDeclaration{resolve: genericPairs("patch")},
 		handle: (*Handler).resourcePatch,
-	},
-
-	"workload_scale": {
-		decl: toolDeclaration{
-			// The scale subresource is not used: the implementation patches
-			// spec.replicas directly, so the pair really is patch on the
-			// workload. DaemonSet is rejected before any call is made.
-			pairs: []gatekeeper.Pair{
-				{Verb: "patch", Resource: "deployments"},
-				{Verb: "patch", Resource: "statefulsets"},
-			},
-			outsideGate: exemptRetiredPendingRemoval,
-		},
-		handle: (*Handler).workloadScale,
 	},
 
 	"dear_baby_reset_user": {

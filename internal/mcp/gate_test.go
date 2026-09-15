@@ -100,11 +100,6 @@ func (c *countingK8s) ExecInPod(context.Context, string, string, *string, []stri
 	return &k8s.ExecOutcome{Success: true}, nil
 }
 
-func (c *countingK8s) ScaleWorkload(context.Context, k8s.WorkloadKind, string, string, int32) (int32, error) {
-	c.hit()
-	return 1, nil
-}
-
 // scriptedGate answers with one prepared decision (or one refusal) and records
 // what it was asked to approve.
 type scriptedGate struct {
@@ -443,11 +438,8 @@ func TestEveryStateChangingToolIsGatedOrDocumented(t *testing.T) {
 	if reason, ok := exemptions["dear_baby_reset_user"]; !ok || reason != exemptPendingOwnerDecision {
 		t.Errorf("dear_baby_reset_user exemption = %q, want the documented pending-owner-decision reason", reason)
 	}
-	if reason := exemptions["workload_scale"]; reason != exemptRetiredPendingRemoval {
-		t.Errorf("workload_scale exemption = %q, want the retired-pending-removal reason", reason)
-	}
-	if len(exemptions) != 2 {
-		t.Errorf("exemptions = %v, want exactly the two documented ones", exemptions)
+	if len(exemptions) != 1 {
+		t.Errorf("exemptions = %v, want exactly the one documented exception", exemptions)
 	}
 }
 
