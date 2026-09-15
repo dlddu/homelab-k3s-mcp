@@ -50,7 +50,7 @@
 | 공개 URL | `https://dlddu.github.io/homelab-k3s-mcp/` |
 | Pages 설정 | ⬜ **사용자 작업 대기** — Settings → Pages → Source `Deploy from a branch` → `main` + `/docs` |
 | 배포 골격 | ✅ `index.html`(허브) · `reader.html`(뷰어) · `.nojekyll` |
-| 허브 도달 가능 문서 | ✅ **41 / 41** (가치 1 + PRD 14 + 테스트 14 + 상태 추적 1 + 정책 11), 끊긴 링크 0 |
+| 허브 도달 가능 문서 | ✅ **42 / 42** (가치 1 + PRD 14 + 테스트 14 + 상태 추적 1 + 정책 12), 끊긴 링크 0 |
 | 공개 범위 | 레포가 **public** — `docs/`의 마크다운은 이미 GitHub에서 공개 상태였고, Pages는 그것을 읽기 좋게 서빙할 뿐이다. 새로 공개되는 문서 없음 |
 | 비공개 유지 문서 | (없음) |
 

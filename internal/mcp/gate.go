@@ -53,14 +53,6 @@ type toolDeclaration struct {
 	// A gated *write* that leaves this nil is refused at authorize rather than
 	// approved (see authorize) — AC6's precondition has no substitute, and a
 	// write whose object the gate cannot read is a write nobody can describe.
-	//
-	// A gated *read* may leave it nil, and that is not an oversight. AC3 asks a
-	// sensitive read for "어떤 종류의 어떤 대상을 읽는지", which the arguments
-	// already carry, and a collection watch has no single object to hold a
-	// resourceVersion — AC6 words its read half around one Secret being swapped,
-	// not around a selector's membership changing. Requiring a target here would
-	// refuse every collection watch of a sensitive kind on the strength of a
-	// precondition the documents do not define for it.
 	target func(json.RawMessage) (*k8s.TargetRef, error)
 
 	// outsideGate, when non-empty, is the documented reason this tool stays
@@ -405,12 +397,6 @@ const gateTargetKind = "⟨kind⟩"
 // because the question it answers — what does the gate read before it asks
 // anyone — is one a reviewer has to be able to answer without reading this
 // file, and main prints it at startup beside Exemptions.
-//
-// `list` is declared and not yet exercised: its only caller is
-// deletecollection's target count, and resource_delete_collection is not
-// registered. Declaring ahead of the call site is the direction AC11 asks for
-// ("선언은 남긴다"); the reverse — exercising a pair nobody declared — is the
-// hole AC1 closes.
 func GatePairs() []gatekeeper.Pair {
 	return []gatekeeper.Pair{
 		{Verb: "get", Resource: gateTargetKind},
@@ -435,13 +421,6 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		// "no target" means "a target was forgotten": a tool that resolves its
 		// coordinate per call is addressing one named object, and a write to one
 		// has no substitute for AC6's precondition.
-		//
-		// The two exclusions are not oversights. A read is excluded because AC3
-		// wants only the coordinate from it and a collection watch has no single
-		// object (see toolDeclaration.target). A tool whose pairs are constants
-		// is excluded because it declares no coordinate argument at all — there
-		// is nothing there to forget, and dear_baby_reset_user, the only such
-		// gated writer, addresses pods by selector rather than by name.
 		return nil, errf(-32603, "refusing %s: it resolves a coordinate per call and changes state, but declares no target for the gate to read, so the approval could not be tied to a state (prd-approval-gate AC6)", name)
 	}
 
