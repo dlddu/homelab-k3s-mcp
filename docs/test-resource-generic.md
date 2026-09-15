@@ -77,10 +77,11 @@
 - **사전 조건**: ConfigMap 120개 픽스처
 - **실행 단계**: `limit` 미지정으로 조회 → `continue` 토큰으로 재조회 → `limit=1000`으로 조회
 - **기대 결과**: 1회차에 100건 + 절단 표시 + `continue` 토큰. 2회차에 나머지 20건.
-  `limit=1000`은 500으로 강제 하향
+  `limit=1000`은 클램프되지 않고 **거부**(시나리오 5의 `tailLines=5001`과 같은 처리)
 - **검증 AC**: AC3
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestListDefaultAndMaxLimit`.
-  통합 `resource_generic_ac3.py`
+- **자동화**: (미작성) — 상한 처리는 Go 단위
+  `internal/server/mcp_test.go::TestResourceListLimitDefaultsAndCeiling`이 이미 고정한다
+  (기본 100 · 초과 거부). 통합 `resource_generic_ac3.py`
 
 ### 시나리오 4: 단건 조회는 이름을 요구한다
 - **사전 조건**: `kubectl apply`로 만들어 `last-applied-configuration`과 `managedFields`가
@@ -103,8 +104,12 @@
   없어도 동작). `container` 누락이 거부되고 후보 이름이 제시됨. `subresource=scale`이
   현재 레플리카를 반환. 모든 호출이 `get` verb만 행사하므로 승인 요청이 생기지 않음
 - **검증 AC**: AC5
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestGetLogTailBounds`,
-  `TestGetLogPreviousInstance`, `TestSubresourceGetIsUngated`.
+- **자동화**: (미작성) — `container` 누락 축만 Go 단위로 서 있다:
+  `internal/k8s/resource_test.go::TestPodLogsKeepsTheApiserversContainerCandidates`와
+  그 대조군 `TestPodLogsForbiddenStillReportsTheMissingGrant`·
+  `TestPodLogsFallsBackWhenTheBodyIsNotAStatus`. 나머지는 계획: Go 단위
+  `resource_test.go::TestGetLogTailBounds`, `TestGetLogPreviousInstance`,
+  `TestSubresourceGetIsUngated`.
   통합 `resource_generic_ac5.py` (폐기되는 `workload_logs_ac{1,2,3,4}.py`의 단언을 승계한다)
 
 ### 시나리오 6: 변경 스트림 관측
