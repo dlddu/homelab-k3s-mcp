@@ -76,14 +76,6 @@ type TargetState struct {
 }
 
 // TargetReader is the gate's own kubernetes read surface.
-//
-// It is deliberately not part of Service. AC11 says the reads behind the
-// approval screen are "게이트가 행사하는 쿠버네티스 권한이며 도구의 것이 아니다",
-// and that sentence is load-bearing rather than decorative: AC1 and
-// prd-resource-generic AC16 both verify that an unapproved gated call leaves
-// the tool's kubernetes call count at zero. Folding the gate's read into
-// Service would make those two counts the same number, and the honest way to
-// keep them apart is for them to be different types.
 type TargetReader interface {
 	ReadTarget(ctx context.Context, ref TargetRef) (*TargetState, error)
 }
