@@ -36,9 +36,12 @@
 검색 가능해야 한다).
 
 이 파일은 시나리오가 전용 e2e로 착지할 때마다 그 시나리오가 요구하는 대상만 더하며 자란다.
-2026-09-14 현재 담긴 것은 시나리오 1이 요구하는 몫이다 — Service·ConfigMap·Ingress 각 2
-(하나만 좁히는 레이블을 달아 「셀렉터가 결과 수를 실제로 줄임」이 관측되게 한다)와 CRD 1종 +
-그 인스턴스 2개. CRD와 인스턴스는 `resource-generic-samples.yaml`로 갈라 두었다 —
+2026-09-15 현재 담긴 것은 시나리오 1과 3이 요구하는 몫이다 — 시나리오 1 몫으로
+Service·ConfigMap·Ingress 각 2(하나만 좁히는 레이블을 달아 「셀렉터가 결과 수를 실제로 줄임」이
+관측되게 한다)와 CRD 1종 + 그 인스턴스 2개, 시나리오 3 몫으로 **목록 절단을 만들 ConfigMap
+120개**. 페이징 쪽에는 전용 레이블 `homelab-k3s-mcp.test/paging`을 단다 — 같은 네임스페이스에
+위의 ConfigMap 2개와 apiserver가 넣는 `kube-root-ca.crt`가 이미 있어, 좁히지 않으면 모집단이
+123이 되고 시나리오 3의 「2회차에 나머지 20건」이 성립하지 않는다. CRD와 인스턴스는 `resource-generic-samples.yaml`로 갈라 두었다 —
 `kubectl apply`가 파일을 읽는 시점에 종류를 해석하므로 한 파일에 두면 아직 서지 않은 종류를
 가리켜 파일 전체가 거부된다.
 
@@ -79,9 +82,10 @@
 - **기대 결과**: 1회차에 100건 + 절단 표시 + `continue` 토큰. 2회차에 나머지 20건.
   `limit=1000`은 클램프되지 않고 **거부**(시나리오 5의 `tailLines=5001`과 같은 처리)
 - **검증 AC**: AC3
-- **자동화**: (미작성) — 상한 처리는 Go 단위
+- **자동화**: 통합 `tests/integration/resource_generic_ac3.py`. 상한 처리는 Go 단위
   `internal/server/mcp_test.go::TestResourceListLimitDefaultsAndCeiling`이 이미 고정한다
-  (기본 100 · 초과 거부). 통합 `resource_generic_ac3.py`
+  (기본 100 · 초과 거부) — 통합 쪽은 배포된 서버에서 같은 경계를 다시 재고, 거기에 더해
+  `continue` 이어보기가 두 페이지로 전집을 덮는지까지 본다
 
 ### 시나리오 4: 단건 조회는 이름을 요구한다
 - **사전 조건**: `kubectl apply`로 만들어 `last-applied-configuration`과 `managedFields`가
