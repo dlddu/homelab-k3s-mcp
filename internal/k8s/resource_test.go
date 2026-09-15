@@ -390,16 +390,12 @@ func TestUpdateScaleRejectsReplicalessKind(t *testing.T) {
 	}
 }
 
-// The scale body carries no resourceVersion: this tool holds the update verb
-// alone, so there is no get to read one from. An assertion on its absence is
-// the only thing standing between that design and a get-then-put creeping back
-// in as "just one read".
-func TestScaleObjectIsAnUnconditionalWrite(t *testing.T) {
+func TestScaleObjectLeavesTheApprovalVersionToUpdateResource(t *testing.T) {
 	body := scaleObject("ops", "api", 3)
 
 	metadata := body["metadata"].(map[string]any)
 	if _, ok := metadata["resourceVersion"]; ok {
-		t.Error("the scale body carries a resourceVersion, which this tool has no verb to read")
+		t.Error("the body constructor must not invent a resourceVersion")
 	}
 	if metadata["name"] != "api" || metadata["namespace"] != "ops" {
 		t.Errorf("metadata = %v, want the coordinate", metadata)
