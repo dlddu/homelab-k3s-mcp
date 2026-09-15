@@ -27,18 +27,34 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 ## 테스트 시나리오
 
 ### 시나리오 1: 게이트 대상만 막히고 나머지는 지나간다
-- **사전 조건**: 가짜 k8s 서비스(호출 카운터 포함), gatekeeper는 `PENDING`을 유지
-- **실행 단계**: (a) `resource_apply`, `resource_delete`, `resource_exec`, 그리고
-  `kind=Secret`으로 `resource_get`·`resource_describe`를 각각 호출하고
-  `GATEKEEPER_TIMEOUT_SECONDS` 경과까지 대기. (b) 같은 조건에서 `resource_scale`,
-  `resource_restart`, `kind=ConfigMap`으로 `resource_get`을 호출
-- **기대 결과**: (a) 다섯 호출 모두 에러 반환, 가짜 k8s 서비스 호출 카운트 **0**.
-  (b) 세 호출 모두 **정상 수행**되고 k8s 서비스에 도달 — 게이트가 필요 이상으로 넓지 않음을
-  같은 시나리오에서 확인한다. (c) 기동이 실패 — 선언과 실제 행사가 어긋난 도구는 등록되지
-  않는다
+- **사전 조건**: 호출 인자·대상 좌표·매니페스트는 각 도구의 계약에 맞게 준비한다.
+  단위 테스트에서는 가짜 k8s 서비스의 **도구 실행 호출** 카운터와 게이트의 `TargetReader`
+  사전 읽기를 구분한다. E2E는 kind의 실물 gatekeeper에서 자동 응답을 끄고 판정하지 않는다.
+  게이트 대상 호출은 `GATEKEEPER_TIMEOUT_SECONDS` 안에 승인받지 못하게 한다.
+- **실행 단계**:
+  - (a) 쓰기 게이트 표의 도구를 각각 호출한다: `resource_create`, `resource_update`
+    (전체 교체와 `subresource=scale`), `resource_patch` (SSA와 롤링 재시작 어노테이션 패치),
+    `resource_delete`, `resource_delete_collection`, `resource_exec`, `resource_attach`,
+    `resource_port_forward`, `resource_proxy` (Pod·Service·Node의 모든 메서드·경로, `GET` 포함).
+    민감 종류 `kind=Secret`의 `resource_get`·`resource_watch`도 호출하고 승인 대기 종료까지 기다린다.
+  - (b) 같은 승인 불가 조건에서 `resource_list` (Secret의 Table 목록 포함),
+    비민감 종류 `kind=ConfigMap`의 `resource_get`·`resource_watch`, `api_resources`를 호출한다.
+  - (c) 자신이 행사할 `(verb, resource[/subresource])` 쌍을 선언하지 않은 테스트 도구를
+    등록하는 기동 변형을 실행한다.
+- **기대 결과**: (a)는 모두 승인 부재로 거부되고 **해당 도구의 실행 호출 카운트는 0**이다.
+  스케일은 `update`, 재시작은 `patch`이므로 예외 없이 막히며, 프록시는 `GET`도 막힌다.
+  context 작성에 필요한 게이트 자신의 선언된 사전 읽기(AC11)는 별도 관측한다 — 이것을
+  도구 실행으로 세거나, 민감 값의 사전 조회를 허용하는 근거로 삼지 않는다.
+  (b)는 승인 요청 없이 정상 수행된다. (c)는 기동이 실패한다.
+  미등록 도구의 unknown-tool 오류나 잘못된 인자·좌표로 인한 거부는 (a)의 게이트 통과 증거가 아니다.
 - **검증 AC**: AC1, AC5
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestGatedCallsNeverReachKubeWithoutApproval`,
-  `TestUngatedCallsProceedWithoutApproval`, `TestUndeclaredVerbPairFailsRegistration`. 통합 `approval_gate_ac1.py`
+- **자동화**: (미작성) — 통합 `approval_gate_ac1.py`는 전체 도구 행렬과 실물 gatekeeper가
+  준비된 뒤 작성한다. 현재 단위 근거는 `internal/mcp/gate_test.go`의
+  `TestGatedCallIsRefusedBeforeKubernetes`, `TestExecSubresourceIsGated`,
+  `TestUngatedReadsStillRunWhileTheGateRefuses`, `TestSensitiveReadsAreGated`,
+  `TestOrdinaryReadsAndSecretListsStayUngated`, `TestValidateRegistryRejectsMismatches`다.
+  이 테스트들의 합성 선언·미설정 게이트·레지스트리 불일치 검증은 부분 근거이며,
+  실물의 승인 대기 만료, 모든 도구 분기, 선언과 실제 권한 행사의 일치를 전부 검증했다는 뜻은 아니다.
 
 ### 시나리오 2: 요청 본문 계약
 - **사전 조건**: gatekeeper 스텁이 요청 본문을 기록
