@@ -145,12 +145,20 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 ### 시나리오 7: 생성은 덮어쓰지 않는다
 - **사전 조건**: kind 실물 gatekeeper
 - **실행 단계**: 신규 ConfigMap 매니페스트로 `resource_create`(승인) → 같은 이름으로 재호출
-  (승인) → Deployment + Service 2문서 매니페스트로 호출
+  (승인) → Deployment + Service 2문서 매니페스트로 호출 → 같은 2문서 매니페스트를 이름만
+  바꿔 다시 호출하되 **둘째 문서의 승인을 거절** → 또 한 번 호출하되 둘 다 승인하고
+  **둘째 문서의 이름을 이미 존재하는 것으로** 두어 실행 단계에서 409가 나게 함
 - **기대 결과**: 1회차 생성 성공. 2회차는 409로 거부되고 기존 객체가 변경되지 않음 —
-  생성 승인이 갱신까지 하지 않음. 2문서 매니페스트는 **승인 요청 2건**을 만듦
+  생성 승인이 갱신까지 하지 않음. 2문서 매니페스트는 **승인 요청 2건**을 만듦.
+  **거절 케이스는 아무것도 만들지 않음** — 승인을 전부 받은 뒤에 첫 객체를 만들므로
+  첫째 문서의 객체조차 생기지 않고 호출 전체가 거부된다. **부분 실패 케이스는 되돌리지
+  않음** — 첫째 문서의 객체는 그대로 남고(되돌리려면 승인 없는 `delete`가 필요하다),
+  응답이 만들어진 것·실패한 것·시도하지 않은 것을 각각 좌표로 보고한다
 - **검증 AC**: AC7
 - **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestCreateDoesNotOverwrite`,
-  `TestMultiDocCreateRequiresApprovalPerDoc`. 통합 `resource_generic_ac7.py`
+  `TestMultiDocCreateRequiresApprovalPerDoc`,
+  `TestMultiDocCreateRejectionCreatesNothing`,
+  `TestMultiDocCreateStopsAndReportsOnFailure`. 통합 `resource_generic_ac7.py`
 
 ### 시나리오 8: 전체 교체와 스케일
 - **사전 조건**: 동일, `workload-fixture` 기준선, DaemonSet 픽스처

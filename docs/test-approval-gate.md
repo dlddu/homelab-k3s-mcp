@@ -93,12 +93,18 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **사전 조건**: kind 실물 gatekeeper + 테스트 Deployment
 - **실행 단계**: `resource_patch` 호출로 승인 요청 생성 → 승인 전에 외부에서 같은
   대상을 수정(`resourceVersion` 변경) → 승인. 같은 절차를 `resource_update`
-  (`subresource=scale`)와 `kind=Secret`의 `resource_get`으로 반복
+  (`subresource=scale`)와 `kind=Secret`의 `resource_get`으로 반복. 이어서
+  `resource_create`로도 같은 절차를 밟되, 승인 전에 **외부에서 같은 이름의 객체를 만든다**
 - **기대 결과**: 두 경우 모두 실행이 거부되고 재승인이 필요함을 알림. 대상은 변경되지 않고,
   Secret은 **반환되지 않음** — 운영자가 승인한 것과 다른 값을 내주지 않는다.
-  `resource_exec`은 대상 파드를 삭제·재생성한 뒤 승인하면 `uid` 불일치로 거부
+  `resource_exec`은 대상 파드를 삭제·재생성한 뒤 승인하면 `uid` 불일치로 거부.
+  `resource_create`도 거부되지만 **경로가 다르다** — 게이트는 생성 대상을 미리 읽지
+  않으므로 재확인이 일어나지 않고, 「그 좌표가 비어 있다」는 전제의 재판정은 apiserver의
+  `create`가 원자적으로 내린다(**409**). 승인 요청 본문에도 그 대상의
+  `resourceVersion`이 실리지 않는다
 - **검증 AC**: AC6
-- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(patch·scale·Secret get·exec 각 1케이스)
+- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(patch·scale·Secret get·exec·
+  create 각 1케이스)
 
 ### 시나리오 7: 승인은 한 번만 쓰인다
 - **사전 조건**: 동일
