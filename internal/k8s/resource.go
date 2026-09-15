@@ -736,7 +736,7 @@ func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*Resou
 		return nil, apiErrorf("update manifest metadata must be an object")
 	}
 	if supplied, exists := metadata["resourceVersion"]; exists && supplied != ref.ApprovedResourceVersion {
-		return nil, apiErrorf("manifest resourceVersion does not match the approved target; refresh the manifest and request a new approval")
+		return nil, apiErrorf("resource_update automatically refused: manifest resourceVersion does not match the approved target; this call has ended, and any later call requires a new approval")
 	}
 	metadata["resourceVersion"] = ref.ApprovedResourceVersion
 
@@ -761,7 +761,7 @@ func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*Resou
 	)
 	if err != nil {
 		if apierrors.IsConflict(err) {
-			return nil, apiErrorf("update on %s conflicted with the approved target; request a new approval before retrying", subresourcePath(res.gvr.Resource, ref.Subresource))
+			return nil, apiErrorf("resource_update automatically refused: update on %s conflicted with the approved resourceVersion; this call has ended, and any later call requires a new approval", subresourcePath(res.gvr.Resource, ref.Subresource))
 		}
 		return nil, s.apiCallError(err, "update", subresourcePath(res.gvr.Resource, ref.Subresource))
 	}

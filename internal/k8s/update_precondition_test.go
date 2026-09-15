@@ -86,8 +86,8 @@ func TestUpdateUsesApprovedVersionOnTheWire(t *testing.T) {
 				}
 				result, err := targetServiceAgainst(server.URL).UpdateResource(context.Background(), ref)
 				if conflict {
-					if err == nil || result != nil || !strings.Contains(err.Error(), "new approval") {
-						t.Fatalf("UpdateResource = (%v, %v), want refusal requiring a new approval", result, err)
+					if err == nil || result != nil || !strings.Contains(err.Error(), "automatically refused") || !strings.Contains(err.Error(), "this call has ended") || !strings.Contains(err.Error(), "new approval") {
+						t.Fatalf("UpdateResource = (%v, %v), want terminal automatic refusal", result, err)
 					}
 					if strings.Contains(err.Error(), "private-value-from-apiserver") {
 						t.Error("conflict leaked the upstream error body")
@@ -155,7 +155,7 @@ func TestUpdateDoesNotReplaceACallersConflictingVersion(t *testing.T) {
 				Manifest:                map[string]any{"apiVersion": "apps/v1", "kind": "Deployment", "metadata": metadata},
 			}
 			_, err := targetServiceAgainst(server.URL).UpdateResource(context.Background(), ref)
-			if err == nil || !strings.Contains(err.Error(), "new approval") {
+			if err == nil || !strings.Contains(err.Error(), "automatically refused") || !strings.Contains(err.Error(), "this call has ended") || !strings.Contains(err.Error(), "new approval") {
 				t.Fatalf("error = %v, want conflicting manifest refusal", err)
 			}
 			if calls.Load() != 0 {
