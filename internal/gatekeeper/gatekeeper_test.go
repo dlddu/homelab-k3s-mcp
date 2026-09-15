@@ -100,10 +100,18 @@ func newTestClient(t *testing.T, backend *fakeBackend, tune func(*Client)) (*Cli
 }
 
 func sampleCall() Call {
+	return describedCall(func(context.Context) (string, error) {
+		return "tool: resource_patch\npatch: {\"spec\":{\"replicas\":3}}", nil
+	})
+}
+
+// describedCall is sampleCall with the rendering swapped, for the cases that are
+// about when Describe runs rather than what it returns.
+func describedCall(describe func(context.Context) (string, error)) Call {
 	return Call{
-		Tool:    "resource_patch",
-		Pair:    Pair{Verb: "patch", Resource: "deployments"},
-		Context: "tool: resource_patch\npatch: {\"spec\":{\"replicas\":3}}",
+		Tool:     "resource_patch",
+		Pair:     Pair{Verb: "patch", Resource: "deployments"},
+		Describe: describe,
 	}
 }
 
@@ -275,11 +283,22 @@ func TestUnreachableBackendRefuses(t *testing.T) {
 
 // AC5: an unconfigured gate refuses rather than waving calls through. This is
 // the state a deployment without GATEKEEPER_* env is in.
+//
+// The second assertion is the property Call.Describe exists for: a gate with
+// nobody to ask must not reach the renderer, because that is where the
+// pre-approval cluster read lives.
 func TestUnavailableGateRefuses(t *testing.T) {
+	described := false
 	gate := NewUnavailable(nil)
-	_, err := gate.Authorize(context.Background(), sampleCall())
+	_, err := gate.Authorize(context.Background(), describedCall(func(context.Context) (string, error) {
+		described = true
+		return "tool: resource_patch", nil
+	}))
 	if !errors.Is(err, ErrNotConfigured) {
 		t.Fatalf("Authorize() = %v, want ErrNotConfigured", err)
+	}
+	if described {
+		t.Error("an unconfigured gate rendered the context, which means it read the target it had no verdict for")
 	}
 }
 
@@ -288,10 +307,19 @@ func TestEmptyContextIsRefusedBeforeTheRequestIsMade(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
 
-	call := sampleCall()
-	call.Context = "   "
-	if _, err := client.Authorize(context.Background(), call); err == nil {
-		t.Fatal("Authorize() = nil, want refusal for an unjudgeable context")
+	// Three ways a context can fail to say what it is approving. AC3 ends by
+	// asking for the same outcome from each: no request, not a vague one.
+	cases := map[string]Call{
+		"blank":   describedCall(func(context.Context) (string, error) { return "   ", nil }),
+		"errored": describedCall(func(context.Context) (string, error) { return "", errors.New("target could not be read") }),
+		"absent":  describedCall(nil),
+	}
+	for name, call := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := client.Authorize(context.Background(), call); err == nil {
+				t.Fatal("Authorize() = nil, want refusal for an unjudgeable context")
+			}
+		})
 	}
 	if len(backend.createdBodies) != 0 {
 		t.Errorf("create calls = %d, want 0 — nothing should have been sent", len(backend.createdBodies))

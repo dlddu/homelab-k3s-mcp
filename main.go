@@ -64,6 +64,11 @@ func main() {
 	for tool, reason := range mcp.Exemptions() {
 		slog.Warn("tool exercises a gated verb but runs outside the approval gate", "tool", tool, "reason", reason)
 	}
+	// AC11 asks that the permissions the gate exercises on its own behalf be
+	// declared. Nothing compares them against rbac.yaml any more (AC19 is a
+	// 결번), so the declaration earns its keep by being printed: "what does the
+	// gate read before it asks anyone" is answerable from the startup log.
+	slog.Info("approval gate exercises these pairs before any verdict", "pairs", gatePairsText())
 
 	k8sSvc := buildK8sService()
 	ghSvc := buildGitHubService()
@@ -72,10 +77,12 @@ func main() {
 	osSvc := buildOpenSearchService(ctx)
 	sessionSvc := buildSessionPlatformService()
 	gate, gatedKinds := buildGate()
+	gateReader := buildGateReader(k8sSvc)
 
 	srv := &http.Server{
-		Addr:    addr,
-		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc, mcp.WithGate(gate, gatedKinds)),
+		Addr: addr,
+		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc,
+			mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader)),
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -199,6 +206,31 @@ func buildGate() (gatekeeper.Gate, []string) {
 		"push_notifications", cfg.UserID != "",
 	)
 	return gatekeeper.New(*cfg, version.Name), cfg.GatedKinds
+}
+
+// buildGateReader gives the gate its own kubernetes read surface (AC11).
+//
+// One object satisfies both interfaces when the client is up; why they are two
+// interfaces is on k8s.TargetReader. A service that is not a reader (the
+// Unavailable stand-in) yields a reader that refuses, so gated calls are
+// declined rather than described from nothing.
+func buildGateReader(svc k8s.Service) k8s.TargetReader {
+	reader, ok := svc.(k8s.TargetReader)
+	if !ok {
+		slog.Warn("no kubernetes client for the approval gate to read targets with: gated calls will be refused")
+		return k8s.NewUnavailableTargetReader("kubernetes integration is unavailable")
+	}
+	return reader
+}
+
+// gatePairsText renders GatePairs for the startup log.
+func gatePairsText() string {
+	pairs := mcp.GatePairs()
+	parts := make([]string, 0, len(pairs))
+	for _, p := range pairs {
+		parts = append(parts, p.String())
+	}
+	return strings.Join(parts, ", ")
 }
 
 func buildGrafanaService() grafana.Service {
