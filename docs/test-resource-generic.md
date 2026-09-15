@@ -292,8 +292,11 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `internal/mcp/resource_test.go::TestSecretWriteContextRedactsValues` 가 민감 종류 쓰기의
   `context` 에 키 이름과 바이트 수만 남는 것을 단언하고, 같은 파일의
   `TestOrdinaryWriteKeepsItsBodyInTheContext` 가 그 대조군이다(전부 가리는 구현도 막는다).
-  `TestGatedKindsGateEveryVerbButList` 는 **(미작성)** — 여섯 verb 중 `patch` 외 넷의 도구가
-  아직 없다. 통합 `resource_generic_ac16.py` 도 **(미작성)**
+  `TestGatedKindsGateEveryVerbButList` 는 **(미작성)** —
+  `get`·`watch`·`create`·`update`·`patch`·`delete` 여섯 verb가 모두 등록돼 있다.
+  create의 값 가림·생성 값 보존은 `internal/mcp/create_test.go`의 Go 테스트로 검증한다.
+  통합 `resource_generic_ac16.py`도 **(미작성)**이며 실물 gatekeeper 픽스처가 선행이다.
+  현재의 행별 근거·담당·해제 조건은 `doc-tracker.md`의 구현 대기 표를 따른다.
 
 ### 시나리오 17: 값이 새는 경로가 막혀 있다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, 그 토큰을 서빙하는 HTTP 파드
