@@ -214,6 +214,9 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 
 	// The gate runs here rather than inside the handlers. A handler that calls
 	// the gate itself is a handler that can forget to (prd-approval-gate AC1).
+	if entry.createBatch {
+		return h.callCreateBatch(ctx, name, entry, rawArgs)
+	}
 	decision, rerr := h.authorize(ctx, name, entry, rawArgs)
 	if rerr != nil {
 		return nil, rerr

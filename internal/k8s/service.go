@@ -17,6 +17,8 @@ type Service interface {
 
 	GetResource(ctx context.Context, ref ResourceRef) (*ResourceResult, error)
 
+	CreateResource(ctx context.Context, ref CreateRef) (*ResourceResult, error)
+
 	UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error)
 
 	PatchResource(ctx context.Context, ref PatchRef) (*ResourceResult, error)
@@ -55,6 +57,10 @@ func (u *Unavailable) WatchResources(context.Context, WatchQuery) (*WatchResult,
 }
 
 func (u *Unavailable) GetResource(context.Context, ResourceRef) (*ResourceResult, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) CreateResource(context.Context, CreateRef) (*ResourceResult, error) {
 	return nil, unavailableErr(u.reason)
 }
 

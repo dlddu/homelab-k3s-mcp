@@ -107,6 +107,10 @@ func (f *fakeK8s) UpdateResource(_ context.Context, ref k8s.UpdateRef) (*k8s.Res
 	return &k8s.ResourceResult{Resource: "deployments", Namespace: "default", Object: map[string]any{}}, nil
 }
 
+func (f *fakeK8s) CreateResource(context.Context, k8s.CreateRef) (*k8s.ResourceResult, error) {
+	return &k8s.ResourceResult{Resource: "configmaps"}, nil
+}
+
 func (f *fakeK8s) PatchResource(_ context.Context, ref k8s.PatchRef) (*k8s.ResourceResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
