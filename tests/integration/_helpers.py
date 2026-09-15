@@ -50,6 +50,7 @@ EXPECTED_TOOLS = {
     "resource_list",
     "resource_get",
     "resource_watch",
+    "resource_create",
     "resource_update",
     "resource_patch",
     "resource_delete",

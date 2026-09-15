@@ -44,6 +44,11 @@ func (c *countingK8s) hit() {
 	c.mu.Unlock()
 }
 
+func (c *countingK8s) CreateResource(context.Context, k8s.CreateRef) (*k8s.ResourceResult, error) {
+	c.hit()
+	return &k8s.ResourceResult{Resource: "configmaps"}, nil
+}
+
 func (c *countingK8s) APIResources(context.Context) ([]k8s.APIResource, error) {
 	c.hit()
 	return []k8s.APIResource{}, nil

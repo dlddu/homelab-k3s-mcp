@@ -190,6 +190,28 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_create",
+      "description": "Create named Kubernetes objects without overwriting existing objects. Accepts one manifest object or a YAML/JSON string with one or more documents separated by ---. Each document must contain apiVersion, kind and metadata.name; namespaced objects also need metadata.namespace. Obtains one approval per document, all before the first create. Rejection creates nothing. Stops at the first execution error without rollback or retry and reports created, failed and unattempted coordinates. Existing names fail with 409. Sensitive values are masked in approval context.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "manifest": {
+            "oneOf": [{"type": "object"}, {"type": "string", "minLength": 1}],
+            "description": "One object or a YAML/JSON document stream. Coordinates come from each document; namespace is never defaulted."
+          }
+        },
+        "required": ["manifest"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Create Resource",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "resource_update",
       "description": "Replace one Kubernetes object whole (PUT) by coordinate and name, or set a replica count through subresource=scale. Exercises the update verb only and always requires human approval. Without subresource it takes a manifest; with subresource=scale it takes replicas (0 is allowed, negative and missing are rejected, and a kind with no scale subresource such as DaemonSet is refused for having no replicas). Rolling restarts and partial edits are resource_patch, not this tool.",
       "inputSchema": {

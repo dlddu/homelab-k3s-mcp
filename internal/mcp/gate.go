@@ -50,9 +50,8 @@ type toolDeclaration struct {
 	// cluster, target names an object and is read from only once the gate knows
 	// it has someone to ask.
 	//
-	// A gated *write* that leaves this nil is refused at authorize rather than
-	// approved (see authorize) — AC6's precondition has no substitute, and a
-	// write whose object the gate cannot read is a write nobody can describe.
+	// Existing-object writes require this at authorize. The create batch uses
+	// the absent-target exception in prd-approval-gate AC6 (callCreateBatch).
 	//
 	// A gated *read* may leave it nil, and that is not an oversight. AC3 asks a
 	// sensitive read for "어떤 종류의 어떤 대상을 읽는지", which the arguments
@@ -118,6 +117,12 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourceUpdate,
 	},
 
+	"resource_create": {
+		decl:        toolDeclaration{resolve: createPairs},
+		handle:      (*Handler).resourceCreate,
+		createBatch: true,
+	},
+
 	"resource_patch": {
 		decl:   toolDeclaration{resolve: genericPairs("patch"), target: genericTarget()},
 		handle: (*Handler).resourcePatch,
@@ -165,8 +170,9 @@ var toolRegistry = map[string]toolEntry{
 
 // toolEntry is a registered tool: what it does and what it is allowed to do.
 type toolEntry struct {
-	decl   toolDeclaration
-	handle func(*Handler, context.Context, json.RawMessage) (any, *rpcErr)
+	decl        toolDeclaration
+	handle      func(*Handler, context.Context, json.RawMessage) (any, *rpcErr)
+	createBatch bool
 }
 
 func (d toolDeclaration) callPairs(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
@@ -741,6 +747,8 @@ func maskCredentialTree(node any) {
 					v[key] = maskedEntries(entries, key == "data")
 					continue
 				}
+				v[key] = maskedValue(value, key == "data")
+				continue
 			}
 			maskCredentialTree(value)
 		}
