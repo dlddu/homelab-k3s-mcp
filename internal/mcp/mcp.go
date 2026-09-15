@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"math"
 	"net/http"
 	"sort"
 	"strings"
@@ -222,50 +221,6 @@ func extractArguments(params json.RawMessage) json.RawMessage {
 }
 
 // --- tool implementations ---
-
-func (h *Handler) workloadScale(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
-	obj, ok := decodeObject(raw)
-	if !ok {
-		return nil, errf(-32602, "arguments must be an object")
-	}
-	kind, rerr := parseKind(obj)
-	if rerr != nil {
-		return nil, rerr
-	}
-	namespace := optionalString(obj, "namespace")
-	if namespace == nil {
-		return nil, errf(-32602, "namespace is required")
-	}
-	name := optionalString(obj, "name")
-	if name == nil {
-		return nil, errf(-32602, "name is required")
-	}
-	rv, ok := obj["replicas"]
-	if !ok {
-		return nil, errf(-32602, "replicas is required")
-	}
-	ri, ok := intValue(rv)
-	if !ok {
-		return nil, errf(-32602, "replicas must be an integer")
-	}
-	if ri < 0 {
-		return nil, errf(-32602, "replicas must be >= 0")
-	}
-	if ri > math.MaxInt32 {
-		return nil, errf(-32602, "replicas is too large")
-	}
-
-	applied, err := h.k8s.ScaleWorkload(ctx, kind, *namespace, *name, int32(ri))
-	if err != nil {
-		return toolError(err), nil
-	}
-	return successResult(map[string]any{
-		"kind":      kind.String(),
-		"namespace": *namespace,
-		"name":      *name,
-		"replicas":  applied,
-	}), nil
-}
 
 func (h *Handler) dearBabyResetUser(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
@@ -655,22 +610,6 @@ func (h *Handler) opensearchDocumentDelete(ctx context.Context, raw json.RawMess
 }
 
 // --- shared helpers ---
-
-func parseKind(obj map[string]any) (k8s.WorkloadKind, *rpcErr) {
-	v, ok := obj["kind"]
-	if !ok {
-		return 0, errf(-32602, "kind is required")
-	}
-	s, ok := v.(string)
-	if !ok {
-		return 0, errf(-32602, "kind is required")
-	}
-	kind, ok := k8s.ParseWorkloadKind(s)
-	if !ok {
-		return 0, errf(-32602, "unknown kind: %s (expected Deployment, StatefulSet, or DaemonSet)", s)
-	}
-	return kind, nil
-}
 
 func optionalString(obj map[string]any, key string) *string {
 	v, ok := obj[key]

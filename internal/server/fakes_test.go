@@ -27,18 +27,6 @@ type getResourceCall struct {
 	ref k8s.ResourceRef
 }
 
-type scaleCall struct {
-	kind      k8s.WorkloadKind
-	namespace string
-	name      string
-	replicas  int32
-}
-
-type listCall struct {
-	kind      k8s.WorkloadKind
-	namespace *string
-}
-
 type patchResourceCall struct {
 	ref k8s.PatchRef
 }
@@ -57,13 +45,11 @@ type fakeK8s struct {
 	getCalls         []getResourceCall
 	updateCalls      []updateResourceCall
 	patchCalls       []patchResourceCall
-	scales           []scaleCall
 	execCalls        []execCall
 
-	scaleResponse func() (int32, error)
-	execResponse  func() (*k8s.ExecOutcome, error)
-	listResponse  func() (*k8s.ListResult, error)
-	getResponse   func() (*k8s.ResourceResult, error)
+	execResponse func() (*k8s.ExecOutcome, error)
+	listResponse func() (*k8s.ListResult, error)
+	getResponse  func() (*k8s.ResourceResult, error)
 }
 
 func (f *fakeK8s) APIResources(context.Context) ([]k8s.APIResource, error) {
@@ -105,16 +91,6 @@ func (f *fakeK8s) PatchResource(_ context.Context, ref k8s.PatchRef) (*k8s.Resou
 	defer f.mu.Unlock()
 	f.patchCalls = append(f.patchCalls, patchResourceCall{ref: ref})
 	return &k8s.ResourceResult{Resource: "deployments", Namespace: "default", Object: map[string]any{}}, nil
-}
-
-func (f *fakeK8s) ScaleWorkload(_ context.Context, kind k8s.WorkloadKind, namespace, name string, replicas int32) (int32, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.scales = append(f.scales, scaleCall{kind: kind, namespace: namespace, name: name, replicas: replicas})
-	if f.scaleResponse != nil {
-		return f.scaleResponse()
-	}
-	return replicas, nil
 }
 
 func (f *fakeK8s) ExecInPod(_ context.Context, namespace, labelSelector string, container *string, command []string) (*k8s.ExecOutcome, error) {

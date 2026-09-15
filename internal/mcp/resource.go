@@ -246,7 +246,7 @@ func (h *Handler) resourceUpdate(ctx context.Context, raw json.RawMessage) (any,
 
 // parseUpdateTarget reads which of AC8's two shapes a call is — a whole-object
 // replacement, or a replica count on the scale subresource — and reports the
-// bounds the scale half carries over from workload_scale.
+// bounds the scale half holds: replicas is an integer in [0, MaxInt32].
 //
 // One function rather than a copy on each side, because both sides run it: the
 // gate runs it before an approval request exists, and the handler runs it again
