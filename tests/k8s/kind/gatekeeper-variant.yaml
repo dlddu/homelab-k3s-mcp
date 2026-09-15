@@ -1,0 +1,169 @@
+# Gatekeeper-wired SUT variant for the approval-gate e2e
+# (approval_gate_ac{2,4,9}.py).
+#
+# The primary kind deployment can carry the gate too, but two observation
+# designs need their own env values, and env is per deployment:
+#
+# * GATEKEEPER_TIMEOUT_SECONDS=5 with GATEKEEPER_POLL_INTERVAL_SECONDS=1 --
+#   scenario 4(b) observes an expired verdict in seconds instead of waiting out
+#   the 300 s default. The expiry and the client deadline both derive from
+#   GATEKEEPER_TIMEOUT_SECONDS, so the e2e asserts the REFUSAL LATENCY (>= the
+#   timeout) plus the gatekeeper record reading EXPIRED, never the wording of
+#   the client error -- which of the two fires is a timer tie in the client.
+# * GATEKEEPER_USER_ID -- auto-response modes (scenario 9) engage only when the
+#   create body carries a users.id, and ids are cuid values a fixture cannot
+#   know in advance. ci.yml seeds the user through the forward-auth path and
+#   pins the discovered id into the secret this deployment consumes.
+#
+# GATEKEEPER_BASE_URL points at the recording proxy (gatekeeper-trace), not at
+# gatekeeper directly, so scenario 2 can assert the create contract. The
+# primary keeps pointing straight at the gatekeeper Service: its scenarios need
+# no request-body observation, and a shorter path is one less thing to break.
+#
+# The dedicated ClusterRoleBinding exists for the same reason the primary's
+# does (k8s/rbac.yaml): authorization is per ServiceAccount, and the primary's
+# binding names only the primary namespace's SA. MCP_AUTH_DISABLED here is the
+# allowlisted GATE relaxation -- auth is not the subject of these files, and
+# tests/k8s/kind/auth-fixture.yaml is the registered replacement surface.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-gatekeeper-variant
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-k3s-mcp
+  namespace: homelab-k3s-mcp-gatekeeper-variant
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-k3s-mcp:gatekeeper-variant-workloads
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: homelab-k3s-mcp
+    namespace: homelab-k3s-mcp-gatekeeper-variant
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-gatekeeper-variant
+  namespace: homelab-k3s-mcp-gatekeeper-variant
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            - name: MCP_AUTH_DISABLED
+              value: "1"
+            - name: GATEKEEPER_TIMEOUT_SECONDS
+              value: "5"
+            - name: GATEKEEPER_POLL_INTERVAL_SECONDS
+              value: "1"
+          envFrom:
+            - secretRef:
+                name: homelab-k3s-mcp-gatekeeper
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-gatekeeper-variant
+  namespace: homelab-k3s-mcp-gatekeeper-variant
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

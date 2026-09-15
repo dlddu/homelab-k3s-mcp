@@ -21,9 +21,11 @@
 
 **마지막 절(「승인 요청이 생기지 않음」)은 성공만 봐서는 공허하다** — 게이트를 아예 달지 않은
 서버도 여섯 호출을 통과시킨다. 그래서 같은 세션에서 게이트 대상 호출(`v1/Secret` 읽기)이
-거부되는 것을 대조군으로 나란히 본다. ⚠️ 이 배포에는 gatekeeper 가 없어 그 거부 문면이
-「approval gate is not configured」다. 실물 gatekeeper 픽스처가 서면(시나리오 16 의 선행,
-`docs/doc-tracker.md` 구현 대기 표) 그 문면이 판정 결과로 바뀌므로 이 대조군도 그때 함께 옮긴다.
+거부되는 것을 대조군으로 나란히 본다. 이 배포에는 실물 gatekeeper 가 서 있고(`rct_20260915-0008`
+슬라이스가 `tests/k8s/kind/gatekeeper-fixture.yaml` 을 세웠다), 그래서 그 거부는 사람 판정을
+대신 태워 얻는다 — 생성된 승인 요청을 거절하면 클라이언트가 즉시 물러난다. 직전 판의
+「approval gate is not configured」 문면은 게이트가 미배선이던 시점의 관측이었고, 그 배선이
+착지하며 대조군의 만드는 법이 함께 바뀌었다.
 
 선행 조건(픽스처 파드 기동·크래시루프 재시작·기준선 레플리카)은 도구가 아니라 kubectl 로
 세운다 — 전제를 검증 대상 자신으로 세우면 「픽스처가 아직 안 섰다」와 「서브리소스 조회가
@@ -39,6 +41,7 @@ import time
 from mcp import ClientSession
 from mcp.shared.exceptions import McpError
 
+from _gatekeeper import decide, gatekeeper_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import (
     CRASHLOOP_MARKER,
@@ -347,32 +350,41 @@ async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
 
     성공만 보면 공허하다 — 게이트를 아예 달지 않은 서버도 통과시킨다. 그래서 같은 세션에서
     게이트 대상(`v1/Secret` 읽기)이 **거부**되는 것을 나란히 봐서, 이 배포에 게이트가 실제로
-    서 있는데도 위 호출들이 지나갔다는 것으로 만든다. 대조군은 **없는 이름**을 겨눈다 — 게이트는
-    kubernetes 호출 수가 0인 채로 판정하므로(`internal/mcp/gate.go` 의 `genericPairs`) 대상이
-    실재할 필요가 없고, 실재하면 「없어서 실패했다」와 섞인다.
+    서 있는데도 위 호출들이 지나갔다는 것으로 만든다. 이 배포에는 실물 gatekeeper 가 서 있으므로
+    (``tests/k8s/kind/gatekeeper-fixture.yaml``) 거부는 사람 판정을 대신 태워 관측한다 —
+    생성된 승인 요청을 **거절**하면 클라이언트가 즉시 물러난다. 거절이라 `EXPIRED` 의 5초
+    대기도 승인 댄스도 필요 없고, 「승인되면 값이 온다」와 섞이지 않는다. 대조군은 **없는
+    이름**을 겨눈다 — 게이트는 kubernetes 호출 수가 0인 채로 판정하므로(`internal/mcp/gate.go`
+    의 `genericPairs`) 대상이 실재할 필요가 없고, 실재하면 「없어서 실패했다」와 섞인다.
     """
     payload, _ = await _logs(session, pod, container=LOG_CONTAINER)
     assert _lines(payload["text"]), payload
 
-    try:
-        await session.call_tool(
-            "resource_get",
-            {
-                "apiVersion": "v1",
-                "kind": "Secret",
-                "namespace": NAMESPACE,
-                "name": "resource-generic-ac5-no-such-secret",
-            },
+    async with gatekeeper_url() as gate:
+        task = asyncio.create_task(
+            session.call_tool(
+                "resource_get",
+                {
+                    "apiVersion": "v1",
+                    "kind": "Secret",
+                    "namespace": NAMESPACE,
+                    "name": "resource-generic-ac5-no-such-secret",
+                },
+            )
         )
-    except McpError as exc:
-        message = str(exc)
-        assert "approval gate is not configured" in message, message
-        print(f"gate control ok: 민감 종류 읽기는 거부된다 — {message}")
-    else:
-        raise AssertionError(
-            "민감 종류 읽기가 거부되지 않았다 — 게이트가 서 있지 않으면 "
-            "「승인 요청이 생기지 않음」이 아무것도 말하지 않는다"
-        )
+        row = wait_for_pending(gate, "resource-generic-ac5-no-such-secret")
+        decide(gate, row["id"], "REJECTED")
+        try:
+            await task
+        except McpError as exc:
+            message = str(exc)
+            assert "approval rejected" in message, message
+            print(f"gate control ok: 민감 종류 읽기는 거부된다 — {message}")
+        else:
+            raise AssertionError(
+                "민감 종류 읽기가 거부되지 않았다 — 게이트가 서 있지 않으면 "
+                "「승인 요청이 생기지 않음」이 아무것도 말하지 않는다"
+            )
 
 
 async def run() -> None:
