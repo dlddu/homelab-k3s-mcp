@@ -99,7 +99,7 @@ func TestJSONPatchGuardsCurrentAndResultIdentity(t *testing.T) {
 func TestApprovedPatchRefusesUnsafeInputsBeforeNetwork(t *testing.T) {
 	cases := []struct{ kind, body string }{
 		{"merge", "null"}, {"merge", "[]"}, {"merge", `{"metadata":null}`},
-		{"merge", `{"metadata":{"resourceVersion":"101"},"spec":{"large":9007199254740993}}`},
+		{"merge", `{"metadata":{"resourceVersion":"101"}}`},
 		{"merge", `{"metadata":{"resourceVersion":100}}`},
 		{"merge", `{"metadata":{"uid":null}}`},
 		{"apply", `{"metadata":{"uid":"other"}}`},
@@ -158,7 +158,7 @@ func TestConditionalPatchWirePathsAndNoRetries(t *testing.T) {
 					}
 					w.WriteHeader(status)
 					if status == 200 {
-						_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"ops","uid":"uid-1","resourceVersion":"101"}}`))
+						_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"ops","uid":"uid-1","resourceVersion":"101"},"spec":{"large":9007199254740993}}`))
 						return
 					}
 					reason := map[int]string{409: "Conflict", 422: "Invalid", 429: "TooManyRequests", 503: "ServiceUnavailable", 403: "Forbidden"}[status]
