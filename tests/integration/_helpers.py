@@ -49,6 +49,7 @@ EXPECTED_TOOLS = {
     "api_resources",
     "resource_list",
     "resource_get",
+    "resource_watch",
     "resource_update",
     "resource_patch",
     "resource_delete",

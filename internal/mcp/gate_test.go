@@ -23,6 +23,7 @@ type countingK8s struct {
 	calls      int
 	lastPatch  k8s.PatchRef
 	lastUpdate k8s.UpdateRef
+	lastWatch  k8s.WatchQuery
 	lastDelete k8s.DeleteRef
 	// updateErr lets a case make the cluster layer refuse. The one refusal AC8
 	// names — a kind with no replicas — is discovery's answer rather than an
@@ -56,6 +57,24 @@ func (c *countingK8s) ListResources(context.Context, k8s.ListQuery) (*k8s.ListRe
 func (c *countingK8s) GetResource(context.Context, k8s.ResourceRef) (*k8s.ResourceResult, error) {
 	c.hit()
 	return &k8s.ResourceResult{Object: map[string]any{}}, nil
+}
+
+// WatchResources records its query for the reason PatchResource records its
+// ref: the window and the resume point the tool sent are themselves the
+// assertion (AC6), and a refused call has to be visible as a call that never
+// arrived.
+func (c *countingK8s) WatchResources(_ context.Context, q k8s.WatchQuery) (*k8s.WatchResult, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastWatch = q
+	c.mu.Unlock()
+	return &k8s.WatchResult{Resource: "deployments", Events: []k8s.WatchEvent{}}, nil
+}
+
+func (c *countingK8s) watch() k8s.WatchQuery {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastWatch
 }
 
 // PatchResource records what it was handed as well as counting the call: a

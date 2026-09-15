@@ -23,6 +23,10 @@ type listResourceCall struct {
 	query k8s.ListQuery
 }
 
+type watchResourceCall struct {
+	query k8s.WatchQuery
+}
+
 type getResourceCall struct {
 	ref k8s.ResourceRef
 }
@@ -46,15 +50,17 @@ type fakeK8s struct {
 
 	apiResourceCalls int
 	listCalls        []listResourceCall
+	watchCalls       []watchResourceCall
 	getCalls         []getResourceCall
 	updateCalls      []updateResourceCall
 	patchCalls       []patchResourceCall
 	deleteCalls      []deleteResourceCall
 	execCalls        []execCall
 
-	execResponse func() (*k8s.ExecOutcome, error)
-	listResponse func() (*k8s.ListResult, error)
-	getResponse  func() (*k8s.ResourceResult, error)
+	execResponse  func() (*k8s.ExecOutcome, error)
+	listResponse  func() (*k8s.ListResult, error)
+	getResponse   func() (*k8s.ResourceResult, error)
+	watchResponse func() (*k8s.WatchResult, error)
 }
 
 func (f *fakeK8s) APIResources(context.Context) ([]k8s.APIResource, error) {
@@ -72,6 +78,16 @@ func (f *fakeK8s) ListResources(_ context.Context, query k8s.ListQuery) (*k8s.Li
 		return f.listResponse()
 	}
 	return &k8s.ListResult{Resource: "pods", Namespaced: true}, nil
+}
+
+func (f *fakeK8s) WatchResources(_ context.Context, query k8s.WatchQuery) (*k8s.WatchResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.watchCalls = append(f.watchCalls, watchResourceCall{query: query})
+	if f.watchResponse != nil {
+		return f.watchResponse()
+	}
+	return &k8s.WatchResult{Resource: "deployments", Namespaced: true, Events: []k8s.WatchEvent{}}, nil
 }
 
 func (f *fakeK8s) GetResource(_ context.Context, ref k8s.ResourceRef) (*k8s.ResourceResult, error) {

@@ -111,6 +111,67 @@ func (h *Handler) resourceList(ctx context.Context, raw json.RawMessage) (any, *
 	}, nil
 }
 
+func (h *Handler) resourceWatch(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	coord, rerr := parseCoordinate(obj)
+	if rerr != nil {
+		return nil, rerr
+	}
+
+	seconds := k8s.WatchDefaultSeconds
+	if v, present := obj["watchSeconds"]; present {
+		n, ok := intValue(v)
+		if !ok {
+			return nil, errf(-32602, "watchSeconds must be an integer")
+		}
+		if n < 1 {
+			return nil, errf(-32602, "watchSeconds must be >= 1")
+		}
+		// Refused rather than clamped, the same as AC3's limit and AC5's
+		// tailLines: a window quietly shortened leaves the caller believing
+		// they watched for as long as they asked.
+		if n > k8s.WatchMaxSeconds {
+			return nil, errf(-32602, "watchSeconds must be <= %d", k8s.WatchMaxSeconds)
+		}
+		seconds = n
+	}
+
+	query := k8s.WatchQuery{
+		APIVersion:    coord.apiVersion,
+		Kind:          coord.kind,
+		Namespace:     coord.namespace,
+		LabelSelector: optionalString(obj, "labelSelector"),
+		FieldSelector: optionalString(obj, "fieldSelector"),
+		Seconds:       seconds,
+	}
+	if rv := optionalString(obj, "resourceVersion"); rv != nil {
+		query.ResourceVersion = *rv
+	}
+
+	result, err := h.k8s.WatchResources(ctx, query)
+	if err != nil {
+		return toolError(err), nil
+	}
+
+	payload := map[string]any{
+		"apiVersion":   coord.apiVersion,
+		"kind":         coord.kind,
+		"resource":     result.Resource,
+		"namespace":    coord.namespace,
+		"watchSeconds": seconds,
+		"events":       result.Events,
+		"truncated":    result.Truncated,
+	}
+	return map[string]any{
+		"content":           []any{map[string]any{"type": "text", "text": renderWatch(result, seconds)}},
+		"structuredContent": payload,
+		"isError":           false,
+	}, nil
+}
+
 func (h *Handler) resourceGet(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
@@ -560,6 +621,56 @@ func parseLogOptions(obj map[string]any) (k8s.LogOptions, *rpcErr) {
 		Timestamps:   timestamps,
 		SinceSeconds: sinceSeconds,
 	}, nil
+}
+
+// renderWatch prints one line per event rather than the objects themselves.
+// The objects are in structuredContent whole; repeating them here would put a
+// hundred manifests where the caller is trying to read what changed, which is
+// the flooding AC6's ceiling exists to prevent.
+func renderWatch(result *k8s.WatchResult, seconds int64) string {
+	if len(result.Events) == 0 {
+		return fmt.Sprintf("(no events in %ds)", seconds)
+	}
+
+	var b strings.Builder
+	for _, event := range result.Events {
+		fmt.Fprintf(&b, "%-8s %s", event.Type, watchEventName(event.Object))
+		if rv := watchEventResourceVersion(event.Object); rv != "" {
+			fmt.Fprintf(&b, "   rv=%s", rv)
+		}
+		b.WriteString("\n")
+	}
+	if result.Truncated {
+		fmt.Fprintf(&b,
+			"\n(truncated at %d events — the window closed early; re-watch from the last rv above)\n",
+			k8s.WatchMaxEvents,
+		)
+	}
+	return b.String()
+}
+
+// watchEventName names the object an event carries the way kubectl does,
+// falling back to the bare name for cluster-scoped kinds.
+func watchEventName(object map[string]any) string {
+	metadata, _ := object["metadata"].(map[string]any)
+	name, _ := metadata["name"].(string)
+	if namespace, _ := metadata["namespace"].(string); namespace != "" {
+		return namespace + "/" + name
+	}
+	if name == "" {
+		return "(unnamed)"
+	}
+	return name
+}
+
+// watchEventResourceVersion lifts the resume point out of the event. AC6 lets a
+// caller pass resourceVersion back in, and the object already carries the value
+// to pass — surfacing it here is reading the object out loud rather than adding
+// a field of this server's own.
+func watchEventResourceVersion(object map[string]any) string {
+	metadata, _ := object["metadata"].(map[string]any)
+	rv, _ := metadata["resourceVersion"].(string)
+	return rv
 }
 
 // renderTable prints the apiserver's columns the way kubectl does (AC3).

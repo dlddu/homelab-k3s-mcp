@@ -107,7 +107,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 	// actually about. Naming every tool still fails on a surprise addition —
 	// len(tools) != len(want) — and on a removal, via findTool.
 	want := []string{
-		"ping", "api_resources", "resource_list", "resource_get",
+		"ping", "api_resources", "resource_list", "resource_get", "resource_watch",
 		"resource_update", "resource_patch", "resource_delete",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
@@ -195,6 +195,17 @@ func TestToolsListAdvertisesResourceTools(t *testing.T) {
 	wantStrSlice(t, enumStrings(t, at(t, get, "inputSchema", "required")), "apiVersion", "kind", "name")
 	wantStrSlice(t, enumStrings(t, at(t, get, "inputSchema", "properties", "subresource", "enum")), "log", "scale", "status")
 
+	// AC6's ceiling is advertised as well as enforced: a client that reads the
+	// schema should not have to discover the bound by being refused.
+	watch := findTool(t, tools, "resource_watch")
+	wantStrSlice(t, enumStrings(t, at(t, watch, "inputSchema", "required")), "apiVersion", "kind")
+	if got := at(t, watch, "inputSchema", "properties", "watchSeconds", "maximum"); got != float64(k8s.WatchMaxSeconds) {
+		t.Fatalf("advertised watchSeconds maximum = %v, want %d", got, k8s.WatchMaxSeconds)
+	}
+	if at(t, watch, "annotations", "readOnlyHint") != true {
+		t.Fatalf("resource_watch annotations = %v, want a read-only tool", watch["annotations"])
+	}
+
 	// AC10 rests on an absence, so the advertised schema is asserted for one:
 	// a client that is offered a selector will send one, and the refusal that
 	// follows is a worse answer than never having advertised it.
@@ -257,6 +268,65 @@ func TestResourceListPassesCoordinateAndSelectors(t *testing.T) {
 	if q.LabelSelector == nil || *q.LabelSelector != "app=api" ||
 		q.FieldSelector == nil || *q.FieldSelector != "metadata.name=web" {
 		t.Fatalf("selectors = %v %v", q.LabelSelector, q.FieldSelector)
+	}
+}
+
+// AC6. The events go back as structured content and the text stays one line
+// per change: a window of whole objects rendered into the text is the flooding
+// the event ceiling exists to prevent, and it would not show up in a test that
+// only counted events.
+func TestResourceWatchReturnsEventsWithoutDumpingObjects(t *testing.T) {
+	fake := &fakeK8s{}
+	fake.watchResponse = func() (*k8s.WatchResult, error) {
+		return &k8s.WatchResult{
+			Resource:   "deployments",
+			Namespaced: true,
+			Namespace:  "prod",
+			Events: []k8s.WatchEvent{{
+				Type: "MODIFIED",
+				Object: map[string]any{
+					"metadata": map[string]any{
+						"name": "api", "namespace": "prod", "resourceVersion": "4816",
+					},
+					"spec": map[string]any{"replicas": int64(3)},
+				},
+			}},
+		}, nil
+	}
+	app := server.App(nil, fake, unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 22, "resource_watch", map[string]any{
+		"apiVersion": "apps/v1", "kind": "Deployment", "namespace": "prod",
+		"watchSeconds": 30, "resourceVersion": "4800",
+	})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+
+	if len(fake.watchCalls) != 1 {
+		t.Fatalf("watchCalls = %d, want 1", len(fake.watchCalls))
+	}
+	q := fake.watchCalls[0].query
+	if q.Seconds != 30 || q.ResourceVersion != "4800" {
+		t.Fatalf("window = %ds from rv %q, want 30s from \"4800\"", q.Seconds, q.ResourceVersion)
+	}
+
+	events := at(t, body, "result", "structuredContent", "events").([]any)
+	if len(events) != 1 {
+		t.Fatalf("len(events) = %d, want 1", len(events))
+	}
+	if at(t, body, "result", "structuredContent", "truncated") != false {
+		t.Fatalf("truncated = %v, want false", at(t, body, "result", "structuredContent", "truncated"))
+	}
+
+	text := at(t, body, "result", "content").([]any)[0].(map[string]any)["text"].(string)
+	for _, want := range []string{"MODIFIED", "prod/api", "rv=4816"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("text = %q, want it to mention %q", text, want)
+		}
+	}
+	if strings.Contains(text, "replicas") {
+		t.Fatalf("text = %q, want the object body left in structuredContent", text)
 	}
 }
 

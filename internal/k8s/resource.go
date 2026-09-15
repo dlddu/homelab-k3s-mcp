@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -16,6 +17,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes/scheme"
@@ -41,6 +43,21 @@ const (
 	// ListDefaultLimit and ListMaxLimit are AC3's bounds.
 	ListDefaultLimit int64 = 100
 	ListMaxLimit     int64 = 500
+
+	// WatchDefaultSeconds and WatchMaxSeconds are AC6's window. The tool layer
+	// refuses a value above the ceiling rather than clamping it, the way AC3
+	// treats limit.
+	WatchDefaultSeconds int64 = 10
+	WatchMaxSeconds     int64 = 60
+
+	// WatchMaxEvents is the event ceiling AC6 asks for without naming a number.
+	// The value is this implementation's, and it is a hundred for the reason
+	// ListDefaultLimit is: a watch event carries the whole object, so a hundred
+	// of them is already the largest answer a caller can read before the
+	// response stops being a part of the context and becomes all of it.
+	// Reaching it is reported rather than silently dropped, which is what AC3
+	// asks of a truncated list.
+	WatchMaxEvents = 100
 )
 
 // patchTypes are AC9's four names and the media types the apiserver knows them
@@ -98,6 +115,37 @@ type ListResult struct {
 	Continue   string       `json:"continue"`
 	Truncated  bool         `json:"truncated"`
 	Remaining  *int64       `json:"remaining_item_count"`
+}
+
+// WatchQuery addresses a set of objects to observe for one bounded window
+// (prd-resource-generic AC6). It is ListQuery's coordinate without the paging:
+// a watch is not a page of a collection, so limit and continue have no meaning
+// here, and ResourceVersion takes their place as the "where do I resume" knob.
+type WatchQuery struct {
+	APIVersion      string
+	Kind            string
+	Namespace       *string
+	LabelSelector   *string
+	FieldSelector   *string
+	ResourceVersion string
+	Seconds         int64
+}
+
+// WatchEvent is one change the apiserver pushed inside the window.
+type WatchEvent struct {
+	Type   string         `json:"type"`
+	Object map[string]any `json:"object,omitempty"`
+}
+
+// WatchResult is one window's worth of events. Truncated says the event
+// ceiling closed the window early, so that a caller cannot read "nothing else
+// happened" into a response that simply stopped listening.
+type WatchResult struct {
+	Resource   string       `json:"resource"`
+	Namespaced bool         `json:"namespaced"`
+	Namespace  string       `json:"namespace"`
+	Events     []WatchEvent `json:"events"`
+	Truncated  bool         `json:"truncated"`
 }
 
 // ResourceRef addresses a single object, optionally one of its subresources.
@@ -447,6 +495,113 @@ func (s *KubeService) ListResources(ctx context.Context, q ListQuery) (*ListResu
 		Remaining:  table.ListMeta.RemainingItemCount,
 	}
 	return result, nil
+}
+
+// WatchResources collects one window of change events and closes (AC6).
+//
+// The window is the apiserver's own: TimeoutSeconds makes it end the watch, so
+// the stream is not held open across calls. The local timer beside it is not a
+// second policy but the same one made true when the connection does not
+// cooperate — a proxy that keeps a closed stream open would otherwise leave
+// this blocked past the window the caller was promised.
+func (s *KubeService) WatchResources(ctx context.Context, q WatchQuery) (*WatchResult, error) {
+	res, err := s.resolve(ctx, q.APIVersion, q.Kind)
+	if err != nil {
+		return nil, err
+	}
+	if !res.namespaced && q.Namespace != nil {
+		return nil, apiErrorf(
+			"%s is cluster-scoped; drop namespace rather than having it silently ignored",
+			q.Kind,
+		)
+	}
+
+	seconds := q.Seconds
+	if seconds <= 0 {
+		seconds = WatchDefaultSeconds
+	}
+
+	opts := metav1.ListOptions{
+		Watch:           true,
+		ResourceVersion: q.ResourceVersion,
+		TimeoutSeconds:  &seconds,
+	}
+	if q.LabelSelector != nil {
+		opts.LabelSelector = *q.LabelSelector
+	}
+	if q.FieldSelector != nil {
+		opts.FieldSelector = *q.FieldSelector
+	}
+
+	dyn, err := dynamic.NewForConfig(s.config)
+	if err != nil {
+		return nil, unavailableErr(fmt.Sprintf("init dynamic client: %v", err))
+	}
+	var api dynamic.ResourceInterface = dyn.Resource(res.gvr)
+	namespace := ""
+	if res.namespaced && q.Namespace != nil {
+		namespace = *q.Namespace
+		api = dyn.Resource(res.gvr).Namespace(namespace)
+	}
+
+	watcher, err := api.Watch(ctx, opts)
+	if err != nil {
+		return nil, s.apiCallError(err, "watch", res.gvr.Resource)
+	}
+	defer watcher.Stop()
+
+	result := &WatchResult{
+		Resource:   res.gvr.Resource,
+		Namespaced: res.namespaced,
+		Namespace:  namespace,
+		Events:     []WatchEvent{},
+	}
+	window := time.NewTimer(time.Duration(seconds) * time.Second)
+	defer window.Stop()
+
+	for {
+		select {
+		case event, open := <-watcher.ResultChan():
+			if !open {
+				return result, nil
+			}
+			// An Error event is the apiserver refusing to serve the stream —
+			// most often a resourceVersion too old to resume from. Returning
+			// the events collected so far beside it would present a partial
+			// window as a whole one, and "the resume point is gone" is the
+			// answer the caller has to act on.
+			if event.Type == watch.Error {
+				return nil, s.apiCallError(
+					apierrors.FromObject(event.Object), "watch", res.gvr.Resource,
+				)
+			}
+			object, ok := event.Object.(*unstructured.Unstructured)
+			if !ok {
+				return nil, apiErrorf(
+					"apiserver pushed a %T this server cannot render as an object",
+					event.Object,
+				)
+			}
+			content := object.UnstructuredContent()
+			// The same two fields AC4 calls noise, for the same reason: they
+			// are noise because of what they are, not because of which verb
+			// read them. A window of a hundred objects is where that matters
+			// most.
+			stripNoise(content)
+			result.Events = append(result.Events, WatchEvent{
+				Type:   string(event.Type),
+				Object: content,
+			})
+			if len(result.Events) >= WatchMaxEvents {
+				result.Truncated = true
+				return result, nil
+			}
+		case <-window.C:
+			return result, nil
+		case <-ctx.Done():
+			return result, nil
+		}
+	}
 }
 
 // GetResource reads one object whole, or the text a text-typed subresource
