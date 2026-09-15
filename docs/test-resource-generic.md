@@ -155,10 +155,17 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   않음** — 첫째 문서의 객체는 그대로 남고(되돌리려면 승인 없는 `delete`가 필요하다),
   응답이 만들어진 것·실패한 것·시도하지 않은 것을 각각 좌표로 보고한다
 - **검증 AC**: AC7
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestCreateDoesNotOverwrite`,
-  `TestMultiDocCreateRequiresApprovalPerDoc`,
-  `TestMultiDocCreateRejectionCreatesNothing`,
-  `TestMultiDocCreateStopsAndReportsOnFailure`. 통합 `resource_generic_ac7.py`
+- **자동화**: Go 단위 `internal/k8s/create_test.go::TestCreateDoesNotOverwrite`는
+  namespaced/core·cluster/core·namespaced/group 세 경로의 실제 HTTP POST와 409를 검증한다.
+  `TestCreateNeverRetriesOrEchoesAPIValues`는 Retry-After가 있어도 호출 1회, 403 쌍 표기,
+  API 오류 본문의 민감 값 비노출을 확인한다. `internal/mcp/create_test.go`의
+  `TestMultiDocCreateRequiresApprovalPerDoc`·`TestMultiDocCreateRejectionCreatesNothing`·
+  `TestMultiDocCreateStopsAndReportsOnFailure`가 승인 전량 선행, 거절/만료/오류 시 호출 0,
+  부분 실패의 좌표 보고와 미소비 승인을 검증한다. 같은 파일에서 파싱 전체 선행,
+  승인 재사용 거부, 민감 값 마스킹, 자동 승인 표시도 검증한다.
+  **통합 `resource_generic_ac7.py`는 아직 미작성**이다. 위 테스트는 dispatcher와 HTTP
+  경계를 검증하며 실 apiserver·gatekeeper 동작을 입증하지 않는다. 실물 gatekeeper
+  픽스처와 전용 E2E 후속은 `doc-tracker.md`의 시나리오 7 행에 남긴다.
 
 ### 시나리오 8: 전체 교체와 스케일
 - **사전 조건**: 동일, `workload-fixture` 기준선, DaemonSet 픽스처

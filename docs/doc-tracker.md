@@ -18,7 +18,7 @@
 - PRD: **14개** (도구 12 + 공통 기반 2)
 - Acceptance Criteria: **78개** (가치 연결됨: 78 / 미연결: 0) — AC 번호는 결번을 둔다(platform AC3 · resource-generic AC19)
 - 테스트 문서: **14개** (AC 커버됨: 78 / 미커버: 0)
-- 등록 도구: **18종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_update`·`resource_patch`·`resource_delete` 3종이고, 게이트 밖 예외는 **1종**(`dear_baby_reset_user`)이다. `resource_watch` 는 쓰기가 아니므로 이 둘 어디에도 들어가지 않는다 — 민감 종류(`RESOURCE_GATED_KINDS`)를 대상으로 할 때만 `resource_get` 과 같은 조건으로 게이트를 탄다
+- 등록 도구: **19종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_create`·`resource_update`·`resource_patch`·`resource_delete` 4종이고, 게이트 밖 예외는 **1종**(`dear_baby_reset_user`)이다. `resource_watch` 는 쓰기가 아니므로 이 둘 어디에도 들어가지 않는다 — 민감 종류(`RESOURCE_GATED_KINDS`)를 대상으로 할 때만 `resource_get` 과 같은 조건으로 게이트를 탄다
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있고,
   ⑴ **폐기된 6종은 2026-09-15 에 전부 코드에서 나갔다**(마지막 1종 `workload_scale` 제거 —
   대체재 `resource_update(subresource=scale)`가 같은 날 먼저 섰다). 「문서 없는 실행 코드」는 **0종**이다.
@@ -469,6 +469,34 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > AC11 이 적는 방향이고(「선언은 남긴다」), 그 역 — 선언 없이 행사 — 이 AC1 이 막는 구멍이다.
 > AC19 결번으로 `rbac.yaml` 대조가 사라졌으므로 이 선언은 **기동 로그에 찍히는 것**으로 값을 한다.
 
+### resource_create 구현 (2026-09-15, rct_20260915-0013)
+
+- `resource-generic` AC7의 도구·서비스·다중 문서 승인 배치를 구현했다. 앞선 기록의
+  "등록 작업뿐"은 과소 표현이었다: 매니페스트 전체 파싱, 문서별 승인 요청, 실행/실패
+  집계, create 전용 POST와 검증이 함께 필요했다. 기존 단건 `authorize`는 그대로 두고,
+  중앙 dispatcher가 create 배치를 선택한다. 배치는 각 문서의 create 선언을 검증하며
+  `outsideGate`나 기존 객체 읽기 선언을 받아들이지 않는다.
+- 모든 문서의 승인을 받은 뒤에만 첫 create를 수행한다. 승인 객체는 문서 실행 직전에
+  소비하고 호출 안에만 보관한다. 거절/만료/승인 오류는 Kubernetes 호출 0회이며,
+  실행 오류는 뒤 문서를 멈추고 만들어진 객체를 삭제하지 않는다.
+- `prd-approval-gate` AC6의 create 예외를 적용한다: 존재하지 않는 대상을 게이트가
+  읽거나 재확인하지 않고, API의 create 충돌(409)이 덮어쓰기를 막는다. client-go의
+  Retry-After 재시도도 `MaxRetries(0)`으로 끈다. 승인 하나로 여러 POST가 나가면
+  같은 문서여도 AC7의 단 한 번 조건을 위반하기 때문이다.
+- context는 해당 문서 하나만 담고 민감 종류의 `data`·`stringData`를 키/바이트 수로
+  가린다. 잘못된 타입의 credential 필드도 마스킹한다: API 검증은 승인 후이므로
+  잘못된 입력이 승인 화면에 원문으로 새어서는 안 된다. 생성 결과는 좌표만 보고하고
+  API 오류 본문은 노출하지 않는다. 불확실한 네트워크/5xx 결과는 대상 확인을 요구한다.
+- Go 단위·HTTP 테스트의 실제 경로는 `test-resource-generic.md` 시나리오 7에 적었다.
+  실 gatekeeper 픽스처/CI와 전용 E2E는 기존 시나리오 worker(PR #106)의 선행에
+  의존한다. **새 E2E 커버리지를 달성했다고 계상하지 않는다.** 현재 pending 행의
+  create 미등록 근거만 해소하고, fixture가 착지하면 담당 렌즈가 전용 E2E를 작성해야 한다.
+- 범위 밖: `resource_delete_collection`·`resource_exec`·`resource_attach`·
+  `resource_port_forward`·`resource_proxy`, update 원자적 precondition(PR #109),
+  patch precondition, nodes/proxy 문서 결정과 dear_baby_reset_user 예외 결정.
+  PR #111의 시나리오 근거 수정과 이 변경이 같은 행을 만지므로, 병합 순서에 따라
+  create가 이미 구현됐다는 사실과 해당 PR의 나머지 근거를 모두 보존해 재검토한다.
+
 ## 자동화 커버리지 (문서 구조와 별개)
 
 테스트 문서는 모든 AC를 커버하지만, 그 시나리오가 참조하는 **자동화 상태**는 세 가지로 나뉜다.
@@ -640,7 +668,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-approval-gate.md#시나리오 7 | 승인은 한 번만 쓰인다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 8 | 감사 로그 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 9 | 자동 승인은 숨기지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-approval-gate.md#시나리오 10 | 자격증명 값이 응답 밖으로 새지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 10 | 자격증명 값이 응답 밖으로 새지 않는다 | ⏳ 구현 대기 (규칙 6 — 실물 gatekeeper 픽스처 대기) |
 | test-approval-gate.md#시나리오 11 | 게이트의 읽기가 선언되고 값에 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 1 | 임의 종류를 좌표로 조회한다 | ✅ 전용 파일 `resource_generic_ac1.py` |
 | test-resource-generic.md#시나리오 2 | 목록은 표로 온다 | ✅ 전용 파일 `resource_generic_ac2.py` |
@@ -648,7 +676,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-resource-generic.md#시나리오 4 | 단건 조회는 이름을 요구한다 | ✅ 전용 파일 `resource_generic_ac4.py` |
 | test-resource-generic.md#시나리오 5 | 서브리소스 조회 | ✅ 전용 파일 `resource_generic_ac5.py` |
 | test-resource-generic.md#시나리오 6 | 변경 스트림 관측 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 7 | 생성은 덮어쓰지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 7 | 생성은 덮어쓰지 않는다 | ⏳ 구현 대기 (규칙 6 — 실물 gatekeeper 픽스처 대기) |
 | test-resource-generic.md#시나리오 8 | 전체 교체와 스케일 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 9 | 부분 수정과 롤링 재시작 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 10 | 삭제는 단건만 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
@@ -657,7 +685,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-resource-generic.md#시나리오 13 | 실행 중 컨테이너 stdio 접속 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 14 | 포트 포워드는 단발 왕복이다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 15 | 프록시는 경로를 숨기지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-resource-generic.md#시나리오 16 | 민감 종류는 읽기도 쓰기도 승인을 거친다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-resource-generic.md#시나리오 16 | 민감 종류는 읽기도 쓰기도 승인을 거친다 | ⏳ 구현 대기 (규칙 6 — 실물 gatekeeper 픽스처 대기) |
 | test-resource-generic.md#시나리오 17 | 값이 새는 경로가 막혀 있다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 18 | 권한 밖은 권한 밖이라고 말한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 20 | 종류 해석 | ✅ 전용 파일 `resource_generic_ac20.py` |
@@ -693,10 +721,10 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-approval-gate.md#시나리오 7** | **도구 축 충족** — 승인을 **써 버리는** 실행은 `resource_patch` 로 만들 수 있고, 「같은 Secret 재조회가 새 승인 요청을 만든다」 갈래도 `resource_get(kind=Secret)` 과 `cluster-admin` 으로 성립한다. **남은 차단은 ⑵ 하나** — 승인을 받아 실행한 뒤 **같은 승인 id 로 재시도**하려면 실제로 승인된 id 가 있어야 하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | 이 렌즈(e2e) | ⑵ 실물 gatekeeper 픽스처. **직전 판의 `secrets` 부여 조건은 죽었다**(`rbac.yaml` = `cluster-admin`) — Secret 갈래도 픽스처 하나면 닫힌다 |
 | **test-approval-gate.md#시나리오 8** | **도구 축 충족** — 승인 실행 1회는 `resource_patch` 로 만들 수 있다. **남은 차단은 ⑵ 하나**다: 거절 1회를 태우려면 판정을 내려 줄 상대가 필요하고, 승인 실행 쪽에 남아야 하는 `processedById` 는 실물 gatekeeper 가 아니면 생기지 않는다. `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | 이 렌즈(e2e) | ⑵ 실물 gatekeeper 픽스처(거절만 보면 스텁으로도 되지만 `processedById` 는 실물이라야 남는다) |
 | **test-approval-gate.md#시나리오 9** | **도구 축 충족** — 태울 게이트 대상 호출은 `resource_patch` 가 준다. **남은 차단은 ⑵ 하나** — `autoResponseMode` 의 `AUTO_APPROVE`·`AUTO_REJECT` 는 gatekeeper 쪽 **사용자 설정**이라 실물이라야 세울 수 있는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | 이 렌즈(e2e) | ⑵ 실물 gatekeeper 픽스처(사용자별 자동 응답 모드 설정 포함) |
-| **test-approval-gate.md#시나리오 10** | 훑어야 할 셋 중 **둘이 섰다** — `resource_get` 과 `resource_patch` 가 등록됐고, 쓰기 경로의 `context` 마스킹(키 이름 + 바이트 수)도 구현돼 있다(`gate.go` 의 `writesASensitiveKind`→`maskCredentialValues`). RBAC 도 `cluster-admin` 이라 승인 후 정상 응답에는 값이 오므로 「오직 그때만 등장한다」를 단정할 수 있다. 남은 것은 `resource_create` 미등록(0히트)과 실물 gatekeeper 픽스처 부재다. 난수 토큰 Secret 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_create` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. **직전 판의 `secrets` 부여 조건은 죽었다**(`rbac.yaml` = `cluster-admin`) |
+| **test-approval-gate.md#시나리오 10** | `resource_get`·`resource_patch`·`resource_create`와 민감 쓰기 context 마스킹이 구현돼 있다. 실물 gatekeeper 픽스처가 아직 없어 승인 화면·감사 로그·응답의 값 경계를 통합으로 관측하지 못한다. 난수 토큰 Secret은 이 렌즈가 작성할 테스트 입력이다. | 이 렌즈(e2e), 실물 fixture 선행은 기존 PR #106 | 실물 gatekeeper 픽스처 착지 후 전용 시나리오 작성. 도구 미등록 조건은 해소됨 |
 | **test-approval-gate.md#시나리오 11** | 세 갈래가 각각 다르다. **(a)** `resource_get(kind=Secret)` 도 `secrets` 권한도 서 있고, 남은 것은 거절을 태울 실물 gatekeeper 픽스처다(apiserver 감사 프록시는 기존 `http-trace` 계열이라 이 렌즈 자신의 저작이다). **(b)** `resource_update(subresource=scale)`·`resource_delete_collection` 이 미등록이다(0히트). **(c)** 대조 기준의 ⬜ 미결은 **해소됐다** — 위 「수용된 위험」의 두 PRD `rbac.yaml` 충돌 행이 ✅ 로 닫혔다. 그러나 해소 방식이 `cluster-admin` 바인딩이라 **대조가 공전한다**: 「게이트 선언을 뺀 변형에서 대조가 실패로 잡힘」이 성립하지 않는다(무엇을 빼도 `cluster-admin` 이 덮는다). 이것은 하네스 미비가 아니라 시나리오 문면과 구현의 어긋남이며, 문면 변경은 이 렌즈가 정하지 않는다(시나리오 3·5·20 과 같은 계열). | docs-impl(도구) → 이 렌즈(e2e) + 제품 문서((c) 의 대조 기준) | ⑴ `resource_update`·`resource_delete_collection` 등록, ⑵ 실물 gatekeeper 픽스처, ⑶ (c) 의 대조가 `cluster-admin` 아래서 무엇을 잡는지 문면이 정리될 것. **직전 판의 `secrets` 부여 조건은 죽었다** |
 | **test-resource-generic.md#시나리오 6** | `resource_watch` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `kind=Secret` 미승인/승인 분기는 추가로 실물 gatekeeper 를 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다(`secrets` 의 `watch` 자체는 2026-09-14 RBAC 개정으로 권한 안이다). | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_watch` 등록, ⑵ 실물 gatekeeper 픽스처. ⑴ 만으로는 시나리오의 Secret 갈래가 남는다 |
-| **test-resource-generic.md#시나리오 7** | `resource_create` 가 등록돼 있지 않다(레포 전체 grep 0 히트). 세 단계 모두 승인을 요구하므로 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다 는 것도 함께 막는다. `create` 를 금지하던 `prd-platform-auth-safety` AC3 은 2026-09-14 에 결번이 됐고 RBAC 도 `cluster-admin` 이라, **이 행을 rbac 충돌에 묶어 두던 선행은 사라졌다**. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_create` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처 |
+| **test-resource-generic.md#시나리오 7** | `resource_create`가 등록됐고 문서별 승인·전량 승인 후 실행·409·부분 실패 보고의 Go/HTTP 테스트가 있다. 실물 gatekeeper 픽스처가 없어 이 동작을 실제 apiserver와 함께 검증할 수 없다. fixture가 서면 전용 `resource_generic_ac7.py`를 작성한다. | 이 렌즈(e2e), 실물 fixture 선행은 기존 PR #106 | 실물 gatekeeper 픽스처 착지 후 전용 시나리오 작성. create 미등록 조건은 해소됨 |
 | **test-resource-generic.md#시나리오 8** | **⑴ 이 2026-09-15 에 충족됐다** — `resource_update` 가 전체 교체(PUT)와 `subresource=scale` 양쪽과 함께 등록됐다(`internal/mcp/toolslist.go` 선언 · `internal/mcp/gate.go` 의 `toolRegistry` 등재(`updatePairs()` 가 좌표에서 `update ⟨plural⟩/scale` 쌍을 해석한다) · `internal/mcp/resource.go` 의 `resourceUpdate` 핸들러 · `tests/integration/_helpers.py::EXPECTED_TOOLS` 에도 같은 이름이 있어 선언 전수와 집합이 어긋나지 않는다 — 등록 도구 **총수**는 `workload_scale` 제거 같은 다른 슬라이스로 움직이므로 이 행에 박지 않는다). **직전 판의 「레포 전체 grep 0 히트」는 그 커밋(#97)으로 거짓이 됐다.** **남은 차단은 ⑵ 하나** — 실행 단계의 `replicas` 3·0·1 반영과 서브리소스 없는 전체 교체가 **각각 승인을 요구**하는데(모든 `update` 호출이 게이트를 탄다) `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없어 승인을 사람 대신 태울 수 없다. 거부 셋 중 음수·누락은 인자 검증이 게이트보다 앞이라 승인 요청 없이도 관측되지만(`gate.go::updatePairs` → `resource.go::parseUpdateTarget`), DaemonSet 거부와 3·0·1 반영·전체 교체는 승인 뒤라야 보인다 — 기대 결과의 일부만 떼어 닫는 것은 이 원장이 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. RBAC 는 `update`·`⟨kind⟩/scale` 을 이미 준다(`rbac.yaml` = `cluster-admin`). | 이 렌즈(e2e) | ⑵ 실물 gatekeeper 픽스처. **도구 축은 더는 차단 요인이 아니다** — 픽스처가 서면 전용 파일 `tests/integration/resource_generic_ac8.py` 저작만 남는다. 사전 조건 픽스처는 차단 요인이 아니다(`tests/k8s/kind/test-deployment.yaml` 에 `workload-fixture` 기준선과 DaemonSet `workload-fixture-ds` 가 이미 서 있다). ⚠️ 시나리오의 `자동화` 필드가 승계 원본으로 적은 `workload_scale_ac{1,2}.py` 는 #72(V1 도구 통합)에서 이미 폐기됐으므로 승계할 파일은 없고 단언은 새로 저작한다 |
 | **test-resource-generic.md#시나리오 9** | **⑴ 이 2026-09-14 에 충족됐다** — `resource_patch` 가 네 `patchType`(`merge`·`strategic`·`json`·`apply`) 과 함께 등록됐고(`internal/mcp/gate.go` · `internal/mcp/resource.go`), 재시작 어노테이션 패치도 다른 patch 와 같이 게이트를 탄다(`resource_test.go::TestRestartPatchIsGatedLikeAnyPatch`). **남은 차단은 ⑵ 하나** — 시나리오의 실행 단계가 네 호출 모두 「각 승인」을 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없어 승인을 사람 대신 태울 수 없다. RBAC 는 `patch` 를 이미 준다. | 이 렌즈(e2e) | ⑵ 실물 gatekeeper 픽스처. **도구 축은 더는 차단 요인이 아니다** — 픽스처가 서면 전용 파일 `tests/integration/resource_generic_ac9.py` 저작만 남는다 |
 | **test-resource-generic.md#시나리오 10** | **⑴ 은 2026-09-15 에 충족됐다** — `resource_delete` 가 등록됐다(`toolslist.go` 선언·`gate.go::toolRegistry`·`EXPECTED_TOOLS` 셋 다에 있다). 「셀렉터 전용 호출 경로가 존재하지 않아 인자 검증에서 거부됨」은 단위 층이 이미 덮는다(`internal/mcp/resource_test.go::TestDeleteIsSingleObjectOnly` — 거부 일곱, 그중 셀렉터·서브리소스는 **승인 요청이 만들어지기 전에** 거부된다). **남은 차단은 ⑵ 하나다**: 「지정 객체만 사라지고 같은 레이블의 다른 객체는 남는다」와 「`gracePeriodSeconds` 가 반영된다」는 apiserver 의 거동이라 단위 층이 볼 수 없고, 두 호출 다 승인을 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. `delete` 는 RBAC 안이다(2026-09-14 개정; AC3 은 결번). | 이 렌즈(e2e) | ⑵ 실물 gatekeeper 픽스처 |
@@ -705,7 +733,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-resource-generic.md#시나리오 13** | `resource_attach` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `pods/attach` 는 2026-09-14 RBAC 개정으로 권한 안이다. 승인을 태울 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_attach` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. stdio 파드 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 |
 | **test-resource-generic.md#시나리오 14** | `resource_port_forward` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `pods/portforward` 는 2026-09-14 RBAC 개정으로 권한 안이다. 「같은 승인 id 로 두 번째 왕복」을 재려면 실물 승인이 필요한데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_port_forward` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. HTTP 서빙 파드 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 |
 | **test-resource-generic.md#시나리오 15** | `resource_proxy` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `pods/proxy`·`services/proxy`·`nodes/proxy` 는 2026-09-14 RBAC 개정으로 전부 권한 안이다. 네 호출 모두 승인을 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_proxy` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. HTTP 파드·Service 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 |
-| **test-resource-generic.md#시나리오 16** | **읽기 절반은 섰다** — `kind=Secret` 의 `get` 은 민감 종류로 판정돼 게이트를 탄다(`internal/mcp/gate.go:223-243`). **쓰기 쪽도 한 칸 섰다** — 2026-09-14 에 `resource_patch` 가 등록되면서 `patch` 가 게이트를 타고, 그 승인 `context` 에서 `data`·`stringData` 가 키 이름과 바이트 수로 가려진다(AC16 「쓰기의 context 에서는 값을 가린다」 · `gate_test.go::TestSensitiveWriteMasksCredentialValues`). 그러나 시나리오는 `get`·`watch`·`create`·`update`·`patch`·`delete` **여섯 verb 전부**와 승인 후 값 확인을 요구하는데 나머지 **네 도구**(`watch`·`create`·`update`·`delete`)가 미등록이고(레포 전체 grep 0 히트), `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. `secrets` 자체는 2026-09-14 RBAC 개정으로 권한 안이다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ 나머지 **네** 도구 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. 난수 토큰 Secret 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 |
+| **test-resource-generic.md#시나리오 16** | 요구하는 `get`·`watch`·`create`·`update`·`patch`·`delete` 여섯 도구가 모두 등록돼 있고 민감 종류 게이트와 쓰기 context 마스킹이 구현돼 있다. 실물 gatekeeper 픽스처가 아직 없어 승인/거절 전환과 값 비노출을 실제 API에서 관측하지 못한다. 난수 토큰 Secret은 이 렌즈 자신의 테스트 입력이다. | 이 렌즈(e2e), 실물 fixture 선행은 기존 PR #106 | 실물 gatekeeper 픽스처 착지 후 여섯 verb와 값 경계의 전용 시나리오 작성. 도구 미등록 조건은 해소됨 |
 | **test-resource-generic.md#시나리오 17** | (a) 의 `kind=Secret` `resource_list` 와 (c')·(d) 가 전제하던 `nodes/proxy`·`secrets` 의 `watch` 는 2026-09-14 RBAC 개정으로 전부 권한 안에 들어왔다. 남은 것은 (c) 다 — 스트림 넷(`exec`·`attach`·`port_forward`·`proxy`)이 미등록이고(레포 전체 grep 0 히트), (d) 의 승인 갈래는 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없어 태울 수 없다. (b) 의 `RESOURCE_GATED_KINDS` 확장 경로는 구현돼 있다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ 스트림 도구 넷 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. 난수 토큰 Secret 과 그 토큰을 서빙하는 HTTP 파드 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 |
 | **test-resource-generic.md#시나리오 18** | **문서의 AC 착지 주장이 아니라 시나리오 문면이 판정 기준이다.** 위 「구현 제거가 남긴 일」 노트는 AC18 을 구현됨으로 적지만, 이 시나리오의 실행 단계는 「승인을 받은 뒤 해당 종류로 **`resource_patch`**」이고, **그 도구는 2026-09-14 에 등록됐다**. 403 → 「권한 밖」 번역 자체는 서 있고 `resource_list`·`resource_get` 경로로는 이미 관측되지만, 그 경로는 이 시나리오가 적은 경로가 아니다. **남은 차단은 승인 쪽 하나** — 실행 단계의 선행이 「승인을 받은 뒤」인데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | 이 렌즈(e2e) | ⑵ 실물 gatekeeper 픽스처(승인이 실행 단계의 선행이다). RBAC 확대는 필요 없다 — 시나리오가 겨냥하는 것이 **부여되지 않은** 종류다 |
 
