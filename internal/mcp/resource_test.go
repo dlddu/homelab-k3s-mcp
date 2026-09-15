@@ -265,6 +265,105 @@ func TestUpdateScaleBounds(t *testing.T) {
 	}
 }
 
+// AC10. The accepted call and the refused ones share a test because this tool's
+// contract is one statement: it removes the object you named, and it has no way
+// to say "the ones matching this".
+//
+// Every refusal also asserts the gate was never called — the half scenario 10
+// spells out as "인자 검증에서 거부됨". It holds only because these checks run
+// during pair resolution rather than in the handler, which is downstream of
+// authorize.
+func TestDeleteIsSingleObjectOnly(t *testing.T) {
+	t.Run("named object", func(t *testing.T) {
+		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		h, fake := testHandler(t, gate, toolRegistry)
+		args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","gracePeriodSeconds":0}`
+
+		if _, rerr := callTool(t, h, "resource_delete", args); rerr != nil {
+			t.Fatalf("tools/call = %v, want the deletion to run", rerr)
+		}
+		ref := fake.delete()
+		if ref.Name != "app" || ref.Namespace == nil || *ref.Namespace != "ops" {
+			t.Errorf("coordinate = %s/%v, want ops/app", ref.Name, ref.Namespace)
+		}
+		// 0 is the value a pointer-less field could not carry: "delete now" and
+		// "use the kind's default" are different requests.
+		if ref.GracePeriodSeconds == nil || *ref.GracePeriodSeconds != 0 {
+			t.Errorf("gracePeriodSeconds reaching the cluster layer = %v, want 0", ref.GracePeriodSeconds)
+		}
+		if len(gate.calls) != 1 {
+			t.Fatalf("gate calls = %d, want 1 — every deletion is approved", len(gate.calls))
+		}
+		if got := gate.calls[0].Pair.String(); got != "delete on configmaps" {
+			t.Errorf("approved pair = %q, want \"delete on configmaps\"", got)
+		}
+	})
+
+	t.Run("grace period left to the kind", func(t *testing.T) {
+		h, fake := approvingHandler(t)
+		args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app"}`
+
+		if _, rerr := callTool(t, h, "resource_delete", args); rerr != nil {
+			t.Fatalf("tools/call = %v, want the deletion to run", rerr)
+		}
+		if got := fake.delete().GracePeriodSeconds; got != nil {
+			t.Errorf("gracePeriodSeconds = %d, want it left unset so the kind's own default stands", *got)
+		}
+	})
+
+	refusals := []struct {
+		name string
+		args string
+		want string
+	}{
+		{"selector instead of a name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","labelSelector":"app=api"}`, "resource_delete_collection"},
+		{"selector alongside a name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","labelSelector":"app=api"}`, "labelSelector does not apply"},
+		{"field selector", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","fieldSelector":"status.phase=Failed"}`, "fieldSelector does not apply"},
+		// A subresource would be appended to the resolved pair, so the operator
+		// would approve "delete on configmaps/<sub>" while the handler removes
+		// the object itself (prd-approval-gate AC6).
+		{"subresource", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale"}`, "subresource does not apply"},
+		{"missing name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops"}`, "name is required"},
+		{"negative grace period", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","gracePeriodSeconds":-1}`, "gracePeriodSeconds must be >= 0"},
+		{"non-integer grace period", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","gracePeriodSeconds":"none"}`, "gracePeriodSeconds must be an integer"},
+	}
+	for _, tc := range refusals {
+		t.Run(tc.name, func(t *testing.T) {
+			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			h, fake := testHandler(t, gate, toolRegistry)
+
+			_, rerr := callTool(t, h, "resource_delete", tc.args)
+			if rerr == nil {
+				t.Fatal("tools/call = nil error, want a refusal")
+			}
+			if !strings.Contains(rerr.message, tc.want) {
+				t.Errorf("error = %q, want it to mention %q", rerr.message, tc.want)
+			}
+			if len(gate.calls) != 0 {
+				t.Errorf("gate calls = %d, want 0 — an argument that can never be executed must not be put in front of a human", len(gate.calls))
+			}
+			if fake.count() != 0 {
+				t.Errorf("kubernetes calls = %d, want 0", fake.count())
+			}
+		})
+	}
+}
+
+// AC1/AC10. The control group for the case above: the refusals all assert the
+// gate was not called, and a tool that was never gated would pass every one of
+// them.
+func TestDeleteIsRefusedWithoutApproval(t *testing.T) {
+	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+	args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app"}`
+
+	if _, rerr := callTool(t, h, "resource_delete", args); rerr == nil {
+		t.Fatal("tools/call = nil error, want the deletion refused without approval")
+	}
+	if fake.count() != 0 {
+		t.Errorf("kubernetes calls = %d, want 0", fake.count())
+	}
+}
+
 // AC8. The whole-object half: what the caller wrote is what gets PUT, and a
 // manifest describing some other object is refused here rather than by the
 // apiserver — whose refusal would arrive after the approval was spent (AC7).
