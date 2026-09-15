@@ -217,9 +217,13 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 	if entry.createBatch {
 		return h.callCreateBatch(ctx, name, entry, rawArgs)
 	}
-	decision, rerr := h.authorize(ctx, name, entry, rawArgs)
+	decision, approved, rerr := h.authorize(ctx, name, entry, rawArgs)
 	if rerr != nil {
 		return nil, rerr
+	}
+
+	if approved != nil {
+		ctx = context.WithValue(ctx, approvedTargetKey{}, *approved)
 	}
 
 	result, rerr := entry.handle(h, ctx, rawArgs)
