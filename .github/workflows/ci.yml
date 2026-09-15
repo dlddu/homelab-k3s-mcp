@@ -241,9 +241,16 @@ jobs:
       - name: Seed the gatekeeper e2e user and create the SUT gate secrets
         run: |
           GK_KEY="$GATEKEEPER_E2E_API_KEY"
-          kubectl -n gatekeeper run gatekeeper-seed --quiet --rm -i --restart=Never \
-            --image=curlimages/curl --image-pull-policy=IfNotPresent -- \
-            -sS -H 'Remote-User: gatekeeper-e2e' http://gatekeeper/api/me/ >/tmp/gk-me.json
+          # Not `kubectl run --rm -i`: the attach stream has been observed to
+          # interleave non-JSON bytes into the redirected stdout. A completed
+          # pod's `kubectl logs` is the deterministic capture path.
+          kubectl -n gatekeeper run gatekeeper-seed --quiet --restart=Never \
+            --image=curlimages/curl --image-pull-policy=IfNotPresent \
+            --command -- curl -sS -H 'Remote-User: gatekeeper-e2e' http://gatekeeper/api/me/
+          kubectl -n gatekeeper wait --for=condition=complete --timeout=120s pod/gatekeeper-seed
+          kubectl -n gatekeeper logs pod/gatekeeper-seed > /tmp/gk-me.json
+          kubectl -n gatekeeper delete pod gatekeeper-seed --wait=false --quiet || true
+          echo "seed response: $(cat /tmp/gk-me.json)"
           GK_USER_ID="$(python3 -c 'import json; print(json.load(open("/tmp/gk-me.json"))["id"])')"
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-gatekeeper \
             --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
