@@ -148,12 +148,27 @@ jobs:
         run: kubectl apply -f tests/k8s/kind/http-trace.yaml
 
       # Real gatekeeper for the approval-gate e2e (approval_gate_ac*.py) plus
-      # the recording proxy in front of it. Deployed and waited here, before the
-      # SUT secrets exist, because seeding the e2e user (below) needs the
-      # gatekeeper API alive and the secrets must exist before the SUTs start --
-      # the gate reads its env once, at startup.
+      # the recording proxy in front of it. The API-key secret is created
+      # BEFORE the rollout wait: without it the pod sits in
+      # CreateContainerConfigError (the deployment requires VAPID and API
+      # secretKeyRefs) and the wait can never pass. Seeding the e2e user has to
+      # wait for the rollout -- the user only exists once the API is alive.
       - name: Deploy gatekeeper fixture
         run: kubectl apply -f tests/k8s/kind/gatekeeper-fixture.yaml
+
+      - name: Create gatekeeper test secret
+        run: |
+          GK_KEY="$(openssl rand -hex 24)"
+          kubectl -n gatekeeper create secret generic gatekeeper-secrets \
+            --from-literal=API_SECRET_KEY="$GK_KEY" \
+            --from-literal=VAPID_SUBJECT=mailto:ci-e2e@invalid \
+            --from-literal=VAPID_PUBLIC_KEY=ci-e2e-unused \
+            --from-literal=VAPID_PRIVATE_KEY=ci-e2e-unused \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # The e2e's record reads need the same key: GET /api/requests/{id} is
+          # API-key protected (only the list is public), and that route is where
+          # the read-time EXPIRED evaluation happens.
+          echo "GATEKEEPER_E2E_API_KEY=$GK_KEY" >> "$GITHUB_ENV"
 
       - name: Wait for gatekeeper fixture rollout
         run: |
@@ -217,24 +232,15 @@ jobs:
             --from-literal=OPENSEARCH_STS_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      # Gatekeeper's API key plus the VAPID values the deployment requires but
-      # this harness never exercises (push.NewService validates nothing at
-      # startup; dispatchPush is fire-and-forget). The e2e user is created
-      # through the forward-auth path and its users.id pinned into the variant
-      # secret: GATEKEEPER_USER_ID must be a users.id, which only exists after
-      # the first forward-auth request, so the id cannot be baked into a
-      # manifest. The main SUT reaches gatekeeper directly; the variant goes
-      # through the recording proxy because approval_gate_ac2.py asserts the
-      # create body, which only the proxy observes.
-      - name: Create gatekeeper test secret and seed the e2e user
+      # The e2e user is created through the forward-auth path and its users.id
+      # pinned into the variant secret: GATEKEEPER_USER_ID must be a users.id,
+      # which only exists after the first forward-auth request, so the id cannot
+      # be baked into a manifest. The main SUT reaches gatekeeper directly; the
+      # variant goes through the recording proxy because approval_gate_ac2.py
+      # asserts the create body, which only the proxy observes.
+      - name: Seed the gatekeeper e2e user and create the SUT gate secrets
         run: |
-          GK_KEY="$(openssl rand -hex 24)"
-          kubectl -n gatekeeper create secret generic gatekeeper-secrets \
-            --from-literal=API_SECRET_KEY="$GK_KEY" \
-            --from-literal=VAPID_SUBJECT=mailto:ci-e2e@invalid \
-            --from-literal=VAPID_PUBLIC_KEY=ci-e2e-unused \
-            --from-literal=VAPID_PRIVATE_KEY=ci-e2e-unused \
-            --dry-run=client -o yaml | kubectl apply -f -
+          GK_KEY="$GATEKEEPER_E2E_API_KEY"
           kubectl -n gatekeeper run gatekeeper-seed --quiet --rm -i --restart=Never \
             --image=curlimages/curl --image-pull-policy=IfNotPresent -- \
             -sS -H 'Remote-User: gatekeeper-e2e' http://gatekeeper/api/me/ >/tmp/gk-me.json
@@ -248,10 +254,6 @@ jobs:
             --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
             --from-literal=GATEKEEPER_USER_ID="$GK_USER_ID" \
             --dry-run=client -o yaml | kubectl apply -f -
-          # The e2e's record reads need the same key: GET /api/requests/{id} is
-          # API-key protected (only the list is public), and that route is where
-          # the read-time EXPIRED evaluation happens.
-          echo "GATEKEEPER_E2E_API_KEY=$GK_KEY" >> "$GITHUB_ENV"
 
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
