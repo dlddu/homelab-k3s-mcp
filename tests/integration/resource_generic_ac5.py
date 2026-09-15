@@ -35,6 +35,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import subprocess
 import time
 
@@ -64,6 +65,10 @@ MULTI_CONTAINERS = ("chatty", "quiet")
 
 #: 로그를 내는 쪽. 나머지 하나는 `pause` 라 한 줄도 내지 않는다.
 LOG_CONTAINER = "chatty"
+
+#: 게이트 대조군이 겨누는 Secret. 이 파일이 세운다 — 게이트가 승인 요청을 POST 하기
+#: 전에 대상을 읽으므로(`gate.go::readGateTarget`) 실재해야 거절 댄스까지 간다.
+CONTROL_SECRET = "resource-generic-ac5-gate-control"
 
 #: `chatty` 가 찍는 줄 수. 픽스처의 `seq 1 40` 과 같은 값이어야 한다.
 LOG_LINE_COUNT = 40
@@ -97,6 +102,28 @@ def _pod_name(selector: str) -> str:
 
 def _lines(text: str) -> list[str]:
     return [line for line in text.splitlines() if line]
+
+
+def _control_secret() -> None:
+    """게이트 대조군이 겨눌 Secret 을 세운다(idempotent).
+
+    값은 이 테스트가 읽지 않는다 — 민감 종류라 승인 컨텍스트는 `PartialObjectMetadata`
+    까지만 보고, 이 호출은 거절돼 apiserver 의 본문에 닿지 않는다. 그래도 객체는
+    실재해야 한다: 승인 요청을 POST 하기 **전에** 게이트가 대상을 읽기 때문이다.
+    """
+    manifest = {
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {"name": CONTROL_SECRET, "namespace": NAMESPACE},
+        "stringData": {"token": "resource-generic-ac5-control"},
+    }
+    subprocess.run(
+        ["kubectl", "apply", "-f", "-"],
+        input=json.dumps(manifest),
+        text=True,
+        check=True,
+        capture_output=True,
+    )
 
 
 def test_resource_generic_ac5_precondition_multi_container_pod(
@@ -353,13 +380,21 @@ async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
     서 있는데도 위 호출들이 지나갔다는 것으로 만든다. 이 배포에는 실물 gatekeeper 가 서 있으므로
     (``tests/k8s/kind/gatekeeper-fixture.yaml``) 거부는 사람 판정을 대신 태워 관측한다 —
     생성된 승인 요청을 **거절**하면 클라이언트가 즉시 물러난다. 거절이라 `EXPIRED` 의 5초
-    대기도 승인 댄스도 필요 없고, 「승인되면 값이 온다」와 섞이지 않는다. 대조군은 **없는
-    이름**을 겨눈다 — 게이트는 kubernetes 호출 수가 0인 채로 판정하므로(`internal/mcp/gate.go`
-    의 `genericPairs`) 대상이 실재할 필요가 없고, 실재하면 「없어서 실패했다」와 섞인다.
+    대기도 승인 댄스도 필요 없고, 「승인되면 값이 온다」와 섞이지 않는다.
+
+    ⚠️ **대조군은 실재하는 Secret 을 겨눈다.** 준비 시점의 이 함수는 없는 이름을 겨누면서
+    「게이트는 kubernetes 호출 수가 0인 채로 판정하므로 대상이 실재할 필요가 없다」고 적었는데,
+    그것은 **거짓이다** — `target` 을 선언하는 도구는 승인 요청을 POST 하기 **전에**
+    `gate.go::readGateTarget` 이 대상을 읽는다(민감 종류는 `MetadataOnly`, 곧
+    `PartialObjectMetadata`). 없는 이름은 그 읽기에서 404 로 죽어 **승인 요청이 아예 생기지
+    않고**, 거부 문면도 「approval rejected」가 아니라 apiserver 의 「could not find」가 된다.
+    CI 가 이것을 잡았다. 실재하는 대상을 겨누면 「없어서 실패했다」와 섞일 걱정도 없다 —
+    거절 댄스를 태우므로 거부 사유가 거절임이 문면에 박힌다.
     """
     payload, _ = await _logs(session, pod, container=LOG_CONTAINER)
     assert _lines(payload["text"]), payload
 
+    _control_secret()
     with gatekeeper_url() as gate:
         task = asyncio.create_task(
             session.call_tool(
@@ -368,11 +403,11 @@ async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
                     "apiVersion": "v1",
                     "kind": "Secret",
                     "namespace": NAMESPACE,
-                    "name": "resource-generic-ac5-no-such-secret",
+                    "name": CONTROL_SECRET,
                 },
             )
         )
-        row = await wait_for_pending(gate, "resource-generic-ac5-no-such-secret")
+        row = await wait_for_pending(gate, CONTROL_SECRET)
         await decide(gate, row["id"], "REJECTED")
         try:
             await task
