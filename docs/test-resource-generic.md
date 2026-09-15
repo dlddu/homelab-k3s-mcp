@@ -36,12 +36,17 @@
 검색 가능해야 한다).
 
 이 파일은 시나리오가 전용 e2e로 착지할 때마다 그 시나리오가 요구하는 대상만 더하며 자란다.
-2026-09-15 현재 담긴 것은 시나리오 1과 3이 요구하는 몫이다 — 시나리오 1 몫으로
+2026-09-15 현재 담긴 것은 시나리오 1·3·5가 요구하는 몫이다 — 시나리오 1 몫으로
 Service·ConfigMap·Ingress 각 2(하나만 좁히는 레이블을 달아 「셀렉터가 결과 수를 실제로 줄임」이
 관측되게 한다)와 CRD 1종 + 그 인스턴스 2개, 시나리오 3 몫으로 **목록 절단을 만들 ConfigMap
 120개**. 페이징 쪽에는 전용 레이블 `homelab-k3s-mcp.test/paging`을 단다 — 같은 네임스페이스에
 위의 ConfigMap 2개와 apiserver가 넣는 `kube-root-ca.crt`가 이미 있어, 좁히지 않으면 모집단이
-123이 되고 시나리오 3의 「2회차에 나머지 20건」이 성립하지 않는다. CRD와 인스턴스는 `resource-generic-samples.yaml`로 갈라 두었다 —
+123이 되고 시나리오 3의 「2회차에 나머지 20건」이 성립하지 않는다. 시나리오 5 몫으로는
+**다중 컨테이너 파드 1개**(`resource-generic-multi` — 정해진 줄 수를 찍고 상주하는 컨테이너
+하나 + 조용한 컨테이너 하나)를 둔다. 크래시 루프 파드는 새로 세우지 않고 위 `test-deployment.yaml`의
+`crashloop-fixture`를 쓴다 — 그것은 한 번만 죽고 계속 사는 형태로 이미 설계돼 있고(연속 크래시는
+containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔든다), 같은 것을 하나 더 세우면
+그 판단이 두 벌이 된다. CRD와 인스턴스는 `resource-generic-samples.yaml`로 갈라 두었다 —
 `kubectl apply`가 파일을 읽는 시점에 종류를 해석하므로 한 파일에 두면 아직 서지 않은 종류를
 가리켜 파일 전체가 거부된다.
 
@@ -108,13 +113,14 @@ Service·ConfigMap·Ingress 각 2(하나만 좁히는 레이블을 달아 「셀
   없어도 동작). `container` 누락이 거부되고 후보 이름이 제시됨. `subresource=scale`이
   현재 레플리카를 반환. 모든 호출이 `get` verb만 행사하므로 승인 요청이 생기지 않음
 - **검증 AC**: AC5
-- **자동화**: (미작성) — `container` 누락 축만 Go 단위로 서 있다:
+- **자동화**: 통합 `tests/integration/resource_generic_ac5.py` — 위 여섯 단계와 마지막 절
+  (「승인 요청이 생기지 않음」)을 전부 단정하고, 폐기된 `workload_logs_ac{1,2,3,4}.py`의 단언을
+  승계했다. 그 파일들이 단정하지 못한 채 남겼던 「컨테이너가 둘 이상이면 `container`가
+  필요하다」는 다중 컨테이너 픽스처가 서면서 이 파일에서 닫혔다. `container` 누락 축은 Go
+  단위도 함께 선다:
   `internal/k8s/resource_test.go::TestPodLogsKeepsTheApiserversContainerCandidates`와
   그 대조군 `TestPodLogsForbiddenStillReportsTheMissingGrant`·
-  `TestPodLogsFallsBackWhenTheBodyIsNotAStatus`. 나머지는 계획: Go 단위
-  `resource_test.go::TestGetLogTailBounds`, `TestGetLogPreviousInstance`,
-  `TestSubresourceGetIsUngated`.
-  통합 `resource_generic_ac5.py` (폐기되는 `workload_logs_ac{1,2,3,4}.py`의 단언을 승계한다)
+  `TestPodLogsFallsBackWhenTheBodyIsNotAStatus`
 
 ### 시나리오 6: 변경 스트림 관측
 - **사전 조건**: `workload-fixture` 기준선, 픽스처 Secret, kind 실물 gatekeeper
