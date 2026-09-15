@@ -255,9 +255,13 @@ jobs:
             || { kubectl -n gatekeeper describe pod gatekeeper-seed || true; \
                  kubectl -n gatekeeper logs pod/gatekeeper-seed || true; exit 1; }
           kubectl -n gatekeeper logs pod/gatekeeper-seed > /tmp/gk-me.json
-          kubectl -n gatekeeper delete pod gatekeeper-seed --wait=false --quiet || true
+          kubectl -n gatekeeper delete pod gatekeeper-seed --wait=false || true
           echo "seed response: $(cat /tmp/gk-me.json)"
           GK_USER_ID="$(python3 -c 'import json; print(json.load(open("/tmp/gk-me.json"))["id"])')"
+          # The variant namespace does not exist yet (its fixture applies later);
+          # the secret must exist before the variant pod starts.
+          kubectl create namespace homelab-k3s-mcp-gatekeeper-variant \
+            --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-gatekeeper \
             --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
             --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
