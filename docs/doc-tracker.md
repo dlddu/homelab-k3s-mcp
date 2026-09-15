@@ -663,7 +663,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-approval-gate.md#시나리오 2 | 요청 본문 계약 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 3 | context가 판정을 가능하게 한다 | ⏳ 구현 대기 (규칙 6 — 아래 행별 근거) |
 | test-approval-gate.md#시나리오 4 | 폴링으로 판정을 관측한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
-| test-approval-gate.md#시나리오 5 | 모든 실패는 거부로 수렴한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 5 | 모든 실패는 거부로 수렴한다 | ⏳ 구현 대기 (규칙 6 — 아래 행별 근거) |
 | test-approval-gate.md#시나리오 6 | 승인한 상태와 실행할 상태가 같아야 한다 | ⏳ 구현 대기 (규칙 6 — 아래 행별 근거) |
 | test-approval-gate.md#시나리오 7 | 승인은 한 번만 쓰인다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-approval-gate.md#시나리오 8 | 감사 로그 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
