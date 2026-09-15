@@ -134,3 +134,1211 @@ spec:
                 name: resource-generic-other
                 port:
                   number: 80
+---
+# 목록 절단(시나리오 3)을 만드는 ConfigMap 120개. 기본 페이지가 100 이므로 120 이면 1회차가
+# 잘리고 2회차가 나머지 20건을 돌려준다 — 두 페이지가 다 관측되는 가장 작은 모집단이다.
+#
+# 전용 레이블 `homelab-k3s-mcp.test/paging` 을 다는 이유는 모집단을 **정확히 120** 으로
+# 고정하기 위해서다. 이 네임스페이스에는 위의 `resource-generic-selected`·`-other` 와
+# apiserver 가 자동으로 넣는 `kube-root-ca.crt` 가 이미 있어, 셀렉터 없이 세면 모집단이 123 이
+# 되고 시나리오가 요구하는 「나머지 20건」이 성립하지 않는다. 자동 생성 객체에 기대어 수를
+# 맞추는 길(119개 + kube-root-ca.crt)은 클러스터 버전과 컨트롤러 타이밍에 의존하므로 택하지
+# 않았다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-000
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-001
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-002
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-003
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-004
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-005
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-006
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-007
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-008
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-009
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-010
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-011
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-012
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-013
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-014
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-015
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-016
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-017
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-018
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-019
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-020
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-021
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-022
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-023
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-024
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-025
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-026
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-027
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-028
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-029
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-030
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-031
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-032
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-033
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-034
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-035
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-036
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-037
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-038
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-039
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-040
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-041
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-042
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-043
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-044
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-045
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-046
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-047
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-048
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-049
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-050
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-051
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-052
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-053
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-054
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-055
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-056
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-057
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-058
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-059
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-060
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-061
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-062
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-063
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-064
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-065
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-066
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-067
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-068
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-069
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-070
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-071
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-072
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-073
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-074
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-075
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-076
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-077
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-078
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-079
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-080
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-081
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-082
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-083
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-084
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-085
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-086
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-087
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-088
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-089
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-090
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-091
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-092
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-093
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-094
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-095
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-096
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-097
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-098
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-099
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-100
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-101
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-102
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-103
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-104
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-105
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-106
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-107
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-108
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-109
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-110
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-111
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-112
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-113
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-114
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-115
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-116
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-117
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-118
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: resource-generic-page-119
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    homelab-k3s-mcp.test/paging: "true"
