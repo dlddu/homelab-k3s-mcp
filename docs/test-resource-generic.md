@@ -182,8 +182,10 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `internal/mcp/resource_test.go::TestUpdateReplacesWithTheCallersManifest` 가 덮는다.
   레플리카가 실제로 그 수로 수렴하는지와 파드가 그에 맞춰 뜨고 지는지는 apiserver 의
   거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
-  통합은 **(미작성)** — `resource_generic_ac8.py` (폐기되는 `workload_scale_ac{1,2}.py`의
-  단언을 승계한다). 각 호출이 승인을 요구하므로 실물 gatekeeper 픽스처가 선행이다
+  통합은 `tests/integration/resource_generic_ac8.py` — 승인 댄스 뒤 3·0·1 수렴을 status
+  폴링으로 잡고, 음수·누락 거부는 「새 승인 요청 0건」과 나란히 고정하며, DaemonSet 거부는
+  승인 뒤 사유 문면으로 잰다. `workload_scale_ac{1,2}.py` 는 #72 에서 폐기됐으므로 승계할
+  파일은 없고 단언은 새로 저작했다
 
 ### 시나리오 9: 부분 수정과 롤링 재시작
 - **사전 조건**: 동일, `workload-fixture`를 replicas=2로 세팅
@@ -200,8 +202,10 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestRestartPatchTouchesOnlyAnnotation`(서버가 본문을 고쳐 쓰거나 필드를 더하지 않는다),
   `TestRestartPatchIsGatedLikeAnyPatch`. 파드 교체와 `spec.replicas` 보존은 apiserver 의
   거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
-  통합은 **(미작성)** — `resource_generic_ac9.py` (폐기되는 `workload_restart_ac1.py`의 단언을
-  승계한다). 네 호출이 각각 승인을 요구하므로 실물 gatekeeper 픽스처가 선행이다
+  통합은 `tests/integration/resource_generic_ac9.py` — 네 patchType 각각의 승인·적용,
+  재시작 패치 뒤 파드 교체(uid 기준), `spec.replicas` 보존, 그 어노테이션 외 무변경을 spec
+  전문 비교로 잰다. `workload_restart_ac1.py` 는 #72 에서 폐기됐으므로 승계할 파일은 없고
+  단언은 새로 저작했다
 
 ### 시나리오 10: 삭제는 단건만
 - **사전 조건**: 동일
@@ -220,8 +224,11 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `internal/server/mcp_test.go::TestToolsListAdvertisesResourceTools` 가 단언한다.
   지정 객체만 사라지고 같은 레이블의 다른 객체가 남는지, `gracePeriodSeconds` 가 실제로
   반영되는지는 apiserver 의 거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
-  통합은 **(미작성)** — `resource_generic_ac10.py`. 두 호출이 승인을 요구하므로 실물
-  gatekeeper 픽스처가 선행이다
+  통합은 `tests/integration/resource_generic_ac10.py` — 거부 셋이 승인 요청을 만들지 않음을
+  PENDING 카운트로 고정하고, 지정 객체만 사라짐·같은 레이블의 다른 객체 생존을 잰다.
+  `gracePeriodSeconds=0` 의 반영은 SIGTERM 을 무시하는 일회용 파드로 잰다 — 기본 유예가
+  흘렀다면 30초를 버텼을 행동이 즉시 SIGKILL 로 끝나는 것이 그 값이 apiserver 에 닿았음의
+  관측이다
 
 ### 시나리오 11: 컨테이너 안에서 명령 실행
 - **사전 조건**: kind 실물 gatekeeper, `workload-fixture` 기준선, 다중 컨테이너 파드

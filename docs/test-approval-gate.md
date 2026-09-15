@@ -47,8 +47,9 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `timeoutSeconds` 모두 존재. 두 호출의 `externalId`가 서로 다름.
   `GATEKEEPER_USER_ID` 설정 시 `userId` 포함
 - **검증 AC**: AC2
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestCreateRequestBodyContract`,
-  `TestExternalIDIsUniquePerCall`. 통합 `approval_gate_ac2.py`
+- **자동화**: 통합 `tests/integration/approval_gate_ac2.py` — create 본문 계약을 기록 프록시
+  기록과 gatekeeper 레코드로 잰다. Go 단위는 아직 없다 — 계획:
+  `gatekeeper_test.go::TestCreateRequestBodyContract`, `TestExternalIDIsUniquePerCall`
 
 ### 시나리오 3: context가 판정을 가능하게 한다
 - **사전 조건**: 동일
@@ -75,7 +76,9 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   (b) 폴링이 `EXPIRED`를 관측하고 거부. gatekeeper가 자발적으로 만료시키지 않으므로,
   폴링을 끊고 최초 응답만 본 구현은 이 시나리오를 통과하지 못함
 - **검증 AC**: AC4
-- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac4.py`(실물 승인 + 만료 관측)
+- **자동화**: 통합 `tests/integration/approval_gate_ac4.py` — (a) 폴링 전이는 승인 댄스와
+  기록 프록시의 GET 카운트, (b) 만료는 거부 지연·기록의 EXPIRED·폴링 카운트로 잰다.
+  만료와 클라이언트 마감이 같은 env 에서 파생하므로 클라이언트 에러 문면은 단언하지 않는다
 
 ### 시나리오 5: 모든 실패는 거부로 수렴한다
 - **사전 조건**: 가짜 k8s 서비스(호출 카운터), gatekeeper 스텁을 경로별로 구성
@@ -114,8 +117,10 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   (기존 `externalId` 재사용 없음). 같은 Secret 재조회도 **새 승인 요청**을 만듦 — 한 번
   승인이 그 대화 내내 유효해지지 않는다
 - **검증 AC**: AC7
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestApprovalIsConsumedOnce`.
-  통합 `approval_gate_ac7.py`
+- **자동화**: 통합 `tests/integration/approval_gate_ac7.py` — 요청-레코드 계약(호출마다 새
+  승인 요청, externalId 재사용 없음)을 잰다. 소비-한-번 단정은 Go 단위의 몫 — 계획:
+  `gatekeeper_test.go::TestApprovalIsConsumedOnce` (바깥에서는 SUT 안의 Decision 을 같은
+  id 로 두 번 쓰게 만들 경로가 없다)
 
 ### 시나리오 8: 감사 로그
 - **사전 조건**: 서버 로그 캡처
@@ -123,7 +128,9 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **기대 결과**: 두 경우 모두 요청 id·`externalId`·도구·동사·대상 좌표가 로그에 남음.
   승인 실행에는 `processedById`가, 거부에는 거부 사유가 함께 남음
 - **검증 AC**: AC8
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestAuditLogFields`. 통합 `approval_gate_ac8.py`
+- **자동화**: 통합 `tests/integration/approval_gate_ac8.py` — 감사 라인을 `kubectl logs` 로
+  잰다(요청 id·external_id·tool·pairs·processed_by_id·auto_approved, 거부 사유). Go 단위는
+  아직 없다 — 계획: `gatekeeper_test.go::TestAuditLogFields`
 
 ### 시나리오 9: 자동 승인은 숨기지 않는다
 - **사전 조건**: kind 실물 gatekeeper, 대상 사용자의 `autoResponseMode=AUTO_APPROVE`
@@ -131,7 +138,9 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **기대 결과**: 실행은 되지만 도구 응답 본문에 자동 승인이었음이 표기되고, 로그에도
   `autoApproved=true`가 남음. `AUTO_REJECT` 사용자로는 실행이 거부됨
 - **검증 AC**: AC9
-- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac9.py`(AUTO_APPROVE·AUTO_REJECT 각 1케이스)
+- **자동화**: 통합 `tests/integration/approval_gate_ac9.py` — 같은 사용자의 모드를
+  AUTO_APPROVE → AUTO_REJECT → NONE 으로 바꿔 세 상태를 잰다(응답 표기·로그
+  auto_approved·기록의 processedById)
 
 ### 시나리오 10: 자격증명 값이 응답 밖으로 새지 않는다
 - **사전 조건**: kind 실물 gatekeeper, 값이 고유 토큰인 Secret 1개

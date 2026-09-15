@@ -1,0 +1,316 @@
+# Real gatekeeper fixture for the approval-gate e2e (docs/test-approval-gate.md
+# 픽스처 절). gatekeeper 는 SQLite 한 파일로 기동하는 Go 백엔드라 모킹 대신 kind
+# 클러스터에 실물을 띄운다. 승인·거절은 사람 조작을 대신해 forward-auth 헤더
+# (`Remote-User`)를 실어 PATCH /api/requests/{id}/approve|reject 를 호출한다.
+#
+# gatekeeper-trace 는 http-trace 와 같은 계열의 기록 프록시다 — 대체재가 아니라
+# 관측면이다. SUT 가 게이트에 보내는 create 본문(externalId·context·requesterName·
+# timeoutSeconds·userId)과 x-api-key 헤더의 존재는 그 자체가 시나리오 2 의 검증
+# 대상이라, upstream 만으로는 기록에 남지 않아 단언할 수 없다. 프록시는 요청 본문과
+# 식별자만 기록하고 x-api-key 값 자체는 로그에 두지 않는다.
+#
+# 이미지를 sha 태그로 핀하는 이유: :latest 는 gatekeeper 레포의 PR 이 덮어쓴다.
+# sha-762fafe 는 gatekeeper main 의 최근 커밋으로, SQLite 를 rollback 저널로
+# 되돌린 판본이다. fsGroup 은 컨테이너가 uid 1001(non-root)로 SQLite 파일을 쓰기
+# 때문에 볼륨 소유권을 그 그룹으로 맞추는 것이다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: gatekeeper
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: gatekeeper-pvc
+  namespace: gatekeeper
+  labels:
+    app: gatekeeper
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100Mi
+---
+# gatekeeper 레포 k8s/deployment.yaml 의 kind 판본. Recreate 전략과 복제 1 은 그
+# 파일이 SQLite 단일 쓰자 불변식을 위해 고정해 둔 것이라 그대로 가져왔다.
+# VAPID 값은 더미다 — push 발송은 이 하네스가 치지 않고, NewService 는 기동 시점에
+# 값을 검증하지 않는다(기록 뒤 런타임 경로의 몫).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gatekeeper
+  namespace: gatekeeper
+  labels:
+    app: gatekeeper
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gatekeeper
+  template:
+    metadata:
+      labels:
+        app: gatekeeper
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        fsGroup: 1001
+      containers:
+        - name: gatekeeper
+          image: ghcr.io/dlddu/gatekeeper:sha-762fafe
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: DATABASE_URL
+              value: file:/app/data/gatekeeper.db
+            - name: API_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gatekeeper-secrets
+                  key: API_SECRET_KEY
+            - name: VAPID_SUBJECT
+              valueFrom:
+                secretKeyRef:
+                  name: gatekeeper-secrets
+                  key: VAPID_SUBJECT
+            - name: VAPID_PUBLIC_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gatekeeper-secrets
+                  key: VAPID_PUBLIC_KEY
+            - name: VAPID_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: gatekeeper-secrets
+                  key: VAPID_PRIVATE_KEY
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: gatekeeper-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gatekeeper
+  namespace: gatekeeper
+  labels:
+    app: gatekeeper
+spec:
+  type: ClusterIP
+  selector:
+    app: gatekeeper
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+# 기록 프록시. 게이트를 향해 가는 트래픽 전부가 여기를 지난다 — SUT 중 하나
+# (gatekeeper-variant)의 GATEKEEPER_BASE_URL 이 이 Service 를 가리킨다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatekeeper-trace-script
+  namespace: gatekeeper
+data:
+  trace_proxy.py: |
+    """Recording reverse proxy in front of the gatekeeper fixture.
+
+    Two listeners in one process: :3000 forwards every request to the
+    gatekeeper Service verbatim, :8081 serves the recording as JSON. What is
+    recorded is what the approval contract (docs/test-approval-gate.md
+    시나리오 2, docs/prd-approval-gate.md AC2) makes observable and the upstream
+    alone does not: the create body (externalId, context, requesterName,
+    timeoutSeconds, userId), whether x-api-key was present, and how many times
+    each request id was polled. The api key VALUE never lands in the log.
+    """
+
+    import json
+    import threading
+    import urllib.error
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    UPSTREAM = "http://gatekeeper.gatekeeper.svc.cluster.local"
+    MAX_RECORDS = 2000
+
+    records = []
+    records_lock = threading.Lock()
+
+
+    def record(entry):
+        with records_lock:
+            records.append(entry)
+            del records[:-MAX_RECORDS]
+
+
+    class ForwardHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def _forward(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            body = self.rfile.read(length) if length else None
+            headers = {
+                k: v for k, v in self.headers.items()
+                if k.lower() not in ("host", "content-length", "connection")
+            }
+            req = urllib.request.Request(
+                UPSTREAM + self.path, data=body, headers=headers, method=self.command
+            )
+            try:
+                with urllib.request.urlopen(req, timeout=30) as resp:
+                    resp_body = resp.read()
+                    status = resp.status
+                    resp_headers = dict(resp.headers)
+            except urllib.error.HTTPError as exc:
+                resp_body = exc.read()
+                status = exc.code
+                resp_headers = dict(exc.headers or {})
+            if self.command == "POST" and self.path.startswith("/api/requests"):
+                parsed = None
+                try:
+                    parsed = json.loads(body or b"{}")
+                except ValueError:
+                    parsed = {"unparseable": True}
+                record({
+                    "type": "create",
+                    "path": self.path,
+                    "x_api_key_present": bool(self.headers.get("x-api-key")),
+                    "body": parsed,
+                })
+            elif self.command == "GET" and self.path.startswith("/api/requests/"):
+                record({"type": "poll", "path": self.path})
+            self.send_response(status)
+            for key in ("Content-Type",):
+                if key in resp_headers:
+                    self.send_header(key, resp_headers[key])
+            self.send_header("Content-Length", str(len(resp_body)))
+            self.end_headers()
+            self.wfile.write(resp_body)
+
+        do_GET = do_POST = do_PATCH = do_PUT = do_DELETE = _forward
+
+        def log_message(self, fmt, *args):
+            pass
+
+
+    class RecordHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_GET(self):
+            with records_lock:
+                snapshot = list(records)
+            body = json.dumps({"records": snapshot}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, fmt, *args):
+            pass
+
+
+    def main():
+        forward = ThreadingHTTPServer(("0.0.0.0", 3000), ForwardHandler)
+        admin = ThreadingHTTPServer(("0.0.0.0", 8081), RecordHandler)
+        threading.Thread(target=forward.serve_forever, daemon=True).start()
+        admin.serve_forever()
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gatekeeper-trace
+  namespace: gatekeeper
+  labels:
+    app: gatekeeper-trace
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: gatekeeper-trace
+  template:
+    metadata:
+      labels:
+        app: gatekeeper-trace
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      containers:
+        - name: trace
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/script/trace_proxy.py"]
+          ports:
+            - name: forward
+              containerPort: 3000
+            - name: admin
+              containerPort: 8081
+          volumeMounts:
+            - name: script
+              mountPath: /script
+          readinessProbe:
+            httpGet:
+              path: /records
+              port: admin
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /records
+              port: admin
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: script
+          configMap:
+            name: gatekeeper-trace-script
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gatekeeper-trace
+  namespace: gatekeeper
+  labels:
+    app: gatekeeper-trace
+spec:
+  type: ClusterIP
+  selector:
+    app: gatekeeper-trace
+  ports:
+    - name: forward
+      port: 3000
+      targetPort: forward
+    - name: admin
+      port: 8081
+      targetPort: admin
