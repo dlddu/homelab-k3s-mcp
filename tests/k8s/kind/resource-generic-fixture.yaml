@@ -135,6 +135,62 @@ spec:
                 port:
                   number: 80
 ---
+# 다중 컨테이너 파드(시나리오 5). 두 가지를 한 파드로 세운다.
+#
+# ⑴ **컨테이너가 둘이어야** `container` 누락 거부가 관측된다 — apiserver 는 파드에 컨테이너가
+#    하나뿐이면 그냥 그것을 읽어 주므로, 단일 컨테이너 파드로는 「후보 이름이 제시됨」을 잴
+#    대상 자체가 없다. `tests/k8s/kind/` 의 기존 네 워크로드는 전부 단일 컨테이너였다.
+# ⑵ **로그를 실제로 내는 컨테이너**가 있어야 `tailLines` 절단이 관측된다. 기준선
+#    `workload-fixture` 는 `pause` 라 한 줄도 내지 않아, 그것으로 재면 「줄었다」가 0 → 0 이 된다.
+#
+# `chatty` 는 정해진 줄 수를 찍고 그대로 산다 — 찍는 동안만 사는 컨테이너를 두면 Deployment 의
+# `restartPolicy: Always` 가 계속 재시작시켜 파드가 흔들리고, 줄 수도 재시작마다 달라진다.
+#
+# ⚠️ 셸 인자에 `$(` 를 쓰지 않는다(`$((i+1))` · `$(seq …)` 포함). kubelet 이 command/args 의
+# `$(VAR)` 를 **컨테이너가 뜨기 전에** 먼저 확장하므로, 산술·명령치환이 그 경로를 지나며
+# 조용히 모양이 바뀔 수 있다. `seq | sed` 파이프는 그 문법을 전혀 쓰지 않는다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: resource-generic-multi
+  namespace: workload-test
+  labels:
+    app.kubernetes.io/name: resource-generic-multi
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: resource-generic-multi
+  template:
+    metadata:
+      labels:
+        app: resource-generic-multi
+    spec:
+      containers:
+        - name: chatty
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - "seq 1 40 | sed 's/^/chatty line /'; exec sleep 2147483647"
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 50m
+              memory: 16Mi
+        - name: quiet
+          image: registry.k8s.io/pause:3.9
+          resources:
+            requests:
+              cpu: 1m
+              memory: 4Mi
+            limits:
+              cpu: 50m
+              memory: 16Mi
+---
 # 목록 절단(시나리오 3)을 만드는 ConfigMap 120개. 기본 페이지가 100 이므로 120 이면 1회차가
 # 잘리고 2회차가 나머지 20건을 돌려준다 — 두 페이지가 다 관측되는 가장 작은 모집단이다.
 #
