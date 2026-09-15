@@ -94,8 +94,8 @@ async def _approved_scale(session, gate: str, replicas: int):
             },
         )
     )
-    row = wait_for_pending(gate, WORKLOAD)
-    decide(gate, row["id"], "APPROVED")
+    row = await wait_for_pending(gate, WORKLOAD)
+    await decide(gate, row["id"], "APPROVED")
     result = await task
     assert result.isError is False, result
     return result
@@ -166,8 +166,8 @@ async def run() -> None:
                     },
                 )
             )
-            row = wait_for_pending(gate, DS_WORKLOAD)
-            decide(gate, row["id"], "APPROVED")
+            row = await wait_for_pending(gate, DS_WORKLOAD)
+            await decide(gate, row["id"], "APPROVED")
             try:
                 await task
             except McpError as exc:
@@ -190,8 +190,8 @@ async def run() -> None:
                     },
                 )
             )
-            row = wait_for_pending(gate, SCALE_ANNO)
-            decide(gate, row["id"], "APPROVED")
+            row = await wait_for_pending(gate, SCALE_ANNO)
+            await decide(gate, row["id"], "APPROVED")
             result = await task
             assert result.isError is False, result
             replaced = result.structuredContent["object"]

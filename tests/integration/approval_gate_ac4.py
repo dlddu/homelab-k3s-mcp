@@ -92,9 +92,9 @@ async def _patch(session, name: str, value: str):
 async def test_approved_verdict_is_observed_by_polling(session, gate, trace) -> None:
     """(a) PENDING→APPROVED 전이가 폴링으로 관측되고 실행이 이어진다."""
     task = asyncio.create_task(_patch(session, TARGET_APPROVED, "approved"))
-    row = wait_for_pending(gate, TARGET_APPROVED)
+    row = await wait_for_pending(gate, TARGET_APPROVED)
     assert row["status"] == "PENDING", row
-    decide(gate, row["id"], "APPROVED")
+    await decide(gate, row["id"], "APPROVED")
     result = await task
     assert result.isError is False, result
 
@@ -113,7 +113,7 @@ async def test_expired_verdict_is_observed(session, gate, trace) -> None:
     """(b) 아무 판정도 없으면 거부가 만료 근처에 오고 기록은 EXPIRED 로 읽힌다."""
     started = time.monotonic()
     task = asyncio.create_task(_patch(session, TARGET_EXPIRED, "must-not-apply"))
-    row = wait_for_pending(gate, TARGET_EXPIRED)
+    row = await wait_for_pending(gate, TARGET_EXPIRED)
     try:
         result = await asyncio.wait_for(task, timeout=EXPIRY_BUDGET)
     except asyncio.TimeoutError as exc:

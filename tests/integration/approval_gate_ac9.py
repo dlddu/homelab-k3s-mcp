@@ -132,8 +132,8 @@ async def run() -> None:
                 print("--- approval-gate/시나리오 9 (모드 NONE 은 댄스로 돌아온다) ---")
                 set_auto_response(gate, "NONE")
                 task = asyncio.create_task(_patch(session, TARGET_MANUAL))
-                row = wait_for_pending(gate, TARGET_MANUAL)
-                decide(gate, row["id"], "APPROVED")
+                row = await wait_for_pending(gate, TARGET_MANUAL)
+                await decide(gate, row["id"], "APPROVED")
                 manual = await task
                 assert manual.isError is False, manual
                 manual_text = manual.content[0].text

@@ -75,8 +75,8 @@ async def _approved_patch(session, gate: str, name: str):
             },
         )
     )
-    row = wait_for_pending(gate, name)
-    decide(gate, row["id"], "APPROVED")
+    row = await wait_for_pending(gate, name)
+    await decide(gate, row["id"], "APPROVED")
     result = await task
     assert result.isError is False, result
     return row

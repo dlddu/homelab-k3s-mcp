@@ -149,8 +149,8 @@ async def run() -> None:
                     },
                 )
             )
-            row = wait_for_pending(gate, TARGET_MAP)
-            decide(gate, row["id"], "APPROVED")
+            row = await wait_for_pending(gate, TARGET_MAP)
+            await decide(gate, row["id"], "APPROVED")
             result = await task
             assert result.isError is False, result
             payload = result.structuredContent
@@ -174,8 +174,8 @@ async def run() -> None:
                     },
                 )
             )
-            row = wait_for_pending(gate, GRACE_POD)
-            decide(gate, row["id"], "APPROVED")
+            row = await wait_for_pending(gate, GRACE_POD)
+            await decide(gate, row["id"], "APPROVED")
             result = await task
             assert result.isError is False, result
             assert result.structuredContent["gracePeriodSeconds"] == GRACE_SECONDS

@@ -14,6 +14,7 @@ PENDING 요청이 마커를 담는다는 것만으로 충분하다.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import time
@@ -115,29 +116,34 @@ def get_request(url: str, request_id: str) -> dict:
     return response.json()
 
 
-def wait_for_pending(
+async def wait_for_pending(
     url: str, marker: str, timeout: float = 30.0
 ) -> dict:
     """context 에 마커를 담은 PENDING 요청을 폴링으로 기다린다.
 
     도구 호출이 블록한 채 승인 요청을 만들었다는 최초 관측이다. 마커는 대상 객체
-    이름이므로, 다른 테스트의 잔여 요청과 섕히지 않는다.
+    이름이므로, 다른 테스트의 잔여 요청과 섕히지 않는다. **async** 여야 한다 —
+    호출 패턴은 `create_task` 로 도구 호출을 띄운 직후 이 폴링에 들어가는 것이고,
+    동기 폴링이면 이벤트 루프가 막혀 그 task 가 요청을 전송조차 하지 못한다.
     """
     deadline = time.monotonic() + timeout
     last_seen: list[str] = []
-    while time.monotonic() < deadline:
-        for row in list_requests(url, status="PENDING"):
-            last_seen.append(row.get("context", "")[:80])
-            if marker in row.get("context", ""):
-                return row
-        time.sleep(0.2)
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while time.monotonic() < deadline:
+            response = await client.get(f"{url}/api/requests?status=PENDING")
+            response.raise_for_status()
+            for row in response.json():
+                last_seen.append(row.get("context", "")[:80])
+                if marker in row.get("context", ""):
+                    return row
+            await asyncio.sleep(0.2)
     raise AssertionError(
         f"마커 {marker!r} 을 담은 PENDING 승인 요청이 {timeout:.0f}초 안에 없었다; "
         f"본 것: {last_seen}"
     )
 
 
-def decide(
+async def decide(
     url: str,
     request_id: str,
     status: str,
@@ -147,23 +153,24 @@ def decide(
     """승인(APPROVED)이나 거부(REJECTED)를 사람 대신 내린다.
 
     이미 처리된 요청에 대한 재판정은 gatekeeper 가 409 로 거절한다 — 그 자체가
-    승인이 한 번 쓰였다는 관측이다.
+    승인이 한 번 쓰였다는 관측이다. 도구 호출이 비행 중인 창에 불리므로 async 다.
     """
     deadline = time.monotonic() + timeout
     last_exc: Exception | None = None
-    while time.monotonic() < deadline:
-        response = httpx.patch(
-            f"{url}/api/requests/{request_id}/{'approve' if status == 'APPROVED' else 'reject'}",
-            headers=_user_headers(user),
-            timeout=10.0,
-        )
-        if response.status_code == 200:
-            return response.json()
-        last_exc = AssertionError(
-            f"{request_id} 판정({status})이 {response.status_code} 로 거절됐다: "
-            f"{response.text[:200]}"
-        )
-        time.sleep(0.2)
+    path = "approve" if status == "APPROVED" else "reject"
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        while time.monotonic() < deadline:
+            response = await client.patch(
+                f"{url}/api/requests/{request_id}/{path}",
+                headers=_user_headers(user),
+            )
+            if response.status_code == 200:
+                return response.json()
+            last_exc = AssertionError(
+                f"{request_id} 판정({status})이 {response.status_code} 로 거절됐다: "
+                f"{response.text[:200]}"
+            )
+            await asyncio.sleep(0.2)
     raise last_exc if last_exc else AssertionError("unreachable")
 
 

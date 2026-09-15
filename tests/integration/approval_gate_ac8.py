@@ -83,14 +83,14 @@ async def run() -> None:
     with gatekeeper_url() as gate:
         async with open_session(url) as session:
             granted_task = _patch(session, TARGET_GRANTED)
-            granted_row = wait_for_pending(gate, TARGET_GRANTED)
-            decided = decide(gate, granted_row["id"], "APPROVED")
+            granted_row = await wait_for_pending(gate, TARGET_GRANTED)
+            decided = await decide(gate, granted_row["id"], "APPROVED")
             granted = await granted_task
             assert granted.isError is False, granted
 
             rejected_task = _patch(session, TARGET_REJECTED)
-            rejected_row = wait_for_pending(gate, TARGET_REJECTED)
-            decide(gate, rejected_row["id"], "REJECTED")
+            rejected_row = await wait_for_pending(gate, TARGET_REJECTED)
+            await decide(gate, rejected_row["id"], "REJECTED")
             rejected = await rejected_task
             assert rejected.isError is True, rejected
 

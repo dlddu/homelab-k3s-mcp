@@ -44,9 +44,9 @@ def _apply(manifest: dict) -> None:
     )
 
 
-def _new_pending(gate: str, marker: str):
+async def _new_pending(gate: str, marker: str):
     """같은 대상에 대한 새 승인 요청을 기다린다 — 이미 처리된 요청은 PENDING 목록에 없다."""
-    return wait_for_pending(gate, marker)
+    return await wait_for_pending(gate, marker)
 
 
 async def _approved_patch(session, gate: str):
@@ -63,8 +63,8 @@ async def _approved_patch(session, gate: str):
             },
         )
     )
-    row = _new_pending(gate, TARGET_MAP)
-    decide(gate, row["id"], "APPROVED")
+    row = await _new_pending(gate, TARGET_MAP)
+    await decide(gate, row["id"], "APPROVED")
     result = await task
     assert result.isError is False, result
     APPROVED_IDS.append(row["id"])
@@ -83,8 +83,8 @@ async def _approved_secret_read(session, gate: str) -> str:
             },
         )
     )
-    row = _new_pending(gate, TARGET_SECRET)
-    decide(gate, row["id"], "APPROVED")
+    row = await _new_pending(gate, TARGET_SECRET)
+    await decide(gate, row["id"], "APPROVED")
     result = await task
     assert result.isError is False, result
     APPROVED_IDS.append(row["id"])

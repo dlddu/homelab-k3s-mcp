@@ -372,8 +372,8 @@ async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
                 },
             )
         )
-        row = wait_for_pending(gate, "resource-generic-ac5-no-such-secret")
-        decide(gate, row["id"], "REJECTED")
+        row = await wait_for_pending(gate, "resource-generic-ac5-no-such-secret")
+        await decide(gate, row["id"], "REJECTED")
         try:
             await task
         except McpError as exc:

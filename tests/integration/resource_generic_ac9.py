@@ -76,8 +76,8 @@ def _wait_pod_replacement(before: set[str], timeout: float = 180.0) -> None:
 
 async def _approved_patch(session, gate: str, args: dict, marker: str) -> dict:
     task = asyncio.create_task(session.call_tool("resource_patch", args))
-    row = wait_for_pending(gate, marker)
-    decide(gate, row["id"], "APPROVED")
+    row = await wait_for_pending(gate, marker)
+    await decide(gate, row["id"], "APPROVED")
     result = await task
     assert result.isError is False, result
     return result.structuredContent
@@ -153,8 +153,8 @@ async def run() -> None:
                 },
             }
             task = asyncio.create_task(session.call_tool("resource_patch", args))
-            row = wait_for_pending(gate, RESTART_ANNOTATION)
-            decide(gate, row["id"], "APPROVED")
+            row = await wait_for_pending(gate, RESTART_ANNOTATION)
+            await decide(gate, row["id"], "APPROVED")
             result = await task
             assert result.isError is False, result
             restarted = result.structuredContent["object"]
