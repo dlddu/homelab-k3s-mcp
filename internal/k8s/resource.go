@@ -156,13 +156,14 @@ type ResourceRef struct {
 // one of Manifest and Replicas is set: the tool layer refuses a call that names
 // both or neither before this type is built.
 type UpdateRef struct {
-	APIVersion  string
-	Kind        string
-	Namespace   *string
-	Name        string
-	Subresource string
-	Manifest    map[string]any
-	Replicas    *int64
+	APIVersion              string
+	Kind                    string
+	Namespace               *string
+	Name                    string
+	Subresource             string
+	Manifest                map[string]any
+	Replicas                *int64
+	ApprovedResourceVersion string
 }
 
 // PatchRef addresses one object and the change to make to it (AC9).
@@ -710,20 +711,12 @@ const ScaleSubresource = "scale"
 // UpdateResource replaces one object whole, or writes a replica count to its
 // scale subresource (AC8).
 //
-// The scale path writes without reading first. kubectl's scale does a
-// get-then-put so it can carry the object's resourceVersion as a
-// precondition, but get is a second verb and this tool holds exactly one; an
-// empty resourceVersion is an unconditional update, which is that same write
-// without the precondition. The precondition that AC8's callers actually want
-// is the gate's (prd-approval-gate AC6), and it is not this one.
-//
-// That gate check now exists, and it stops short of where this comment used to
-// point (mcp.confirmTargetUnchanged has the extent). Carrying the approved
-// resourceVersion into the call below is what would close the rest, and it is
-// tracked as a residual in doc-tracker.md's open items — the same field is a
-// conflict condition under patchType=apply, so the two verbs do not get one
-// answer.
+// The gate supplies the version: reading a fresher one here would silently
+// authorize a state the operator never saw.
 func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error) {
+	if ref.ApprovedResourceVersion == "" {
+		return nil, apiErrorf("resource_update requires the approved target resourceVersion; request a new approval")
+	}
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
 	if err != nil {
 		return nil, err
@@ -733,13 +726,21 @@ func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*Resou
 		return nil, err
 	}
 
-	body := ref.Manifest
+	body := runtime.DeepCopyJSON(ref.Manifest)
 	if ref.Subresource == ScaleSubresource {
 		if err := s.requireSubresource(ctx, res.gvr, ScaleSubresource, ref.Kind); err != nil {
 			return nil, err
 		}
 		body = scaleObject(namespace, ref.Name, *ref.Replicas)
 	}
+	metadata, ok := body["metadata"].(map[string]any)
+	if !ok {
+		return nil, apiErrorf("update manifest metadata must be an object")
+	}
+	if supplied, exists := metadata["resourceVersion"]; exists && supplied != ref.ApprovedResourceVersion {
+		return nil, apiErrorf("resource_update automatically refused: manifest resourceVersion does not match the approved target; this call has ended, and any later call requires a new approval")
+	}
+	metadata["resourceVersion"] = ref.ApprovedResourceVersion
 
 	dyn, err := dynamic.NewForConfig(s.config)
 	if err != nil {
@@ -761,6 +762,9 @@ func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*Resou
 		subresources...,
 	)
 	if err != nil {
+		if apierrors.IsConflict(err) {
+			return nil, apiErrorf("resource_update automatically refused: update on %s conflicted with the approved resourceVersion; this call has ended, and any later call requires a new approval", subresourcePath(res.gvr.Resource, ref.Subresource))
+		}
 		return nil, s.apiCallError(err, "update", subresourcePath(res.gvr.Resource, ref.Subresource))
 	}
 

@@ -38,7 +38,11 @@ func TestApprovedPatchPreservesDataAndConditions(t *testing.T) {
 			if err := json.Unmarshal(body["metadata"], &metadata); err != nil {
 				t.Fatal(err)
 			}
-			if metadata["resourceVersion"] != "100" || metadata["uid"] != "uid-1" {
+			if kind == "apply" {
+				if _, present := metadata["uid"]; present {
+					t.Fatalf("apply must not carry uid: %s", raw)
+				}
+			} else if metadata["resourceVersion"] != "100" || metadata["uid"] != "uid-1" {
 				t.Fatalf("conditions: %s", raw)
 			}
 			if !strings.Contains(string(body["spec"]), "9007199254740993") {
@@ -149,7 +153,12 @@ func TestConditionalPatchWirePathsAndNoRetries(t *testing.T) {
 						t.Errorf("options %s", r.URL.RawQuery)
 					}
 					raw, _ := io.ReadAll(r.Body)
-					if !strings.Contains(string(raw), `"100"`) || !strings.Contains(string(raw), `"uid-1"`) {
+					hasRV := strings.Contains(string(raw), `"100"`)
+					hasUID := strings.Contains(string(raw), `"uid-1"`)
+					if kind == "apply" && (hasUID || !hasRV) {
+						t.Errorf("apply precondition must carry resourceVersion only: %s", raw)
+					}
+					if kind != "apply" && (!hasRV || !hasUID) {
 						t.Errorf("conditions missing: %s", raw)
 					}
 					w.Header().Set("Content-Type", "application/json")
