@@ -136,7 +136,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 |------|------|------|------|
 | `AUTO_APPROVE` 유인 | 게이트 전체 | 스케일·재시작까지 게이트 안으로 들어오면서 승인 빈도가 올라간다. 운영자가 gatekeeper 의 `AUTO_APPROVE` 를 켜면 게이트 전체가 무력화되고, 그 순간 `delete`·`exec`·Secret 읽기까지 함께 무인 승인이 된다. | ⚠️ **수용(2026-09-12)** — 예외를 두면 무엇이 승인 대상인지 설명할 때 verb 목록이 아니라 사연을 읽어야 하고, 그 사연은 도구가 늘 때마다 다시 쓰인다. 대신 `prd-approval-gate` AC9 가 자동 승인을 **도구 응답 본문과 로그 양쪽에 표기**해 켜져 있다는 사실이 숨지 않게 한다 |
 | 진단 왕복 증가 | `resource_get` | verb 1:1 을 지키느라 `pod_describe` 의 「객체 + 이벤트 한 응답」과 `workload_logs` 의 대상 해석(`labelSelector`/워크로드 이름)이 사라졌다. 파드 하나를 진단하려면 `resource_list` 로 찾고 `resource_get` 으로 읽는 왕복 두 번이 든다. | ⚠️ **수용(2026-09-12)** — 편의 도구가 두 개 이상의 verb 를 행사하는 순간 게이트와 RBAC 가 그 도구를 어떻게 판정할지 모호해진다. 모호한 경계보다 왕복 한 번이 싸다 |
-| 스트림 표면 확대 | `attach`·`port_forward`·`proxy` | 도구로 분리하면서 RBAC 에 `pods/attach`·`pods/portforward`·`pods/proxy`·`services/proxy` 를 **새로 부여한다**. `port_forward` 와 `proxy` 는 네트워크 정책이 막아 둔 파드 포트·내부 API 에 도달할 수 있고, `attach` 는 대화형 셸이 PID 1 인 파드에서 `exec` 과 구별되지 않는다. RBAC 로는 내용을 가릴 수 없어 **게이트가 유일한 방어선**이다. | ⚠️ **수용(2026-09-12)** — 넷 다 게이트 대상이고 `context` 에 명령·페이로드·경로가 전문으로 들어간다(`prd-approval-gate` AC3). `nodes/proxy` 만은 열지 않는다 — 그건 게이트를 우회하는 게 아니라 무의미하게 만든다 |
+| 스트림 표면 확대 | `attach`·`port_forward`·`proxy` | 목표 도구 표면은 `pods/attach`·`pods/portforward`·`pods/proxy`·`services/proxy`·`nodes/proxy` 를 포함한다. `port_forward` 와 `proxy` 는 네트워크 정책이 막아 둔 파드 포트·내부 API 에 도달할 수 있고, `attach` 는 대화형 셸이 PID 1 인 파드에서 `exec` 과 구별되지 않는다. RBAC 로는 내용을 가릴 수 없어 **게이트가 유일한 방어선**이다. 2026-09-14 이후 RBAC 는 이미 `cluster-admin` 바인딩이며, 이 목표 도구들의 구현 완료를 뜻하지 않는다. | ⚠️ **수용(2026-09-12), 문서 정정(2026-09-15)** — `exec` 포함 넷 다 게이트 대상이고 `context` 에 명령·페이로드·경로가 전문으로 들어간다(`prd-approval-gate` AC3). **종전 제외 문구는 현행 아님**: 「`nodes/proxy` 만은 열지 않는다 — 그건 게이트를 우회하는 게 아니라 무의미하게 만든다」. 현행 AC15 는 Node 를 포함하며, 그 비용은 아래 「쌍이 분류력을 잃음」·「RBAC 경계 소멸」 행에 남긴다. 구현·검증은 별도 후속이다 |
 | 방어층 축소 | Secret 읽기 | 이전 설계는 도구 레이어 거부 + RBAC 에 `secrets` 규칙 부재의 **2중화**였다. 읽기를 허용하려면 RBAC 가 `secrets: get` 을 줘야 하므로, 이제 **도구 레이어의 게이트 판정이 유일한 경계**다. | ⚠️ **수용(2026-09-12)** — 거부하면 운영자가 `kubectl` 로 우회해 아무 기록도 남지 않는다. 전제 조건은 디스패처 단계 강제(AC1)와 fail-closed(AC5). RBAC 는 `get`·`list` 만 준다 |
 | 승인된 값의 확산 | Secret `get` 응답 | 승인이 떨어지면 값이 도구 응답에 담기고, 그 응답은 모델 컨텍스트와 대화 기록에 남는다. 게이트는 **읽는 시점**을 통제할 뿐 읽은 뒤를 통제하지 못한다. | ⚠️ **수용(2026-09-12)** — 완화는 1승인 1실행(AC7)과 값 봉쇄(AC10) |
 | 쌍이 분류력을 잃음 | `nodes/proxy` | 경로 제한 없이 열면서 `create nodes/proxy` 하나가 `/healthz` POST 와 임의 파드 exec 을 동시에 뜻하게 됐다. **`(verb, resource)` 쌍이 호출의 권능을 한정하지 못한다** — 한정하는 것은 경로이고 경로는 `context` 에만 있다. RBAC 의 네임스페이스 범위도 파드 수준 조작에는 적용되지 않으며, 민감 종류 게이트도 kubelet `/exec` 경유 읽기는 잡지 못한다(쌍이 `create nodes/proxy` 이므로). | ⚠️ **수용(2026-09-12)** — 경로 허용목록을 두면 「이 경로는 봐준다」는 분류기가 생기고 그 분류기가 곧 우회 경로가 된다. 대신 게이트가 경로를 숨기지 않고 보여 준다. 고권한 kubelet 경로는 `context` 에 **표시**하되 막지 않는다. **그 결과 `context` 의 품질이 곧 보안이며, AC3 가 이 설계에서 가장 무거운 AC 다** |
@@ -342,13 +342,17 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 > (`TYPE ns/name rv=…`)이고 객체 전문은 `structuredContent` 에만 둔다 — 같은 이유다.
 > **범위 밖(근거와 함께)**: 통합 e2e `resource_generic_ac6.py` 는 자매 모델
 > `tbm_homelab-k3s-mcp-scenario-e2e` 소관이라 시나리오 6 을 「⏳ 구현 대기」에 그대로 둔다
-> (`check_ac_mapping.py` 의 일곱 집계는 한 숫자도 움직이지 않는다). `prd-resource-generic` 의
-> 나머지 미구현 7종 중 `delete`(AC10)는 형제 슬라이스가 들고 있고, `create`·`delete_collection`·
+> (`check_ac_mapping.py` 의 일곱 집계는 한 숫자도 움직이지 않는다).
+>
+> **당시 잔여 범위·문서 충돌 판단(아래 2026-09-15 정정으로 갱신)**:
+> `prd-resource-generic` 의 나머지 미구현 7종 중 `delete`(AC10)는 형제 슬라이스가 들고 있고, `create`·`delete_collection`·
 > `exec`·`attach`·`port_forward` 는 다음 슬라이스들의 몫이며, **`proxy`(AC15)는 코드 슬라이스로
 > 들어가면 안 된다** — AC15 가 `nodes/proxy` 를 경로 제한 없이 열라고 적는 반면
 > `values.md`(2026-09-12 행)와 아래 「수용된 위험」의 「스트림 표면 확대」 행은 「`nodes/proxy` 는
 > 열지 않는다」고 적어 **문서 계층 안에서 어긋나 있다**. 어느 쪽이 SSOT 인지 제품 문서가 먼저
-> 정해야 한다.
+> 정해야 한다. **2026-09-15 정정**: 아래 「Node 프록시 문서 충돌 정정」에서 제외 문구를
+> 이력으로 구분하고 현행 PRD 계약으로 맞췄다. 이 문서 충돌 선행은 해소됐지만,
+> `resource_proxy` 구현·게이트 검증·전용 E2E는 여전히 후속 작업이다.
 > `check_comment_policy.py` 는 등재 범위 여섯에 주석이 늘어 **같은 PR 에서 재판정**했고, 새
 > 범위는 없다(새 파일 0개).
 
@@ -493,9 +497,38 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
   create 미등록 근거만 해소하고, fixture가 착지하면 담당 렌즈가 전용 E2E를 작성해야 한다.
 - 범위 밖: `resource_delete_collection`·`resource_exec`·`resource_attach`·
   `resource_port_forward`·`resource_proxy`, update 원자적 precondition(PR #109),
-  patch precondition, nodes/proxy 문서 결정과 dear_baby_reset_user 예외 결정.
+  patch precondition, nodes/proxy 문서 정합성(아래 정정으로 해소)과 dear_baby_reset_user 예외 결정.
   PR #111의 시나리오 근거 수정과 이 변경이 같은 행을 만지므로, 병합 순서에 따라
   create가 이미 구현됐다는 사실과 해당 PR의 나머지 근거를 모두 보존해 재검토한다.
+
+#### 2026-09-15 — Node 프록시 문서 충돌 정정 (`rct_20260915-0014`)
+
+- **근거**: `67764e5`(PR #72)의 `values.md`에는 같은 날짜로 Node 프록시 포함과
+  제외가 함께 들어갔다. 현행 [resource-generic AC15](prd-resource-generic.md)와
+  [approval-gate의 대상 표·AC3](prd-approval-gate.md), `values.md`의 「금지 목록이
+  비었다」 이력은 모두 Node를 포함한다. 2026-09-14의 V3·RBAC 개정도 별도의
+  금지 경계를 두지 않는다. 제외 문구를 현행 방침으로 유지하면 이 계약들과 모순된다.
+- **정정 범위**: 가치 문서의 옛 제외 문장과 위 「스트림 표면 확대」 행은 원문을
+  이력으로 남기고, watch 착지 기록의 문서 결정 대기는 이 절로 갱신했다.
+  PRD·테스트 계약, 실행 코드, 게이트, RBAC, 배포 설정은 바꾸지 않는다.
+- **따를 기존 계약**: `resource_proxy`는 Pod·Service·Node를 대상으로 경로 제한 없이
+  모든 메서드·경로를 사전 승인받는다(`GET`도 포함). 승인 `context`에는 경로·본문
+  전문을 싣고, kubelet 고권한 경로는 표시한다. 이는 경로를 차단하는 완화가 아니다.
+  `(verb, resource)`만으로 실제 권능을 한정할 수 없고, 승인 게이트가 유일한 경계라는
+  비용은 위 「쌍이 분류력을 잃음」·「RBAC 경계 소멸」 행 그대로다. 이 정정은
+  새 위험 수용이나 개별 호출의 승인을 기록하지 않는다.
+- **현재 구현과 후속**: 확인 기준 `5f9ea3f`에서 `resource_proxy`는 광고·게이트
+  레지스트리에 없고, `resource_generic_ac15.py`도 없다. 문서 충돌 해소는 이 도구가
+  구현·검증됐다는 뜻이 아니다. 코드 슬라이스는 AC15와 승인 게이트의 대상·context·
+  fail-closed 계약을 구현해야 하며, 자매 scenario-e2e 모델은 실물 gatekeeper
+  픽스처 선행 후 전용 시나리오 15를 작성해야 한다. 해당 구현 대기 행과 집계는
+  그대로 유지한다. 두 후속 모두 자기 task의 계획·검토·승인·실행 절차를 따른다.
+- **범위 밖 잔여**: `resource_delete_collection`·`resource_exec`·`resource_attach`·
+  `resource_port_forward`·`resource_proxy`의 구현, update(PR #109)·patch(PR #114)
+  원자적 precondition, PR #106의 실물 gatekeeper 픽스처와 전용 E2E 및 그 종속
+  watch/create E2E, 기존 주석·모킹 작업, `dear_baby_reset_user` 예외 결정은 각각
+  기존 소유자·후속 슬라이스의 몫이다. 이 두 문서의 정정만으로 전체 목표 수렴을
+  선언하지 않는다.
 
 ## 자동화 커버리지 (문서 구조와 별개)
 
@@ -922,6 +955,10 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **test-platform-auth-safety.md#시나리오 4** 하드닝된 런타임 (`platform-auth-safety/AC4`) — [정적 매니페스트] `k8s/deployment.yaml` securityContext(비루트·읽기전용 루트FS·capability drop 등) 정적 검증 — definition이 든 e2e 예외 예시. 대체: 정적 매니페스트 리뷰 + (선택) 런타임 securityContext 단언 단위.
 
 ## 변경 이력
+
+같은 날짜의 항목도 서로 다른 개정 시점의 기록이다. 특히 아래 `nodes/proxy` 제외·금지
+문구는 당시 상태를 보존한 것이며, 현행 계약과 구현 잔여는 위
+「2026-09-15 — Node 프록시 문서 충돌 정정」을 따른다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
