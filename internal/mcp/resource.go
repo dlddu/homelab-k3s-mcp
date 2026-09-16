@@ -266,12 +266,17 @@ func (h *Handler) resourceUpdate(ctx context.Context, raw json.RawMessage) (any,
 		return nil, rerr
 	}
 
+	approved, ok := ctx.Value(approvedTargetKey{}).(k8s.TargetState)
+	if !ok || approved.ResourceVersion == "" {
+		return nil, errf(-32603, "resource_update requires the approved target resourceVersion; request a new approval")
+	}
 	ref := k8s.UpdateRef{
-		APIVersion:  coord.apiVersion,
-		Kind:        coord.kind,
-		Namespace:   coord.namespace,
-		Name:        *name,
-		Subresource: subresource,
+		APIVersion:              coord.apiVersion,
+		Kind:                    coord.kind,
+		Namespace:               coord.namespace,
+		Name:                    *name,
+		Subresource:             subresource,
+		ApprovedResourceVersion: approved.ResourceVersion,
 	}
 	if subresource == k8s.ScaleSubresource {
 		n := replicas

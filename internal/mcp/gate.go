@@ -535,12 +535,9 @@ func (h *Handler) readGateTarget(ctx context.Context, decl toolDeclaration, gate
 // confirmTargetUnchanged re-reads the target and refuses when it has moved
 // since the approval was written (AC6).
 //
-// This narrows the window from the operator's deliberation — up to
-// GATEKEEPER_TIMEOUT_SECONDS, five minutes by default — to the gap between this
-// read and the handler's write. It does not close it: doing that needs the
-// resourceVersion carried into the write itself as a precondition, which is a
-// different mechanism with a different answer per patch type (see
-// doc-tracker.md).
+// A read cannot protect the interval after it returns. Update carries the
+// approved version into its PUT as well; other verbs still need their own
+// atomic conditions (doc-tracker.md).
 func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decision *gatekeeper.Decision, gated []gatekeeper.Pair, ref *k8s.TargetRef, approved *k8s.TargetState) *rpcErr {
 	if ref == nil || approved == nil {
 		return nil

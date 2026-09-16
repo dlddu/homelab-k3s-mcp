@@ -221,7 +221,6 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 	if rerr != nil {
 		return nil, rerr
 	}
-
 	if approved != nil {
 		ctx = context.WithValue(ctx, approvedTargetKey{}, *approved)
 	}

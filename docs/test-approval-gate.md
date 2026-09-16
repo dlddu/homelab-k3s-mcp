@@ -113,6 +113,11 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `resource_create`로도 같은 절차를 밟되, 승인 전에 **외부에서 같은 이름의 객체를 만든다**
 - **기대 결과**: 두 경우 모두 실행이 거부되고 재승인이 필요함을 알림. 대상은 변경되지 않고,
   Secret은 **반환되지 않음** — 운영자가 승인한 것과 다른 값을 내주지 않는다.
+  `resource_update`의 전체 객체·`scale` 갱신은 `resourceVersion` 충돌 시 자동 거부로
+  현재 호출을 끝낸다. 재확인에서 충돌하면 갱신 호출은 0회, 재확인 뒤 조건부 PUT에서
+  409가 오면 실패한 PUT은 1회이며 성공 응답을 반환하지 않는다. 어느 경우도 서버가
+  조건을 새 버전으로 바꾸거나, 쓰기를 자동 재시도하거나, 새 승인 요청을 자동 생성하지
+  않는다. 호출자가 별도로 다시 시도하려면 새 승인이 필요하다.
   `resource_exec`은 대상 파드를 삭제·재생성한 뒤 승인하면 `uid` 불일치로 거부.
   `resource_create`도 거부되지만 **경로가 다르다** — 게이트는 생성 대상을 미리 읽지
   않으므로 재확인이 일어나지 않고, 「그 좌표가 비어 있다」는 전제의 재판정은 apiserver의
@@ -120,7 +125,12 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `resourceVersion`이 실리지 않는다
 - **검증 AC**: AC6
 - **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(patch·scale·Secret get·exec·
-  create 각 1케이스)
+  create 각 1케이스). update 부분의 Go 회귀는
+  `internal/mcp/update_precondition_test.go::TestUpdateConflictEndsTheCallWithoutAutomaticReapproval`
+  (전체 객체·scale × 재확인 충돌·서비스 충돌, 승인 1회·소비 확인·추가 읽기/갱신 없음)과
+  `internal/k8s/update_precondition_test.go::TestUpdateUsesApprovedVersionOnTheWire`
+  (승인 버전 PUT·늦은 409·PUT 1회·자동 거부 문면)로 검증한다.
+  이 단위·HTTP 경계 검증은 실물 gatekeeper/apiserver E2E 완료로 세지 않는다
 
 ### 시나리오 7: 승인은 한 번만 쓰인다
 - **사전 조건**: 동일
