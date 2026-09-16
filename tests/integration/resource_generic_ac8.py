@@ -39,6 +39,32 @@ SCALE_ANNO = "gk-ac8-marker"
 REPLICA_LESS_REASON = "has no replicas"
 
 
+def _resource_version(kind: str, name: str) -> str:
+    return subprocess.check_output(
+        [
+            "kubectl", "-n", NAMESPACE, "get", kind, name,
+            "-o", "jsonpath={.metadata.resourceVersion}",
+        ],
+        text=True,
+    ).strip()
+
+
+def _wait_quiet(kind: str, name: str, settle: float = 3.0, timeout: float = 120.0) -> None:
+    deadline = time.monotonic() + timeout
+    last = _resource_version(kind, name)
+    since = time.monotonic()
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        now = _resource_version(kind, name)
+        if now != last:
+            last, since = now, time.monotonic()
+        elif time.monotonic() - since >= settle:
+            return
+    raise AssertionError(
+        f"{kind}/{name} 의 resourceVersion 이 {timeout:.0f}초 안에 멎지 않았다"
+    )
+
+
 def _deployment() -> dict:
     out = subprocess.check_output(
         [
@@ -104,12 +130,14 @@ async def _approved_scale(session, gate: str, replicas: int):
 async def run() -> None:
     url = base_url()
     ensure_workload_fixture_baseline()
+    _wait_quiet("deployment", WORKLOAD)
     wait_for_healthz(url)
 
     with gatekeeper_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 8 (scale 3 → 0 → 1) ---")
             for target in (3, 0, 1):
+                _wait_quiet("deployment", WORKLOAD)
                 await _approved_scale(session, gate, target)
                 _wait_replicas(target)
                 print(f"scale ok: replicas={target}")
@@ -153,6 +181,7 @@ async def run() -> None:
             )
 
             print("--- resource-generic/시나리오 8 (DaemonSet 은 승인 뒤 거부) ---")
+            _wait_quiet("daemonset", DS_WORKLOAD)
             task = asyncio.create_task(
                 session.call_tool(
                     "resource_update",
@@ -176,6 +205,7 @@ async def run() -> None:
                 raise AssertionError("레플리카 없는 종류의 scale 이 거부되지 않았다")
 
             print("--- resource-generic/시나리오 8 (서브리소스 없는 전체 교체) ---")
+            _wait_quiet("deployment", WORKLOAD)
             manifest = _deployment()
             manifest["metadata"].setdefault("annotations", {})[SCALE_ANNO] = "applied"
             task = asyncio.create_task(

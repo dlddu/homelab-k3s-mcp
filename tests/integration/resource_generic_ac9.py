@@ -49,6 +49,28 @@ def _deployment() -> dict:
     return json.loads(_kubectl("get", "deployment", WORKLOAD, "-o", "json"))
 
 
+def _resource_version(kind: str, name: str) -> str:
+    return _kubectl(
+        "get", kind, name, "-o", "jsonpath={.metadata.resourceVersion}"
+    ).strip()
+
+
+def _wait_quiet(kind: str, name: str, settle: float = 3.0, timeout: float = 120.0) -> None:
+    deadline = time.monotonic() + timeout
+    last = _resource_version(kind, name)
+    since = time.monotonic()
+    while time.monotonic() < deadline:
+        time.sleep(0.5)
+        now = _resource_version(kind, name)
+        if now != last:
+            last, since = now, time.monotonic()
+        elif time.monotonic() - since >= settle:
+            return
+    raise AssertionError(
+        f"{kind}/{name} 의 resourceVersion 이 {timeout:.0f}초 안에 멎지 않았다"
+    )
+
+
 def _set_baseline_replicas() -> None:
     _kubectl("scale", "deployment", WORKLOAD, f"--replicas={BASELINE_REPLICAS}")
     deadline = time.monotonic() + 120
@@ -87,6 +109,7 @@ async def run() -> None:
     url = base_url()
     ensure_workload_fixture_baseline()
     _set_baseline_replicas()
+    _wait_quiet("deployment", WORKLOAD)
     wait_for_healthz(url)
 
     with gatekeeper_url() as gate:
