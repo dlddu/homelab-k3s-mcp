@@ -212,6 +212,21 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
   `merge`·`strategic`·`json`·`apply`를 받는다. `apply`는 Server-Side Apply
   (`application/apply-patch+yaml`)이며 `fieldManager`를 함께 받는다.
 
+  네 형식 모두 게이트가 읽은 `resourceVersion`·`uid`에만 조건부로 실행한다
+  (`prd-approval-gate` AC6). `merge`·`strategic`·`apply`는 `metadata`에 두 값을
+  붙이고, 호출자가 이미 적은 값이 승인 상태와 다르면 거부한다. `json`은 원래 연산의
+  앞뒤에 두 값의 `test`를 추가해 현재 대상과 연산 결과의 조건이 모두 유지돼야 한다.
+  원래 데이터 변경과 JSON 숫자는 보존한다. `metadata`를 객체가 아닌 값으로 지우거나,
+  `strategic`의 루트·`metadata`에 `$` 지시어를 넣어 조건을 제거하는 요청은 거부한다.
+  `spec` 등 그 밖의 위치에서 쓰는 strategic 지시어는 그대로 전달한다.
+
+  `apply`도 기존 대상에만 쓴다 — 승인된 `uid`가 들어 있어 사라진 대상을 다시 만드는
+  경로가 되지 않는다. `fieldManager`는 호출자가 고른 값을 유지하고 `force`를 보내지
+  않는다. 버전·필드 소유권 충돌 또는 JSON `test` 실패는 현재 호출의 **자동 거부**로
+  끝난다. 버전을 새로 읽어 대체하거나, 같은 승인으로 재시도하거나, 자동 재승인을
+  요청하지 않는다. HTTP `Retry-After`도 재시도하지 않는다. 네트워크·5xx 실패는 결과가
+  불확실할 수 있음을 알리고, 새로운 호출은 별도 승인이 필요하다.
+
   롤링 재시작은 이 도구로 한다 — 파드 템플릿에 `kubectl.kubernetes.io/restartedAt`
   어노테이션을 얹는 `strategic` 패치다. 이것이 `workload_restart`를 흡수하며, 전용 도구를
   두지 않는 이유는 재시작이 verb가 아니라 **특정 내용의 patch**이기 때문이다. 게이트도

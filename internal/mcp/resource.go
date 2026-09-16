@@ -406,9 +406,8 @@ func (h *Handler) resourcePatch(ctx context.Context, raw json.RawMessage) (any, 
 		return nil, errf(-32602, "patchType must be one of %s", strings.Join(k8s.PatchTypeNames(), ", "))
 	}
 
-	// The body is taken from the raw arguments rather than re-encoded from the
-	// decoded map: what the apiserver receives is then the same bytes the
-	// operator approved, down to key order.
+	// Keep caller data as raw JSON; decoding through float64 would round large
+	// integers before the service adds the approval conditions.
 	body := rawPatchBody(raw)
 	if len(body) == 0 {
 		return nil, errf(-32602, "patch is required (an object, or an array for patchType=json)")
@@ -437,6 +436,13 @@ func (h *Handler) resourcePatch(ctx context.Context, raw json.RawMessage) (any, 
 	if fieldManager != nil {
 		ref.FieldManager = *fieldManager
 	}
+
+	approved, ok := ctx.Value(approvedTargetKey{}).(k8s.TargetState)
+	if !ok || approved.ResourceVersion == "" || approved.UID == "" {
+		return nil, errf(-32603, "refusing resource_patch: approved target version and identity are required")
+	}
+	ref.ApprovedResourceVersion = approved.ResourceVersion
+	ref.ApprovedUID = approved.UID
 
 	result, err := h.k8s.PatchResource(ctx, ref)
 	if err != nil {

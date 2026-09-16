@@ -290,6 +290,25 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
   이 AC가 존재하는 이유가 그 자리에서 뒤집힌다. 그래서 `prd-resource-generic` AC2의 Table
   헤더와 같은 취급을 한다: 값을 손으로 적지 말고 `metav1.SchemeGroupVersion`에서 파생시키며,
   응답이 PartialObjectMetadata가 아니면 **거부한다**(전체 객체로 폴백하지 않는다).
+
+  **컬렉션 목록의 선행 읽기**는 별도 `CollectionTargetReader.ListTargets`로 제공한다.
+  도구의 `Service`나 단일 객체 `TargetReader`에 합치지 않는다. 이 내부 읽기는 유효한
+  `namespace` 하나와 namespaced 종류만 받고, 두 셀렉터를 모든 페이지에 그대로 전달한다.
+  컬렉션에는 `as=PartialObjectMetadataList`를 사용한다(그룹·버전은 위와 같이 파생).
+  [상류 메타데이터 목록 계약](https://github.com/kubernetes/client-go/blob/v0.33.3/metadata/metadata.go#L240)을
+  따르되, 전체 객체 폴백은 제공하지 않는다. 비민감 종류도 같은 메타데이터 표현을 쓴다.
+  반환하는 것은 목록의 `resourceVersion`과 대상별 이름·namespace·uid·resourceVersion뿐이다.
+
+  한 페이지를 전체 대상 수로 오인하지 않도록 `continue`가 끝날 때까지 같은 목록 버전의
+  페이지를 모으고 이름순으로 정렬한다. 버전 불일치, 잘못된 표현/좌표/식별자, 중복 대상,
+  반복 커서, 완료 페이지의 남은 건수, 만료(410)·통신·디코딩 오류는 **부분 결과 없이 거부**한다.
+  0건도 유효한 목록 버전을 가진 빈 결과다. 요청당 500개 페이지, 전체 10,000개 대상 또는
+  100페이지를 상한으로 두어 승인 전 작업량을 제한하며, 상한 초과는 축약하지 않고 선택을
+  좁히도록 거부한다. 호출 context 취소도 부분 결과를 반환하지 않는다.
+
+  이 읽기 기반의 완료는 `resource_delete_collection` 등록이나 AC11 전체 완료가 아니다.
+  승인 context의 수/앞 20개 이름, 0건의 승인 생략, 실행 직전 대상 비교와 실제
+  `deletecollection` 호출, 승인 1건당 실행 1회, 실물 apiserver/gatekeeper 검증은 후속 범위다.
 - **달성 가치**: V3
 - **검증 방법**: 게이트가 승인 전에 행사하는 쌍이 위 표와 같고 그 밖의 쌍이 없다(요청 기록
   관측 — `rbac.yaml` 대조는 AC19와 함께 없어졌다). Secret 읽기 승인을 **거절**한 뒤 서버
