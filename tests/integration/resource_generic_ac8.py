@@ -197,12 +197,11 @@ async def run() -> None:
             )
             row = await wait_for_pending(gate, DS_WORKLOAD)
             await decide(gate, row["id"], "APPROVED")
-            try:
-                await task
-            except McpError as exc:
-                assert REPLICA_LESS_REASON in str(exc), exc
-            else:
-                raise AssertionError("레플리카 없는 종류의 scale 이 거부되지 않았다")
+            result = await task
+            assert result.isError is True, result
+            assert result.content, result
+            message = result.content[0].text
+            assert REPLICA_LESS_REASON in message, message
 
             print("--- resource-generic/시나리오 8 (서브리소스 없는 전체 교체) ---")
             _wait_quiet("deployment", WORKLOAD)
