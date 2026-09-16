@@ -28,6 +28,24 @@
 > 미연결 AC·미검증 AC·고아 테스트 없음). 별도로, 테스트 문서가 참조하는 **자동화의 실제
 > 커버리지**는 아래 "자동화 커버리지"에 정리한다(문서 구조와 별개의 일부 공백 존재).
 
+## 컬렉션 승인 목록의 내부 선행 구현 (2026-09-15 · rct_20260915-0016)
+
+`internal/k8s/collection_precondition.go`에 `CollectionTargetReader.ListTargets`를 추가했다.
+`prd-approval-gate` AC11의 게이트 소유 `list`를 구현할 때 재사용할 **메타데이터 목록 읽기
+기반**이다. 유효한 namespace 하나에서 같은 목록 버전의 페이지를 전부 모으고, 대상의
+이름·namespace·uid·resourceVersion만 반환한다. 잘못되거나 불완전한 응답, 만료, 상한 초과,
+취소는 부분 결과 없이 거부한다. 상세 계약은 `prd-approval-gate` AC11, Go/HTTP 회귀와
+그 한계는 `test-approval-gate` 시나리오 11의 선행 회귀 항목에 있다.
+
+**실제 게이트/도구 경로에는 아직 연결하지 않았다.** 기존 `TargetReader`의 get,
+`Service`, dispatcher, `GatePairs`와 19종 도구 표면은 그대로다. 따라서 아래 과거 기록의
+「list 선언만 존재 / 행사 0」는 런타임 호출에 대해서 여전히 참이다. `resource_delete_collection`
+자체와 AC11 전체, 대상 수/이름의 승인 context, 0건 승인 생략, 승인 후 변경 거부/삭제,
+1승인 1실행, 실물 gatekeeper/apiserver 검증은 후속 작업이다. 컬렉션 삭제와
+approval-gate 시나리오 11의 대기 행·담당·해제 조건 및 78−1−27=50 집계는 유지한다.
+이 슬라이스는 다른 네 미구현 도구, update PR #109, 문서 PR #115/#117,
+픽스처 PR #106와 그 후속 E2E, 주석 PR #113의 소유권을 바꾸지 않는다.
+
 ## 문서 인벤토리
 
 | 종류 | 파일 |
