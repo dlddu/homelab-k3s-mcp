@@ -60,9 +60,11 @@
 | 2026-09-15 | `tests/k8s/kind/gatekeeper-fixture.yaml` · `tests/k8s/kind/gatekeeper-variant.yaml` | 48 | `725386b4affe` | **신규 범위 첫 판정**(`rct_20260915-0008` — 실물 gatekeeper 픽스처 슬라이스). 제거 0줄. 유지 근거는 전부 「왜 이 형태인가」다 — fixture 는 「왜 모킹 대신 실물인가(시나리오 문서의 픽스처 절이 정한다)」, 「왜 기록 프록시가 필요한가(create 본문과 x-api-key 존재는 그 자체가 시나리오 2 의 검증 대상이라 upstream 만으로는 관측되지 않는다 — http-trace 선례의 기록면)」, 「왜 sha 태그 핀인가(:latest 는 gatekeeper 레포의 PR 이 덮어쓴다)」, 「왜 fsGroup 인가(컨테이너가 uid 1001 로 SQLite 를 쓴다)」를 진다. variant 는 「왜 별도 배포인가(env 는 배포 단위다 — 타임아웃 단축과 userId 핀은 primary 와 양립하지 않는다)」, 「왜 전용 ClusterRoleBinding 인가(primary 의 바인딩은 primary 네임스페이스의 SA 만 가리킨다 — k8s/rbac.yaml 선례)」를 진다. 「VAPID 더미가 GATE 완화가 아닌 이유(push.NewService 는 기동 시 검증하지 않고 dispatchPush 는 fire-and-forget 이다)」는 이 파일에만 복원되는 지식이다. e2e-mocking-policy 의 등재 대상이 아님은 프록시가 기록면이지 대체재가 아니기 때문이고, 그 경계는 문서의 「무엇을 모킹으로 세는가」가 이미 정의한다 |
 | 2026-09-15 | `tests/integration/_gatekeeper.py` · `tests/integration/approval_gate_ac2.py` · `tests/integration/approval_gate_ac4.py` · `tests/integration/resource_generic_ac8.py` · `tests/integration/resource_generic_ac10.py` | 15 | `8d5c02cc7a82` | **신규 범위 첫 판정**(`rct_20260915-0008`). 전부 `#:` 상수 doc 이고 **이름과 값으로 복원되지 않는 것만** 담는다 — `E2E_USER` 는 시드 스텝과 같아야 한다는 계약의 앵커, `CREATE_BODY_FIELDS` 는 시나리오 2 의 본문 계약 목록, `VARIANT_TIMEOUT_SECONDS` 는 gatekeeper-variant.yaml 값과의 교차 제약, `REPLICA_LESS_REASON` 는 k8s 층 거부 문면의 앵커(원장 #29 의 「픽스처 ↔ 상수 매핑」 선례), `GRACE_SECONDS`/`GRACE_OBSERVATION_BUDGET` 는 「시나리오가 부르는 값이 0 이고, 기본 유예보다 짧은 예산이어야 판별식이 성립한다」를 진다. 나머지 세 파일(ac2·ac4)은 대상 이름 상수의 픽스처 매핑뿐이다 |
 | 2026-09-15 | `internal/k8s/create.go` · `internal/k8s/create_test.go` · `internal/mcp/create.go` · `internal/mcp/create_gate.go` · `internal/mcp/create_test.go` | 2 | `02f201383c52` | **신규 범위 판정 (`rct_20260915-0013`)**: 유지 2줄은 exported CreateRef/CreateResource의 최소 Go 문서다. 내부 구현과 테스트는 이름·단언으로 드러나는 설명을 반복하지 않았다. 승인 순서·미존재 대상·재시도 금지의 설계 근거는 doc-tracker.md의 resource_create 절에 둔다. |
+| 2026-09-15 | `internal/k8s/collection_precondition.go` · `internal/k8s/collection_precondition_test.go` | 6 | `86b0510d18a0` | `rct_20260915-0016` 컬렉션 목록 읽기 선행 슬라이스. 새 주석은 exported 타입·인터페이스·메서드의 최소 1줄 doc 6줄뿐이라 유지(정책 유지 대상 2). 테스트에는 주석을 더하지 않았다. 협상·페이지 완결성·상한·미연결 범위와 근거는 `prd-approval-gate` AC11 및 `test-approval-gate` 시나리오 11에 기록한다. 기존 행·판정·docstring 표면은 그대로다. |
+
 <!-- /판정-원장 -->
 
-판정 완료 합계 **<!-- 판정-합계 -->2082<!-- /판정-합계 -->줄**, 미판정 잔량
+판정 완료 합계 **<!-- 판정-합계 -->2088<!-- /판정-합계 -->줄**, 미판정 잔량
 **<!-- 판정-잔량 -->0<!-- /판정-잔량 -->줄**. 전체 대비 비율은 게이트가 출력한다(프로즈에
 적으면 낡는다).
 

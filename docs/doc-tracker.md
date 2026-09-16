@@ -28,6 +28,24 @@
 > 미연결 AC·미검증 AC·고아 테스트 없음). 별도로, 테스트 문서가 참조하는 **자동화의 실제
 > 커버리지**는 아래 "자동화 커버리지"에 정리한다(문서 구조와 별개의 일부 공백 존재).
 
+## 컬렉션 승인 목록의 내부 선행 구현 (2026-09-15 · rct_20260915-0016)
+
+`internal/k8s/collection_precondition.go`에 `CollectionTargetReader.ListTargets`를 추가했다.
+`prd-approval-gate` AC11의 게이트 소유 `list`를 구현할 때 재사용할 **메타데이터 목록 읽기
+기반**이다. 유효한 namespace 하나에서 같은 목록 버전의 페이지를 전부 모으고, 대상의
+이름·namespace·uid·resourceVersion만 반환한다. 잘못되거나 불완전한 응답, 만료, 상한 초과,
+취소는 부분 결과 없이 거부한다. 상세 계약은 `prd-approval-gate` AC11, Go/HTTP 회귀와
+그 한계는 `test-approval-gate` 시나리오 11의 선행 회귀 항목에 있다.
+
+**실제 게이트/도구 경로에는 아직 연결하지 않았다.** 기존 `TargetReader`의 get,
+`Service`, dispatcher, `GatePairs`와 19종 도구 표면은 그대로다. 따라서 아래 과거 기록의
+「list 선언만 존재 / 행사 0」는 런타임 호출에 대해서 여전히 참이다. `resource_delete_collection`
+자체와 AC11 전체, 대상 수/이름의 승인 context, 0건 승인 생략, 승인 후 변경 거부/삭제,
+1승인 1실행, 실물 gatekeeper/apiserver 검증은 후속 작업이다. 컬렉션 삭제와
+approval-gate 시나리오 11의 대기 행·담당·해제 조건 및 78−1−27=50 집계는 유지한다.
+이 슬라이스는 다른 네 미구현 도구, update PR #109, 문서 PR #115/#117,
+픽스처 PR #106와 그 후속 E2E, 주석 PR #113의 소유권을 바꾸지 않는다.
+
 ## 문서 인벤토리
 
 | 종류 | 파일 |
@@ -692,7 +710,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-session-write.md#시나리오 3 | destructiveHint 광고 | ✅ 전용 파일 `session_write_ac3.py` |
 | test-session-write.md#시나리오 4 | 거부 사유 구분 | ⏳ 구현 대기 (규칙 6 — 하네스 선행 미충족) |
 | test-session-write.md#시나리오 5 | 미설정 시 도구 에러 | ✅ 전용 파일 `session_write_ac5.py` |
-| test-approval-gate.md#시나리오 1 | 게이트 대상만 막히고 나머지는 지나간다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
+| test-approval-gate.md#시나리오 1 | 게이트 대상만 막히고 나머지는 지나간다 | ⏳ 구현 대기 (규칙 6 — 아래 행별 근거) |
 | test-approval-gate.md#시나리오 2 | 요청 본문 계약 | ✅ 전용 파일 `approval_gate_ac2.py` |
 | test-approval-gate.md#시나리오 3 | context가 판정을 가능하게 한다 | ⏳ 구현 대기 (규칙 6 — 아래 행별 근거) |
 | test-approval-gate.md#시나리오 4 | 폴링으로 판정을 관측한다 | ✅ 전용 파일 `approval_gate_ac4.py` |
@@ -759,7 +777,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-session-read.md#시나리오 2** | `snapshot` 분기가 `activate → Service.Restore → checkpointerFor(workload)` 를 타는데, 그 함수는 체크포인터가 `Enabled()` 가 아니면 `session.ErrCheckpointDisabled` 로 거부한다. 픽스처는 `CRIU_ENABLED` 를 켜지 않아 `criu.NewStubCheckpointer(false)` 가 주입되므로 **그 상태에 도달하는 길도, 도달한 뒤 읽는 길도 없다**. `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. | 이 렌즈 | kind에 CRIU 런타임·특권 파드·체크포인트 저장소를 세우거나, 아래 산문의 claude-code 아카이브 체크포인터 리드를 검증해 그 경로로 연다 |
 | **test-session-write.md#시나리오 2** | 위와 **같은 벽**을 공유한다(`snapshot` 분기 도달 불가). | 이 렌즈 | 위와 동일 |
 | **test-session-write.md#시나리오 4** | AC가 요구하는 네 거부 중 **큐 포화(429)·쿼터 소진(507)이 `data-plane/cmd/agent/claude.go` 에서만** 나온다 — shell 에이전트에는 그 상태코드를 낼 경로가 없다. 게다가 507은 **지금의 데이터 플레인에서 도달 불가**다(`scrollbackLimit` 기본 256 MiB를 낮출 env·플래그가 없고, 아카이브 복원 우회로도 생성·복원 양쪽에서 막힌다). 네 갈래 중 하나만 떼어 닫는 것은 「반쪽 단정」이라 하지 않는다. | 이 렌즈 + session-platform(상한 노출) | ⑴ session-platform 데이터 플레인이 스크롤백 상한을 설정 표면(env)으로 노출하고, ⑵ claude-code 파드가 이 하네스에서 실제로 서야 한다(부트스트랩이 상류 둘을 타므로 모킹 정책 판정이 선행) |
-| **test-approval-gate.md#시나리오 1** | 실행 단계 (a) 가 부르는 다섯 중 서 있는 것은 `resource_get(kind=Secret)` 하나뿐이고 `resource_apply`·`resource_exec`·`resource_describe` 가 미등록이다(0히트) — **`resource_delete` 는 2026-09-15 에 등록돼 이 목록에서 빠졌다**(넷 중 셋이 남았다). (b) 의 비게이트 셋은 이름부터 서지 않는다 — 시나리오가 부르는 `resource_scale`·`resource_restart` 는 없고 이 레포가 가진 것은 `workload_scale`·`workload_restart`(`outsideGate` 면제)다. 그 이름 어긋남은 차단이 아니라 **문면↔구현 불일치**이며 문면 변경은 이 렌즈가 정하지 않는다. `kind=ConfigMap` 의 `resource_get` 은 이제 권한 안이다. 판정 없이 `PENDING` 을 유지하는 상대를 세울 실물 gatekeeper 픽스처도 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ (a) 의 남은 **세** 도구 등록 **그리고** ⑵ 실물 gatekeeper 픽스처 — 다만 이 시나리오는 판정을 하지 않고 `PENDING` 만 유지하면 되므로 승인·거절 조작 배선까지는 필요 없다. (b) 의 도구 이름 정리는 제품 문서/docs-impl 의 판단이다 |
+| **test-approval-gate.md#시나리오 1** | 현행 PRD의 동사 표에 맞춰 시나리오를 정정했다. `resource_create`·`resource_update`(scale 포함)·`resource_patch`(SSA·재시작 포함)·`resource_delete`·`resource_get`·`resource_watch`는 등록돼 있다(`internal/mcp/toolslist.go`·`gate.go`). 남은 도구는 `resource_delete_collection`·`resource_exec`·`resource_attach`·`resource_port_forward`·`resource_proxy` 다섯이다. 스케일·재시작은 비게이트 대조군이 아니며, `list`·비민감 `get`/`watch`·`api_resources`가 대조군이다. main에는 실물 gatekeeper 픽스처와 `approval_gate_ac1.py`가 없다. 기존 Go 단위는 부분 근거이고, unknown-tool/인자 오류를 승인 게이트 검증으로 세지 않는다. | docs-impl(남은 도구) → 이 렌즈(e2e; 공통 실물 픽스처는 기존 rct_20260915-0008/PR #106) | ⑴ 남은 다섯 도구와 기존 PRD의 게이트 계약 구현, ⑵ 실물 gatekeeper 픽스처 착지. 그 뒤 전용 `approval_gate_ac1.py`에서 전체 (a)·(b)의 승인 부재/정상 대조를 검증하고 (c)의 선언 누락 기동 실패도 검증한다. 도구 실행과 AC11의 선언된 사전 읽기는 구분하며, 레지스트리 이름 불일치 단위만으로 (c)의 실제 권한 선언 검증을 충족했다고 세지 않는다. 자동 응답을 끄고 판정 없이 대기 종료를 관측하므로 승인·거절 조작은 이 시나리오의 선행이 아니다. 전용 검증과 레지스트리·자동화 필드를 함께 갱신하기 전까지 구현 대기 유지 |
 | **test-approval-gate.md#시나리오 3** | 「게이트 대상 verb 각각」 아홉 중 `create`·`update`·`patch`·`delete`는 등록돼 있다(`internal/mcp/toolslist.go`·`gate.go`·`tests/integration/_helpers.py`). 스케일의 현재→목표 레플리카와 재시작 어노테이션 패치도 기존 경로다. 남은 다섯은 `resource_delete_collection`·`resource_exec`·`resource_attach`·`resource_port_forward`·`resource_proxy`다. 생성된 `context`를 수집할 실물 gatekeeper 픽스처도 main에는 없다. 네 verb만 단언해서 「각각」을 충족했다고 세지 않는다. | docs-impl(남은 도구) → 이 렌즈(e2e; 공통 픽스처는 PR #106) | ⑴ 남은 다섯 도구와 각 verb의 시나리오상 context 계약 구현, ⑵ 실물 gatekeeper 픽스처 착지. 그 뒤 아홉 verb의 상세·좌표 해석 실패까지 전용 `approval_gate_ac3.py`에서 검증 |
 | **test-approval-gate.md#시나리오 5** | **⑴ 은 2026-09-15 에 무너졌다** — 실물 gatekeeper 픽스처가 착지했고(`rct_20260915-0008`, `tests/k8s/kind/gatekeeper-fixture.yaml`), `REJECTED`·`EXPIRED`·타임아웃·연결 실패·`GATEKEEPER_BASE_URL`/`GATEKEEPER_API_KEY` 미설정은 실물 + 배포 env 조작으로 만들 수 있다. **남은 차단은 `externalId` 충돌(409)과 5xx 를 만들 수단**이다 — 클라이언트가 `externalId` 를 호출마다 무작위로 만들므로 실물로는 충돌을 강제할 수 없고, 5xx 주입 경로도 실물에는 없다. 스텁은 이 렌즈에서 쓸 수 없으므로(위 문단) 주입 수단의 등재 판정이 선행이다. 여덟 중 일부만 떼어 닫는 것은 이 원장이 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. | 이 렌즈(e2e) + mock-policy(409·5xx 주입 수단의 등재 판정) | ⑵ 409·5xx 를 만들 수단 — 실물에 주입 경로가 생기거나, `e2e-mocking-policy.md` 가 해당 스텁을 카테고리·대체 검증과 함께 등재하거나. **도구 축도 픽스처 축도 더는 차단 요인이 아니다** |
 | **test-approval-gate.md#시나리오 6** | `resource_patch`·`resource_update(subresource=scale)`·민감 종류 `resource_get`은 등록돼 있고, 게이트는 승인 전 읽은 `resourceVersion`·`uid`를 실행 직전에 재확인한다(`internal/mcp/gate.go::confirmTargetUnchanged`). 업데이트 미등록 주장은 더는 맞지 않는다. `resource_create`도 등록돼 승인 중 같은 이름이 생기면 API 409로 거부하며, 생성 context에는 기존 대상의 resourceVersion이 없다. 현재 시나리오에서 남은 미등록 경로는 `resource_exec`(파드 재생성 뒤 uid 불일치)다. 승인 요청과 판정 사이에 외부 변경을 넣을 실물 gatekeeper 픽스처도 없다. `resource_patch`의 원자적 조건 구현과 Go/HTTP 회귀는 추가됐지만 `resource_update` 및 다섯 경로의 실물 E2E 완료를 뜻하지 않는다. | docs-impl(exec 및 제품 잔여) → 이 렌즈(e2e; 공통 픽스처는 PR #106) | ⑴ `resource_exec`의 해당 거부 계약 구현, ⑵ 실물 gatekeeper 픽스처 착지. 이후 `approval_gate_ac6.py`에서 patch·scale·Secret get·exec·create 다섯 케이스를 모두 검증하며, create는 재확인 대신 API의 409와 승인 context의 resourceVersion 부재를 확인 |
