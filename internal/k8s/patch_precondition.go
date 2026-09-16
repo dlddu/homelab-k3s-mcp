@@ -53,6 +53,9 @@ func approvedPatch(ref PatchRef) ([]byte, error) {
 				return nil, apiErrorf("refusing patch: metadata.%s differs from the approved target", condition[0])
 			}
 		}
+		if ref.PatchType == "apply" && condition[0] == "uid" {
+			continue
+		}
 		metadata[condition[0]] = encoded
 	}
 	patch["metadata"], _ = json.Marshal(metadata)
