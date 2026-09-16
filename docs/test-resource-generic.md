@@ -199,13 +199,19 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **검증 AC**: AC9
 - **자동화**: Go 단위 셋은 계획한 이름 그대로 서 있다 —
   `internal/mcp/resource_test.go::TestPatchTypes`(네 `patchType` + 인자 거부 여섯),
-  `TestRestartPatchTouchesOnlyAnnotation`(서버가 본문을 고쳐 쓰거나 필드를 더하지 않는다),
+  `TestRestartPatchTouchesOnlyAnnotation`(서비스에 도달하는 호출자 데이터 본문은 유지한다; API 경계에는 승인 조건만 추가된다),
   `TestRestartPatchIsGatedLikeAnyPatch`. 파드 교체와 `spec.replicas` 보존은 apiserver 의
   거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
   통합은 `tests/integration/resource_generic_ac9.py` — 네 patchType 각각의 승인·적용,
   재시작 패치 뒤 파드 교체(uid 기준), `spec.replicas` 보존, 그 어노테이션 외 무변경을 spec
   전문 비교로 잰다. `workload_restart_ac1.py` 는 #72 에서 폐기됐으므로 승계할 파일은 없고
   단언은 새로 저작했다
+  추가 회귀: `internal/k8s/patch_precondition_test.go`는 네 형식의 HTTP PATCH 경로·매체형·
+  승인 조건·manager 보존, 409/422/429/503/403의 단일 요청과 오류 비누출,
+  JSON Patch의 앞뒤 조건 실패, metadata 조건 변조 거부와 큰 정수 보존을 검증한다.
+  `internal/mcp/patch_precondition_test.go`는 승인 상태 전달·호출자 위조값 무시,
+  누락/변경 상태의 0쓰기, 충돌 시 1승인·1쓰기·재읽기 없음과 호출 간 격리를 검증한다.
+  이들은 Go/HTTP 경계 회귀이며 실물 apiserver·gatekeeper 통합 증거를 대신하지 않는다.
 
 ### 시나리오 10: 삭제는 단건만
 - **사전 조건**: 동일
