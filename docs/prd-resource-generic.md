@@ -224,7 +224,12 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
 
   `apply`도 기존 대상에만 쓴다 — 승인된 `resourceVersion`·`uid`를 게이트가 실행
   직전에 다시 읽어 대조하므로(`prd-approval-gate` AC6), 사라진 대상을 다시 만드는
-  경로가 되지 않는다. `fieldManager`는 호출자가 고른 값을 유지하고 `force`를 보내지
+  경로가 되지 않는다.
+  apply 본문은 apiserver가 applied config '객체'로 해석해 본문의 gvk에서 타입을 찾는
+  유일한 patch 본문이므로, 좌표의 `apiVersion`·`kind`를 호출자가 쓰지 않았을 때만
+  본문에 채워 보내고, 호출자가 좌표와 다른 값을 쓰면 `resourceVersion`·`uid`와
+  똑같이 전송 전에 거부한다.
+`fieldManager`는 호출자가 고른 값을 유지하고 `force`를 보내지
   않는다. 버전·필드 소유권 충돌 또는 JSON `test` 실패는 현재 호출의 **자동 거부**로
   끝난다. 버전을 새로 읽어 대체하거나, 같은 승인으로 재시도하거나, 자동 재승인을
   요청하지 않는다. HTTP `Retry-After`도 재시도하지 않는다. 네트워크·5xx 실패는 결과가
