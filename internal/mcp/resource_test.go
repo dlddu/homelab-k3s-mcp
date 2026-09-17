@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
 // restartPatch is AC9's rolling restart.
@@ -535,3 +536,130 @@ func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
 		}
 	})
 }
+
+// AC12: exec runs one command in one named pod and answers with stdout and
+// stderr separated, the refusals that arguments can see happen before an
+// approval is spent, and a response the caps cut says so.
+func TestExecStreamsAndCaps(t *testing.T) {
+	t.Run("runs and hands the pod, the container and the command to the cluster", func(t *testing.T) {
+		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		h, fake := testHandler(t, gate, toolRegistry)
+
+		outcome := &k8s.ExecOutcome{
+			Pod:      "api",
+			Stdout:   "out\n",
+			Stderr:   "err\n",
+			ExitCode: int32PtrExec(1),
+			Success:  false,
+		}
+		fake.execOutcome = outcome
+
+		result, rerr := callTool(t, h, "resource_exec", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","container":"chatty","command":["echo","hi"]}`)
+		if rerr != nil {
+			t.Fatalf("tools/call = %v, want the approved exec to run", rerr)
+		}
+		ref, container, command := fake.exec()
+		if ref.APIVersion != "v1" || ref.Kind != "Pod" || ref.Namespace == nil || *ref.Namespace != "ops" || ref.Name != "api" {
+			t.Errorf("exec coordinate = %+v, want v1 Pod ops/api", ref)
+		}
+		if container == nil || *container != "chatty" {
+			if container == nil {
+				t.Error("exec container = nil, want chatty")
+			} else {
+				t.Errorf("exec container = %q, want chatty", *container)
+			}
+		}
+		if strings.Join(command, " ") != "echo hi" {
+			t.Errorf("exec command = %v, want [echo hi]", command)
+		}
+		if fake.count() != 1 {
+			t.Errorf("kubernetes calls = %d, want 1", fake.count())
+		}
+
+		payload := result.(map[string]any)["structuredContent"].(map[string]any)
+		if got := payload["stdout"]; got != "out\n" {
+			t.Errorf("stdout = %v, want out\n", got)
+		}
+		if got := payload["stderr"]; got != "err\n" {
+			t.Errorf("stderr = %v, want err\n", got)
+		}
+		if code, ok := payload["exitCode"].(*int32); !ok || code == nil || *code != 1 {
+			t.Errorf("exitCode = %v, want 1", payload["exitCode"])
+		}
+		if got := gate.calls[0].Pair.String(); got != "create on pods/exec" {
+			t.Errorf("gated pair = %q, want %q", got, "create on pods/exec")
+		}
+	})
+
+	t.Run("stream truncation is marked, not silent", func(t *testing.T) {
+		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		h, fake := testHandler(t, gate, toolRegistry)
+		fake.execOutcome = &k8s.ExecOutcome{
+			Stdout:          strings.Repeat("y", 100),
+			StdoutTruncated: true,
+			StderrTruncated: true,
+			TimeLimited:     true,
+		}
+		result, rerr := callTool(t, h, "resource_exec", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","command":["yes"]}`)
+		if rerr != nil {
+			t.Fatalf("tools/call = %v, want a capped exec to still answer", rerr)
+		}
+		payload := result.(map[string]any)["structuredContent"].(map[string]any)
+		if payload["stdoutTruncated"] != true || payload["stderrTruncated"] != true {
+			t.Errorf("truncation flags = %v/%v, want both true", payload["stdoutTruncated"], payload["stderrTruncated"])
+		}
+		if payload["timeLimited"] != true {
+			t.Errorf("timeLimited = %v, want true — the time cap is what stopped the command", payload["timeLimited"])
+		}
+	})
+
+	refusals := []struct {
+		name string
+		args string
+		want string
+	}{
+		{"missing command", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api"}`, "command is required"},
+		{"empty command", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","command":[]}`, "non-empty array"},
+		{"non-string command element", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","command":["echo",1]}`, "command element 1"},
+		{"missing name", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","command":["echo"]}`, "name is required"},
+		{"missing kind", `{"apiVersion":"v1","namespace":"ops","name":"api","command":["echo"]}`, "kind is required"},
+		{"explicit subresource", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","subresource":"exec","command":["echo"]}`, "pass no subresource"},
+	}
+	for _, tc := range refusals {
+		t.Run(tc.name, func(t *testing.T) {
+			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			h, fake := testHandler(t, gate, toolRegistry)
+			_, rerr := callTool(t, h, "resource_exec", tc.args)
+			if rerr == nil {
+				t.Fatal("tools/call = nil error, want a refusal")
+			}
+			if !strings.Contains(rerr.message, tc.want) {
+				t.Errorf("error = %q, want it to mention %q", rerr.message, tc.want)
+			}
+			if fake.count() != 0 {
+				t.Errorf("kubernetes calls = %d, want 0 — a rejected argument must not reach the cluster", fake.count())
+			}
+		})
+	}
+}
+
+// The exec refusal AC6 names is a pod recreated under the same name; the shared
+// table over every gated tool carries the case.
+func TestExecContextCarriesTheCommand(t *testing.T) {
+	reader := newStateReader()
+	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
+
+	args := `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","container":"chatty","command":["echo","hi"]}`
+	if _, rerr := callTool(t, h, "resource_exec", args); rerr != nil {
+		t.Fatalf("tools/call = %v, want the approved exec to run", rerr)
+	}
+	ctx := gate.context(0)
+	for _, want := range []string{"echo", "hi", "chatty", "create on pods/exec", "v1 Pod ops/api"} {
+		if !strings.Contains(ctx, want) {
+			t.Errorf("approval context is missing %q:\n%s", want, ctx)
+		}
+	}
+}
+
+func int32PtrExec(n int32) *int32 { return &n }

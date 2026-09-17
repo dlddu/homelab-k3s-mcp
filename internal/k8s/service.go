@@ -29,6 +29,11 @@ type Service interface {
 	// in namespace. container is required when the pod has more than one
 	// container; pass nil to default to the pod's only container.
 	ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*ExecOutcome, error)
+
+	// ExecResource is the coordinate-addressed half of exec
+	// (prd-resource-generic AC12): one named pod, one command array, stdout and
+	// stderr returned separately under AC12's byte and time caps.
+	ExecResource(ctx context.Context, ref ExecRef, container *string, command []string) (*ExecOutcome, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -77,5 +82,9 @@ func (u *Unavailable) DeleteResource(context.Context, DeleteRef) (*ResourceResul
 }
 
 func (u *Unavailable) ExecInPod(context.Context, string, string, *string, []string) (*ExecOutcome, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) ExecResource(context.Context, ExecRef, *string, []string) (*ExecOutcome, error) {
 	return nil, unavailableErr(u.reason)
 }

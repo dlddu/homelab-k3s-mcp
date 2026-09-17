@@ -125,6 +125,11 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourceDelete,
 	},
 
+	"resource_exec": {
+		decl:   toolDeclaration{resolve: execPairs(), target: genericTarget()},
+		handle: (*Handler).resourceExec,
+	},
+
 	"dear_baby_reset_user": {
 		decl: toolDeclaration{
 			pairs: []gatekeeper.Pair{

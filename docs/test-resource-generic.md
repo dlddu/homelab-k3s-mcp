@@ -236,8 +236,10 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **기대 결과**: stdout 과 stderr 가 구분되어 반환됨. `container` 누락이 거부되고 후보
   이름이 제시됨. 무한 출력은 바이트·시간 상한에서 잘리고 **잘렸음이 응답에 표시**됨
 - **검증 AC**: AC11
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestExecStreamsAndCaps`.
-  통합 `resource_generic_ac11.py`
+- **자동화**: Go 단위 `resource_test.go::TestExecStreamsAndCaps` 착지(2026-09-17 —
+  stdout·stderr 구분 전달과 좌표·컨테이너·명령 전달, 인자 사전 거부(클러스터 호출 0),
+  상한 잘림·시간 상한 표시, AC6의 승인 뒤 재생성 거부). 통합 `resource_generic_ac11.py`
+  는 실물 gatekeeper 픽스처 대기.
 
 ### 시나리오 12: 컬렉션 일괄 삭제
 - **사전 조건**: kind 실물 gatekeeper, 같은 레이블을 단 ConfigMap 5개와 다른 레이블 2개

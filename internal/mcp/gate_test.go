@@ -29,7 +29,15 @@ type countingK8s struct {
 	// names — a kind with no replicas — is discovery's answer rather than an
 	// argument this level can see, so a fake that only ever succeeds cannot
 	// exercise it.
-	updateErr error
+	updateErr         error
+	lastExec          k8s.ExecRef
+	lastExecContainer *string
+	lastExecCommand   []string
+	// execOutcome/execErr script what ExecResource answers, the way updateErr
+	// does for update: truncation and the container-candidate refusal are
+	// cluster facts this level cannot see.
+	execOutcome *k8s.ExecOutcome
+	execErr     error
 }
 
 func (c *countingK8s) count() int {
@@ -140,6 +148,38 @@ func (c *countingK8s) delete() k8s.DeleteRef {
 func (c *countingK8s) ExecInPod(context.Context, string, string, *string, []string) (*k8s.ExecOutcome, error) {
 	c.hit()
 	return &k8s.ExecOutcome{Success: true}, nil
+}
+
+// ExecResource records what it was handed, the way UpdateResource records its
+// ref: the coordinate, the container and the command array the tool sent are
+// the assertion (AC12). execOutcome and execErr let a case script what the
+// cluster layer answers, the way updateErr does for a kind with no replicas.
+func (c *countingK8s) ExecResource(_ context.Context, ref k8s.ExecRef, container *string, command []string) (*k8s.ExecOutcome, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastExec = ref
+	c.lastExecContainer = container
+	c.lastExecCommand = append([]string(nil), command...)
+	outcome, err := c.execOutcome, c.execErr
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if outcome == nil {
+		outcome = &k8s.ExecOutcome{
+			Pod:     ref.Name,
+			Stdout:  "hi\n",
+			Stderr:  "",
+			Success: true,
+		}
+	}
+	return outcome, nil
+}
+
+func (c *countingK8s) exec() (k8s.ExecRef, *string, []string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastExec, c.lastExecContainer, c.lastExecCommand
 }
 
 // scriptedGate answers with one prepared decision (or one refusal) and records
@@ -733,6 +773,14 @@ func TestExecutionIsRefusedWhenTargetChangedAfterApproval(t *testing.T) {
 			name: "recreated under the same name",
 			tool: "resource_patch",
 			args: `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","patchType":"merge","patch":{"spec":{"replicas":2}}}`,
+			next: k8s.TargetState{ResourceVersion: "100", UID: "uid-2"},
+		},
+		{
+			// exec's pod: AC6's own paragraph is written about it, and the tool
+			// now exists to hold the case.
+			name: "exec pod recreated under the same name",
+			tool: "resource_exec",
+			args: `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","command":["echo","hi"]}`,
 			next: k8s.TargetState{ResourceVersion: "100", UID: "uid-2"},
 		},
 	} {

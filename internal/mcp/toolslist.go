@@ -346,6 +346,50 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_exec",
+      "description": "Run one command inside a container of one named Kubernetes pod (the pods/exec subresource) and return stdout and stderr separately. Exercises the create verb on pods/exec only and always requires human approval. container is required when the pod has more than one container; the apiserver's refusal names the candidates. Output is capped at 256KiB per stream and the run at 30 seconds — a response cut by a cap says so instead of ending early.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the pod kind, e.g. \"v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to exec in, e.g. \"Pod\". A kind with no exec subresource is refused."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for pods; rejected for cluster-scoped kinds."
+          },
+          "name": {
+            "type": "string",
+            "description": "Pod name. Required; this tool runs one command in one named pod, not a selection."
+          },
+          "container": {
+            "type": "string",
+            "description": "Container to run in. Omit only when the pod has one container; the refusal for an omitted name lists the candidates."
+          },
+          "command": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1,
+            "description": "Array of argv to run, e.g. [\"echo\", \"hi\"]. The approval screen carries it verbatim."
+          }
+        },
+        "required": ["apiVersion", "kind", "name", "command"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Exec Resource",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "dear_baby_reset_user",
       "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-user CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
       "inputSchema": {

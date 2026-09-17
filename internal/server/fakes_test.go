@@ -136,6 +136,13 @@ func (f *fakeK8s) ExecInPod(_ context.Context, namespace, labelSelector string, 
 	return &k8s.ExecOutcome{Pod: "dear-baby-abcd", ExitCode: &zero, Success: true}, nil
 }
 
+func (f *fakeK8s) ExecResource(_ context.Context, ref k8s.ExecRef, container *string, command []string) (*k8s.ExecOutcome, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	zero := int32(0)
+	return &k8s.ExecOutcome{Pod: ref.Name, ExitCode: &zero, Success: true}, nil
+}
+
 type installationTokenCall struct {
 	repositories []string
 	permissions  map[string]any
