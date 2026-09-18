@@ -131,7 +131,11 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   61은 거부. `resourceVersion` 이후 변경만 옴. Secret 은 미승인 시 거부되고 승인 후에는
   이벤트가 오되 수·창 상한이 그대로 적용됨
 - **검증 AC**: AC6
-- **자동화**: (미작성) — 통합 `resource_generic_ac6.py` 는 아직 없다. Go 단위 둘은 계획한
+- **자동화**: 통합 `tests/integration/resource_generic_ac6.py` — 창 안의 `MODIFIED`,
+  창 상한(61 거부), `resourceVersion` resume, 민감 종류의 미승인 거부·승인 후 수신·창 상한
+  유지를 실물 apiserver 와 실물 gatekeeper 로 단언한다. 이벤트 **수** 상한의 발화는 공유
+  클러스터에서 비결정적이라 Go 단위에 남기고, 통합은 상한이 응답 계약으로 서 있는 것까지
+  잰다. Go 단위 둘은 계획한
   이름 그대로 섰다: `internal/mcp/resource_test.go::TestWatchWindowBounds`(기본 10 · 60 통과 ·
   61·0·비정수 거부, 그리고 거부마다 k8s 호출 0)와
   `::TestWatchOnGatedKindRequiresApproval`(`kind=Secret` 은 미승인 시 거부되고 k8s 호출 0,
@@ -163,9 +167,11 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestMultiDocCreateStopsAndReportsOnFailure`가 승인 전량 선행, 거절/만료/오류 시 호출 0,
   부분 실패의 좌표 보고와 미소비 승인을 검증한다. 같은 파일에서 파싱 전체 선행,
   승인 재사용 거부, 민감 값 마스킹, 자동 승인 표시도 검증한다.
-  **통합 `resource_generic_ac7.py`는 아직 미작성**이다. 위 테스트는 dispatcher와 HTTP
-  경계를 검증하며 실 apiserver·gatekeeper 동작을 입증하지 않는다. 실물 gatekeeper
-  픽스처와 전용 E2E 후속은 `doc-tracker.md`의 시나리오 7 행에 남긴다.
+  **통합 `tests/integration/resource_generic_ac7.py`** 가 그 위에 실물 층을 얹는다 —
+  단건 생성·같은 이름의 409·2문서의 승인 2건·둘째 거절 시 첫째 객체조차 없음·둘 다 승인
+  뒤 실행 409 의 좌표 보고와 무롤백을 실 apiserver 와 실물 gatekeeper 로 관측한다.
+  위 Go 테스트는 dispatcher와 HTTP 경계를 검증하며 그 자체로는 실 apiserver·gatekeeper
+  동작을 입증하지 않는다.
 
 ### 시나리오 8: 전체 교체와 스케일
 - **사전 조건**: 동일, `workload-fixture` 기준선, DaemonSet 픽스처
@@ -245,8 +251,11 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **검증 AC**: AC11
 - **자동화**: Go 단위 `resource_test.go::TestExecStreamsAndCaps` 착지(2026-09-17 —
   stdout·stderr 구분 전달과 좌표·컨테이너·명령 전달, 인자 사전 거부(클러스터 호출 0),
-  상한 잘림·시간 상한 표시, AC6의 승인 뒤 재생성 거부). 통합 `resource_generic_ac11.py`
-  는 실물 gatekeeper 픽스처 대기.
+  상한 잘림·시간 상한 표시, AC6의 승인 뒤 재생성 거부). 통합
+  `tests/integration/resource_generic_ac11.py` 는 같은 계약을 실물 kubelet 왕복으로
+  관측한다 — `resource-generic-multi` 파드에서 stdout·stderr 가 갈라져 오는 것,
+  `container` 누락이 승인 뒤 apiserver 거절로 후보 이름(`chatty`·`quiet`)을 실어 오는 것,
+  `yes` 의 끝없는 출력이 256KiB 상한에서 잘리고 `stdoutTruncated` 로 표시되는 것.
 
 ### 시나리오 12: 컬렉션 일괄 삭제
 - **사전 조건**: kind 실물 gatekeeper, 같은 레이블을 단 ConfigMap 5개와 다른 레이블 2개
@@ -307,11 +316,15 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `internal/mcp/resource_test.go::TestSecretWriteContextRedactsValues` 가 민감 종류 쓰기의
   `context` 에 키 이름과 바이트 수만 남는 것을 단언하고, 같은 파일의
   `TestOrdinaryWriteKeepsItsBodyInTheContext` 가 그 대조군이다(전부 가리는 구현도 막는다).
-  `TestGatedKindsGateEveryVerbButList` 는 **(미작성)** —
+  `TestGatedKindsGateEveryVerbButList` 는 아직 서지 않았다 —
   `get`·`watch`·`create`·`update`·`patch`·`delete` 여섯 verb가 모두 등록돼 있다.
   create의 값 가림·생성 값 보존은 `internal/mcp/create_test.go`의 Go 테스트로 검증한다.
-  통합 `resource_generic_ac16.py`도 **(미작성)**이며 실물 gatekeeper 픽스처가 선행이다.
-  현재의 행별 근거·담당·해제 조건은 `doc-tracker.md`의 구현 대기 표를 따른다.
+  통합 `tests/integration/resource_generic_ac16.py` 가 여섯 verb 전부를 한 파일에서
+  미승인 거부시키고, 승인된 create 의 `context` 가림(`(masked, NB)`)·저장된 값·승인 없는
+  `list`·대조군 ConfigMap `get` 을 실물로 단언한다. 기대 결과의 「k8s 호출 카운트 0」은
+  SUT 내부 사실이라 통합이 셀 수 없으므로(감사 프록시 부재), 통합은 그 자리에서 **밖에서
+  관측 가능한 등가물**(거부된 create 의 객체 부재 · update·patch 뒤 `resourceVersion`
+  불변 · delete 뒤 객체 존속)을 단언하고 호출 수 자체는 Go 단위에 남긴다.
 
 ### 시나리오 17: 값이 새는 경로가 막혀 있다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, 그 토큰을 서빙하는 HTTP 파드
