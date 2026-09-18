@@ -3,6 +3,7 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -861,6 +862,17 @@ func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*Resourc
 			return nil, APIError("patch refused: approved target version or field ownership conflicts; call ended without retry or automatic reapproval")
 		}
 		if apierrors.IsInvalid(err) || apierrors.IsBadRequest(err) {
+			// The apiserver's own message is the only wire-level detail this
+			// refusal has; without it a "failed approved-target precondition"
+			// cannot be told apart from a genuinely invalid patch. Quote it in
+			// parentheses and keep the contract wording otherwise intact.
+			var status apierrors.APIStatus
+			if errors.As(err, &status) && status.Status().Message != "" {
+				return nil, apiErrorf(
+					"patch refused: invalid patch or failed approved-target precondition (<apiserver: %s>); call ended without retry or automatic reapproval",
+					status.Status().Message,
+				)
+			}
 			return nil, APIError("patch refused: invalid patch or failed approved-target precondition; call ended without retry or automatic reapproval")
 		}
 		return nil, APIError("patch failed; outcome may be uncertain; call ended without retry or automatic reapproval")

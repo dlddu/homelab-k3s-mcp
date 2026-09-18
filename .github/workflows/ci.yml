@@ -182,6 +182,34 @@ jobs:
       - name: Deploy http-trace fixture
         run: kubectl apply -f tests/k8s/kind/http-trace.yaml
 
+      # Real gatekeeper for the approval-gate e2e (approval_gate_ac*.py) plus
+      # the recording proxy in front of it. The API-key secret is created
+      # BEFORE the rollout wait: without it the pod sits in
+      # CreateContainerConfigError (the deployment requires VAPID and API
+      # secretKeyRefs) and the wait can never pass. Seeding the e2e user has to
+      # wait for the rollout -- the user only exists once the API is alive.
+      - name: Deploy gatekeeper fixture
+        run: kubectl apply -f tests/k8s/kind/gatekeeper-fixture.yaml
+
+      - name: Create gatekeeper test secret
+        run: |
+          GK_KEY="$(openssl rand -hex 24)"
+          kubectl -n gatekeeper create secret generic gatekeeper-secrets \
+            --from-literal=API_SECRET_KEY="$GK_KEY" \
+            --from-literal=VAPID_SUBJECT=mailto:ci-e2e@invalid \
+            --from-literal=VAPID_PUBLIC_KEY=ci-e2e-unused \
+            --from-literal=VAPID_PRIVATE_KEY=ci-e2e-unused \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # The e2e's record reads need the same key: GET /api/requests/{id} is
+          # API-key protected (only the list is public), and that route is where
+          # the read-time EXPIRED evaluation happens.
+          echo "GATEKEEPER_E2E_API_KEY=$GK_KEY" >> "$GITHUB_ENV"
+
+      - name: Wait for gatekeeper fixture rollout
+        run: |
+          kubectl -n gatekeeper rollout status deploy/gatekeeper --timeout=300s
+          kubectl -n gatekeeper rollout status deploy/gatekeeper-trace --timeout=180s
+
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
 
@@ -239,6 +267,46 @@ jobs:
             --from-literal=OPENSEARCH_STS_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      # The e2e user is created through the forward-auth path and its users.id
+      # pinned into the variant secret: GATEKEEPER_USER_ID must be a users.id,
+      # which only exists after the first forward-auth request, so the id cannot
+      # be baked into a manifest. The main SUT reaches gatekeeper directly; the
+      # variant goes through the recording proxy because approval_gate_ac2.py
+      # asserts the create body, which only the proxy observes.
+      - name: Seed the gatekeeper e2e user and create the SUT gate secrets
+        run: |
+          GK_KEY="$GATEKEEPER_E2E_API_KEY"
+          # Not `kubectl run --rm -i`: the attach stream has been observed to
+          # interleave non-JSON bytes into the redirected stdout. A completed
+          # pod's `kubectl logs` is the deterministic capture path.
+          kubectl -n gatekeeper run gatekeeper-seed --quiet --restart=Never \
+            --image=curlimages/curl --image-pull-policy=IfNotPresent \
+            --command -- curl -sS -H 'Remote-User: gatekeeper-e2e' http://gatekeeper/api/me/
+          # Pods carry no "complete" condition (that is a Job condition) -- wait
+          # on the phase instead. A Failed pod has no useful log to parse, so
+          # surface it before the JSON read.
+          kubectl -n gatekeeper wait --for=jsonpath='{.status.phase}'=Succeeded \
+            --timeout=120s pod/gatekeeper-seed \
+            || { kubectl -n gatekeeper describe pod gatekeeper-seed || true; \
+                 kubectl -n gatekeeper logs pod/gatekeeper-seed || true; exit 1; }
+          kubectl -n gatekeeper logs pod/gatekeeper-seed > /tmp/gk-me.json
+          kubectl -n gatekeeper delete pod gatekeeper-seed --wait=false || true
+          echo "seed response: $(cat /tmp/gk-me.json)"
+          GK_USER_ID="$(python3 -c 'import json; print(json.load(open("/tmp/gk-me.json"))["id"])')"
+          # The variant namespace does not exist yet (its fixture applies later);
+          # the secret must exist before the variant pod starts.
+          kubectl create namespace homelab-k3s-mcp-gatekeeper-variant \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-gatekeeper \
+            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
+            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp-gatekeeper-variant create secret generic homelab-k3s-mcp-gatekeeper \
+            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper-trace.gatekeeper.svc.cluster.local:3000 \
+            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
+            --from-literal=GATEKEEPER_USER_ID="$GK_USER_ID" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
@@ -261,6 +329,9 @@ jobs:
 
       - name: Apply auth-variant fixture
         run: kubectl apply -f tests/k8s/kind/auth-fixture.yaml
+
+      - name: Apply gatekeeper-variant fixture
+        run: kubectl apply -f tests/k8s/kind/gatekeeper-variant.yaml
 
       # The session pod image, preloaded into the kind node. The control plane
       # gives a session pod two minutes to report Ready and that budget covers
@@ -332,6 +403,9 @@ jobs:
       - name: Wait for auth-variant rollout
         run: kubectl -n homelab-k3s-mcp-auth rollout status deploy/homelab-k3s-mcp-auth --timeout=120s
 
+      - name: Wait for gatekeeper-variant rollout
+        run: kubectl -n homelab-k3s-mcp-gatekeeper-variant rollout status deploy/homelab-k3s-mcp-gatekeeper-variant --timeout=120s
+
       # Ready before the primary group runs: session_list_ac{1,2}.py seed and
       # read this control plane. The image is pulled from GHCR (not kind-loaded),
       # so allow for the pull.
@@ -395,6 +469,16 @@ jobs:
           trap 'kill $PF_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp-oauth" || true' EXIT
           python tests/integration/run_all.py --group oauth-variant --base-url http://127.0.0.1:8089
 
+      # 실물 gatekeeper 를 기록 프록시 뒤에 둔 배포 변형(tests/k8s/kind/gatekeeper-variant.yaml).
+      # 승인 게이트의 요청 본문 계약(AC2)·만료 관측(AC4 (b))·자동 응답 모드(AC9)는
+      # 이 배포에서만 관측된다.
+      - name: Run integration tests (gatekeeper-variant deployment)
+        run: |
+          ( while true; do kubectl -n homelab-k3s-mcp-gatekeeper-variant port-forward svc/homelab-k3s-mcp-gatekeeper-variant 8092:80 >>/tmp/pf-gatekeeper.log 2>&1; sleep 1; done ) &
+          PF_PID=$!
+          trap 'kill $PF_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp-gatekeeper-variant" || true' EXIT
+          python tests/integration/run_all.py --group gatekeeper-variant --base-url http://127.0.0.1:8092
+
       - name: Dump cluster diagnostics on failure
         if: failure()
         run: |
@@ -406,6 +490,11 @@ jobs:
           kubectl -n dear-baby-test get all -o wide || true
           kubectl -n dear-baby-test describe deploy/dear-baby-fixture || true
           kubectl -n dear-baby-test logs deploy/dear-baby-fixture --tail=200 || true
+          kubectl -n gatekeeper get all -o wide || true
+          kubectl -n gatekeeper describe deploy/gatekeeper || true
+          kubectl -n gatekeeper logs deploy/gatekeeper --tail=200 || true
+          kubectl -n homelab-k3s-mcp-gatekeeper-variant get all -o wide || true
+          kubectl -n homelab-k3s-mcp-gatekeeper-variant logs deploy/homelab-k3s-mcp-gatekeeper-variant --tail=200 || true
           kubectl -n github-mock get all -o wide || true
           kubectl -n github-mock describe deploy/github-mock || true
           kubectl -n github-mock logs deploy/github-mock --tail=200 || true

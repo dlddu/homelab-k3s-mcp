@@ -42,6 +42,17 @@ func TestApprovedPatchPreservesDataAndConditions(t *testing.T) {
 				if _, present := metadata["uid"]; present {
 					t.Fatalf("apply must not carry uid: %s", raw)
 				}
+				if metadata["resourceVersion"] != "100" {
+					t.Fatalf("apply carries the approved version: %s", raw)
+				}
+				// The applied configuration is decoded as an object by the
+				// apiserver, which resolves the type from its gvk.
+				var apiVersion, kind string
+				json.Unmarshal(body["apiVersion"], &apiVersion)
+				json.Unmarshal(body["kind"], &kind)
+				if apiVersion != "v1" || kind != "Namespace" {
+					t.Fatalf("apply must carry the coordinate identity: %s", raw)
+				}
 			} else if metadata["resourceVersion"] != "100" || metadata["uid"] != "uid-1" {
 				t.Fatalf("conditions: %s", raw)
 			}
@@ -53,6 +64,28 @@ func TestApprovedPatchPreservesDataAndConditions(t *testing.T) {
 			}
 			if metadata["labels"].(map[string]any)["team"] != "ops" {
 				t.Fatal("caller labels lost")
+			}
+		})
+	}
+}
+
+func TestApprovedPatchApplyCallerIdentity(t *testing.T) {
+	cases := []struct {
+		name    string
+		body    string
+		wantRef bool
+	}{
+		{"matching identity passes through unchanged", `{"apiVersion":"v1","kind":"Namespace","metadata":{"labels":{"team":"ops"}}}`, false},
+		{"apiVersion differs", `{"apiVersion":"v2","metadata":{"labels":{"team":"ops"}}}`, true},
+		{"kind differs", `{"kind":"Other","metadata":{"labels":{"team":"ops"}}}`, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ref := patchRefForTest("apply")
+			ref.Patch = []byte(tc.body)
+			_, err := approvedPatch(ref)
+			if (err != nil) != tc.wantRef {
+				t.Fatalf("refuse=%v, err=%v", tc.wantRef, err)
 			}
 		})
 	}
