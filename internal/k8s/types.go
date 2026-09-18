@@ -42,6 +42,23 @@ type ExecOutcome struct {
 	Stderr   string `json:"stderr"`
 	ExitCode *int32 `json:"exit_code"`
 	Success  bool   `json:"success"`
+	// AC12's caps travel beside the text: a response that says "cut" rather
+	// than silently ending early is the difference between an answer and a lie
+	// about how much the command said.
+	StdoutTruncated bool `json:"stdout_truncated"`
+	StderrTruncated bool `json:"stderr_truncated"`
+	// TimeLimited marks the running-time cap as what stopped the call. It can
+	// be set with no truncation at all — a slow command that said little.
+	TimeLimited bool `json:"time_limited"`
+}
+
+// ExecRef names the pod resource_exec runs a command in, addressed by
+// coordinate (prd-resource-generic AC12).
+type ExecRef struct {
+	APIVersion string
+	Kind       string
+	Namespace  *string
+	Name       string
 }
 
 // LogOptions controls a read of the log subresource.
