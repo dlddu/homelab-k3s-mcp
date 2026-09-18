@@ -81,7 +81,7 @@
 | `github-mock` | `UPS` | `tests/k8s/kind/github-mock.yaml` | — |
 | `grafana-mock` | `UPS` | `tests/k8s/kind/grafana-mock.yaml` | — |
 | `dear-baby-fixture` | `IMG` | `tests/k8s/kind/dear-baby-fixture.yaml` | — |
-| `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
+| `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/gatekeeper-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
 | `DISABLE_SECURITY_PLUGIN` | `GATE` | `tests/k8s/kind/opensearch.yaml` | `tests/k8s/kind/http-trace.yaml` |
 
 <!-- /mock-exception-원장 -->
@@ -139,17 +139,33 @@ App의 private key·installation id가 필요하다. CI 클러스터 안에 GitH
 
 ### `MCP_AUTH_DISABLED` — `GATE`
 
-**대상**: 기본 kind 배포의 인증 게이트. 커버하는 것은 kind 오버레이의 configMapGenerator
-(`tests/k8s/kind/kustomization.yaml`)가 넣는 `MCP_AUTH_DISABLED=1`이다.
+**대상**: 인증이 검증 대상이 아닌 e2e를 태우는 **배포들**의 인증 게이트. 커버하는 것은 이
+등재가 선언한 두 지점이 넣는 `MCP_AUTH_DISABLED=1`이다.
+
+| 지점 | 무엇을 태우는가 |
+| --- | --- |
+| `tests/k8s/kind/kustomization.yaml` | 기본 kind 배포. kind 오버레이의 configMapGenerator가 넣는다. |
+| `tests/k8s/kind/gatekeeper-variant.yaml` | 승인 게이트 e2e 전용 배포 변형(`approval_gate_ac{2,4,9}.py`). Deployment의 `env`가 직접 넣는다 — env는 배포당이라 기본 배포의 값을 물려받을 수 없다. |
+
+두 지점은 **같은 완화**(`:ci` 이미지의 인증 게이트를 내린다)이고 같은 대체 검증을 공유하므로 한
+행으로 등재한다. 배포가 늘었다고 예외가 는 것이 아니다 — 등재 행 수와 상한은 그대로 5다.
 
 **실환경 불가 사유**: 인증을 켜면 모든 도구 호출에 유효한 자격증명이 필요해져, **인증이 검증
 대상이 아닌** 나머지 도구 e2e가 인증 설정에 종속된다. 게이트를 내려야 도구 동작을 관측할 수 있다.
+승인 게이트 변형도 같다 — 그 파일들의 검증 대상은 gatekeeper 왕복이지 인증이 아니다.
 
 **대체 검증**: `tests/k8s/kind/auth-fixture.yaml` — 같은 `:ci` 이미지를 **인증을 켠 채**
 (`MCP_AUTH_DISABLED`를 일부러 두지 않고 `MCP_API_KEYS`에 단일 키만) 띄우는 별도 배포 변형.
 `.github/workflows/ci.yml`의 `auth-variant` 그룹이 이 배포를 대상으로 돌며 인증 게이트와
 "미설정 시 graceful 거부"를 관측한다. 즉 게이트를 켠 검증이 실재하므로 이 완화는 어떤 AC도
 가리지 않는다.
+
+이 대체 검증은 **두 지점 모두에 유효하다.** 게이트를 내려 가려지는 성질은 「이 `:ci` 이미지가
+자격증명 없는/잘못된 요청을 거부하는가」이고, 그것은 **이미지의 성질**이지 배포 변형의 성질이
+아니다 — `internal/server/server.go`의 같은 코드 경로가 모든 변형에서 돈다. 따라서 게이트를 켠
+배포가 **하나라도** 실재하면 그 성질은 되찾아지며, 변형마다 auth 픽스처를 복제할 필요가 없다.
+역으로 게이트 완화를 **새로** 넣는 배포는 이 행의 지점 열에 자기를 추가해야 하고, 그 배포의
+검증 대상이 인증이 아님을 위 표에 적어야 한다.
 
 **소멸 조건**: 기본 배포에서도 인증을 켜고 모든 e2e가 자격증명을 들고 돌 수 있게 정리되면 소멸한다.
 
@@ -209,7 +225,7 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 
 | ID | 출처 | 등록일 | 해소 방향 | 소관 | 선행 | 재검토 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `approval-gate-ac5-http-failures` | `tbm_homelab-k3s-mcp-scenario-e2e/rct_20260914-0011` | `2026-09-15` | `real-environment` | `tbm_homelab-k3s-mcp-e2e-mock-policy` | tbm_homelab-k3s-mcp-scenario-e2e: 실물 tests/k8s/kind/gatekeeper-fixture.yaml 및 409·5xx 재현 가능성의 관측 로그 | `2026-10-15` |
+| `approval-gate-ac5-http-failures` | `tbm_homelab-k3s-mcp-scenario-e2e/rct_20260914-0011` | `2026-09-15` | `real-environment` | `tbm_homelab-k3s-mcp-e2e-mock-policy` | tbm_homelab-k3s-mcp-scenario-e2e: 409·5xx 재현 가능성의 관측 로그 (실물 tests/k8s/kind/gatekeeper-fixture.yaml 은 PR #106 에서 충족) | `2026-10-15` |
 
 <!-- /mock-blocker-원장 -->
 
@@ -220,10 +236,13 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 고친 슬라이스이며 이 주입 수단을 구현하지 않았다. 현재 인계는 [doc-tracker](doc-tracker.md)의
 `test-approval-gate.md#시나리오 5` 구현 대기 행에도 남아 있다.
 
-1. `tbm_homelab-k3s-mcp-scenario-e2e`가 실물 gatekeeper 이미지·kind 픽스처를 확보한다.
-   2026-09-15 기준 `gatekeeper-fixture.yaml`과 `approval_gate_ac5.py`는 없고,
-   `internal/gatekeeper/gatekeeper.go::randomExternalID`는 호출마다 난수 ID를 생성한다.
-   따라서 단순히 같은 도구를 두 번 부르는 것으로 409 재현이 된다고 가정하지 않는다.
+1. ~~`tbm_homelab-k3s-mcp-scenario-e2e`가 실물 gatekeeper 이미지·kind 픽스처를 확보한다.~~
+   **충족 (2026-09-18).** [PR #106](https://github.com/dlddu/homelab-k3s-mcp/pull/106)이
+   실물 `tests/k8s/kind/gatekeeper-fixture.yaml`(`ghcr.io/dlddu/gatekeeper:sha-762fafe` +
+   SQLite PVC)과 배포 변형 `gatekeeper-variant.yaml`, 전용 e2e `approval_gate_ac{2,4,7,8,9}.py`를
+   착지시켰다. **`approval_gate_ac5.py`는 여전히 없다** — 착지분에 AC5는 포함되지 않았다.
+   `internal/gatekeeper/gatekeeper.go::randomExternalID`는 여전히 호출마다 난수 ID를 생성하므로,
+   단순히 같은 도구를 두 번 부르는 것으로 409 재현이 된다고 가정하지 않는다.
 2. 그 소관이 실제 승인 클라이언트를 통과하는 409·5xx 경로의 재현 가능성을 조사하고 요청·응답과
    대상 리소스 미변경 증거를 남긴다. 직접 gatekeeper API에 오류를 만든 것만으로 MCP의
    fail-closed 검증을 대신하지 않는다. 인계문에 적힌 「실물로 만들 수 없다」는 말은
@@ -237,6 +256,21 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 
 실물 픽스처가 먼저 착지하면 그때 재검토하고, 아직 없더라도 표의 날짜에 다시 본다.
 이 원장을 받는 슬라이스는 E2E 구현 대기 행을 해제하거나 새 모킹을 승인하지 않는다.
+
+**재검토 기록 (2026-09-18, `tbm_homelab-k3s-mcp-e2e-mock-policy/rct_20260918-0001`)** — 위 1번의
+사건이 도래해 표의 날짜(`2026-10-15`)보다 먼저 재검토했다. 판정: **행을 유지한다.**
+선행의 절반(실물 픽스처)만 충족됐고 나머지 절반(409·5xx 재현 가능성의 관측 로그)은 미착지라
+`해소 방향`(`real-environment`)을 확정할 증거가 아직 없다. 선행 셀은 남은 절반만 남기도록
+갱신했고, **재검토 날짜는 옮기지 않았다** — 날짜는 사건이 오지 않을 때의 backstop이고, 미룰수록
+조용한 영구 면제에 가까워진다.
+
+> ⚠️ **선행 미해소가 만드는 위험(소관 = `tbm_homelab-k3s-mcp-scenario-e2e`)**:
+> [`test-approval-gate.md` 시나리오 5](test-approval-gate.md)의 **사전 조건이 아직
+> 「가짜 k8s 서비스(호출 카운터), gatekeeper 스텁을 경로별로 구성」**이라 적는다. 실물
+> gatekeeper 픽스처가 착지한 지금 그 문면대로 스텁을 만들면 **이 정책의 불변식 1을 새로
+> 깬다**(등재 없는 새 모킹). 위 2번을 수행하는 슬라이스는 그 사전 조건 문면을 실물 기반으로
+> 먼저 고치거나, 실물로 409·5xx를 낼 수 없다는 증거를 들고 이 원장으로 돌아와야 한다.
+> 그 문서의 소관은 자매 모델이므로 이 행은 위험만 인계하고 문면을 직접 고치지 않는다.
 
 ### 집행 경계
 
