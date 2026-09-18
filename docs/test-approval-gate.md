@@ -127,8 +127,10 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `create`가 원자적으로 내린다(**409**). 승인 요청 본문에도 그 대상의
   `resourceVersion`이 실리지 않는다
 - **검증 AC**: AC6
-- **자동화**: (미작성) — 계획: 통합 `approval_gate_ac6.py`(patch·scale·Secret get·exec·
-  create 각 1케이스). update 부분의 Go 회귀는
+- **자동화**: 통합 `tests/integration/approval_gate_ac6.py`(patch·scale·Secret get·exec·
+  create 각 1케이스 — 승인 **전에** kubectl 로 대상을 움직이고 승인해, 앞 넷은 재확인
+  거부와 대상 무변경을, create 는 재확인이 아닌 apiserver 409 와 승인 context 에
+  `target resourceVersion` 이 없음을 단언한다). update 부분의 Go 회귀는
   `internal/mcp/update_precondition_test.go::TestUpdateConflictEndsTheCallWithoutAutomaticReapproval`
   (전체 객체·scale × 재확인 충돌·서비스 충돌, 승인 1회·소비 확인·추가 읽기/갱신 없음)과
   `internal/k8s/update_precondition_test.go::TestUpdateUsesApprovedVersionOnTheWire`
@@ -180,8 +182,13 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   응답에만 등장한다. **쓰기 경로의 값은 어디에도 등장하지 않는다** — `context` 에는 키
   이름과 바이트 수만 있다
 - **검증 AC**: AC10
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestSecretValueNeverLeavesResponse`
-  (context·로그·에러 3표면 표 기반). 통합 `approval_gate_ac10.py`
+- **자동화**: 통합 `tests/integration/approval_gate_ac10.py` 가 네 표면(승인 요청 `context` ·
+  SUT 서버 로그 · 실행 실패 에러 문면 · `resource_list` 응답)에서 토큰 부재를 단언하고,
+  승인된 `resource_get` 응답에만 값이 등장함을 대조군으로 둔다. 쓰기 경로는 `(masked, NB)`
+  표기까지 함께 단언한다(전부 가리는 구현도 이 AC 의 통과가 아니다).
+  Go 단위 `gatekeeper_test.go::TestSecretValueNeverLeavesResponse`
+  (context·로그·에러 3표면 표 기반)는 아직 서지 않았다 — 통합이 그 세 표면을 실물에서
+  덮으므로 단위는 회귀 고정용 후속이다
 
 ### 시나리오 11: 게이트의 읽기가 선언되고 값에 닿지 않는다
 - **사전 조건**: kind 실물 gatekeeper, 값이 고유 난수 토큰인 Secret, apiserver 요청을
