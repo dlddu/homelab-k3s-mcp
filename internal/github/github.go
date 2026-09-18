@@ -24,6 +24,8 @@ const (
 	jwtTTLSeconds     = 540
 	jwtClockSkewSecs  = 60
 	httpClientTimeout = 10 * time.Second
+
+	statusesPermission = "statuses"
 )
 
 // errKind separates a "not configured" failure from an apiserver error.
@@ -32,6 +34,7 @@ type errKind int
 const (
 	kindUnavailable errKind = iota
 	kindAPI
+	kindRejected
 )
 
 // Error is the error type returned by Service.
@@ -44,6 +47,8 @@ func (e *Error) Error() string {
 	switch e.kind {
 	case kindUnavailable:
 		return "github app unavailable: " + e.msg
+	case kindRejected:
+		return "github token request rejected: " + e.msg
 	default:
 		return "github api error: " + e.msg
 	}
@@ -51,6 +56,7 @@ func (e *Error) Error() string {
 
 func unavailable(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 func apiError(msg string) *Error    { return &Error{kind: kindAPI, msg: msg} }
+func rejected(msg string) *Error    { return &Error{kind: kindRejected, msg: msg} }
 
 // InstallationToken is the GitHub-shaped installation access token response.
 type InstallationToken struct {
@@ -149,8 +155,103 @@ func (c *Client) appJWT() (string, error) {
 	return signed, nil
 }
 
+func permissionLevel(permissions map[string]any, name string) string {
+	level, _ := permissions[name].(string)
+	return strings.ToLower(strings.TrimSpace(level))
+}
+
+func (c *Client) installationPermissions(ctx context.Context, jwtToken string) (map[string]any, error) {
+	url := fmt.Sprintf("%s/app/installations/%d", c.apiBase, c.installationID)
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+	req.Header.Set("Authorization", "Bearer "+jwtToken)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("get %s: %v", url, err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", url, resp.Status, string(respBody)))
+	}
+
+	var installation struct {
+		Permissions map[string]any `json:"permissions"`
+	}
+	if err := json.Unmarshal(respBody, &installation); err != nil {
+		return nil, apiError(fmt.Sprintf("parse installation: %v", err))
+	}
+	if installation.Permissions == nil {
+		return nil, apiError(fmt.Sprintf("%s returned no permissions", url))
+	}
+	return installation.Permissions, nil
+}
+
+func (c *Client) effectivePermissions(ctx context.Context, jwtToken string, requested map[string]any) (map[string]any, error) {
+	if requested != nil {
+		if permissionLevel(requested, statusesPermission) == "write" {
+			return nil, rejected("this tool does not issue statuses: write — use github_commit_status_create, which exercises commit status writes as a narrow action. statuses: read is issued normally")
+		}
+		return requested, nil
+	}
+
+	installed, err := c.installationPermissions(ctx, jwtToken)
+	if err != nil {
+		return nil, err
+	}
+
+	effective := make(map[string]any, len(installed))
+	for name, level := range installed {
+		effective[name] = level
+	}
+	if permissionLevel(effective, statusesPermission) == "write" {
+		effective[statusesPermission] = "read"
+	}
+	return effective, nil
+}
+
+// revokeToken authenticates with the installation token being discarded, not
+// with the app JWT the other two calls use.
+func (c *Client) revokeToken(ctx context.Context, token string) error {
+	url := c.apiBase + "/installation/token"
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("X-GitHub-Api-Version", githubAPIVersion)
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("delete %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("%s returned %s", url, resp.Status)
+	}
+	return nil
+}
+
 func (c *Client) CreateInstallationToken(ctx context.Context, repositories []string, permissions map[string]any) (*InstallationToken, error) {
 	jwtToken, err := c.appJWT()
+	if err != nil {
+		return nil, err
+	}
+
+	effective, err := c.effectivePermissions(ctx, jwtToken, permissions)
 	if err != nil {
 		return nil, err
 	}
@@ -161,8 +262,8 @@ func (c *Client) CreateInstallationToken(ctx context.Context, repositories []str
 	if repositories != nil {
 		body["repositories"] = repositories
 	}
-	if permissions != nil {
-		body["permissions"] = permissions
+	if effective != nil {
+		body["permissions"] = effective
 	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
@@ -193,6 +294,14 @@ func (c *Client) CreateInstallationToken(ctx context.Context, repositories []str
 	var token InstallationToken
 	if err := json.Unmarshal(respBody, &token); err != nil {
 		return nil, apiError(fmt.Sprintf("parse installation token: %v", err))
+	}
+
+	if permissionLevel(token.Permissions, statusesPermission) == "write" {
+		msg := "installation token came back carrying statuses: write; it was revoked and is not returned"
+		if revokeErr := c.revokeToken(ctx, token.Token); revokeErr != nil {
+			msg += fmt.Sprintf(" (revoke failed: %v)", revokeErr)
+		}
+		return nil, apiError(msg)
 	}
 	return &token, nil
 }

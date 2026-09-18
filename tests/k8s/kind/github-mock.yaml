@@ -22,6 +22,7 @@ data:
     INSTALLATION_TOKEN_RE = re.compile(
         r"^/app/installations/(?P<id>\d+)/access_tokens$"
     )
+    INSTALLATION_RE = re.compile(r"^/app/installations/(?P<id>\d+)$")
 
     DEFAULT_PERMISSIONS = {"contents": "read", "metadata": "read"}
 
@@ -33,6 +34,19 @@ data:
         def do_GET(self):
             if self.path == "/healthz":
                 self._json(200, {"status": "ok"})
+                return
+            match = INSTALLATION_RE.match(self.path)
+            if match:
+                if not self.headers.get("Authorization", "").startswith("Bearer "):
+                    self._json(401, {"message": "Requires authentication"})
+                    return
+                self._json(
+                    200,
+                    {
+                        "id": int(match.group("id")),
+                        "permissions": dict(DEFAULT_PERMISSIONS),
+                    },
+                )
                 return
             self._json(404, {"message": "Not Found"})
 
