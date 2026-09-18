@@ -214,8 +214,16 @@ async def test_a_sensitive_kind_needs_approval_and_keeps_its_caps(session, gate)
     )
     row = await wait_for_pending(gate, WATCH_SECRET)
     await decide(gate, row["id"], "APPROVED")
-    await asyncio.sleep(1.0)
-    _touch_secret("1")
+    # 승인 **직후**가 스트림이 열리는 시점이 아니다. 서버는 판정을 폴링으로 알아채고
+    # (`internal/gatekeeper::defaultPollInterval` = 2s, `GATEKEEPER_POLL_INTERVAL_SECONDS`
+    # 로 조정 가능), 그 뒤에야 watch 를 연다. 게이트 없는 위쪽 Deployment 케이스처럼
+    # 한 번만 흔들면 그 변경이 **스트림이 서기 전에** 끝나 버리고, 뒤늦게 열린 창은
+    # 이미 흔들린 상태의 합성 ADDED 하나만 본다(CI run 35370872555 의 실패가 정확히
+    # 그것이었다: `['ADDED']`). 그래서 창이 도는 동안 여러 번 흔들어 **적어도 하나가
+    # 열린 창 안에 떨어지게** 한다 — 단언은 그대로 「창 안의 MODIFIED」다.
+    for generation in range(1, 6):
+        await asyncio.sleep(1.0)
+        _touch_secret(str(generation))
     result = await task
     assert result.isError is False, result
     events = _events(result)
