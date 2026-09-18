@@ -142,22 +142,11 @@ func (s *KubeService) ExecResource(ctx context.Context, ref ExecRef, container *
 		Stderr: stderr,
 	})
 
-	var exitCode *int32
-	var timeLimited bool
-	if streamErr != nil {
-		var codeErr utilexec.CodeExitError
-		switch {
-		case errors.As(streamErr, &codeErr):
-			code := int32(codeErr.Code)
-			exitCode = &code
-		case ctx.Err() != nil && errors.Is(ctx.Err(), context.DeadlineExceeded):
-			// The time cap stopped the call, not the command itself. The
-			// outcome is the answer "it ran past the cap"; an apiserver error
-			// would read like the call was wrong.
-			timeLimited = true
-		default:
-			return nil, APIError(streamErr.Error())
-		}
+	// Both writers have stopped by the time StreamWithContext returns, so
+	// reading their flags here races with nothing.
+	exitCode, timeLimited, err := execStreamOutcome(streamErr, ctx.Err(), stdout.full || stderr.full)
+	if err != nil {
+		return nil, err
 	}
 
 	return &ExecOutcome{
@@ -170,4 +159,48 @@ func (s *KubeService) ExecResource(ctx context.Context, ref ExecRef, container *
 		StderrTruncated: stderr.full,
 		TimeLimited:     timeLimited,
 	}, nil
+}
+
+// execStreamOutcome turns how the stream ended into what the response carries.
+// It takes only values so the classification can be asserted without a cluster:
+// the SPDY executor cannot be reached from a unit test, which is why this
+// decision went unwatched long enough for a real round trip to be the thing
+// that caught it.
+//
+// The stream reports a non-zero exit as a CodeExitError and says nothing at all
+// about a zero one — so a nil error is the success path, and reading the code
+// only out of the error leaves it unset exactly when the command worked
+// (prd-resource-generic AC12: the response's success field describes the run).
+//
+// capped says a byte cap filled. That cap cancels the context to stop
+// listening, so the stream comes back cancelled rather than past its deadline;
+// treating that as a transport failure would turn AC12's "the response says it
+// was cut" into an error instead of an answer. The exit code stays unset
+// because a command cut mid-stream never reported one.
+//
+// The order below is deliberate: every branch that answers correctly today
+// keeps its place, and the two new ones only catch what currently answers
+// wrongly. A cut stream with no error already reported no exit code, so
+// requiring !capped for the success branch leaves that case exactly as it was.
+func execStreamOutcome(streamErr, ctxErr error, capped bool) (exitCode *int32, timeLimited bool, err error) {
+	var codeErr utilexec.CodeExitError
+	switch {
+	case streamErr == nil && !capped:
+		zero := int32(0)
+		return &zero, false, nil
+	case errors.As(streamErr, &codeErr):
+		code := int32(codeErr.Code)
+		return &code, false, nil
+	case errors.Is(ctxErr, context.DeadlineExceeded):
+		// The time cap stopped the call, not the command itself. The outcome
+		// is the answer "it ran past the cap"; an apiserver error would read
+		// like the call was wrong.
+		return nil, true, nil
+	case capped:
+		// The byte cap cancelled the stream on purpose. The bytes that fit are
+		// still the answer, and the truncation flags carry the rest of it.
+		return nil, false, nil
+	default:
+		return nil, false, APIError(streamErr.Error())
+	}
 }
