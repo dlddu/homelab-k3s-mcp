@@ -55,6 +55,7 @@ EXPECTED_TOOLS = {
     "resource_patch",
     "resource_delete",
     "resource_exec",
+    "resource_attach",
     "dear_baby_reset_user",
     "grafana_token",
     "github_app_installation_token",

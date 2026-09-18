@@ -14,11 +14,11 @@ import (
 	utilexec "k8s.io/client-go/util/exec"
 )
 
-// execMaxOutputBytes caps each of stdout and stderr at the source, before a
-// response is built (prd-resource-generic AC12). `yes` never ends on its own,
-// so a cap that only stopped buffering would leave the call hanging until the
-// time cap — the byte cap has to stop the reader too.
-const execMaxOutputBytes = 256 * 1024
+// streamMaxOutputBytes caps each of stdout and stderr at the source, before a
+// response is built (prd-resource-generic AC12, and AC13 for the same reason).
+// `yes` never ends on its own, so a cap that only stopped buffering would leave
+// the call hanging until the time cap — the byte cap has to stop the reader too.
+const streamMaxOutputBytes = 256 * 1024
 
 // execMaxDuration is AC12's running-time cap. A command may outlive it in the
 // pod; the tool's job is to answer, and an unanswered call helps nobody.
@@ -57,12 +57,13 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 
 func (w *limitedWriter) String() string { return w.buf.String() }
 
-// execServed answers the discovery question requireSubresource answers for
-// scale, worded for exec — reusing it would have the refusal say "has no
-// replicas", which is about scale, not exec. Discovery is not a resource
-// permission (the scale precedent, AC8), and the sentence is about what the
-// cluster serves, not about whether the object exists.
-func (s *KubeService) execServed(ctx context.Context, gvr schema.GroupVersionResource, kind string) error {
+// streamSubresourceServed answers the discovery question requireSubresource
+// answers for scale, worded for the streaming subresources — reusing it would
+// have the refusal say "has no replicas", which is about scale, not about
+// exec or attach. Discovery is not a resource permission (the scale precedent,
+// AC8), and the sentence is about what the cluster serves, not about whether
+// the object exists.
+func (s *KubeService) streamSubresourceServed(ctx context.Context, gvr schema.GroupVersionResource, kind, subresource string) error {
 	dc, err := s.discoveryClient()
 	if err != nil {
 		return err
@@ -71,16 +72,16 @@ func (s *KubeService) execServed(ctx context.Context, gvr schema.GroupVersionRes
 	if err != nil {
 		return APIError(fmt.Sprintf("discovery failed: %v", err))
 	}
-	want := subresourcePath(gvr.Resource, "exec")
+	want := subresourcePath(gvr.Resource, subresource)
 	for _, r := range list.APIResources {
 		if r.Name == want {
 			return nil
 		}
 	}
 	return apiErrorf(
-		"%s does not serve an exec this layer can run: this cluster serves no %s. "+
+		"%s does not serve an %s this layer can run: this cluster serves no %s. "+
 			"This is not about permission, and not about whether the object exists",
-		kind, want,
+		kind, subresource, want,
 	)
 }
 
@@ -101,7 +102,7 @@ func (s *KubeService) ExecResource(ctx context.Context, ref ExecRef, container *
 	if res.gvr.Group != "" || res.gvr.Resource != "pods" {
 		return nil, apiErrorf("%s does not serve an exec this layer can run: exec is the pods subresource (prd-resource-generic AC12)", ref.Kind)
 	}
-	if err := s.execServed(ctx, res.gvr, ref.Kind); err != nil {
+	if err := s.streamSubresourceServed(ctx, res.gvr, ref.Kind, "exec"); err != nil {
 		return nil, err
 	}
 
@@ -129,8 +130,8 @@ func (s *KubeService) ExecResource(ctx context.Context, ref ExecRef, container *
 		return nil, APIError(err.Error())
 	}
 
-	stdout := &limitedWriter{limit: execMaxOutputBytes}
-	stderr := &limitedWriter{limit: execMaxOutputBytes}
+	stdout := &limitedWriter{limit: streamMaxOutputBytes}
+	stderr := &limitedWriter{limit: streamMaxOutputBytes}
 	// The caps that stop reading also stop listening: a cut stream must end the
 	// call, not keep it open until the time cap answers the same question.
 	stdout.onFull = cancel

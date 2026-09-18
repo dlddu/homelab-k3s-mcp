@@ -143,6 +143,12 @@ func (f *fakeK8s) ExecResource(_ context.Context, ref k8s.ExecRef, container *st
 	return &k8s.ExecOutcome{Pod: ref.Name, ExitCode: &zero, Success: true}, nil
 }
 
+func (f *fakeK8s) AttachResource(_ context.Context, ref k8s.AttachRef, container *string, stdin *string, readSeconds int) (*k8s.AttachOutcome, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return &k8s.AttachOutcome{Pod: ref.Name, ReadSeconds: readSeconds, StdinWritten: stdin != nil}, nil
+}
+
 type installationTokenCall struct {
 	repositories []string
 	permissions  map[string]any
