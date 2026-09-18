@@ -17,10 +17,12 @@ Images are published to `ghcr.io/dlddu/homelab-k3s-mcp` under **one tag only: th
 commit SHA**. There is no `latest`.
 
 - **Production is pinned.** On every push to `main`, `.github/workflows/docker-build-push.yaml`
-  builds the commit, pushes `ghcr.io/dlddu/homelab-k3s-mcp:<sha>`, then commits that
-  SHA back into `k8s/deployment.yaml` (the `pin` job). Flux tracks `main` and applies
-  that file, so the single answer to "which commit is production running?" is the
-  `image:` line in `k8s/deployment.yaml`.
+  builds the commit, pushes `ghcr.io/dlddu/homelab-k3s-mcp:<sha>`, then force-pushes
+  `main@<sha>` plus one commit pinning `k8s/deployment.yaml` to that SHA to the
+  **`deploy` branch** (the `pin` job, `Source-Commit: <sha>` trailer). `main` is protected
+  by a ruleset (required status check `ci passed`), so nothing commits back to it. Flux
+  tracks `deploy`, so the single answer to "which commit is production running?" is the
+  `image:` line in `k8s/deployment.yaml` on `deploy`. Roll back with a revert PR to `main`.
 - **Pull requests get a preview environment.** The same workflow publishes the PR's
   head SHA on every PR push. Label a PR `deploy/preview` and flux-cd-apps
   (`apps/homelab-k3s-mcp-preview`) renders a full environment for it at
