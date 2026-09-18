@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 4
 실행 대상: primary
+병렬 레인: resource-generic
 
 `workload-fixture` 로 족한 것은 CI 가 `kubectl apply -f tests/k8s/kind/test-deployment.yaml`
 로 세워 잡음 두 필드가 다 붙기 때문이다. 그래도 **사전 조건 자체를 kubectl 로 먼저 단언한다**

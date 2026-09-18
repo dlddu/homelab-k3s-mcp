@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 2
 실행 대상: primary
+병렬 레인: resource-generic
 
 크기 비교의 대조군은 도구를 거치지 않고 `kubectl get -o json` 으로 뜬다 — 도구의 다른
 호출로 대조군을 만들면 두 값이 같은 축약 로직을 통과해 「현저히 작다」가 공전한다.

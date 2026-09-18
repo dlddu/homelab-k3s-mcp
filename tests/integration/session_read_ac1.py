@@ -2,6 +2,7 @@
 
 검증 시나리오: test-session-read.md#시나리오 1
 실행 대상: primary
+병렬 레인: session
 
 **이 파일이 데이터 플레인을 요구하는 첫 e2e다.** 같은 도구의 AC3·AC4는 에이전트 파드에 닿지
 않아 먼저 닫혔지만(없는 id는 제어면 404, 잘못된 커서는 `internal/mcp`가 HTTP 이전에 거부,

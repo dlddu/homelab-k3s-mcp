@@ -3,6 +3,7 @@
 검증 시나리오: test-aws-config-get.md#시나리오 2
 실행 대상: primary
 추가 인자: trace
+병렬 레인: aws
 
 MinIO 는 CI 시크릿의 베이스 자격증명도 그대로 받아주므로 "호출이 성공했다"로는
 구분되지 않는다 — http-trace 프록시의 기록으로 서명 키를 관측한다.

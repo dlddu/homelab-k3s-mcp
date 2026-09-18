@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 3
 실행 대상: primary
+병렬 레인: resource-generic
 
 모집단은 `tests/k8s/kind/resource-generic-fixture.yaml` 의 페이징 ConfigMap 120개다 —
 왜 120개이고 왜 전용 레이블로 좁히는지는 그 파일의 머리말이 진다.

@@ -2,6 +2,7 @@
 
 검증 시나리오: test-opensearch-document-put.md#시나리오 3
 실행 대상: primary
+병렬 레인: aws
 
 ``tools/list`` 메타데이터만 읽는다 — 파괴 동작을 실행하지 않으므로 픽스처 상태를
 건드리지 않는다.

@@ -109,6 +109,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 	want := []string{
 		"ping", "api_resources", "resource_list", "resource_get", "resource_watch",
 		"resource_create", "resource_update", "resource_patch", "resource_delete",
+		"resource_exec",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",

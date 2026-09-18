@@ -2,6 +2,7 @@
 
 검증 시나리오: test-dear-baby-reset-user.md#시나리오 1
 실행 대상: primary
+병렬 레인: dear-baby
 """
 
 from __future__ import annotations

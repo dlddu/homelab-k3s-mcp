@@ -213,14 +213,17 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
   (`application/apply-patch+yaml`)이며 `fieldManager`를 함께 받는다.
 
   네 형식 모두 게이트가 읽은 `resourceVersion`·`uid`에만 조건부로 실행한다
-  (`prd-approval-gate` AC6). `merge`·`strategic`·`apply`는 `metadata`에 두 값을
-  붙이고, 호출자가 이미 적은 값이 승인 상태와 다르면 거부한다. `json`은 원래 연산의
+  (`prd-approval-gate` AC6). `merge`·`strategic`은 `metadata`에 두 값을 붙이고,
+  `apply`는 Server-Side Apply가 applied config의 `uid`를 immutable 필드로 거부하므로
+  `resourceVersion`만 붙인다. 호출자가 이미 적은 값이 승인 상태와 다르면 네 형식 모두
+  거부한다. `json`은 원래 연산의
   앞뒤에 두 값의 `test`를 추가해 현재 대상과 연산 결과의 조건이 모두 유지돼야 한다.
   원래 데이터 변경과 JSON 숫자는 보존한다. `metadata`를 객체가 아닌 값으로 지우거나,
   `strategic`의 루트·`metadata`에 `$` 지시어를 넣어 조건을 제거하는 요청은 거부한다.
   `spec` 등 그 밖의 위치에서 쓰는 strategic 지시어는 그대로 전달한다.
 
-  `apply`도 기존 대상에만 쓴다 — 승인된 `uid`가 들어 있어 사라진 대상을 다시 만드는
+  `apply`도 기존 대상에만 쓴다 — 승인된 `resourceVersion`·`uid`를 게이트가 실행
+  직전에 다시 읽어 대조하므로(`prd-approval-gate` AC6), 사라진 대상을 다시 만드는
   경로가 되지 않는다. `fieldManager`는 호출자가 고른 값을 유지하고 `force`를 보내지
   않는다. 버전·필드 소유권 충돌 또는 JSON `test` 실패는 현재 호출의 **자동 거부**로
   끝난다. 버전을 새로 읽어 대체하거나, 같은 승인으로 재시도하거나, 자동 재승인을

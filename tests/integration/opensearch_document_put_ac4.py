@@ -3,6 +3,7 @@
 검증 시나리오: test-opensearch-document-put.md#시나리오 4
 실행 대상: primary
 추가 인자: trace
+병렬 레인: aws
 
 도구 응답이 아니라 ``tests/k8s/kind/http-trace.yaml`` 프록시의 기록을 읽는다.
 AssumeRole 레코드는 서버가 자격증명을 캐시해 한 번만 발급되지만 프록시가 그
