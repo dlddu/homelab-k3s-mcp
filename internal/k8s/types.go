@@ -61,6 +61,34 @@ type ExecRef struct {
 	Name       string
 }
 
+// AttachOutcome captures one read window on a running container's streams. It
+// is a separate type from ExecOutcome because nothing was started, so nothing
+// ended: the process is still running when the window closes and there is no
+// exit code to report.
+type AttachOutcome struct {
+	Pod    string `json:"pod"`
+	Stdout string `json:"stdout"`
+	Stderr string `json:"stderr"`
+	// ReadSeconds echoes the window actually used, so a response can be read
+	// without knowing whether the caller passed one or took the default.
+	ReadSeconds int `json:"read_seconds"`
+	// StdinWritten answers a question the output cannot: a process that ignores
+	// its input says nothing, so "did the payload arrive" would otherwise be
+	// indistinguishable from "it arrived and was dropped".
+	StdinWritten    bool `json:"stdin_written"`
+	StdoutTruncated bool `json:"stdout_truncated"`
+	StderrTruncated bool `json:"stderr_truncated"`
+}
+
+// AttachRef names the pod resource_attach connects to, addressed by coordinate
+// (prd-resource-generic AC13).
+type AttachRef struct {
+	APIVersion string
+	Kind       string
+	Namespace  *string
+	Name       string
+}
+
 // LogOptions controls a read of the log subresource.
 type LogOptions struct {
 	Container    *string

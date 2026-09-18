@@ -130,6 +130,11 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourceExec,
 	},
 
+	"resource_attach": {
+		decl:   toolDeclaration{resolve: attachPairs(), target: genericTarget()},
+		handle: (*Handler).resourceAttach,
+	},
+
 	"dear_baby_reset_user": {
 		decl: toolDeclaration{
 			pairs: []gatekeeper.Pair{
