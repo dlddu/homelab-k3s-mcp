@@ -390,6 +390,54 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_attach",
+      "description": "Attach to the process already running in a container of one named Kubernetes pod (the pods/attach subresource) and return what its streams say during a short read window. Nothing is started: this joins the existing main process rather than running a command, so there is no exit code. Exercises the create verb on pods/attach only and always requires human approval — the power is exec's, because attaching stdin to a pod whose PID 1 is a shell is indistinguishable from opening one. readSeconds defaults to 5 and may not exceed 30; stdin, when given, is written once right after attaching. Output is capped at 256KiB per stream and a cut stream says so.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the pod kind, e.g. \"v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to attach to, e.g. \"Pod\". A kind with no attach subresource is refused."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for pods; rejected for cluster-scoped kinds."
+          },
+          "name": {
+            "type": "string",
+            "description": "Pod name. Required; this tool attaches to one named pod, not a selection."
+          },
+          "container": {
+            "type": "string",
+            "description": "Container to attach to. Omit only when the pod has one container; the refusal for an omitted name lists the candidates."
+          },
+          "stdin": {
+            "type": "string",
+            "description": "Payload written to the attached process once, right after attaching. The approval screen carries it verbatim. Omit to attach read-only."
+          },
+          "readSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "description": "How long to collect output before answering. Defaults to 5. The process keeps running after the window closes."
+          }
+        },
+        "required": ["apiVersion", "kind", "name"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Attach Resource",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "dear_baby_reset_user",
       "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-user CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
       "inputSchema": {

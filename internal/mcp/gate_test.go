@@ -38,6 +38,13 @@ type countingK8s struct {
 	// cluster facts this level cannot see.
 	execOutcome *k8s.ExecOutcome
 	execErr     error
+
+	lastAttach            k8s.AttachRef
+	lastAttachContainer   *string
+	lastAttachStdin       *string
+	lastAttachReadSeconds int
+	attachOutcome         *k8s.AttachOutcome
+	attachErr             error
 }
 
 func (c *countingK8s) count() int {
@@ -180,6 +187,38 @@ func (c *countingK8s) exec() (k8s.ExecRef, *string, []string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.lastExec, c.lastExecContainer, c.lastExecCommand
+}
+
+// AttachResource records what it was handed, the way ExecResource does. What it
+// cannot record is whether the attached process reacted to stdin — that is a
+// cluster fact, and the integration case is where AC13's "전달된다" is proven.
+func (c *countingK8s) AttachResource(_ context.Context, ref k8s.AttachRef, container *string, stdin *string, readSeconds int) (*k8s.AttachOutcome, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastAttach = ref
+	c.lastAttachContainer = container
+	c.lastAttachStdin = stdin
+	c.lastAttachReadSeconds = readSeconds
+	outcome, err := c.attachOutcome, c.attachErr
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if outcome == nil {
+		outcome = &k8s.AttachOutcome{
+			Pod:          ref.Name,
+			Stdout:       "tick\n",
+			ReadSeconds:  readSeconds,
+			StdinWritten: stdin != nil,
+		}
+	}
+	return outcome, nil
+}
+
+func (c *countingK8s) attach() (k8s.AttachRef, *string, *string, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastAttach, c.lastAttachContainer, c.lastAttachStdin, c.lastAttachReadSeconds
 }
 
 // scriptedGate answers with one prepared decision (or one refusal) and records
