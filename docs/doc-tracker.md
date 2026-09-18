@@ -15,10 +15,11 @@
 ## 현재 상태 요약
 
 - 정의된 가치: **5개** (V1~V5)
-- PRD: **14개** (도구 12 + 공통 기반 2)
-- Acceptance Criteria: **78개** (가치 연결됨: 78 / 미연결: 0) — AC 번호는 결번을 둔다(platform AC3 · resource-generic AC19)
-- 테스트 문서: **14개** (AC 커버됨: 78 / 미커버: 0)
+- PRD: **15개** (도구 13 + 공통 기반 2)
+- Acceptance Criteria: **85개** (가치 연결됨: 85 / 미연결: 0) — AC 번호는 결번을 둔다(platform AC3 · resource-generic AC19)
+- 테스트 문서: **15개** (AC 커버됨: 85 / 미커버: 0)
 - 등록 도구: **20종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_create`·`resource_update`·`resource_patch`·`resource_delete`·`resource_exec` 5종이고, 게이트 밖 예외는 **1종**(`dear_baby_reset_user`)이다. `resource_watch` 는 쓰기가 아니므로 이 둘 어디에도 들어가지 않는다 — 민감 종류(`RESOURCE_GATED_KINDS`)를 대상으로 할 때만 `resource_get` 과 같은 조건으로 게이트를 탄다
+- **문서 선행(미구현)**: `github_commit_status_create`(PRD AC6개)와 `github_app_installation_token` AC5(statuses 쓰기 배제 · 읽기는 발급)는 2026-09-19 문서만 섰다 — 등록 도구 수 20종에 들어가지 않으며, 두 PRD의 시나리오 7개는 아래 「⏳ 구현 대기」에 등재했다. 클러스터 밖(GitHub) 쓰기이므로 게이트 대상·게이트 밖 예외 어느 계수에도 들어가지 않는다(`prd-github-commit-status` 「범위 밖」)
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있고,
   ⑴ **폐기된 6종은 2026-09-15 에 전부 코드에서 나갔다**(마지막 1종 `workload_scale` 제거 —
   대체재 `resource_update(subresource=scale)`가 같은 날 먼저 섰다). 「문서 없는 실행 코드」는 **0종**이다.
@@ -72,9 +73,9 @@ verification의 제품 결함 판정; 단위 회귀 2곳이 rv-only·no-uid를 �
 | 종류 | 파일 |
 |------|------|
 | 가치 문서 | `values.md` |
-| PRD (도구) | `prd-ping.md`, `prd-resource-generic.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-grafana-token.md`, `prd-aws-config-get.md`, `prd-opensearch-search.md`, `prd-opensearch-document-put.md`, `prd-opensearch-document-delete.md`, `prd-session-list.md`, `prd-session-read.md`, `prd-session-write.md` |
+| PRD (도구) | `prd-ping.md`, `prd-resource-generic.md`, `prd-dear-baby-reset-user.md`, `prd-github-app-installation-token.md`, `prd-github-commit-status.md`, `prd-grafana-token.md`, `prd-aws-config-get.md`, `prd-opensearch-search.md`, `prd-opensearch-document-put.md`, `prd-opensearch-document-delete.md`, `prd-session-list.md`, `prd-session-read.md`, `prd-session-write.md` |
 | PRD (공통) | `prd-platform-auth-safety.md`, `prd-approval-gate.md` |
-| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (14개) |
+| 테스트 문서 | 각 PRD에 대응하는 `test-*.md` (15개) |
 | 상태 추적 | `doc-tracker.md` |
 | 정책 | `e2e-mocking-policy.md` (E2E 모킹 최소화 정책의 SSOT — 등재·예외의 단일 출처), `comment-policy/README.md` (주석 비중복성 정책의 SSOT — 복원 경로·유지 대상·판정 절차), `comment-policy/ledger.md` (그 정책의 판정 원장 — 범위별 줄 수·지문·결과), `comment-policy/passes/*.md` (한 판정 패스의 상세 — 제거 근거표·유지 목록·갈린 판단. 원장 행에서 링크된다) |
 | 배포 골격 | `index.html`(허브), `reader.html`(마크다운 뷰어), `.nojekyll` |
@@ -89,7 +90,7 @@ verification의 제품 결함 판정; 단위 회귀 2곳이 rv-only·no-uid를 �
 | 공개 URL | `https://dlddu.github.io/homelab-k3s-mcp/` |
 | Pages 설정 | ⬜ **사용자 작업 대기** — Settings → Pages → Source `Deploy from a branch` → `main` + `/docs` |
 | 배포 골격 | ✅ `index.html`(허브) · `reader.html`(뷰어) · `.nojekyll` |
-| 허브 도달 가능 문서 | ✅ **42 / 42** (가치 1 + PRD 14 + 테스트 14 + 상태 추적 1 + 정책 12), 끊긴 링크 0 |
+| 허브 도달 가능 문서 | ✅ **44 / 44** (가치 1 + PRD 15 + 테스트 15 + 상태 추적 1 + 정책 12), 끊긴 링크 0 |
 | 공개 범위 | 레포가 **public** — `docs/`의 마크다운은 이미 GitHub에서 공개 상태였고, Pages는 그것을 읽기 좋게 서빙할 뿐이다. 새로 공개되는 문서 없음 |
 | 비공개 유지 문서 | (없음) |
 
@@ -127,7 +128,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | ping | V3 | 1 | test-ping | ✅ 완전 |
 | resource_* (generic) | V1, V3 | 19 | test-resource-generic | ✅ 완전 (AC19 결번) |
 | dear_baby_reset_user | V5, V3 | 3 | test-dear-baby-reset-user | ✅ 완전 |
-| github_app_installation_token | V2, V3 | 4 | test-github-app-installation-token | ✅ 완전 |
+| github_app_installation_token | V2, V3 | 5 | test-github-app-installation-token | ✅ 완전 (AC5 문서 선행) |
+| github_commit_status_create | V2, V3 | 6 | test-github-commit-status | ✅ 완전 (문서 선행 — 도구 미등록) |
 | grafana_token | V2, V3 | 4 | test-grafana-token | ✅ 완전 |
 | aws_config_get | V2, V3 | 3 | test-aws-config-get | ✅ 완전 |
 | opensearch_search | V4, V2, V3 | 4 | test-opensearch-search | ✅ 완전 |
@@ -144,8 +146,8 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | 가치 | 이 가치를 달성하는 PRD |
 |------|------------------------|
 | V1: 자연어로 클러스터 운영 | resource_*(generic), approval-gate |
-| V2: 단명·최소권한 자격증명 | github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete |
-| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), approval-gate, resource_*(generic), ping, dear_baby_reset_user, github_app_installation_token, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete, session_list, session_read, session_write |
+| V2: 단명·최소권한 자격증명 | github_app_installation_token, github_commit_status_create, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete |
+| V3: 안전한 운영(Safe-by-default) | platform(인증·안전), approval-gate, resource_*(generic), ping, dear_baby_reset_user, github_app_installation_token, github_commit_status_create, grafana_token, aws_config_get, opensearch_search, opensearch_document_put, opensearch_document_delete, session_list, session_read, session_write |
 | V4: 운영 지식의 축적·검색 | opensearch_search, opensearch_document_put, opensearch_document_delete |
 | V5: 클러스터 내부 앱 기능의 도구화 | dear_baby_reset_user, session_list, session_read, session_write |
 
@@ -158,21 +160,23 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - (없음)
 
 ### 무가치 PRD / AC 없는 PRD
-- (없음) — 14개 PRD 모두 가치를 달성하고 AC를 보유
+- (없음) — 15개 PRD 모두 가치를 달성하고 AC를 보유
 
 ### 미연결 AC (가치와 연결되지 않은 AC)
-- (없음) — 78개 AC 모두 가치에 연결
+- (없음) — 85개 AC 모두 가치에 연결
 
 ### 미검증 AC (테스트 없는 AC)
-- (없음) — 78개 AC 모두 테스트 문서의 시나리오로 커버
+- (없음) — 85개 AC 모두 테스트 문서의 시나리오로 커버
 
 ### 고아 테스트 (AC를 참조하지 않는 테스트)
-- (없음) — 14개 테스트 문서 모두 검증 대상 AC를 명시
+- (없음) — 15개 테스트 문서 모두 검증 대상 AC를 명시
 
 ### 수용된 위험 / 미결 사항
 
 | 위험 | 대상 | 내용 | 상태 |
 |------|------|------|------|
+| 배포 순서 역전 | GitHub App 권한 · `github_app_installation_token` | App에 Commit statuses 권한을 **먼저** 부여하면, `permissions`를 생략한 기존 토큰 호출이 그 순간부터 `statuses: write`를 받는다 — 필수 status 검사를 위조할 수 있는 토큰이 어시스턴트 손에 들어간다. | ⬜ **미결(2026-09-19)** — `prd-github-commit-status` 「배포 순서」가 순서를 고정한다(토큰 도구 AC5 배포 → App 권한 추가 → 새 도구). 권한 추가는 GitHub UI의 사람 작업이라 코드가 강제할 수 없다. 해제 조건: AC5가 main에 배포된 뒤 권한 추가 |
+| `checks` 권한의 같은 문제 | `github_app_installation_token` | check run도 필수 검사로 지정될 수 있어 `checks: write` 토큰은 같은 위조가 가능하다. AC5는 `statuses: write`만 뺀다(읽기는 발급). | ⬜ **미결(2026-09-19)** — 현재 설치에 `checks` 권한이 있는지와 배제 여부는 운영자 판단 대기. 빼기로 하면 AC5와 같은 형태의 AC를 추가한다 |
 | `AUTO_APPROVE` 유인 | 게이트 전체 | 스케일·재시작까지 게이트 안으로 들어오면서 승인 빈도가 올라간다. 운영자가 gatekeeper 의 `AUTO_APPROVE` 를 켜면 게이트 전체가 무력화되고, 그 순간 `delete`·`exec`·Secret 읽기까지 함께 무인 승인이 된다. | ⚠️ **수용(2026-09-12)** — 예외를 두면 무엇이 승인 대상인지 설명할 때 verb 목록이 아니라 사연을 읽어야 하고, 그 사연은 도구가 늘 때마다 다시 쓰인다. 대신 `prd-approval-gate` AC9 가 자동 승인을 **도구 응답 본문과 로그 양쪽에 표기**해 켜져 있다는 사실이 숨지 않게 한다 |
 | 진단 왕복 증가 | `resource_get` | verb 1:1 을 지키느라 `pod_describe` 의 「객체 + 이벤트 한 응답」과 `workload_logs` 의 대상 해석(`labelSelector`/워크로드 이름)이 사라졌다. 파드 하나를 진단하려면 `resource_list` 로 찾고 `resource_get` 으로 읽는 왕복 두 번이 든다. | ⚠️ **수용(2026-09-12)** — 편의 도구가 두 개 이상의 verb 를 행사하는 순간 게이트와 RBAC 가 그 도구를 어떻게 판정할지 모호해진다. 모호한 경계보다 왕복 한 번이 싸다 |
 | 스트림 표면 확대 | `attach`·`port_forward`·`proxy` | 목표 도구 표면은 `pods/attach`·`pods/portforward`·`pods/proxy`·`services/proxy`·`nodes/proxy` 를 포함한다. `port_forward` 와 `proxy` 는 네트워크 정책이 막아 둔 파드 포트·내부 API 에 도달할 수 있고, `attach` 는 대화형 셸이 PID 1 인 파드에서 `exec` 과 구별되지 않는다. RBAC 로는 내용을 가릴 수 없어 **게이트가 유일한 방어선**이다. 2026-09-14 이후 RBAC 는 이미 `cluster-admin` 바인딩이며, 이 목표 도구들의 구현 완료를 뜻하지 않는다. | ⚠️ **수용(2026-09-12), 문서 정정(2026-09-15)** — `exec` 포함 넷 다 게이트 대상이고 `context` 에 명령·페이로드·경로가 전문으로 들어간다(`prd-approval-gate` AC3). **종전 제외 문구는 현행 아님**: 「`nodes/proxy` 만은 열지 않는다 — 그건 게이트를 우회하는 게 아니라 무의미하게 만든다」. 현행 AC15 는 Node 를 포함하며, 그 비용은 아래 「쌍이 분류력을 잃음」·「RBAC 경계 소멸」 행에 남긴다. 구현·검증은 별도 후속이다 |
@@ -668,9 +672,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 - **실행 하네스**: `tests/integration/run_all.py` 가 매칭 단위 파일을 자동 발견해 각 파일이 신고한 `실행 대상`(primary · auth-variant · oauth-variant · gatekeeper-variant)별로 실행한다. CI는 파일을 이름으로 나열하지 않으므로 분할할 때마다 `ci.yml` 을 고칠 필요가 없고, 체커가 "매칭 단위 파일 전부가 정확히 한 번 배차된다"와 "각 파일의 `run()` 이 그 파일이 정의한 `test_*` 케이스를 전부 호출한다"를 검사해, **만들어 놓고 실행되지 않는 파일**과 **배차는 되지만 아무것도 단언하지 않고 통과하는 파일**을 둘 다 구조적으로 막는다.
 
 <!-- scenario-e2e-집계 -->
-- 시나리오 전집: 78
+- 시나리오 전집: 85
 - 예외 등재: 1
-- 구현 대기 등재: 19
+- 구현 대기 등재: 26
 - 1:1 대상: 58
 - 매칭 파일(전용): 58
 - 분할 대기 파일(규칙 2 위반): 0
@@ -681,9 +685,9 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 >
 > 2026-08-31 슬라이스가 나머지 3개의 선결 판단을 확정하고 분할했다 — **`auth-variant` 배차 증가**(2 → 9)는 수용했고(포트포워드는 재시도 루프로 그룹 내내 유지되고 각 파일이 `wait_for_healthz` 로 시작하므로 배선이 바뀌지 않는다. 늘어나는 비용은 파일당 파이썬 기동 + 세션 개설뿐이다), **`smoke.py` 의 잔여 도구 표면 확인**은 규칙 3의 **비-AC 파일로 등재**했다(아래 「비-AC 파일」 절).
 
-### 시나리오 레지스트리 (78) — ✅ 전용 파일 58 · ⬜ 분할 대기 0 · ⏳ 구현 대기 19 · 🚫 예외 1
+### 시나리오 레지스트리 (85) — ✅ 전용 파일 58 · ⬜ 분할 대기 0 · ⏳ 구현 대기 26 · 🚫 예외 1
 
-> 불변식이 여기서 눈으로 닫힌다: **78 − 1(예외) − 19(구현 대기) = 58 = 매칭 파일 58**, 공백 **0**.
+> 불변식이 여기서 눈으로 닫힌다: **85 − 1(예외) − 26(구현 대기) = 58 = 매칭 파일 58**, 공백 **0**.
 > 번호는 결번을 그대로 둔다 — `#시나리오 3`(platform-auth-safety)·`#시나리오 19`(resource-generic)가 비어 있고, 뒤 번호를 당기지 않았다.
 > 제목 칸은 `docs/test-*.md` 의 시나리오 헤딩과 **글자 그대로** 같아야 한다(체커가 대조한다).
 
@@ -699,6 +703,13 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-github-app-installation-token.md#시나리오 2 | repo/권한 스코프 제한 | ✅ 전용 파일 `github_app_installation_token_ac2.py` |
 | test-github-app-installation-token.md#시나리오 3 | 미설정 시 도구 에러 | ✅ 전용 파일 `github_app_installation_token_ac3.py` |
 | test-github-app-installation-token.md#시나리오 4 | 개인키 비노출 | ✅ 전용 파일 `github_app_installation_token_ac4.py` |
+| test-github-app-installation-token.md#시나리오 5 | statuses 쓰기는 발급되지 않고 읽기는 발급된다 | ⏳ 구현 대기 (규칙 6 — 도구 선행 미충족) |
+| test-github-commit-status.md#시나리오 1 | status 기록과 GitHub 오류 전달 | ⏳ 구현 대기 (규칙 6 — 도구 선행 미충족) |
+| test-github-commit-status.md#시나리오 2 | 내부 토큰 스코프와 비노출 | ⏳ 구현 대기 (규칙 6 — 도구 선행 미충족) |
+| test-github-commit-status.md#시나리오 3 | 잘못된 입력은 상류에 닿지 않는다 | ⏳ 구현 대기 (규칙 6 — 도구 선행 미충족) |
+| test-github-commit-status.md#시나리오 4 | context 네임스페이스 밖은 거부 | ⏳ 구현 대기 (규칙 6 — 도구 선행 미충족) |
+| test-github-commit-status.md#시나리오 5 | 미설정 시 도구 에러 | ⏳ 구현 대기 (규칙 6 — 도구 선행 미충족) |
+| test-github-commit-status.md#시나리오 6 | 어노테이션 광고 | ⏳ 구현 대기 (규칙 6 — 도구 선행 미충족) |
 | test-grafana-token.md#시나리오 1 | read 토큰 발급(.env + 만료 주석) | ✅ 전용 파일 `grafana_token_ac1.py` |
 | test-grafana-token.md#시나리오 2 | 엔드포인트·인스턴스 ID 동봉 | ✅ 전용 파일 `grafana_token_ac2.py` |
 | test-grafana-token.md#시나리오 3 | 미설정 시 도구 에러 | ✅ 전용 파일 `grafana_token_ac3.py` |
@@ -768,7 +779,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | test-resource-generic.md#시나리오 18 | 권한 밖은 권한 밖이라고 말한다 | ⏳ 구현 대기 (규칙 6 — 도구 미구현) |
 | test-resource-generic.md#시나리오 20 | 종류 해석 | ✅ 전용 파일 `resource_generic_ac20.py` |
 
-### ⏳ 구현 대기 (27) — 규칙 6 등재 (1:1 계수에서 제외)
+### ⏳ 구현 대기 (26) — 규칙 6 등재 (1:1 계수에서 제외)
 
 > **예외(🚫)와 다르다.** 예외는 영구 면제이고 이것은 **임시 보류**다 — 해제 조건이 충족되면 다음 감지에서 자동으로 1:1 판정 대상으로 복귀한다. 그래서 별도 표에 둔다.
 
@@ -801,6 +812,13 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시나리오 | 근거 (관측 대상이 없는 이유) | 담당 | 해제 조건 |
 |----------|------------------------------|------|-----------|
+| **test-github-app-installation-token.md#시나리오 5** | AC5(statuses 쓰기 배제)가 2026-09-19 문서로만 섰다 — `internal/github` 에 설치 권한 조회·`statuses: write` 거부·읽기 강등·폐기 경로가 없고, `github-mock` 은 토큰 발급 엔드포인트 하나만 서빙한다(설치 권한 조회·폐기·요청 기록 없음). | docs-impl(도구) → 이 렌즈(e2e) | ⑴ AC5 구현 **그리고** ⑵ `github-mock` 이 필요한 엔드포인트를 서빙하고 `docs/e2e-mocking-policy.md` 의 `github-mock` 「대상」을 같은 PR 에서 넓힌다(`GET /app/installations/{id}` · `DELETE /installation/token` · 요청 기록 · statuses 혼입 모드) |
+| **test-github-commit-status.md#시나리오 1** | `github_commit_status_create` 가 등록돼 있지 않다(2026-09-19 문서 선행, `toolslist.go`·`EXPECTED_TOOLS` 0 히트). | docs-impl(도구) → 이 렌즈(e2e) | ⑴ 도구 등록 **그리고** ⑵ `github-mock` 이 필요한 엔드포인트를 서빙하고 `docs/e2e-mocking-policy.md` 의 `github-mock` 「대상」을 같은 PR 에서 넓힌다(`POST /repos/{owner}/{repo}/statuses/{sha}` · 요청 기록 · 422 모드) |
+| **test-github-commit-status.md#시나리오 2** | 위와 **같은 벽**(도구 미등록) + 발급 요청 본문을 읽을 스텁 기록 엔드포인트 부재. | docs-impl(도구) → 이 렌즈(e2e) | 위와 동일 |
+| **test-github-commit-status.md#시나리오 3** | 위와 **같은 벽**(도구 미등록) + 스텁 요청 카운터 부재. | docs-impl(도구) → 이 렌즈(e2e) | 위와 동일 |
+| **test-github-commit-status.md#시나리오 4** | 위와 **같은 벽**(도구 미등록). (b) 갈래는 `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES` 만 다른 배포 변형도 요구한다. | docs-impl(도구) → 이 렌즈(e2e) | 위와 동일 **그리고** 접두사 env 미설정 배포 변형 |
+| **test-github-commit-status.md#시나리오 5** | 도구 미등록. 미설정 배포(`auth-fixture.yaml`)는 이미 있다. | docs-impl(도구) → 이 렌즈(e2e) | 도구 등록 |
+| **test-github-commit-status.md#시나리오 6** | 도구 미등록. | docs-impl(도구) → 이 렌즈(e2e) | 도구 등록 |
 | **test-session-read.md#시나리오 2** | `snapshot` 분기가 `activate → Service.Restore → checkpointerFor(workload)` 를 타는데, 그 함수는 체크포인터가 `Enabled()` 가 아니면 `session.ErrCheckpointDisabled` 로 거부한다. 픽스처는 `CRIU_ENABLED` 를 켜지 않아 `criu.NewStubCheckpointer(false)` 가 주입되므로 **그 상태에 도달하는 길도, 도달한 뒤 읽는 길도 없다**. `active`·`idle` 둘만 단정하고 닫는 것은 이 원장이 08-07·08-13에 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. | 이 렌즈 | kind에 CRIU 런타임·특권 파드·체크포인트 저장소를 세우거나, 아래 산문의 claude-code 아카이브 체크포인터 리드를 검증해 그 경로로 연다 |
 | **test-session-write.md#시나리오 2** | 위와 **같은 벽**을 공유한다(`snapshot` 분기 도달 불가). | 이 렌즈 | 위와 동일 |
 | **test-session-write.md#시나리오 4** | AC가 요구하는 네 거부 중 **큐 포화(429)·쿼터 소진(507)이 `data-plane/cmd/agent/claude.go` 에서만** 나온다 — shell 에이전트에는 그 상태코드를 낼 경로가 없다. 게다가 507은 **지금의 데이터 플레인에서 도달 불가**다(`scrollbackLimit` 기본 256 MiB를 낮출 env·플래그가 없고, 아카이브 복원 우회로도 생성·복원 양쪽에서 막힌다). 네 갈래 중 하나만 떼어 닫는 것은 「반쪽 단정」이라 하지 않는다. | 이 렌즈 + session-platform(상한 노출) | ⑴ session-platform 데이터 플레인이 스크롤백 상한을 설정 표면(env)으로 노출하고, ⑵ claude-code 파드가 이 하네스에서 실제로 서야 한다(부트스트랩이 상류 둘을 타므로 모킹 정책 판정이 선행) |
@@ -1001,6 +1019,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 
 | 시점 | 변경 내용 | 이전 상태 | 이후 상태 |
 |------|-----------|-----------|-----------|
+| 2026-09-19 | **commit status 쓰기를 도구로 분리하고, 토큰 발급에서는 쓰기만 뺐다(읽기는 유지) — 문서 선행** — ⑴ 신규 PRD `prd-github-commit-status.md`(`github_commit_status_create`, AC 6: 기록 · 내부 토큰 최소 스코프·비노출 · 입력 검증 선행 · context 네임스페이스 fail-closed · 미설정 거부 · 비파괴 광고)와 `test-github-commit-status.md`(시나리오 6). ⑵ `prd-github-app-installation-token.md` AC5(statuses 쓰기 배제: `statuses: write` 명시 요청 거부 · `statuses: read` 는 발급 · 생략 시 설치 권한의 `statuses` 를 `read` 로 낮춘 명시 맵, 조회 실패 시 거부 · write 혼입 토큰 폐기)와 테스트 시나리오 5 — 기존 AC1~4·시나리오 1~4는 무수정. ⑶ `values.md` V2에 commit status 목표와 「토큰째 내주기 vs 도구가 대신 행사」 원칙 — 새 가치 없음. ⑷ **왜 쓰기만 토큰에서 빼는가**: commit status는 브랜치 보호 필수 검사가 읽는 신호라, 쓰기 권한을 가진 토큰은 남의 context에 `success`를 적어 검사를 통과시킬 수 있다. 읽기에는 그 위험이 없어 토큰 도구에 남긴다. ⑸ **실측**: 2026-09-19 `statuses: write` 발급 요청이 422(설치에 권한 없음) — 그래서 오늘 기존 호출자가 보는 차이는 0이고, 배포 순서 위험을 미결 표에 등재했다. ⑹ **게이트 밖인 이유**: 게이트의 보증 범위는 클러스터 상태이고 commit status는 GitHub의 추가 전용 기록이다 — 위조는 context 네임스페이스(AC4)가 막는다. 코드 0줄(`internal/`·`main.go`·`tests/` 무접촉). **집계**: `check_ac_mapping.py` 일곱 값 `78·1·19·58·58·0·0` → `85·1·26·58·58·0·0`(시나리오 7 추가, 전부 구현 대기) · `check_doc_inventory.py` `42/42` → `44/44`. | PRD 14 · AC 78 · 테스트 14 · 토큰 도구가 `permissions` 생략 시 설치 권한 전부를 발급(App에 statuses가 추가되면 그대로 실림) | PRD 15 · AC 85 · 테스트 15 · statuses 쓰기는 토큰 경로에서 배제(읽기는 발급), 쓰기는 `github_commit_status_create` 전용(문서 선행 — 두 슬라이스 모두 미구현) · 미결 2건 추가(배포 순서 · `checks` 권한) |
 | 2026-09-17 | **`resource_exec` 등록 — 스트림 축 첫째 도구(AC12)** — 쓰기·스트림 잔여 다섯 중 **AC12 를 통째로 닫는** 슬라이스다. ⑴ **감지 인계를 실측으로 골랐다**: ⓐ AC12 는 approval-gate 시나리오 3·6 과 resource-generic 시나리오 11·17 에서 「docs-impl(도구)」로 지목된 잔여다. ⓑ `dear_baby_reset_user` 가 이미 `create pods/exec` 쌍으로 exec 를 행사하므로 **게이트 선언·RBAC·SPDY 경로가 모두 실재**해 공유 경로를 한 줄도 건드리지 않는다 — `execPairs()` 는 좌표에 `exec` 서브리소스를 얹은 `genericPairs("create")` 이고, 등록 도구 중 `gatedPairs` 가 둘 이상인 것은 여전히 없어 `authorize` 는 무수정 유지된다. ⓒ `resource_delete_collection` 은 `prd-approval-gate` AC11(게이트 자기 권한 list) 선행이 더 깊다. ⑵ **전 계층이 함께 섰다**: `toolslist.go` 선언 · `gate.go::toolRegistry` 등재(`execPairs()` + `genericTarget()`) · `internal/mcp/exec.go` 핸들러 · `internal/k8s/exec.go` 의 `ExecResource`(SPDY) · `Service` 인터페이스와 `Unavailable` · `EXPECTED_TOOLS` 같은 커밋. ⑶ **설계 결정 셋**: **인자 검증이 게이트보다 앞선다**(`execPairs` — command 누락·빈 배열·비문자열 원소·명시적 `subresource` 는 승인 요청 0건으로 거부; `updatePairs`·`deletePairs` 선례) · **컨테이너 수 판정은 클러스터 사실이라 승인 뒤로 남긴다** — 다중 컨테이너 파드의 `container` 누락은 kubelet의 거부 문면(후보 이름을 실어 준다)이 답하고, 그를 위해 승인 전 파드 읽기를 추가하면 AC16 의 「미승인 시 k8s 호출 0」을 깨는 게이트 밖 읽기가 된다 — 스케일의 DaemonSet 거부와 같은 자리 · **상한은 서버 상수**(`execMaxOutputBytes` 256KiB/스트림 · `execMaxDuration` 30s — AC12 가 호출자 인자를 규정하지 않는다)이고, 바이트 상한이 꽉 차면 **스트림을 끊는다**(`limitedWriter.onFull = cancel` — 읽기만 멈추면 `yes` 가 시간 상한까지 호출을 점유한다), 잘림·시간 상한은 응답 필드로 표시 · **`requireSubresource` 를 재사용하지 않았다** — 그 문구는 scale 전용(「has no replicas」)이라 exec 가 빌리면 거짓 문장이 된다; `execServed` 로 exec 문언을 뒀다. ⑷ **AC6 은 공유 경로가 준다**: `genericTarget()` 이 승인 전 파드 읽기와 실행 직전 재확인을 얹는다 — 승인 뒤 같은 이름으로 재생성된 파드는 거부되고, 그 거부를 `TestExecutionIsRefusedWhenTargetChangedAfterApproval` 의 exec 행이 단언한다. **범위 밖(근거와 함께)**: `resource_delete_collection`(AC11 — `prd-approval-gate` AC11 선행) · `resource_attach`·`resource_port_forward`·`resource_proxy`(스트림 잔여 — 한 도구 한 슬라이스) · 통합 e2e `resource_generic_ac11.py` 와 실물 gatekeeper 픽스처(자매 모델 `tbm_homelab-k3s-mcp-scenario-e2e` 소관 — 시나리오 11 행의 차단 근거만 ⑴+⑵ 에서 ⑵ 하나로 줄였다). ⚠️ **운영 영향**: 새 경로가 하나 열릴 뿐 기존 호출 형태는 변하지 않는다. 다만 **이 서버가 임의 컨테이너에서 명령을 실행할 수 있게 된 것은 처음이며**(`dear_baby_reset_user` 는 게이트 밖 선례), 승인 `context` 가 명령을 전문으로 싣는 것이 유일한 방어선이다 — 「쌍이 분류력을 잃음」 행의 논리가 exec 에도 그대로 적용된다. **집계**: `check_ac_mapping.py` 일곱 값(`78·1·27·50·50·0·0`)과 `check_doc_inventory.py`(`42/42`)는 부모와 같다 — 시나리오도 e2e 파일도 만들지 않았으므로 움직였다면 그것이 오류 신호다. `check_comment_policy.py` 는 등재 범위의 주석이 늘어 같은 PR 에서 재판정했다. 판정 근거는 `rct_20260917-0001`. | 등록 도구 19종 · 쓰기·스트림 미구현 5종(`delete_collection`·`exec`·`attach`·`port_forward`·`proxy`) · 시나리오 11 의 차단이 ⑴ 도구 미등록 + ⑵ 픽스처 둘 · approval-gate 시나리오 1·3 이 미등록 5종을 인용 | 등록 도구 **20종**(`toolslist.go` == `EXPECTED_TOOLS`) · 쓰기·스트림 미구현 **4종** · 시나리오 11 의 남은 차단은 **gatekeeper 픽스처 하나** · approval-gate 시나리오 1·3 의 미등록은 4종. 집계 **78·1·27·50·50·0·0**(기여 0) |
 | 2026-09-16 | `rct_20260916-0003` — PRD `prd-resource-generic.md` AC9의 두 문장을 #120의 apply 와이어 계약에 맞춰 교체했다(apply는 `resourceVersion`만 주입 — SSA가 applied config의 uid를 immutable로 거부, 승인된 `uid` 정합은 게이트 층의 실행 직전 대상 재독(AC6)에서 행사, merge·strategic·json과 호출자 사전 불일치 거부·재시도 금지는 불변). 위험 행 「AC6 서버사이드 프리컨디션」의 apply 절을 같은 계약으로 갱신해 ⬜ 미결 설계 질문을 닫았고 날짜 절을 추가했다. 코드 0줄 — `internal/`·`main.go`·`tests/` 무접촉이므로 deploy pin·이미지 재빌드 변화도 없다. `check_ac_mapping.py` 일곱 값은 시나리오를 더하지도 빼지도 않아 병합 상태 기준 그대로(#106 병합 전 `78·1·27·50·50·0·0`), `check_doc_inventory.py` `40/40` 불변, 주석 원장은 `docs/` 편집이라 무변동. | PRD AC9이 「`merge`·`strategic`·`apply`는 `metadata`에 두 값을 붙이고」·「승인된 `uid`가 들어 있어 사라진 대상을 다시 만드는 경로가 되지 않는다」로 #120 이전 기제를 못박음 — #120 병합(12:09) 뒤 구현과 갈라진 축-② 어긋남, 소유자 없음 | AC9이 「merge·strategic은 두 값, apply는 `resourceVersion`만(단위 회귀 2곳이 강제)」·「`uid` 정합은 게이트 재독에서 행사」로 수렴; 남은 SSA applied-rv 강제 관측은 시나리오-e2e `rct_20260915-0008`의 몫 |
 | 2026-09-15 | `rct_20260915-0011` 시도 3 — update 프리컨디션 PR #109에 main `5f9ea3f`를 병합했다. `resource_create`의 배치 분기 뒤에서만 일반 호출의 승인 상태를 전달해 양쪽 승인 경로를 보존하고, 주석 원장과 이 행의 잔여 도구 수를 현재 소스에 맞췄다. 기존 update/create Go 회귀로 병합 결과를 검증하며 실물 E2E는 후속 소관으로 남긴다. 변경된 head에는 별도 리뷰가 필요하다. | #109가 #112 이후 dispatcher·주석 원장 충돌로 실행 중단 | 충돌 해소 및 재검증 대상으로 준비; update 범위·잔여 소관 유지 |
