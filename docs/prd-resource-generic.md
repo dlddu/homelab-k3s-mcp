@@ -281,13 +281,16 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
 - **설명**: `resource_attach`는 `create` on `pods/attach`만 행사한다. `exec`과 달리 새
   프로세스를 띄우지 않고 **이미 돌고 있는 주 프로세스의 스트림에 붙는다**. 요청·응답
   모델에 맞추기 위해 `readSeconds`(기본 5, 상한 30) 동안 출력을 모아 반환하며,
-  `stdin`이 주어지면 붙은 직후 한 번 써 넣는다.
+  `stdin`이 주어지면 붙은 직후 한 번 써 넣는다. AC12와 같은 이유로 **출력에는 스트림당
+  256KiB의 바이트 상한**을 두고, 상한에 걸리면 응답의 `stdoutTruncated`/`stderrTruncated`가
+  참이 된다 — 시간 상한만으로는 끝없이 출력하는 주 프로세스를 막지 못한다.
 
   이 도구가 `exec`과 같은 등급인 이유는 권능이 같기 때문이다 — 대화형 셸이 PID 1로 도는
   파드에서는 `attach`로 stdin을 보내는 것이 `exec`으로 셸을 여는 것과 구별되지 않는다.
 - **달성 가치**: V1, V3
 - **검증 방법**: 출력을 내보내는 파드에 붙어 `readSeconds` 동안의 출력이 반환된다.
-  `readSeconds=31`이 거부된다. `stdin`이 대상 프로세스에 전달된다.
+  `readSeconds=31`이 거부된다. `stdin`이 대상 프로세스에 전달된다. 상한을 넘기는 출력이
+  잘리고 잘렸음이 응답에 표시된다.
 
 ### AC14: 포트 포워드
 - **설명**: `resource_port_forward`는 `create` on `pods/portforward`만 행사한다. MCP는
