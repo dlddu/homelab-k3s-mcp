@@ -18,8 +18,8 @@
 - PRD: **15개** (도구 13 + 공통 기반 2)
 - Acceptance Criteria: **85개** (가치 연결됨: 85 / 미연결: 0) — AC 번호는 결번을 둔다(platform AC3 · resource-generic AC19)
 - 테스트 문서: **15개** (AC 커버됨: 85 / 미커버: 0)
-- 등록 도구: **20종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_create`·`resource_update`·`resource_patch`·`resource_delete`·`resource_exec` 5종이고, 게이트 밖 예외는 **1종**(`dear_baby_reset_user`)이다. `resource_watch` 는 쓰기가 아니므로 이 둘 어디에도 들어가지 않는다 — 민감 종류(`RESOURCE_GATED_KINDS`)를 대상으로 할 때만 `resource_get` 과 같은 조건으로 게이트를 탄다
-- **문서 선행(미구현)**: `github_commit_status_create`(PRD AC6개)와 `github_app_installation_token` AC5(statuses 쓰기 배제 · 읽기는 발급)는 2026-09-19 문서만 섰다 — 등록 도구 수 20종에 들어가지 않으며, 두 PRD의 시나리오 7개는 아래 「⏳ 구현 대기」에 등재했다. 클러스터 밖(GitHub) 쓰기이므로 게이트 대상·게이트 밖 예외 어느 계수에도 들어가지 않는다(`prd-github-commit-status` 「범위 밖」)
+- 등록 도구: **21종** (`internal/mcp/toolslist.go` = `tests/integration/_helpers.py::EXPECTED_TOOLS`) — 그중 게이트 대상 쓰기 도구는 `resource_create`·`resource_update`·`resource_patch`·`resource_delete`·`resource_exec`·`resource_attach` 6종이고, 게이트 밖 예외는 **1종**(`dear_baby_reset_user`)이다. `resource_watch` 는 쓰기가 아니므로 이 둘 어디에도 들어가지 않는다 — 민감 종류(`RESOURCE_GATED_KINDS`)를 대상으로 할 때만 `resource_get` 과 같은 조건으로 게이트를 탄다
+- **문서 선행(미구현)**: `github_commit_status_create`(PRD AC6개)와 `github_app_installation_token` AC5(statuses 쓰기 배제 · 읽기는 발급)는 2026-09-19 문서만 섰다 — 등록 도구 수 21종에 들어가지 않으며, 두 PRD의 시나리오 7개는 아래 「⏳ 구현 대기」에 등재했다. 클러스터 밖(GitHub) 쓰기이므로 게이트 대상·게이트 밖 예외 어느 계수에도 들어가지 않는다(`prd-github-commit-status` 「범위 밖」)
 - **건강 상태**: 🟡 **위험 있음** — 문서 계층의 연결은 모두 이어져 있고,
   ⑴ **폐기된 6종은 2026-09-15 에 전부 코드에서 나갔다**(마지막 1종 `workload_scale` 제거 —
   대체재 `resource_update(subresource=scale)`가 같은 날 먼저 섰다). 「문서 없는 실행 코드」는 **0종**이다.
@@ -255,6 +255,24 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 `resource_port_forward`·`resource_proxy` 넷**과 `prd-approval-gate` AC11
 (`delete_collection` 의 선행)다. `create` 의 TOCTOU 질문은 #112 가 문서(AC6 면제)와 함께
 닫았다. 「일곱을 한 슬라이스에 묶지 않는 근거」는 그대로 유효하다.
+
+**[2026-09-18 재실측 · rct_20260918-0002]** 이 슬라이스가 `resource_attach`(AC13)를
+등록했다 — **현재 잔여는 `resource_delete_collection`(AC11)·`resource_port_forward`(AC14)·
+`resource_proxy`(AC15) 셋**과 `prd-approval-gate` AC11(`delete_collection` 의 선행)이다.
+넷 중 attach 를 먼저 고른 근거는 **선행의 깊이**다: `delete_collection` 은 `prd-approval-gate`
+AC11 을 선행으로 달고 있어 한 슬라이스가 아니라 **순서 있는 둘**이고, 선행이 없는 셋 중에서는
+attach 가 가장 얕다 — PRD 자신이 「`exec` 과 같은 등급」이라 적고, 그 `exec` 이 #123 으로 막
+착지해 SPDY 스트리밍·상한·discovery 확인·인자 사전 검증·쌍 선언이 그대로 형판이 된다
+(`pods/exec` → `pods/attach` 1:1). `port_forward` 는 전송 계층이 다르고(단발 왕복·터널 비유지)
+`proxy` 는 Pod·Service·Node 3종 × 메서드→verb 사상과 kubelet 고권한 경로 표시가 필요해 둘 다
+새 설계를 요구한다. 중복 구현을 만들지 않으려고 `execServed`→`streamSubresourceServed`,
+`execMaxOutputBytes`→`streamMaxOutputBytes` 로 공유 지점을 일반화했다(exec 의 동작·문구는 불변).
+**이 슬라이스가 닫지 않은 것**: AC13 의 실물 왕복(기존 프로세스의 스트림임을 파드 로그로 확인,
+stdin 에 대한 대상 프로세스의 반응)은 실물 gatekeeper 픽스처 위에서만 관측되므로 자매 모델
+(`tbm_homelab-k3s-mcp-scenario-e2e`)의 몫으로 남는다. **리베이스 시점 정정(2026-09-18)**: 그
+픽스처는 PR #106 으로 main 에 착지했다 — 시나리오 13 의 선행 조건 ⑴·⑵가 **둘 다** 충족됐고,
+남은 것은 전용 e2e `tests/integration/resource_generic_ac13.py` 의 저작뿐이다. 그 저작은 이
+슬라이스의 범위가 아니다(이 모델의 판정 축은 「AC 가 구현되었는가」이지 「e2e 가 있는가」가 아니다).
 > ⚠️ **다음 한 종을 고를 때 알아 둘 것**: `resource_create`(AC7)는 「여러 문서가 담긴 매니페스트는
 > **문서마다 별도 승인**」을 포함하는데, `gate.go::authorize` 는 한 호출에 `gatekeeper.Call` 을
 > **하나**(`gated[0]`)만 만든다. 그래서 그 도구는 **모든 도구가 지나는 공유 게이트 경로의
@@ -827,7 +845,7 @@ id가 되고, 나머지는 일반 슬러그로 떨어진다.
 | **test-approval-gate.md#시나리오 5** | **⑴ 은 2026-09-15 에 무너졌다** — 실물 gatekeeper 픽스처가 착지했고(`rct_20260915-0008`, `tests/k8s/kind/gatekeeper-fixture.yaml`), `REJECTED`·`EXPIRED`·타임아웃·연결 실패·`GATEKEEPER_BASE_URL`/`GATEKEEPER_API_KEY` 미설정은 실물 + 배포 env 조작으로 만들 수 있다. **남은 차단은 `externalId` 충돌(409)과 5xx 를 만들 수단**이다 — 클라이언트가 `externalId` 를 호출마다 무작위로 만들므로 실물로는 충돌을 강제할 수 없고, 5xx 주입 경로도 실물에는 없다. 스텁은 이 렌즈에서 쓸 수 없으므로(위 문단) 주입 수단의 등재 판정이 선행이다. 여덟 중 일부만 떼어 닫는 것은 이 원장이 되돌아와 고쳤던 「반쪽 단정」이라 하지 않는다. | 이 렌즈(e2e) + mock-policy(409·5xx 주입 수단의 등재 판정) | ⑵ 409·5xx 를 만들 수단 — 실물에 주입 경로가 생기거나, `e2e-mocking-policy.md` 가 해당 스텁을 카테고리·대체 검증과 함께 등재하거나. **도구 축도 픽스처 축도 더는 차단 요인이 아니다** |
 | **test-approval-gate.md#시나리오 11** | **(a)** 민감 종류의 게이트 읽기는 `PartialObjectMetadata`를 요구하고 전체 객체 폴백을 거부한다(`internal/k8s`의 `TargetReader`). 남은 검증 수단은 실물 gatekeeper와 **apiserver 요청** 감사 프록시다. PR #106의 gatekeeper 요청 기록 프록시만으로 Kubernetes 읽기를 관측했다고 할 수 없다. **(b)** `resource_update(subresource=scale)`와 스케일 상세용 `get`은 서 있고, `resource_delete_collection`과 대상 목록을 만드는 `list` 경로가 남았다(`gate.go::GatePairs`의 list는 선언만 존재). **(c)** `rbac.yaml`은 `cluster-admin` 바인딩이라 「게이트 선언을 뺀 변형에서 대조 실패」가 무엇을 잡는지 여전히 문면 판단이 필요하다. | docs-impl(delete_collection) → 이 렌즈(e2e·apiserver 감사 프록시) + 제품 문서((c)의 대조 기준) | ⑴ `resource_delete_collection`과 context 대상 목록 구현, ⑵ 실물 gatekeeper 및 apiserver 감사 프록시, ⑶ (c)의 선언 제거 대조가 cluster-admin 아래서 검증할 계약의 문면 정리. 그 뒤 `approval_gate_ac11.py`에서 (a)·(b)·(c) 전부 검증 |
 | **test-resource-generic.md#시나리오 12** | `resource_delete_collection` 이 등록돼 있지 않다(레포 전체 grep 0 히트). `deletecollection` 과 `configmaps` 는 2026-09-14 RBAC 개정으로 둘 다 권한 안이지만, `context` 의 대상 수·이름 목록을 승인 화면에서 읽어야 하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_delete_collection` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처 **⟨2026-09-18 갱신⟩ 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`·`tests/k8s/kind/gatekeeper-variant.yaml`)는 이 PR(#106)로 착지했다 — 픽스처 부재는 더는 이 행의 차단 요인이 아니고, 남은 것은 위에 적힌 나머지 조건과 전용 e2e 파일 저작이다.** |
-| **test-resource-generic.md#시나리오 13** | `resource_attach` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `pods/attach` 는 2026-09-14 RBAC 개정으로 권한 안이다. 승인을 태울 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_attach` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. stdio 파드 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 **⟨2026-09-18 갱신⟩ 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`·`tests/k8s/kind/gatekeeper-variant.yaml`)는 이 PR(#106)로 착지했다 — 픽스처 부재는 더는 이 행의 차단 요인이 아니고, 남은 것은 위에 적힌 나머지 조건과 전용 e2e 파일 저작이다.** |
+| **test-resource-generic.md#시나리오 13** | **⑴은 2026-09-18(`rct_20260918-0002`)에 충족됐다** — `resource_attach` 가 등록·구현됐고(`internal/k8s/attach.go` · `internal/mcp/attach.go` · `gate.go` 의 `create on pods/attach` 선언 · `toolslist.go`), Go 단위가 쌍·`readSeconds` 상한·stdin 전달·승인 `context` 를 단정한다. **⑵도 2026-09-18 에 충족됐다** — 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`·`tests/k8s/kind/gatekeeper-variant.yaml`)가 PR #106 으로 main 에 착지했다. **남은 것은 선행이 아니라 저작이다**: 실물 왕복(기존 프로세스의 스트림임을 파드 로그로 확인, stdin 에 대한 대상 프로세스의 반응)을 관측할 전용 e2e `tests/integration/resource_generic_ac13.py` 가 아직 없다 — 그 저작은 `rct_20260918-0002` 의 범위 밖이었다. | 이 렌즈(e2e) | 전용 e2e 파일 저작만 남았다. 선행 ⑴·⑵는 둘 다 해소됐고, stdio 파드 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 |
 | **test-resource-generic.md#시나리오 14** | `resource_port_forward` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `pods/portforward` 는 2026-09-14 RBAC 개정으로 권한 안이다. 「같은 승인 id 로 두 번째 왕복」을 재려면 실물 승인이 필요한데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_port_forward` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. HTTP 서빙 파드 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 **⟨2026-09-18 갱신⟩ 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`·`tests/k8s/kind/gatekeeper-variant.yaml`)는 이 PR(#106)로 착지했다 — 픽스처 부재는 더는 이 행의 차단 요인이 아니고, 남은 것은 위에 적힌 나머지 조건과 전용 e2e 파일 저작이다.** |
 | **test-resource-generic.md#시나리오 15** | `resource_proxy` 가 등록돼 있지 않다(레포 전체 grep 0 히트). `pods/proxy`·`services/proxy`·`nodes/proxy` 는 2026-09-14 RBAC 개정으로 전부 권한 안이다. 네 호출 모두 승인을 요구하는데 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ `resource_proxy` 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. HTTP 파드·Service 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 **⟨2026-09-18 갱신⟩ 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`·`tests/k8s/kind/gatekeeper-variant.yaml`)는 이 PR(#106)로 착지했다 — 픽스처 부재는 더는 이 행의 차단 요인이 아니고, 남은 것은 위에 적힌 나머지 조건과 전용 e2e 파일 저작이다.** |
 | **test-resource-generic.md#시나리오 17** | (a) 의 `kind=Secret` `resource_list` 와 (c')·(d) 가 전제하던 `nodes/proxy`·`secrets` 의 `watch` 는 2026-09-14 RBAC 개정으로 전부 권한 안에 들어왔다. 남은 것은 (c) 다 — 스트림 셋(`attach`·`port_forward`·`proxy`)이 미등록이고(`exec` 은 2026-09-17 등록), (d) 의 승인 갈래는 `tests/k8s/kind/gatekeeper-fixture.yaml` 이 없어 태울 수 없다. (b) 의 `RESOURCE_GATED_KINDS` 확장 경로는 구현돼 있다. | docs-impl(도구) → 이 렌즈(e2e) | ⑴ 스트림 도구 셋 등록 **그리고** ⑵ 실물 gatekeeper 픽스처. 난수 토큰 Secret 과 그 토큰을 서빙하는 HTTP 파드 픽스처는 이 렌즈 자신의 저작이라 차단 요인이 아니다 **⟨2026-09-18 갱신⟩ 실물 gatekeeper 픽스처(`tests/k8s/kind/gatekeeper-fixture.yaml`·`tests/k8s/kind/gatekeeper-variant.yaml`)는 이 PR(#106)로 착지했다 — 픽스처 부재는 더는 이 행의 차단 요인이 아니고, 남은 것은 위에 적힌 나머지 조건과 전용 e2e 파일 저작이다.** |

@@ -34,6 +34,10 @@ type Service interface {
 	// (prd-resource-generic AC12): one named pod, one command array, stdout and
 	// stderr returned separately under AC12's byte and time caps.
 	ExecResource(ctx context.Context, ref ExecRef, container *string, command []string) (*ExecOutcome, error)
+
+	// AttachResource joins the streams of the process already running in one
+	// named pod (prd-resource-generic AC13).
+	AttachResource(ctx context.Context, ref AttachRef, container *string, stdin *string, readSeconds int) (*AttachOutcome, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -86,5 +90,9 @@ func (u *Unavailable) ExecInPod(context.Context, string, string, *string, []stri
 }
 
 func (u *Unavailable) ExecResource(context.Context, ExecRef, *string, []string) (*ExecOutcome, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) AttachResource(context.Context, AttachRef, *string, *string, int) (*AttachOutcome, error) {
 	return nil, unavailableErr(u.reason)
 }

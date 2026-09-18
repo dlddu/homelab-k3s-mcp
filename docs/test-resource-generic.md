@@ -278,7 +278,15 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   파드 로그로 확인). `readSeconds=31`은 거부. `stdin`이 대상 프로세스에 전달되어 그
   반응이 출력에 나타남
 - **검증 AC**: AC13
-- **자동화**: (미작성) — 계획: 통합 `resource_generic_ac13.py`
+- **자동화**: Go 단위 `internal/mcp/attach_test.go::TestAttachJoinsTheRunningProcess`·
+  `TestAttachRefusalsCostNoApproval`·`TestAttachContextCarriesTheStdin` 착지(2026-09-18 —
+  좌표·컨테이너·읽기 창 전달, `readSeconds` 미지정 시 기본 5, `readSeconds=31`·`0`·비정수의
+  **클러스터 호출 0·승인 요청 0** 거부, stdin 전달과 빈 문자열이 부재와 구분됨, 상한 잘림 표시,
+  쌍이 `create on pods/attach`, 승인 `context` 가 stdin 을 그대로 실음). 통합
+  `resource_generic_ac13.py` 는 아직 저작되지 않았다 — 선행이던 실물 gatekeeper 픽스처는
+  PR #106 으로 main 에 착지해 더는 차단 요인이 아니고, 남은 것은 파일 저작뿐이다. **파드 로그로
+  「새 프로세스가 뜨지 않았다」를 확인하는 절과 stdin 에 대한 대상 프로세스의 반응은 단위로
+  관측할 수 없어 그쪽 몫이다**
 
 ### 시나리오 14: 포트 포워드는 단발 왕복이다
 - **사전 조건**: 동일, HTTP 를 서빙하는 파드
