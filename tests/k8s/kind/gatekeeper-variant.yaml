@@ -105,6 +105,8 @@ spec:
               value: 0.0.0.0:3000
             - name: LOG_LEVEL
               value: info
+            # 등재: docs/e2e-mocking-policy.md — 대체 검증은 auth-fixture.yaml(인증을 켠 변형)
+            # mock-exception: GATE — 이 변형의 검증 대상은 gatekeeper 왕복이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
             - name: MCP_AUTH_DISABLED
               value: "1"
             - name: GATEKEEPER_TIMEOUT_SECONDS
