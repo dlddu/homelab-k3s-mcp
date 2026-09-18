@@ -536,3 +536,27 @@ jobs:
           kubectl -n homelab-k3s-mcp-oauth describe deploy/homelab-k3s-mcp-no-auth || true
           kubectl -n homelab-k3s-mcp-oauth logs -l app.kubernetes.io/name=homelab-k3s-mcp-no-auth --tail=200 || true
           kubectl -n homelab-k3s-mcp-oauth logs -l app.kubernetes.io/name=homelab-k3s-mcp-no-auth --tail=200 --previous || true
+
+  # 브랜치 보호의 required status check 로 거는 **유일한** 이름이다. 위 잡들을 하나하나
+  # required 로 등록하면 잡을 추가·개명·분할할 때마다 레포 설정도 같이 고쳐야 하고, 빠뜨리면
+  # 새 잡은 실패해도 머지가 막히지 않는다. 여기 `needs` 에만 더하면 된다.
+  #
+  # `if: always()` 는 빼면 안 된다: 선행 잡이 실패하면 이 잡은 기본적으로 *skipped* 가 되고,
+  # GitHub 는 skipped 인 required check 를 통과로 친다 — 게이트가 가장 필요한 순간에 열린다.
+  # 그래서 항상 돌리고, 선행 결과가 전부 success 가 아니면(failure·cancelled·skipped) 실패한다.
+  ci-passed:
+    name: ci passed
+    if: always()
+    needs: [lint, unit-tests, integration-tests]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 2
+    steps:
+      - name: Require every upstream job to succeed
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
+          if ! echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' >/dev/null; then
+            echo "::error::성공하지 않은 선행 잡이 있다 — 위 목록 참조"
+            exit 1
+          fi
