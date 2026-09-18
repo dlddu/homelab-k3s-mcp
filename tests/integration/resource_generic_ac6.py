@@ -28,7 +28,7 @@ import subprocess
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, set_auto_response, wait_for_pending
+from _gatekeeper import decide, gatekeeper_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -190,16 +190,23 @@ async def test_resuming_from_a_version_skips_what_was_already_seen(session, sinc
 
 
 async def test_a_sensitive_kind_needs_approval_and_keeps_its_caps(session, gate) -> None:
-    print("    (미승인 — 자동 거부로 사람 없이 거절을 태운다)")
-    set_auto_response(gate, "AUTO_REJECT")
+    print("    (미승인 — 승인 요청을 띄우고 판정을 REJECTED 로 내려 거절을 태운다)")
+    # 자동 거부 모드(`AUTO_REJECT`)를 쓰지 않는다: 그 모드는 gatekeeper 가 요청의 담당
+    # 사용자에게 적용하는 설정이라 `GATEKEEPER_USER_ID` 를 물고 있는 gatekeeper-variant
+    # 배포에서만 발화한다(시나리오 9 가 `실행 대상: gatekeeper-variant` 인 이유). primary
+    # 의 요청에는 담당자가 없어 모드가 걸리지 않고, 요청은 승인 시한까지 PENDING 으로
+    # 남았다가 타임아웃으로 끝난다 — 거부가 아니라 무응답이라 이 절을 재지 못한다.
+    refused = asyncio.create_task(
+        session.call_tool("resource_watch", _watch_args("Secret", WATCH_SECRET, 10))
+    )
+    row = await wait_for_pending(gate, WATCH_SECRET)
+    await decide(gate, row["id"], "REJECTED")
     try:
-        await session.call_tool("resource_watch", _watch_args("Secret", WATCH_SECRET, 10))
+        await refused
     except McpError as exc:
         assert "reject" in str(exc).lower(), exc
     else:
         raise AssertionError("승인 없이 Secret 스트림이 열렸다")
-    finally:
-        set_auto_response(gate, "NONE")
 
     print("    (승인 후 — 이벤트가 온다)")
     task = asyncio.create_task(

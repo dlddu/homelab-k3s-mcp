@@ -16,8 +16,10 @@
 없었다」와 「호출이 가지 않았다」를 이 층에서 가를 수 없다는 사실을 숨기지 않으려고
 여기 적는다 — 이 파일이 증명하는 것은 **거부가 상태에 닿지 않았다**까지다.
 
-미승인은 사람 없이 재야 하므로 자동 거부(`AUTO_REJECT`)로 만든다. 그것은 「승인이
-없는 호출」의 재현이지 다른 시나리오(자동 응답 표기)의 검증이 아니다.
+미승인은 사람 없이 재야 하므로 **승인 요청을 띄운 뒤 판정을 직접 REJECTED 로 내려**
+만든다(`resource_generic_ac5.py` 의 게이트 대조군과 같은 방식). 자동 거부 모드
+(`AUTO_REJECT`)를 쓰지 않는 이유는 `_refuse` 의 docstring 에 있다 — 그 모드는 primary
+배포의 요청에는 걸리지 않는다.
 """
 
 from __future__ import annotations
@@ -33,7 +35,6 @@ from _gatekeeper import (
     decide,
     gatekeeper_url,
     list_requests,
-    set_auto_response,
     wait_for_pending,
 )
 from _helpers import base_url, open_session, wait_for_healthz
@@ -150,19 +151,35 @@ def _gated_calls() -> list[tuple[str, dict]]:
     ]
 
 
+async def _refuse(session, gate, tool: str, args: dict, marker: str) -> None:
+    """도구 호출을 띄우고, 그것이 만든 승인 요청을 사람 대신 **거절**한다.
+
+    자동 응답 모드(`AUTO_REJECT`)를 쓰지 않는 이유: 그 모드는 gatekeeper 가 **요청의
+    담당 사용자**에게 적용하는 설정이라 `GATEKEEPER_USER_ID` 를 물고 있는
+    `gatekeeper-variant` 배포에서만 발화한다(그래서 시나리오 9 의
+    `approval_gate_ac9.py` 가 `실행 대상: gatekeeper-variant` 다). primary 배포의
+    요청에는 담당자가 없어 모드가 걸리지 않고, 요청은 승인 시한(5분)까지 PENDING 으로
+    남았다가 타임아웃으로 끝난다 — 거부가 아니라 **무응답**이라 이 시나리오가 재려는
+    것을 재지 못한다. 그래서 `resource_generic_ac5.py` 의 게이트 대조군과 같은 방식으로
+    판정을 직접 내린다.
+    """
+    task = asyncio.create_task(session.call_tool(tool, args))
+    row = await wait_for_pending(gate, marker)
+    await decide(gate, row["id"], "REJECTED")
+    try:
+        await task
+    except McpError as exc:
+        assert "reject" in str(exc).lower(), f"{tool}: {exc}"
+    else:
+        raise AssertionError(f"{tool} 이 거절된 승인 요청 위에서 실행됐다")
+
+
 async def test_every_gated_verb_is_refused_without_approval(session, gate) -> None:
     before = _resource_version("secret", GATED_SECRET)
-    set_auto_response(gate, "AUTO_REJECT")
-    try:
-        for tool, args in _gated_calls():
-            try:
-                await session.call_tool(tool, args)
-            except McpError as exc:
-                assert "reject" in str(exc).lower(), f"{tool}: {exc}"
-            else:
-                raise AssertionError(f"{tool} 이 승인 없이 민감 종류에 실행됐다")
-    finally:
-        set_auto_response(gate, "NONE")
+    for tool, args in _gated_calls():
+        # 마커는 대상 이름이 아니라 **도구 이름**이다: 여섯 중 name 없이 도는 호출이
+        # 하나 있고(list 범위 watch), context 의 첫 줄 `tool: <name>` 은 여섯 다 갖는다.
+        await _refuse(session, gate, tool, args, f"tool: {tool}")
 
     assert not _exists("secret", CREATED_SECRET), "거부된 create 가 객체를 남겼다"
     assert _exists("secret", GATED_SECRET), "거부된 delete 가 객체를 지웠다"
