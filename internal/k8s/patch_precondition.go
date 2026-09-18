@@ -45,13 +45,6 @@ func approvedPatch(ref PatchRef) ([]byte, error) {
 			}
 		}
 	}
-	// Apply is the one patch type the apiserver decodes as an object before
-	// merging (the other three are opaque payloads), and the type lookup reads
-	// the applied configuration's gvk. A body without apiVersion/kind therefore
-	// cannot even resolve its type, so the server-known identity is supplied
-	// here when the caller did not write it. A caller-written value that
-	// disagrees with the coordinate is refused before submission, the same
-	// pattern as the resourceVersion/uid conditions below.
 	if ref.PatchType == "apply" {
 		for _, identity := range [][2]string{{"apiVersion", ref.APIVersion}, {"kind", ref.Kind}} {
 			encoded, _ := json.Marshal(identity[1])

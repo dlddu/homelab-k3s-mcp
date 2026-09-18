@@ -45,8 +45,6 @@ func TestApprovedPatchPreservesDataAndConditions(t *testing.T) {
 				if metadata["resourceVersion"] != "100" {
 					t.Fatalf("apply carries the approved version: %s", raw)
 				}
-				// The applied configuration is decoded as an object by the
-				// apiserver, which resolves the type from its gvk.
 				var apiVersion, kind string
 				json.Unmarshal(body["apiVersion"], &apiVersion)
 				json.Unmarshal(body["kind"], &kind)
