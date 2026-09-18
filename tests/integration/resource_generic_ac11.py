@@ -16,12 +16,28 @@ Go 단위 ``internal/mcp/resource_test.go::TestExecStreamsAndCaps`` 가 인자 �
 `resource_exec` 은 **언제나** 승인을 거치므로 모든 케이스가 승인 댄스를 탄다. 컨테이너
 누락 케이스도 마찬가지다 — 그 거절은 인자 검증이 아니라 승인 뒤 kubelet 이 내는
 답이기 때문이다(그것이 「후보 이름이 제시된다」는 기대의 출처다).
+
+**픽스처 파드는 기다려서 집는다** — 직전 판이 한 번에 집으려다 CI 에서 결정적으로 깨진
+자리이고, 깨진 이유는 둘이다. ⑴ **레이블이 갈라져 있다**: `app.kubernetes.io/name` 은
+`resource-generic-fixture.yaml` 이 **Deployment 메타데이터**에만 다는 값이고 파드 템플릿이
+다는 것은 `app` 하나다. 파드를 그 이름으로 찾으면 클러스터가 아무리 건강해도 목록은
+**항상 비어** 있다(직전 판의 실패는 타이밍이 아니라 이것이었다 — 기다리기만 더했다면
+대기 시간을 다 쓰고 같은 자리에서 깨졌을 것이다). ⑵ **CI 에 이 픽스처의 롤아웃 대기가
+없다**: `ci.yml` 은 `resource-generic-fixture.yaml` 을 apply 만 하고 `rollout status` 는
+`workload-fixture` 에만 건다. 그래서 파드가 스케줄되기 전에 이 파일이 시작될 수 있다.
+자매 파일 `resource_generic_ac5.py` 가 같은 워크로드를 자기 사전 조건 루프로 기다려
+통과하는 것이 그 선례다.
+
+`병렬 레인:` 을 선언하지 않는 것은 의도다. 러너는 레인 없는 파일을 **레인 단계가 끝난 뒤
+단독으로** 돌리므로(`run_all.py` 머리말) 이 파일은 `resource-generic` 레인과 동시에 돌지
+않는다 — 여기서 기다리는 상대는 다른 테스트가 아니라 **아직 서지 않은 픽스처**다.
 """
 
 from __future__ import annotations
 
 import asyncio
 import subprocess
+import time
 
 from _gatekeeper import decide, gatekeeper_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
@@ -38,18 +54,44 @@ STDERR_MARK = "rg-ac11-on-stderr"
 MAX_OUTPUT_BYTES = 256 * 1024
 
 
-def _pod_name() -> str:
-    name = subprocess.check_output(
-        [
-            "kubectl", "-n", NAMESPACE, "get", "pods",
-            "-l", f"app.kubernetes.io/name={MULTI_WORKLOAD}",
-            "--field-selector=status.phase=Running",
-            "-o", "jsonpath={.items[0].metadata.name}",
-        ],
-        text=True,
-    ).strip()
-    assert name, f"{MULTI_WORKLOAD} 의 Running 파드를 찾지 못했다"
-    return name
+def _pod_name(timeout: float = 180.0) -> str:
+    """두 컨테이너가 다 Ready 인 픽스처 파드 이름을 돌려준다(없으면 기다린다).
+
+    `check_output` 이 아니라 `run(check=False)` 를 쓰는 이유: 빈 목록에 걸린
+    `jsonpath={.items[0]…}` 은 `array index out of bounds` 로 rc=1 이라, 그대로 두면
+    아래 단언에 **닿기 전에** `CalledProcessError` 가 먼저 튄다 — 직전 판이 실제로 그렇게
+    깨졌고, 호출자는 「픽스처가 아직 없다」 대신 kubectl 인자 덤프를 읽게 된다.
+    """
+    deadline = time.monotonic() + timeout
+    last = "<no probe yet>"
+    while True:
+        probe = subprocess.run(
+            [
+                "kubectl", "-n", NAMESPACE, "get", "pods",
+                "-l", f"app={MULTI_WORKLOAD}",
+                "--field-selector=status.phase=Running",
+                "-o", "jsonpath={.items[0].metadata.name}|"
+                "{range .items[0].status.containerStatuses[*]}{.name}={.ready},{end}",
+            ],
+            capture_output=True,
+            text=True,
+        )
+        last = probe.stdout.strip() or probe.stderr.strip()
+        if probe.returncode == 0 and probe.stdout.count("|") == 1:
+            name, statuses = probe.stdout.split("|")
+            ready = dict(
+                entry.split("=") for entry in statuses.split(",") if "=" in entry
+            )
+            if name and ready == {CHATTY: "true", QUIET: "true"}:
+                print(f"precondition ok: {name} containers={sorted(ready)} (둘 다 Ready)")
+                return name
+        if time.monotonic() >= deadline:
+            raise AssertionError(
+                f"{NAMESPACE} 의 app={MULTI_WORKLOAD} 파드가 {timeout:.0f}s 안에 "
+                f"컨테이너 {CHATTY}·{QUIET} 둘 다 Ready 인 Running 상태가 되지 않았다 "
+                f"(마지막 관측: {last!r})"
+            )
+        time.sleep(3)
 
 
 async def _approved_exec(session, gate, pod: str, args: dict):
