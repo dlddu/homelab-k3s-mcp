@@ -229,6 +229,8 @@ def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
     stays valid for the body: a caller that needs to make the workload produce
     output can post to it without going through the tool under test.
     """
+    _t0 = time.monotonic()
+    _lap = lambda what: print(f"[timing] {what} +{time.monotonic() - _t0:.2f}s", flush=True)
     with port_forward(
         NAMESPACE,
         CONTROL_PLANE_SERVICE,
@@ -236,6 +238,7 @@ def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
         CONTROL_PLANE_LOCAL_PORT,
         ready_path=HEALTHZ_PATH,
     ) as url:
+        _lap("port-forward ready")
         response = httpx.post(
             f"{url}{SESSIONS_PATH}",
             json={"name": name, "workloadType": SHELL_WORKLOAD},
@@ -246,13 +249,16 @@ def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
             f"{response.text.strip()}"
         )
         session = response.json()
+        _lap("create returned (pod Ready + attach)")
         assert session.get("state") == "active", session
         assert session.get("pod"), (
             f"a created session must name its workload pod: {session}"
         )
         try:
+            _lap("body start")
             yield url, session
         finally:
+            _lap("body end")
             deleted = httpx.delete(
                 f"{url}{SESSIONS_PATH}/{session['id']}", timeout=120.0
             )
@@ -260,7 +266,9 @@ def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
                 f"deleting session {session['id']} returned "
                 f"{deleted.status_code}: {deleted.text.strip()}"
             )
+            _lap("delete returned")
             _wait_for_pod_gone(session["pod"])
+            _lap("pod gone")
 
 
 def _wait_for_pod_gone(pod: str, timeout: float = RECLAIM_TIMEOUT) -> None:
@@ -276,8 +284,11 @@ def _wait_for_pod_gone(pod: str, timeout: float = RECLAIM_TIMEOUT) -> None:
     from being quietly undermined by a neighbour's leftovers.
     """
     deadline = time.monotonic() + timeout
+    polls = 0
     while time.monotonic() < deadline:
+        polls += 1
         if pod not in pod_names():
+            print(f"[timing] pod-gone polls={polls}", flush=True)
             return
         time.sleep(RECLAIM_POLL)
     raise RuntimeError(

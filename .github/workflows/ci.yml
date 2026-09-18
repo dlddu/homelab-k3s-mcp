@@ -366,6 +366,8 @@ jobs:
       # 포트포워드는 그룹 하나가 여러 파일을 도는 동안 살아 있어야 하므로 재시도 루프로
       # 띄운다. 끊겨도 곧바로 되살아나고, 각 테스트 파일이 시작할 때 healthz 를 기다린다.
       - name: Run integration tests (primary deployment)
+        env:
+          PYTHONUNBUFFERED: '1'
         run: |
           ( while true; do kubectl -n homelab-k3s-mcp port-forward svc/homelab-k3s-mcp 8080:80 >>/tmp/pf-primary.log 2>&1; sleep 1; done ) &
           PF_PID=$!

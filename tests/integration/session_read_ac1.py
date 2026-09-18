@@ -83,17 +83,20 @@ async def _quiet_end(session, session_id: str, offset: int) -> int:
     establishes quiescence. The polls are ordinary non-consuming reads, so
     settling cannot hide output from the cases below.
     """
+    _t = time.monotonic(); _reads = 0
     end = -1
     stable = 0
     deadline = time.monotonic() + SETTLE_TIMEOUT
     while stable < SETTLE_STABLE_POLLS and time.monotonic() < deadline:
         current = await _read(session, session_id, offset)
+        _reads += 1
         if current["nextOffset"] == end:
             stable += 1
         else:
             end = current["nextOffset"]
             stable = 0
         await asyncio.sleep(SETTLE_POLL)
+    print(f"[timing] quiet_end reads={_reads} took {time.monotonic() - _t:.2f}s", flush=True)
     assert stable >= SETTLE_STABLE_POLLS, (
         f"the shell never stopped writing within {SETTLE_TIMEOUT:.0f}s "
         f"(last end {end})"
