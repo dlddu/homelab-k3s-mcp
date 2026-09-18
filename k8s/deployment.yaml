@@ -39,13 +39,11 @@ spec:
           type: RuntimeDefault
       containers:
         - name: server
-          # 운영이 도는 커밋. docker-build-push.yaml 의 `pin` job 이 main 푸시마다
-          # 그 커밋 SHA 로 이 줄을 덮어쓰므로, 「운영이 어느 코드를 돌고 있나」는 이
-          # 한 줄이 답이다. 손으로 고칠 일은 없다.
-          #
-          # 부트스트랩 값은 `pin` 이전 CI 가 main 에 발행하던 short-sha 태그
-          # (= main HEAD e2a195d)다. 첫 main 푸시에서 full SHA 로 바뀐다. 둘 다 불변
-          # 태그라 imagePullPolicy 는 기본값(IfNotPresent)이 그대로 옳다.
+          # ⚙️ 운영 값은 **deploy 브랜치**의 이 줄이다. docker-build-push.yaml 의 `pin`
+          # job 이 main 푸시마다 그 커밋 SHA 로 이 줄을 고친 커밋을 deploy 로 발행하고,
+          # Flux 는 deploy 를 추적한다. main 에 남은 값은 deploy 방식 전환 직전의 마지막
+          # 고정값일 뿐 운영과 무관하다. 손으로 고칠 일은 없다(롤백은 main 에 revert PR).
+          # 불변 태그라 imagePullPolicy 는 기본값(IfNotPresent)이 그대로 옳다.
           image: ghcr.io/dlddu/homelab-k3s-mcp:dc86afb92bc6a06c3c6f3912e9e38d07388ebd5c
           ports:
             - name: http
