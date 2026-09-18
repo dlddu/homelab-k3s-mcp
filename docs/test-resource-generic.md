@@ -251,11 +251,13 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **검증 AC**: AC11
 - **자동화**: Go 단위 `resource_test.go::TestExecStreamsAndCaps` 착지(2026-09-17 —
   stdout·stderr 구분 전달과 좌표·컨테이너·명령 전달, 인자 사전 거부(클러스터 호출 0),
-  상한 잘림·시간 상한 표시, AC6의 승인 뒤 재생성 거부). 통합
-  `tests/integration/resource_generic_ac11.py` 는 같은 계약을 실물 kubelet 왕복으로
-  관측한다 — `resource-generic-multi` 파드에서 stdout·stderr 가 갈라져 오는 것,
-  `container` 누락이 승인 뒤 apiserver 거절로 후보 이름(`chatty`·`quiet`)을 실어 오는 것,
-  `yes` 의 끝없는 출력이 256KiB 상한에서 잘리고 `stdoutTruncated` 로 표시되는 것.
+  상한 잘림·시간 상한 표시, AC6의 승인 뒤 재생성 거부). 통합 e2e 는 **(미작성)** —
+  `rct_20260918-0003` 시도 2 가 `tests/integration/resource_generic_ac11.py` 를 저작해
+  CI 에서 실물로 돌렸으나, 그 첫 왕복이 **성공한 exec 가 `exitCode: null · success: false`
+  로 온다**는 제품 결함을 관측했다(`internal/k8s/exec.go` 가 종료 코드를 에러에서만 뽑는다).
+  그 상태에서는 `isError` 가 항상 참이라 「`container` 누락이 거부된다」도 증명되지 않으므로
+  파일을 등재하지 않고 물렸다 — 자세한 근거와 소관은 `docs/doc-tracker.md` 의 구현 대기
+  행(시나리오 11)에 있다.
 
 ### 시나리오 12: 컬렉션 일괄 삭제
 - **사전 조건**: kind 실물 gatekeeper, 같은 레이블을 단 ConfigMap 5개와 다른 레이블 2개
