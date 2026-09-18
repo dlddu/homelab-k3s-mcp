@@ -2,6 +2,7 @@
 
 검증 시나리오: test-session-write.md#시나리오 3
 실행 대상: primary
+병렬 레인: session
 
 ``tools/list`` 메타데이터만 읽고 **write 를 실행하지 않는다** — 세션도 에이전트 파드도
 필요 없으므로 선행 조건이 없다. 이 AC 가 backlog 의 나머지와 갈라지는 지점이 정확히

@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 5
 실행 대상: primary
+병렬 레인: resource-generic
 
 폐기된 `workload_logs_ac{1,2,3,4}.py` 의 단언을 승계하되, 그 파일들이 **단정하지 못한 채
 남겨 둔 한 절**을 이번에 닫는다: 「파드에 컨테이너가 둘 이상이면 `container` 가 필요하다」.

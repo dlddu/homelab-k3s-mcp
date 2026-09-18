@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 20
 실행 대상: primary
+병렬 레인: resource-generic
 
 **매니페스트를 `tests/k8s/kind/` 에 파일로 두지 않고 아래 문자열로 들고 있다.** 그 디렉터리에
 있으면 언젠가 ci.yml 에 배선되고, 그 순간 시나리오의 사전 조건인 「설치 전」이 소리 없이

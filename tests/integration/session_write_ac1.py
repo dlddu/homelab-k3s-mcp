@@ -2,6 +2,7 @@
 
 검증 시나리오: test-session-write.md#시나리오 1
 실행 대상: primary
+병렬 레인: session
 
 **AC1의 검증 방법이 두 도구를 한 문장에 묶는다** — 「shell 세션에 명령을 write한 뒤 read로 그
 명령의 출력이 누적 출력에 나타남을 확인한다」. 그래서 이 파일은 ``session_write``를 주검증
