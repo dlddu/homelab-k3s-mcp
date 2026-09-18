@@ -17,17 +17,21 @@ name: Build and Push Docker Image to GHCR
 # SHA 태그를 그대로 가져다 쓴다. 태그가 불변이므로 imagePullPolicy 도 기본값
 # (IfNotPresent)이 그대로 옳다.
 #
-# ci.yml 은 검증용으로 이미지를 *빌드만* 한다(kind 에 load 해 통합 테스트를 돌린다).
+# ci.yml 의 통합 테스트는 검증용으로 이미지를 *빌드만* 한다(kind 에 load 한다).
 # 실제로 pull 가능한 태그를 발행하는 것은 이 워크플로다.
 #
 # 경로 필터를 두지 않는 것은 의도적이다: 프리뷰는 PR head SHA 태그를 참조하므로,
 # 문서만 고친 PR 에 `deploy/preview` 라벨이 붙어도 그 SHA 에 이미지가 있어야 환경이 뜬다.
 # 소스가 그대로면 buildx 의 gha 캐시가 통째로 히트하니 비용은 크지 않다.
 
+# 트리거: main push 는 여기서 단독으로 받는다(발행 + pin, 테스트는 PR 에서 이미 통과).
+# PR 은 ci.yml 의 `image` 잡이 workflow_call 로 부르므로 발행 실패가 단일 필수 체크
+# `ci passed` 를 실패시킨다. 호출된 워크플로도 호출자의 github 컨텍스트를 보므로 아래
+# event/ref 조건은 어느 쪽이든 똑같이 동작한다. workflow_dispatch 는 단독 실행용이다.
 on:
   push:
     branches: [main]
-  pull_request:
+  workflow_call:
   workflow_dispatch:
 
 permissions:

@@ -23,8 +23,11 @@ commit SHA**. There is no `latest`.
   by a ruleset (required status check `ci passed`), so nothing commits back to it. Flux
   tracks `deploy`, so the single answer to "which commit is production running?" is the
   `image:` line in `k8s/deployment.yaml` on `deploy`. Roll back with a revert PR to `main`.
-- **Pull requests get a preview environment.** The same workflow publishes the PR's
-  head SHA on every PR push. Label a PR `deploy/preview` and flux-cd-apps
+- **Tests run on pull requests only.** `.github/workflows/ci.yml` is triggered by
+  `pull_request` alone; what lands on `main` has already passed `ci passed`, so a `main`
+  push runs only the image publish + pin above.
+- **Pull requests get a preview environment.** The same image workflow, called from
+  `ci.yml`, publishes the PR's head SHA on every PR push. Label a PR `deploy/preview` and flux-cd-apps
   (`apps/homelab-k3s-mcp-preview`) renders a full environment for it at
   `homelab-k3s-mcp-pr-<number>.<private domain>`, pinned to that head SHA. Removing
   the label, closing, or merging the PR tears the environment down. Previews carry a
