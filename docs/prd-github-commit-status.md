@@ -8,9 +8,11 @@
 
 commit status는 브랜치 보호의 필수 검사(required status check)가 읽는 신호다. 이 권한을 가진
 토큰은 `ci/build` 같은 **남의 context에 `success`를 적어 필수 검사를 통과시킬 수 있다.** 그래서
-이 권한은 `github_app_installation_token`으로 **토큰째 내주지 않고**
+**쓰기**(`statuses: write`)는 `github_app_installation_token`으로 **토큰째 내주지 않고**
 ([github_app_installation_token AC5](prd-github-app-installation-token.md#AC5)), 이 도구가 정한
 좁은 동작 — 허용된 context 네임스페이스 안에 status 하나를 적는 것 — 으로만 행사한다.
+**읽기**(`statuses: read`)는 위조 위험이 없으므로 토큰 도구에서 그대로 발급한다 — 이 도구는
+쓰기만 맡는다.
 
 ## 달성 가치
 - **V2: 단명·최소권한 자격증명** — commit status 쓰기가 운영자 손에 토큰으로 들어오지 않는다.
@@ -42,9 +44,9 @@ commit status는 브랜치 보호의 필수 검사(required status check)가 읽
 ### 배포 순서 (필수)
 
 App에 `statuses` 권한을 **먼저** 부여하면, 그 순간부터 `permissions`를 생략한 기존 토큰 호출이
-설치 권한 전부 — `statuses: write` 포함 — 를 받는다. 따라서 순서는 다음으로 고정한다.
+설치 권한 전부 — `statuses: write` 포함 — 를 받는다. AC5는 이를 `statuses: read`로 낮춘다. 따라서 순서는 다음으로 고정한다.
 
-1. `github_app_installation_token` AC5(statuses 배제)를 배포한다.
+1. `github_app_installation_token` AC5(statuses 쓰기 배제)를 배포한다.
 2. GitHub App 권한에 Commit statuses: Read and write를 추가하고 설치 소유자가 승인한다.
 3. 이 도구를 배포한다(1과 같은 릴리스여도 된다 — 2 이전에는 AC1이 GitHub 422로 실패할 뿐이다).
 
@@ -54,8 +56,8 @@ App에 `statuses` 권한을 **먼저** 부여하면, 그 순간부터 `permissio
   기록이라 그 범위가 아니다. 위조 위험은 게이트 대신 AC4의 context 네임스페이스가 막는다. 그래서
   `doc-tracker.md`의 「게이트 밖 예외」(클러스터 쓰기 중 게이트를 타지 않는 것) 계수에도 들어가지
   않는다.
-- **status 조회·목록·삭제는 다루지 않는다.** GitHub API에 status 삭제는 없고, 조회는 필요해지면
-  별도 PRD로 연다.
+- **status 조회·목록·삭제는 다루지 않는다.** GitHub API에 status 삭제는 없고, 조회는
+  `github_app_installation_token`에서 `statuses: read` 토큰을 받아 한다(그 PRD AC5).
 - **check run(`checks` 권한)은 다루지 않는다.** 다른 API·다른 권한이며, 그 권한을 토큰 도구에서
   배제할지는 이 PRD가 정하지 않는다(`doc-tracker.md` 미결 사항에 등재).
 
