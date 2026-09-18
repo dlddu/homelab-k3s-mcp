@@ -80,6 +80,11 @@ jobs:
   integration-tests:
     name: integration tests
     runs-on: ubuntu-24.04-arm
+    # 이 잡의 Go 컴파일은 kind 에 올릴 서버 바이너리 하나뿐이고, 그것은 발행 이미지와 같이
+    # 정적 링크여야 한다(distroless/static). CGO 설정이 다르면 net 을 거치는 거의 모든
+    # 패키지의 빌드 캐시가 어긋나므로 잡 전체를 0 으로 둔다.
+    env:
+      CGO_ENABLED: '0'
     steps:
       - uses: actions/checkout@v4
 
@@ -114,13 +119,16 @@ jobs:
           ( docker pull --platform linux/arm64 "$image" \
               >/tmp/bg/data-plane-pull.log 2>&1; echo $? >/tmp/bg/data-plane-pull.rc ) </dev/null >/dev/null 2>&1 &
 
+      # 캐시 키를 다른 두 잡과 가른다. setup-go 는 키가 이미 있으면 다시 저장하지 않아서,
+      # 키를 공유하면 CGO 를 켠 채 빌드한 잡의 캐시가 먼저 저장돼 여기서는 영영 미스가 난다.
+      # (go test 는 unit tests 잡이 같은 명령으로 돌리므로 여기서는 두지 않는다.)
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
           cache: true
-
-      - name: go test
-        run: go test ./... -v
+          cache-dependency-path: |
+            go.sum
+            .github/workflows/ci.yml
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -130,7 +138,7 @@ jobs:
       - name: Install Python integration test deps
         run: pip install -r tests/integration/requirements.txt
 
-      # 바이너리는 러너에서 컴파일하고(위 go test 가 데운 setup-go 빌드 캐시를 그대로 쓴다)
+      # 바이너리는 러너에서 컴파일하고(이 잡 전용 setup-go 빌드 캐시를 쓴다)
       # Dockerfile 의 runtime-prebuilt target 으로 담기만 한다. 플래그는 Dockerfile builder
       # 스테이지와 같게 맞추되 -trimpath 만 뺀다 — 컴파일 액션 ID 가 달라져 캐시가 통째로
       # 미스(의존성 전부 재컴파일, ~40초)가 나고, 빠져서 달라지는 것은 바이너리에 남는 빌드
@@ -138,7 +146,7 @@ jobs:
       - name: Build server binary
         run: |
           mkdir -p /tmp/image-ctx
-          CGO_ENABLED=0 go build -ldflags="-s -w" -o /tmp/image-ctx/homelab-k3s-mcp .
+          go build -ldflags="-s -w" -o /tmp/image-ctx/homelab-k3s-mcp .
 
       - name: Build image
         run: |
