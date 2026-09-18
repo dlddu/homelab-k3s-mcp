@@ -2,6 +2,7 @@
 
 검증 시나리오: test-github-app-installation-token.md#시나리오 4
 실행 대상: primary
+병렬 레인: github-app
 """
 
 from __future__ import annotations

@@ -2,6 +2,7 @@
 
 검증 시나리오: test-aws-config-get.md#시나리오 1
 실행 대상: primary
+병렬 레인: aws
 
 서버에 고정된 버킷/키의 내용과 메타데이터를 읽는다(픽스처는
 ``tests/k8s/kind/minio.yaml`` 의 minio-seed Job 이 올린 객체).

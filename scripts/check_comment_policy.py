@@ -81,7 +81,7 @@ DIRECTIVE_RE = re.compile(
 # 표면 설명 참조) 체커 국소인 여기에 두는 것이 두 정의를 갈라지지 않게 하는 유일한 자리다.
 # DIRECTIVE_RE 의 `검증 AC:` 는 이제 어느 표면에도 매칭되지 않는 죽은 패턴이며, 두 정의를 함께
 # 옮기는 정리는 그 모델의 몫이다.
-DOCSTRING_DECL_RE = re.compile(r"^(검증 시나리오|실행 대상|추가 인자|실행 순서):")
+DOCSTRING_DECL_RE = re.compile(r"^(검증 시나리오|실행 대상|추가 인자|실행 순서|병렬 레인):")
 
 LEDGER_OPEN = "<!-- 판정-원장 -->"
 LEDGER_CLOSE = "<!-- /판정-원장 -->"

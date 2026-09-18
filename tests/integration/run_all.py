@@ -18,6 +18,7 @@ docstring에 신고한 실행 대상(`실행 대상:`)별로 골라 차례로 �
 실행 대상: primary | auth-variant | oauth-variant
 추가 인자: trace                                # 선택 — http-trace 프록시 URL을 argv[2]로 받는다
 실행 순서: <정수>                                # 선택 — 기본 50, 작을수록 먼저
+병렬 레인: <이름>                                # 선택 — 같은 그룹의 다른 레인과 동시에 돈다
 ```
 
 `실행 대상`은 그 파일이 어느 배포를 상대로 도는지다. `primary`는 모든 자격증명이
@@ -27,6 +28,17 @@ docstring에 신고한 실행 대상(`실행 대상:`)별로 골라 차례로 �
 `homelab-k3s-mcp-oauth`)이다. 디스커버리 라우트는 OAuth가 구성된 경우에만 걸리므로
 `test-platform-auth-safety.md#시나리오 2`는 마지막 것에서만 관측된다.
 
+## 병렬 레인
+
+`병렬 레인` 을 선언한 파일은 **레인끼리 동시에**, 레인 안에서는 `실행 순서` 대로 하나씩 돈다.
+선언하지 않은 파일은 지금처럼 단독으로 돈다 — `실행 순서` 가 기본값보다 작으면 레인들보다
+먼저(배포가 살아 있는지를 먼저 말해 주는 자리라 장벽이 된다), 아니면 레인들이 다 끝난 뒤에.
+
+레인은 **공유 상태의 경계**다. 같은 픽스처·같은 서버 쪽 캐시·같은 관측 기록(http-trace)을
+건드리는 파일은 같은 레인에 둔다. 동시 실행이 파일의 전제를 흔들면 대개 실패가 아니라
+**헛통과**로 나타나므로(관측 순서가 단언인 파일이 남의 호출 덕에 초록이 되는 식), 확신이
+없으면 선언하지 않는 쪽이 기본이다. `--serial` 은 동시 실행이 의심될 때의 대조군이다.
+
 ## 사용
 
 ```
@@ -35,6 +47,7 @@ python tests/integration/run_all.py --group primary \
 python tests/integration/run_all.py --group auth-variant --base-url http://127.0.0.1:8088
 python tests/integration/run_all.py --group oauth-variant --base-url http://127.0.0.1:8089
 python tests/integration/run_all.py --group primary --list      # 드라이런(배차 목록만)
+python tests/integration/run_all.py --group primary --serial ...  # 레인 무시, 전부 직렬
 ```
 """
 
@@ -43,8 +56,12 @@ from __future__ import annotations
 import argparse
 import ast
 import pathlib
+import re
 import subprocess
 import sys
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -59,6 +76,8 @@ DEFAULT_ORDER = 50
 #: `검증 시나리오:` 가 시나리오 대신 취할 수 있는 값 (규칙 3, 비-시나리오 파일).
 NON_SCENARIO_MARKER = "없음"
 
+LANE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+
 
 class DeclarationError(Exception):
     """모듈 docstring 선언이 없거나 규약을 벗어났을 때."""
@@ -71,6 +90,7 @@ class Declaration:
     group: str
     needs_trace: bool
     order: int
+    lane: str | None = None
 
     @property
     def name(self) -> str:
@@ -137,12 +157,25 @@ def parse_declaration(path: pathlib.Path) -> Declaration:
             f"{path.name}: `실행 순서:` 가 정수가 아니다 ({raw_order!r})"
         ) from exc
 
+    lane = _field(doc, "병렬 레인")
+    if lane is not None:
+        if not LANE_RE.match(lane):
+            raise DeclarationError(
+                f"{path.name}: `병렬 레인:` 이 {lane!r} — 소문자·숫자·하이픈만 쓴다"
+            )
+        if order < DEFAULT_ORDER:
+            raise DeclarationError(
+                f"{path.name}: `실행 순서: {order}` 는 레인보다 먼저 도는 장벽 자리인데 "
+                f"`병렬 레인: {lane}` 도 선언했다 — 둘 중 하나만 둔다"
+            )
+
     return Declaration(
         path=path,
         scenarios=scenarios,
         group=group,
         needs_trace=needs_trace,
         order=order,
+        lane=lane,
     )
 
 
@@ -157,7 +190,7 @@ def dispatch_plan(group: str, root: pathlib.Path = HERE) -> list[Declaration]:
     return [d for d in declarations(root) if d.group == group]
 
 
-def _run_one(decl: Declaration, base_url: str, trace_url: str | None) -> int:
+def _argv(decl: Declaration, base_url: str, trace_url: str | None) -> list[str] | None:
     argv = [sys.executable, str(decl.path), base_url]
     if decl.needs_trace:
         if not trace_url:
@@ -166,13 +199,71 @@ def _run_one(decl: Declaration, base_url: str, trace_url: str | None) -> int:
                 f"--trace-url 이 주어지지 않았다",
                 file=sys.stderr,
             )
-            return 2
+            return None
         argv.append(trace_url)
+    return argv
+
+
+def _header(decl: Declaration) -> str:
     label = (
         ", ".join(decl.scenarios) if decl.scenarios else "비-시나리오(스모크/인프라)"
     )
-    print(f"\n===== {decl.name} (시나리오: {label}) =====", flush=True)
-    return subprocess.run(argv).returncode
+    lane = f" [레인 {decl.lane}]" if decl.lane else ""
+    return f"\n===== {decl.name}{lane} (시나리오: {label}) ====="
+
+
+def _run_one(decl: Declaration, base_url: str, trace_url: str | None) -> int:
+    """단독 실행. 출력은 그대로 흘려보낸다."""
+    argv = _argv(decl, base_url, trace_url)
+    if argv is None:
+        return 2
+    print(_header(decl), flush=True)
+    started = time.monotonic()
+    code = subprocess.run(argv).returncode
+    print(f"----- {decl.name} {time.monotonic() - started:.1f}s", flush=True)
+    return code
+
+
+def _run_lanes(
+    lanes: dict[str, list[Declaration]], base_url: str, trace_url: str | None
+) -> list[tuple[str, int]]:
+    """레인들을 동시에 돌리고 실패한 (파일, 종료 코드) 목록을 돌려준다.
+
+    한 레인이 실패하면 다른 레인들은 돌고 있던 파일까지만 마치고 멈춘다. 출력은 파일
+    단위로 모아 잠금 아래에서 한 번에 찍어 레인끼리 줄이 섞이지 않게 한다.
+    """
+    failed: list[tuple[str, int]] = []
+    stop = threading.Event()
+    lock = threading.Lock()
+
+    def lane_worker(files: list[Declaration]) -> None:
+        for decl in files:
+            if stop.is_set():
+                return
+            argv = _argv(decl, base_url, trace_url)
+            started = time.monotonic()
+            if argv is None:
+                code, output = 2, ""
+            else:
+                proc = subprocess.run(
+                    argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+                )
+                code, output = proc.returncode, proc.stdout
+            elapsed = time.monotonic() - started
+            with lock:
+                print(_header(decl))
+                print(output, end="" if output.endswith("\n") or not output else "\n")
+                print(f"----- {decl.name} {elapsed:.1f}s", flush=True)
+                if code != 0:
+                    failed.append((decl.name, code))
+                    stop.set()
+            if code != 0:
+                return
+
+    with ThreadPoolExecutor(max_workers=len(lanes)) as pool:
+        for _ in pool.map(lane_worker, lanes.values()):
+            pass
+    return failed
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -185,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="실행하지 않고 배차 목록만 출력한다(드라이런)",
     )
+    parser.add_argument(
+        "--serial",
+        action="store_true",
+        help="`병렬 레인` 선언을 무시하고 전부 직렬로 돈다",
+    )
     args = parser.parse_args(argv)
 
     plan = dispatch_plan(args.group)
@@ -192,7 +288,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.list:
         for decl in plan:
             extra = " +trace" if decl.needs_trace else ""
-            print(f"{decl.name}{extra}")
+            lane = f" [레인 {decl.lane}]" if decl.lane and not args.serial else ""
+            print(f"{decl.name}{extra}{lane}")
         return 0
 
     if not args.base_url:
@@ -202,8 +299,37 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     print(f"러너: {args.group} 그룹 {len(plan)}개 파일 — {[d.name for d in plan]}")
+    base = args.base_url.rstrip("/")
+    lane_of = (lambda d: None) if args.serial else (lambda d: d.lane)
+    before = [d for d in plan if lane_of(d) is None and d.order < DEFAULT_ORDER]
+    after = [d for d in plan if lane_of(d) is None and d.order >= DEFAULT_ORDER]
+    lanes: dict[str, list[Declaration]] = {}
     for decl in plan:
-        code = _run_one(decl, args.base_url.rstrip("/"), args.trace_url)
+        if lane_of(decl) is not None:
+            lanes.setdefault(decl.lane, []).append(decl)
+
+    for decl in before:
+        code = _run_one(decl, base, args.trace_url)
+        if code != 0:
+            print(f"\nFAIL: {decl.name} (exit {code})", file=sys.stderr)
+            return code
+
+    if lanes:
+        print(
+            f"\n러너: 레인 {len(lanes)}개 동시 실행 — "
+            f"{ {name: len(files) for name, files in lanes.items()} }",
+            flush=True,
+        )
+        started = time.monotonic()
+        failed = _run_lanes(lanes, base, args.trace_url)
+        print(f"\n러너: 레인 단계 {time.monotonic() - started:.1f}s", flush=True)
+        if failed:
+            for name, code in failed:
+                print(f"\nFAIL: {name} (exit {code})", file=sys.stderr)
+            return failed[0][1]
+
+    for decl in after:
+        code = _run_one(decl, base, args.trace_url)
         if code != 0:
             print(f"\nFAIL: {decl.name} (exit {code})", file=sys.stderr)
             return code

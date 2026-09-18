@@ -3,6 +3,7 @@
 검증 시나리오: test-opensearch-document-delete.md#시나리오 4
 실행 대상: primary
 추가 인자: trace
+병렬 레인: aws
 
 도구 응답이 아니라 http-trace 프록시의 기록을 읽는다(opensearch-document-put/AC4와
 같은 이유 — security 플러그인이 꺼진 픽스처는 무서명 요청도 그대로 받아준다).
