@@ -5,6 +5,7 @@
 - AC2: 스코프 제한 (PRD: github_app_installation_token)
 - AC3: 미설정 시 graceful 거부 (PRD: github_app_installation_token)
 - AC4: 베이스 키 비노출 (PRD: github_app_installation_token)
+- AC5: commit status 권한 배제 (PRD: github_app_installation_token)
 
 ## 테스트 시나리오
 
@@ -53,3 +54,20 @@
   `PRIVATE KEY`/`RSA PRIVATE`, env 이름 `GITHUB_APP_PRIVATE_KEY`, 서명된 App JWT(`eyJ`)가
   하나도 없고 노출되는 것은 설치 토큰뿐임을 단언. 키 바이트는 CI 실행마다 생성되므로
   아머 마커로 판정한다.
+
+### 시나리오 5: statuses 권한은 어떤 경로로도 발급되지 않는다
+- **사전 조건**: github-mock이 (a) 설치 권한 조회 `GET /app/installations/67890`에 `statuses:
+  write`를 포함한 권한 목록을 돌려주고, (b) 받은 요청을 돌려주는 기록 엔드포인트를 가진다.
+  (c) 토큰 발급 응답에 `statuses`를 섞어 돌려주는 모드를 켤 수 있다
+- **실행 단계**: ① `permissions={statuses: read}`, `{statuses: write}`, `{contents: read,
+  statuses: write}`로 각각 호출. ② 인자 없이 호출. ③ 설치 권한 조회가 500을 돌려주게 한 뒤 인자
+  없이 호출. ④ (c) 모드에서 `permissions={contents: read}`로 호출
+- **기대 결과**: ① 셋 다 `github_commit_status_create`를 안내하는 도구 에러, 발급 요청 0.
+  ② 발급 요청 본문에 `permissions`가 명시돼 있고 `statuses` 키가 없으며, 응답 `# Permissions:`
+  주석에도 없다. ③ 도구 에러, 발급 요청 0. ④ `DELETE /installation/token` 요청 1회, 도구 에러,
+  직렬화한 결과에 발급된 토큰 문자열 없음
+- **검증 AC**: AC5
+- **자동화**: (미작성) — Go 단위 `TestGitHubTokenRejectsStatusesPermission`,
+  `TestGitHubTokenDefaultExcludesStatuses`, `TestGitHubTokenRefusesWhenInstallationUnreadable`,
+  `TestGitHubTokenRevokesTokenCarryingStatuses` 계획. 통합
+  `github_app_installation_token_ac5.py` 계획

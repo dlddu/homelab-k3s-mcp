@@ -39,7 +39,14 @@
   - GitHub App 설치 토큰 — 수명 약 1시간, repo 및 권한의 부분집합으로 스코프 가능
   - Grafana Cloud 토큰 — 수명 1시간, read-only(메트릭·로그)로 고정
   - AWS config — 정적 키 없이 AssumeRole로 **고정된 단일 S3 객체**만 조회
-- **관련 도구**: `github_app_installation_token`, `grafana_token`, `aws_config_get`
+  - GitHub commit status — **토큰으로 발급하지 않는다.** 발급 토큰 어디에도 `statuses` 권한이
+    실리지 않고, 쓰기는 서버 안에서 `statuses: write` + repo 하나로 좁힌 토큰으로 도구가 대신
+    행사한다
+- **관련 도구**: `github_app_installation_token`, `grafana_token`, `aws_config_get`,
+  `github_commit_status_create`
+- **원칙 (2026-09-19 추가)**: 권한을 **토큰째 내주는 것**과 **도구가 좁은 동작으로 대신 행사하는
+  것**은 다르다. 한 권한이 다른 시스템의 판정을 위조할 수 있으면(예: 필수 status 검사) 앞의 방식에서
+  빼고 뒤의 방식으로만 연다.
 
 ### V3: 안전한 운영 (Safe-by-default)
 
@@ -115,3 +122,4 @@
 | 2026-09-12 | V3 게이트 범위 조정 — `scale`·`restart`를 게이트 대상에서 빼고, Secret을 전면 배제에서 **읽기 게이트**로 바꿨다. 둘 다 같은 관찰에서 나왔다: 게이트가 너무 자주 울리면 무인 승인이 켜지고, 도구가 너무 많이 거부하면 `kubectl`로 우회한다 — 어느 쪽이든 기록이 사라진다. V3의 보증 범위가 "모든 변경"에서 "되돌리기 어려운 변경과 자격증명 읽기"로 **좁아졌음을 명시**했다. |
 | 2026-09-14 | **V3에서 RBAC 근거를 뺐다** — `prd-platform-auth-safety` AC3(최소권한 권한 경계)과 `prd-resource-generic` AC19(RBAC ≡ 도구 표 ∪ 게이트 선언)를 결번 처리하고 `k8s/rbac.yaml`을 `cluster-admin` 바인딩으로 바꿨다. 09-12 이력이 "RBAC 는 더 이상 백스톱이 아니며 남은 역할은 종류 범위를 좁히는 것"이라고 적었는데, 그 마지막 역할까지 그만둔 것이다. 함께 고친 것: "Secret은 어떤 도구로도 다루지 않는다"는 AC16(읽기·쓰기 모두 게이트)과 이미 어긋나 있어 정정했다. **V3의 보증은 이제 승인 게이트 하나에 전부 걸려 있다** — 특히 `resource_exec` 승인 한 번이 `/var/run/secrets/**`의 SA 토큰을 내주고 그 토큰은 `cluster-admin`이라, 이전 판에서 `rbac.yaml`이 걸던 상한이 없다. |
 | 2026-09-15 | **Node 프록시 문서 정합성 정정** (`rct_20260915-0014`) — 09-12 이력에 함께 남아 있던 제외 문구를 현행 계약과 구분했다. [resource-generic AC15](prd-resource-generic.md)와 [승인 게이트](prd-approval-gate.md)의 기존 계약은 Pod·Service·Node, 경로 제한 없음, `GET`을 포함한 모든 호출의 사전 승인, 경로·본문 전문과 고권한 kubelet 경로 표시다. PRD·테스트 계약이나 권한을 새로 바꾸는 결정은 아니다. `resource_proxy` 구현·전용 E2E는 여전히 미완료이며, 근거·비용·후속 경계는 [tracker의 정정 기록](doc-tracker.md)에 둔다. |
+| 2026-09-19 | V2에 commit status 목표와 「토큰째 내주기 vs 도구가 대신 행사」 원칙 추가 — `github_commit_status_create` 신설(`prd-github-commit-status.md`)과 `github_app_installation_token`의 `statuses` 배제(그 PRD AC5)의 근거. 새 가치 추가 없음 — 둘 다 최소권한 자격증명(V2)과 기본값 안전(V3)의 구현체다. |
