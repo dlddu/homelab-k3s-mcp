@@ -73,8 +73,8 @@
   `TestGitHubTokenRevokesTokenCarryingStatusesWrite`(⑤) — 다섯 모두 `httptest` 상류를 세워
   **상류가 받은 요청(메서드·경로·본문)** 을 단언한다. AC5는 대부분 「일어나면 안 되는 요청」에
   대한 주장이라 반환 토큰이 아니라 요청 로그가 판정 근거다.
-  통합 e2e는 **(미작성)** — `github_app_installation_token_ac5.py` 는 github-mock 확장
-  (요청 기록 엔드포인트 · `statuses: write` 를 섞어 돌려주는 모드 · `DELETE /installation/token`)
-  이 선행이고, 그 축의 소유자는 자매 모델 `tbm_homelab-k3s-mcp-scenario-e2e` 다.
-  설치 권한 조회(`GET /app/installations/{id}`)만은 인자 없는 호출의 선행이 됐으므로 이미
-  mock 에 섰다
+  통합 e2e 는 `tests/integration/github_app_installation_token_ac5.py` 가 다섯 단계를 그대로
+  단언한다 — 선행이던 github-mock 확장(요청 기록 · `statuses: write` 를 섞어 돌려주는 모드 ·
+  설치 권한 조회 500 모드 · `DELETE /installation/token`)이 그 파일과 같은 PR 로 착지했다.
+  Go 단위가 `httptest` 상류에서 보는 것을 e2e 는 배포된 서버와 github-mock 의 요청 기록에서
+  본다

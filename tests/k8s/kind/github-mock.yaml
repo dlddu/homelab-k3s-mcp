@@ -17,6 +17,7 @@ data:
     import json
     import re
     import sys
+    import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
     INSTALLATION_TOKEN_RE = re.compile(
@@ -26,35 +27,98 @@ data:
 
     DEFAULT_PERMISSIONS = {"contents": "read", "metadata": "read"}
 
+    # Knobs test-github-app-installation-token.md#시나리오 5 needs: an installation
+    # whose grant carries statuses:write, a mint that hands back more than it was
+    # asked for, and an unreadable installation. All three default to off so every
+    # other e2e sees the stock GitHub shapes.
+    DEFAULT_CONFIG = {
+        "installation_status": 200,
+        "installation_permissions": None,
+        "mint_extra_permissions": None,
+    }
+
+    STATE = threading.Lock()
+    REQUESTS = []
+    CONFIG = dict(DEFAULT_CONFIG)
+
+
+    def record(method, path, headers, body):
+        with STATE:
+            REQUESTS.append(
+                {
+                    "method": method,
+                    "path": path,
+                    "authorization": headers.get("Authorization", ""),
+                    "body": body,
+                }
+            )
+
+
+    def config():
+        with STATE:
+            return dict(CONFIG)
+
+
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, fmt, *args):
             sys.stdout.write("github-mock " + (fmt % args) + "\n")
             sys.stdout.flush()
 
+        def _read_body(self):
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            return self.rfile.read(length).decode() if length else ""
+
         def do_GET(self):
             if self.path == "/healthz":
                 self._json(200, {"status": "ok"})
                 return
+            if self.path == "/_admin/requests":
+                with STATE:
+                    self._json(200, {"requests": list(REQUESTS)})
+                return
             match = INSTALLATION_RE.match(self.path)
             if match:
+                record("GET", self.path, self.headers, "")
                 if not self.headers.get("Authorization", "").startswith("Bearer "):
                     self._json(401, {"message": "Requires authentication"})
                     return
+                status = config()["installation_status"]
+                if status != 200:
+                    self._json(status, {"message": "Server Error"})
+                    return
+                permissions = dict(DEFAULT_PERMISSIONS)
+                permissions.update(config()["installation_permissions"] or {})
                 self._json(
                     200,
-                    {
-                        "id": int(match.group("id")),
-                        "permissions": dict(DEFAULT_PERMISSIONS),
-                    },
+                    {"id": int(match.group("id")), "permissions": permissions},
                 )
                 return
             self._json(404, {"message": "Not Found"})
 
         def do_POST(self):
+            if self.path == "/_admin/config":
+                raw = self._read_body()
+                try:
+                    payload = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    self._json(400, {"message": "Invalid JSON"})
+                    return
+                # A body carries the whole config: absent keys go back to their
+                # default, so POSTing {} is how a test restores the stock mock.
+                with STATE:
+                    CONFIG.clear()
+                    CONFIG.update(DEFAULT_CONFIG)
+                    CONFIG.update(payload)
+                    self._json(200, dict(CONFIG))
+                return
+
             match = INSTALLATION_TOKEN_RE.match(self.path)
             if not match:
                 self._json(404, {"message": "Not Found"})
                 return
+
+            raw = self._read_body()
+            record("POST", self.path, self.headers, raw)
 
             auth = self.headers.get("Authorization", "")
             if not auth.startswith("Bearer "):
@@ -71,8 +135,6 @@ data:
                 self._json(400, {"message": "Missing Accept header"})
                 return
 
-            length = int(self.headers.get("Content-Length", "0") or "0")
-            raw = self.rfile.read(length).decode() if length else ""
             try:
                 payload = json.loads(raw) if raw else {}
             except json.JSONDecodeError:
@@ -80,7 +142,8 @@ data:
                 return
 
             repositories = payload.get("repositories")
-            permissions = payload.get("permissions") or DEFAULT_PERMISSIONS
+            permissions = dict(payload.get("permissions") or DEFAULT_PERMISSIONS)
+            permissions.update(config()["mint_extra_permissions"] or {})
 
             self._json(
                 201,
@@ -92,6 +155,23 @@ data:
                 },
             )
 
+        def do_DELETE(self):
+            if self.path == "/_admin/requests":
+                with STATE:
+                    REQUESTS.clear()
+                self._json(200, {"requests": []})
+                return
+            if self.path == "/installation/token":
+                record("DELETE", self.path, self.headers, "")
+                if not self.headers.get("Authorization", "").startswith("Bearer "):
+                    self._json(401, {"message": "Requires authentication"})
+                    return
+                self.send_response(204)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            self._json(404, {"message": "Not Found"})
+
         def _json(self, code, payload):
             body = json.dumps(payload).encode()
             self.send_response(code)
@@ -99,6 +179,7 @@ data:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
 
     if __name__ == "__main__":
         ThreadingHTTPServer(("0.0.0.0", 8080), Handler).serve_forever()
