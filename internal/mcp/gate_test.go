@@ -25,6 +25,11 @@ type countingK8s struct {
 	lastUpdate k8s.UpdateRef
 	lastWatch  k8s.WatchQuery
 	lastDelete k8s.DeleteRef
+	// lastDeleteCollection records the selectors because they are the
+	// assertion (AC11): a selection narrowed on the way to the apiserver is
+	// invisible to a call count.
+	lastDeleteCollection  k8s.DeleteCollectionRef
+	deleteCollectionCalls int
 	// updateErr lets a case make the cluster layer refuse. The one refusal AC8
 	// names — a kind with no replicas — is discovery's answer rather than an
 	// argument this level can see, so a fake that only ever succeeds cannot
@@ -152,6 +157,26 @@ func (c *countingK8s) delete() k8s.DeleteRef {
 	return c.lastDelete
 }
 
+func (c *countingK8s) DeleteCollection(_ context.Context, ref k8s.DeleteCollectionRef) (*k8s.DeleteCollectionResult, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastDeleteCollection = ref
+	c.deleteCollectionCalls++
+	c.mu.Unlock()
+	return &k8s.DeleteCollectionResult{
+		Resource:      "configmaps",
+		Namespace:     ref.Namespace,
+		LabelSelector: ref.LabelSelector,
+		FieldSelector: ref.FieldSelector,
+	}, nil
+}
+
+func (c *countingK8s) deleteCollection() (k8s.DeleteCollectionRef, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastDeleteCollection, c.deleteCollectionCalls
+}
+
 func (c *countingK8s) ExecInPod(context.Context, string, string, *string, []string) (*k8s.ExecOutcome, error) {
 	c.hit()
 	return &k8s.ExecOutcome{Success: true}, nil
@@ -261,6 +286,59 @@ func (r *stateReader) ReadTarget(_ context.Context, ref k8s.TargetRef) (*k8s.Tar
 	return &state, nil
 }
 
+// collectionReader is the gate's collection read surface, faked. Its own type
+// rather than a mode of stateReader so a case can say "the gate listed
+// nothing", which a shared fake cannot tell from "the gate read nothing".
+type collectionReader struct {
+	mu    sync.Mutex
+	reads []k8s.CollectionTargetRef
+	state k8s.CollectionTargetState
+	// next is what the second listing answers, standing in for the selection
+	// moving while the operator deliberated (AC6).
+	next *k8s.CollectionTargetState
+	err  error
+}
+
+// newCollectionReader answers with one target, which keeps every case that is
+// not about the listing itself off the zero-target path.
+func newCollectionReader(names ...string) *collectionReader {
+	if len(names) == 0 {
+		names = []string{"alpha"}
+	}
+	return &collectionReader{state: collectionState(names...)}
+}
+
+// collectionState builds a snapshot the way ListTargets returns one.
+func collectionState(names ...string) k8s.CollectionTargetState {
+	targets := make([]k8s.CollectionTarget, 0, len(names))
+	for _, name := range names {
+		targets = append(targets, k8s.CollectionTarget{
+			Name: name, Namespace: "ops", UID: "uid-" + name, ResourceVersion: "100",
+		})
+	}
+	return k8s.CollectionTargetState{ResourceVersion: "500", Targets: targets}
+}
+
+func (r *collectionReader) ListTargets(_ context.Context, ref k8s.CollectionTargetRef) (*k8s.CollectionTargetState, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.reads = append(r.reads, ref)
+	if r.err != nil {
+		return nil, r.err
+	}
+	if len(r.reads) > 1 && r.next != nil {
+		return r.next, nil
+	}
+	state := r.state
+	return &state, nil
+}
+
+func (r *collectionReader) listed() []k8s.CollectionTargetRef {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]k8s.CollectionTargetRef(nil), r.reads...)
+}
+
 func (r *stateReader) observed() []k8s.TargetRef {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -308,15 +386,31 @@ func testHandler(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEnt
 // assertion (AC6, AC11).
 func testHandlerReading(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEntry, reader *stateReader) (*Handler, *countingK8s, *stateReader) {
 	t.Helper()
+	h, fake, _ := testHandlerListing(t, gate, registry, reader, newCollectionReader())
+	return h, fake, reader
+}
+
+// testHandlerListing is testHandlerReading with the gate's *collection* reader
+// in the caller's hands too, for the reason that one exists: what the gate
+// listed — and whether it listed at all — is the assertion (AC11).
+func testHandlerListing(
+	t *testing.T,
+	gate gatekeeper.Gate,
+	registry map[string]toolEntry,
+	reader *stateReader,
+	lister *collectionReader,
+) (*Handler, *countingK8s, *collectionReader) {
+	t.Helper()
 	fake := &countingK8s{}
 	h := &Handler{
-		k8s:            fake,
-		gate:           gate,
-		gateReader:     reader,
-		sensitiveKinds: []string{defaultSensitiveKind},
-		registry:       registry,
+		k8s:                  fake,
+		gate:                 gate,
+		gateReader:           reader,
+		gateCollectionReader: lister,
+		sensitiveKinds:       []string{defaultSensitiveKind},
+		registry:             registry,
 	}
-	return h, fake, reader
+	return h, fake, lister
 }
 
 // reachesKubernetes is a handler that does nothing but touch the cluster, so a

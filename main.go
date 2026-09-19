@@ -78,11 +78,13 @@ func main() {
 	sessionSvc := buildSessionPlatformService()
 	gate, gatedKinds := buildGate()
 	gateReader := buildGateReader(k8sSvc)
+	gateCollectionReader := buildGateCollectionReader(k8sSvc)
 
 	srv := &http.Server{
 		Addr: addr,
 		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc,
-			mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader)),
+			mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader),
+			mcp.WithGateCollectionReader(gateCollectionReader)),
 	}
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -218,6 +220,15 @@ func buildGateReader(svc k8s.Service) k8s.TargetReader {
 	reader, ok := svc.(k8s.TargetReader)
 	if !ok {
 		slog.Warn("no kubernetes client for the approval gate to read targets with: gated calls will be refused")
+		return k8s.NewUnavailableTargetReader("kubernetes integration is unavailable")
+	}
+	return reader
+}
+
+func buildGateCollectionReader(svc k8s.Service) k8s.CollectionTargetReader {
+	reader, ok := svc.(k8s.CollectionTargetReader)
+	if !ok {
+		slog.Warn("no kubernetes client for the approval gate to read a selection with: collection deletes will be refused")
 		return k8s.NewUnavailableTargetReader("kubernetes integration is unavailable")
 	}
 	return reader

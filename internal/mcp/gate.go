@@ -54,6 +54,12 @@ type toolDeclaration struct {
 	// the absent-target exception in prd-approval-gate AC6 (callCreateBatch).
 	target func(json.RawMessage) (*k8s.TargetRef, error)
 
+	// collectionTarget is target's plural: it derives the selection a
+	// deletecollection call addresses. A second field rather than a shape
+	// target could return, because the two are two permissions — `get on
+	// ⟨kind⟩` and `list on ⟨kind⟩` — and a declaration sets one, never both.
+	collectionTarget func(json.RawMessage) (*k8s.CollectionTargetRef, error)
+
 	// outsideGate, when non-empty, is the documented reason this tool stays
 	// outside the gate even though its pairs would otherwise select it. It is
 	// never a judgement made here: each value cites the document that made it.
@@ -125,6 +131,15 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourceDelete,
 	},
 
+	"resource_delete_collection": {
+		decl: toolDeclaration{
+			resolve:          deleteCollectionPairs(),
+			collectionTarget: genericCollectionTarget(),
+		},
+		handle:         (*Handler).resourceDeleteCollection,
+		collectionGate: true,
+	},
+
 	"resource_exec": {
 		decl:   toolDeclaration{resolve: execPairs(), target: genericTarget()},
 		handle: (*Handler).resourceExec,
@@ -175,6 +190,12 @@ type toolEntry struct {
 	decl        toolDeclaration
 	handle      func(*Handler, context.Context, json.RawMessage) (any, *rpcErr)
 	createBatch bool
+
+	// collectionGate routes this tool through callDeleteCollection instead of
+	// authorize. Like createBatch it marks an approval that does not fit the
+	// one-object-one-read shape authorize is built around: this one reads
+	// before deciding whether to ask at all.
+	collectionGate bool
 }
 
 func (d toolDeclaration) callPairs(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
@@ -271,6 +292,53 @@ func deletePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 			return nil, errors.New(rerr.message)
 		}
 		return generic(rawArgs)
+	}
+}
+
+// deleteCollectionPairs is genericPairs("deletecollection") with AC11's own
+// argument checks run first, for the reason updatePairs states — and with more
+// at stake: the argument this one rejects is a missing namespace, which is the
+// widest deletion the tool could be asked to approve.
+func deleteCollectionPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
+	generic := genericPairs("deletecollection")
+	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+		obj, ok := decodeObject(rawArgs)
+		if !ok {
+			return nil, fmt.Errorf("arguments must be an object")
+		}
+		if _, rerr := parseDeleteCollectionTarget(obj); rerr != nil {
+			return nil, errors.New(rerr.message)
+		}
+		return generic(rawArgs)
+	}
+}
+
+// genericCollectionTarget reads the selection coordinate out of one call's
+// arguments. It refuses the mirror image of what genericTarget refuses: there
+// a call without a name cannot be described, here one without a namespace
+// cannot be bounded.
+func genericCollectionTarget() func(json.RawMessage) (*k8s.CollectionTargetRef, error) {
+	return func(rawArgs json.RawMessage) (*k8s.CollectionTargetRef, error) {
+		obj, ok := decodeObject(rawArgs)
+		if !ok {
+			return nil, fmt.Errorf("arguments must be an object")
+		}
+		sel, rerr := parseDeleteCollectionTarget(obj)
+		if rerr != nil {
+			return nil, errors.New(rerr.message)
+		}
+		apiVersion, _ := obj["apiVersion"].(string)
+		kind, _ := obj["kind"].(string)
+		if apiVersion == "" || kind == "" {
+			return nil, fmt.Errorf("apiVersion and kind are required before this call can be described for approval")
+		}
+		return &k8s.CollectionTargetRef{
+			APIVersion:    apiVersion,
+			Kind:          kind,
+			Namespace:     sel.namespace,
+			LabelSelector: sel.labelSelector,
+			FieldSelector: sel.fieldSelector,
+		}, nil
 	}
 }
 
@@ -577,14 +645,21 @@ func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessa
 		fmt.Fprintf(&b, "replicas: %s\n", detail)
 	}
 
+	b.WriteString(argumentsBlock(gated, rawArgs, sensitiveKinds))
+	return b.String()
+}
+
+// argumentsBlock renders the verbatim-arguments tail every approval context
+// ends with. Shared rather than copied so the two context builders cannot
+// drift on whether a Secret write gets masked.
+func argumentsBlock(gated []gatekeeper.Pair, rawArgs json.RawMessage, sensitiveKinds []string) string {
 	args := strings.TrimSpace(string(rawArgs))
 	if args == "" || args == "null" {
 		args = "(none)"
 	} else if writesASensitiveKind(gated, sensitiveKinds) {
 		args = maskCredentialValues(rawArgs)
 	}
-	fmt.Fprintf(&b, "arguments:\n%s", args)
-	return b.String()
+	return fmt.Sprintf("arguments:\n%s", args)
 }
 
 // targetText writes a coordinate the way AC3 asks for it — apiVersion, kind,

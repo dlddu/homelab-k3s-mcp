@@ -346,6 +346,53 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_delete_collection",
+      "description": "Delete a selection of Kubernetes objects in one namespace, chosen by label and/or field selector. Exercises the deletecollection verb only and always requires human approval. namespace is required and there is no all-namespaces path; there is no name argument either, because deleting one named object is the delete verb, which resource_delete holds. Omitting both selectors selects every object of that kind in the namespace. Before asking for approval the server lists what would go and puts the count and the names on the approval screen (the first 20 when there are more), and a selector that matches nothing is reported without an approval request and without deleting anything. If the selection changes between approval and execution the call is refused and needs a new approval. The call is answered when the apiserver accepts it, which is before finalizers and grace periods have run.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\" or \"apps/v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to delete, e.g. \"Pod\", \"ConfigMap\". Cluster-scoped kinds are rejected."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required; this tool has no all-namespaces path."
+          },
+          "labelSelector": {
+            "type": "string",
+            "description": "Label selector, applied server-side. Optional; omitted leaves this half of the selection unconstrained."
+          },
+          "fieldSelector": {
+            "type": "string",
+            "description": "Field selector, applied server-side. Optional; omitted leaves this half of the selection unconstrained."
+          },
+          "gracePeriodSeconds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Seconds to wait before each object is removed, overriding the kind's default. 0 removes them without waiting."
+          }
+        },
+        "required": [
+          "apiVersion",
+          "kind",
+          "namespace"
+        ],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Delete Resource Collection",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "resource_exec",
       "description": "Run one command inside a container of one named Kubernetes pod (the pods/exec subresource) and return stdout and stderr separately. Exercises the create verb on pods/exec only and always requires human approval. container is required when the pod has more than one container; the apiserver's refusal names the candidates. Output is capped at 256KiB per stream and the run at 30 seconds — a response cut by a cap says so instead of ending early.",
       "inputSchema": {

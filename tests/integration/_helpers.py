@@ -54,6 +54,7 @@ EXPECTED_TOOLS = {
     "resource_update",
     "resource_patch",
     "resource_delete",
+    "resource_delete_collection",
     "resource_exec",
     "resource_attach",
     "dear_baby_reset_user",
