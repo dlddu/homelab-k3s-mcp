@@ -26,7 +26,7 @@ session-platform 세션의 워크로드에 입력을 주입하는 도구.
 > `session_write` 등록·디스패치이며, AC1~AC5가 Go 단위로 검증된다. 이 PRD 작성 시점
 > (2026-08-12)에 클러스터에서 제거돼 있던 session-platform 배포도 2026-09-03에 복구됐다.
 > 통합 e2e(`tests/integration/`)는 아직 미작성이며, 그 축의 소유자는 AC ↔ e2e 1:1 렌즈다
-> (`docs/doc-tracker.md`의 e2e 렌즈 절).
+> (`docs/doc-tracker/`의 e2e 렌즈 절).
 
 ## Acceptance Criteria
 

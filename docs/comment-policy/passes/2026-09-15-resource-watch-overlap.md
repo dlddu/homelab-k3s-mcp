@@ -21,7 +21,7 @@ knowledge is retained unless a concrete recovery path has been established.
 ## Removal evidence
 
 Line references below are pinned to the reviewed commit, so later edits do not
-move the evidence. The design decisions remain in [doc-tracker](../../doc-tracker.md).
+move the evidence. The design decisions remain in [doc-tracker](../../doc-tracker/index.md).
 
 | Comment body | Removed lines | Existing recovery source and matching knowledge |
 | --- | ---: | --- |

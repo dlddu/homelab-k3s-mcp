@@ -70,7 +70,7 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
 > **남은 예외 1건 — `dear_baby_reset_user`**: `create` on `pods/exec`을 행사하므로 위
 > 쓰기 게이트 정의에 해당한다. 그럼에도 편입하지 않은 것은 이 도구가 V5(앱 기능의
 > 도구화)에 속해 좌표가 아니라 앱 의미로 대상을 지정하기 때문이며, 편입하려면
-> `prd-dear-baby-reset-user`의 AC를 함께 고쳐야 한다. `doc-tracker.md`의 "수용된 위험"에
+> `prd-dear-baby-reset-user`의 AC를 함께 고쳐야 한다. `doc-tracker/`의 "수용된 위험"에
 > 미결로 기록한다.
 >
 > `session_write`는 이 목록에서 뺐다. 제어면 API 호출이지 쿠버네티스 권한을 행사하지

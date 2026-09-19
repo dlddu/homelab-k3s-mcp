@@ -54,12 +54,12 @@ App에 `statuses` 권한을 **먼저** 부여하면, 그 순간부터 `permissio
 - **승인 게이트(gatekeeper)를 타지 않는다.** 게이트의 보증은 「승인 없이는 **클러스터 상태**가
   바뀌지 않는다」이고(values V3), commit status는 클러스터 밖 GitHub의 추가 전용(append-only)
   기록이라 그 범위가 아니다. 위조 위험은 게이트 대신 AC4의 context 네임스페이스가 막는다. 그래서
-  `doc-tracker.md`의 「게이트 밖 예외」(클러스터 쓰기 중 게이트를 타지 않는 것) 계수에도 들어가지
+  `doc-tracker/`의 「게이트 밖 예외」(클러스터 쓰기 중 게이트를 타지 않는 것) 계수에도 들어가지
   않는다.
 - **status 조회·목록·삭제는 다루지 않는다.** GitHub API에 status 삭제는 없고, 조회는
   `github_app_installation_token`에서 `statuses: read` 토큰을 받아 한다(그 PRD AC5).
 - **check run(`checks` 권한)은 다루지 않는다.** 다른 API·다른 권한이며, 그 권한을 토큰 도구에서
-  배제할지는 이 PRD가 정하지 않는다(`doc-tracker.md` 미결 사항에 등재).
+  배제할지는 이 PRD가 정하지 않는다(`doc-tracker/` 미결 사항에 등재).
 
 ## Acceptance Criteria
 
