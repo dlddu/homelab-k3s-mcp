@@ -345,8 +345,18 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `context`에 **경로 전문과 고권한 표시**가 함께 담기고, 승인하면 실제로 실행됨 —
   경로 허용목록이 없음을 확인한다. 승인 없는 `GET`도 거부됨
 - **검증 AC**: AC15
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestProxyAllPathsGated`,
-  `TestProxyKubeletHighPowerPathFlagged`. 통합 `resource_generic_ac15.py`
+- **자동화**: Go 단위 `internal/mcp/proxy_test.go` 넷(`TestProxyAllPathsGated`,
+  `TestProxyKubeletHighPowerPathFlagged`, `TestProxyWideningIsDocumented`,
+  `TestProxyRefusalsCostNoApproval`)과 `internal/k8s/proxy_test.go` 다섯
+  (`TestProxyVerbFollowsTheMethod`, `TestSplitProxyPathKeepsTheQuery`,
+  `TestProxyOutcomeReportsItsEncoding`, `TestProxyOutcomeMarksACutBody`,
+  `TestApiserverRefusalIsToldFromTheTargets`)이 2026-09-19 착지했다 — 메서드→verb 다섯 쌍이
+  전부 게이트를 타는 것(`GET` 포함), `/exec` 과 `/healthz` 가 **같은 쌍**으로 표현되는데도
+  승인 `context` 는 경로 전문과 고권한 표시로 둘을 가르는 것, 그 표시가 **막지 않는 것**,
+  그리고 경로 허용목록이 코드에 존재하지 않는 것을 단언한다. 통합
+  `resource_generic_ac15.py` 는 **(미작성)** — 가짜 게이트가 구별하지 못하는 자리(실물
+  승인 화면에 실제로 무엇이 실리는지, `nodes/proxy` 의 `/exec` 이 승인 뒤 **정말 실행되는지**)가
+  그 파일의 몫이고, 소관은 `tbm_homelab-k3s-mcp-scenario-e2e` 다
 
 ### 시나리오 16: 민감 종류는 읽기도 쓰기도 승인을 거친다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 gatekeeper

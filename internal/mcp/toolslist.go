@@ -539,6 +539,67 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_proxy",
+      "description": "Reach the HTTP endpoint of one named Kubernetes Pod, Service or Node through the apiserver's proxy subresource. The verb it exercises follows the HTTP method (GET->get, POST->create, PUT->update, PATCH->patch, DELETE->delete) on <kind>/proxy, and every method requires human approval — including GET. There is no path allowlist: the (verb, resource) pair cannot say what a proxy call does, so the path is carried verbatim on the approval screen instead, and kubelet's high-power endpoints on nodes/proxy (/exec, /attach, /portForward, /run, /logs, /containerLogs) are marked there rather than blocked. The target's own HTTP status is reported as the answer — a 404 from what is being proxied to is not a failure of this tool. The body is capped at 256KiB and a cut body says so; readSeconds defaults to 10 and may not exceed 30.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the kind, e.g. \"v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to reach: \"Pod\", \"Service\" or \"Node\". Anything else is refused."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for Pod and Service; rejected for the cluster-scoped Node."
+          },
+          "name": {
+            "type": "string",
+            "description": "Object name. Required; this tool reaches one named object, not a selection."
+          },
+          "method": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+            "description": "HTTP method. The RBAC verb this call spends follows it."
+          },
+          "path": {
+            "type": "string",
+            "description": "Path to reach on the target, starting with \"/\", query string included (e.g. \"/metrics\" or \"/exec/ns/pod/c?command=id\"). Shown verbatim on the approval screen — it is the only thing that says what this call does."
+          },
+          "body": {
+            "type": "string",
+            "description": "Request body as text. Carried verbatim on the approval screen."
+          },
+          "bodyBase64": {
+            "type": "string",
+            "description": "Request body, base64-encoded, for bytes that are not text. Mutually exclusive with body."
+          },
+          "contentType": {
+            "type": "string",
+            "description": "Content-Type for the request body. Ignored when no body is sent."
+          },
+          "readSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "description": "How long to read the answer before closing. Defaults to 10. A follow-mode endpoint is reachable, so this is what ends the call."
+          }
+        },
+        "required": ["apiVersion", "kind", "name", "method", "path"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Proxy Resource",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "dear_baby_reset_user",
       "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-user CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
       "inputSchema": {

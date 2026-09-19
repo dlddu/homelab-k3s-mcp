@@ -119,6 +119,41 @@ type PortForwardRef struct {
 	Name       string
 }
 
+// ProxyOutcome is one HTTP round trip made through the apiserver's proxy
+// subresource (prd-resource-generic AC15).
+type ProxyOutcome struct {
+	// Method and Verb travel together because AC15's whole shape is that the
+	// second follows the first. An operator reading a transcript should not
+	// have to reconstruct which permission a GET spent.
+	Method string `json:"method"`
+	Verb   string `json:"verb"`
+	// Path echoes what was reached verbatim. It is the only field that says
+	// what the call did — the (verb, resource) pair cannot, which is why AC15
+	// puts the path on the approval screen instead.
+	Path string `json:"path"`
+	Name string `json:"name"`
+	// Status is the target's own HTTP status. A 404 from the proxied endpoint
+	// is an answer rather than a failure of this tool, so it is reported here
+	// instead of being turned into an error.
+	Status int    `json:"status"`
+	Body   string `json:"body"`
+	// BodyEncoding is "utf-8" or "base64", always present rather than omitted
+	// in the common case (the PortForwardOutcome.ResponseEncoding reasoning).
+	BodyEncoding string `json:"body_encoding"`
+	Truncated    bool   `json:"truncated"`
+	ReadSeconds  int    `json:"read_seconds"`
+}
+
+// ProxyRef names the object resource_proxy reaches, addressed by coordinate
+// (prd-resource-generic AC15). Unlike the other three stream refs this one is
+// not pod-only: Service and the cluster-scoped Node are AC15's targets too.
+type ProxyRef struct {
+	APIVersion string
+	Kind       string
+	Namespace  *string
+	Name       string
+}
+
 // LogOptions controls a read of the log subresource.
 type LogOptions struct {
 	Container    *string

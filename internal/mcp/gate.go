@@ -66,6 +66,16 @@ type toolDeclaration struct {
 	// An undocumented exemption is the bypass AC1 forbids, so this field is
 	// deliberately a sentence rather than a bool.
 	outsideGate string
+
+	// alwaysGated is outsideGate's mirror: the documented reason every pair of
+	// this tool needs approval even when the verb alone would not select it.
+	// gatedVerbs judges by verb because for almost every tool the verb is what
+	// the call does — but AC15 makes resource_proxy's verb follow the HTTP
+	// method, so a GET there is not a read of an object, it is an arbitrary
+	// request to whatever the object serves. A sentence rather than a bool for
+	// the same reason outsideGate is one: widening the gate is a decision the
+	// documents make, and this field is where the code cites them.
+	alwaysGated string
 }
 
 // The one reason any tool is currently exempt. It comes from the documents,
@@ -74,6 +84,12 @@ const (
 	// docs/prd-approval-gate.md, "남은 예외 1건" — the reason and its open state
 	// live there; this code only cites them.
 	exemptPendingOwnerDecision = "prd-approval-gate 「남은 예외 1건」 — 소유자 판단 대기 (doc-tracker.md 미결)"
+
+	// docs/prd-resource-generic.md AC15, and the same sentence in
+	// prd-approval-gate's write-gate table: "메서드와 무관하게 전부 게이트
+	// 대상이다". The pair a proxy call spends does not say what it does — only
+	// the path does — so there is no method whose approval can be skipped.
+	gatedEveryMethodByAC15 = "prd-resource-generic AC15 — 경로가 호출을 한정하므로 메서드와 무관하게 전부 게이트 대상"
 )
 
 // toolRegistry binds each tool's handler to the pairs it exercises. Handler and
@@ -155,6 +171,15 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourcePortForward,
 	},
 
+	"resource_proxy": {
+		decl: toolDeclaration{
+			resolve:     proxyPairs(),
+			target:      genericTarget(),
+			alwaysGated: gatedEveryMethodByAC15,
+		},
+		handle: (*Handler).resourceProxy,
+	},
+
 	"dear_baby_reset_user": {
 		decl: toolDeclaration{
 			pairs: []gatekeeper.Pair{
@@ -221,6 +246,9 @@ func (d toolDeclaration) gatedPairs(sensitiveKinds []string, rawArgs json.RawMes
 	pairs, err := d.callPairs(rawArgs)
 	if err != nil {
 		return nil, err
+	}
+	if d.alwaysGated != "" {
+		return pairs, nil
 	}
 	var gated []gatekeeper.Pair
 	for _, p := range pairs {
@@ -649,9 +677,75 @@ func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessa
 		// and "9 → 10" are the same request and different decisions.
 		fmt.Fprintf(&b, "replicas: %s\n", detail)
 	}
+	if detail := proxyPathDetail(name, rawArgs); detail != "" {
+		// AC3 asks proxy for "HTTP 메서드, 대상 종류·이름, 경로와 본문 전문".
+		// The arguments below carry all four already; what this line adds is
+		// the one thing listing them cannot — that this particular path is one
+		// of kubelet's high-power endpoints. AC3 says to mark it, not to block
+		// it, so this is a line on a screen and nothing else.
+		fmt.Fprintf(&b, "proxy: %s\n", detail)
+	}
 
 	b.WriteString(argumentsBlock(gated, rawArgs, sensitiveKinds))
 	return b.String()
+}
+
+// kubeletHighPowerPaths are the six prd-approval-gate AC3 names. They are not a
+// denylist — nothing consults them to refuse a call — and they are not
+// exhaustive of what a kubelet serves either. They are the endpoints an operator
+// most needs to notice before pressing approve, and the marking exists because
+// every one of them arrives wearing the same pair as /healthz.
+var kubeletHighPowerPaths = []string{
+	"/exec", "/attach", "/portForward", "/run", "/logs", "/containerLogs",
+}
+
+// proxyPathDetail renders the proxy line of an approval context, and nothing at
+// all for every other tool. It reads the arguments rather than the target ref
+// because the path is not part of any coordinate: the ref says which object is
+// being reached and the path says what is being asked of it, and AC15's whole
+// argument is that only the second one limits the call.
+func proxyPathDetail(name string, rawArgs json.RawMessage) string {
+	if name != "resource_proxy" {
+		return ""
+	}
+	obj, ok := decodeObject(rawArgs)
+	if !ok {
+		return ""
+	}
+	args, rerr := parseProxyTarget(obj)
+	if rerr != nil {
+		// An unreadable call never reaches here — authorize resolves the pair
+		// through the same parser first, and a refusal there is returned before
+		// any approval is requested (AC3's "상세를 만들 수 없으면 거부").
+		return ""
+	}
+	detail := fmt.Sprintf("%s %s", args.method, args.path)
+	if kind, _ := obj["kind"].(string); strings.EqualFold(kind, "Node") {
+		if endpoint := kubeletHighPowerEndpoint(args.path); endpoint != "" {
+			detail += fmt.Sprintf(
+				"  ⚠️ kubelet high-power endpoint (%s) — this reaches the node directly, not the apiserver's view of it",
+				endpoint,
+			)
+		}
+	}
+	return detail
+}
+
+// kubeletHighPowerEndpoint reports which of AC3's six a path is, or "" for the
+// rest. The match is on the first segment and is case-insensitive, because
+// kubelet answers /portForward and /portforward alike and a marking that only
+// fired on one spelling would be a marking an operator learns not to trust.
+func kubeletHighPowerEndpoint(path string) string {
+	head := path
+	if idx := strings.IndexAny(strings.TrimPrefix(path, "/"), "/?"); idx >= 0 {
+		head = "/" + strings.TrimPrefix(path, "/")[:idx]
+	}
+	for _, candidate := range kubeletHighPowerPaths {
+		if strings.EqualFold(head, candidate) {
+			return candidate
+		}
+	}
+	return ""
 }
 
 // argumentsBlock renders the verbatim-arguments tail every approval context

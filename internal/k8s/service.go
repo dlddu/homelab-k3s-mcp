@@ -46,6 +46,12 @@ type Service interface {
 	// PortForwardResource opens a tunnel to one port of one named pod, makes a
 	// single round trip through it, and closes it (prd-resource-generic AC14).
 	PortForwardResource(ctx context.Context, ref PortForwardRef, port int, payload []byte, readSeconds int) (*PortForwardOutcome, error)
+
+	// ProxyResource reaches one object's HTTP endpoint through the apiserver
+	// (prd-resource-generic AC15). It is the one stream method whose verb is
+	// an argument rather than a constant, because AC15 makes the verb follow
+	// the HTTP method.
+	ProxyResource(ctx context.Context, ref ProxyRef, method, path string, body []byte, contentType string, readSeconds int) (*ProxyOutcome, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -110,5 +116,9 @@ func (u *Unavailable) AttachResource(context.Context, AttachRef, *string, *strin
 }
 
 func (u *Unavailable) PortForwardResource(context.Context, PortForwardRef, int, []byte, int) (*PortForwardOutcome, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) ProxyResource(context.Context, ProxyRef, string, string, []byte, string, int) (*ProxyOutcome, error) {
 	return nil, unavailableErr(u.reason)
 }
