@@ -179,6 +179,20 @@ func (f *fakeK8s) PortForwardResource(_ context.Context, ref k8s.PortForwardRef,
 	}, nil
 }
 
+func (f *fakeK8s) ProxyResource(_ context.Context, ref k8s.ProxyRef, method, path string, _ []byte, _ string, readSeconds int) (*k8s.ProxyOutcome, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return &k8s.ProxyOutcome{
+		Method:       method,
+		Verb:         k8s.ProxyVerbForMethod(method),
+		Path:         path,
+		Name:         ref.Name,
+		Status:       200,
+		BodyEncoding: "utf-8",
+		ReadSeconds:  readSeconds,
+	}, nil
+}
+
 type installationTokenCall struct {
 	repositories []string
 	permissions  map[string]any

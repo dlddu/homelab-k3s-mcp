@@ -57,6 +57,15 @@ type countingK8s struct {
 	lastPortForwardReadSeconds int
 	portForwardOutcome         *k8s.PortForwardOutcome
 	portForwardErr             error
+
+	lastProxy            k8s.ProxyRef
+	lastProxyMethod      string
+	lastProxyPath        string
+	lastProxyBody        []byte
+	lastProxyContentType string
+	lastProxyReadSeconds int
+	proxyOutcome         *k8s.ProxyOutcome
+	proxyErr             error
 }
 
 func (c *countingK8s) count() int {
@@ -274,6 +283,44 @@ func (c *countingK8s) PortForwardResource(_ context.Context, ref k8s.PortForward
 		}
 	}
 	return outcome, nil
+}
+
+// ProxyResource records the method and the path because those are the
+// assertion (AC15): the pair a proxy call spends is the same one for /healthz
+// and for /exec, so a call count cannot tell an observation from a shell.
+func (c *countingK8s) ProxyResource(_ context.Context, ref k8s.ProxyRef, method, path string, body []byte, contentType string, readSeconds int) (*k8s.ProxyOutcome, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastProxy = ref
+	c.lastProxyMethod = method
+	c.lastProxyPath = path
+	c.lastProxyBody = body
+	c.lastProxyContentType = contentType
+	c.lastProxyReadSeconds = readSeconds
+	outcome, err := c.proxyOutcome, c.proxyErr
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if outcome == nil {
+		outcome = &k8s.ProxyOutcome{
+			Method:       method,
+			Verb:         k8s.ProxyVerbForMethod(method),
+			Path:         path,
+			Name:         ref.Name,
+			Status:       200,
+			Body:         "ok",
+			BodyEncoding: "utf-8",
+			ReadSeconds:  readSeconds,
+		}
+	}
+	return outcome, nil
+}
+
+func (c *countingK8s) proxy() (k8s.ProxyRef, string, string, []byte, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastProxy, c.lastProxyMethod, c.lastProxyPath, c.lastProxyBody, c.lastProxyReadSeconds
 }
 
 func (c *countingK8s) portForward() (k8s.PortForwardRef, int, []byte, int) {
