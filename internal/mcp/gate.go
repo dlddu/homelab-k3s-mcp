@@ -150,6 +150,11 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).resourceAttach,
 	},
 
+	"resource_port_forward": {
+		decl:   toolDeclaration{resolve: portForwardPairs(), target: genericTarget()},
+		handle: (*Handler).resourcePortForward,
+	},
+
 	"dear_baby_reset_user": {
 		decl: toolDeclaration{
 			pairs: []gatekeeper.Pair{

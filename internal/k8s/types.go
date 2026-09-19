@@ -89,6 +89,36 @@ type AttachRef struct {
 	Name       string
 }
 
+// PortForwardOutcome is one round trip through a tunnel that no longer exists by
+// the time this is returned (prd-resource-generic AC14).
+type PortForwardOutcome struct {
+	Pod      string `json:"pod"`
+	Port     int    `json:"port"`
+	Response string `json:"response"`
+	// ResponseEncoding is "utf-8" or "base64". It is always present rather than
+	// omitted in the common case: a caller that has to test for the field's
+	// absence to learn the encoding is a caller that will forget to.
+	ResponseEncoding  string `json:"response_encoding"`
+	ResponseTruncated bool   `json:"response_truncated"`
+	// BytesSent reports what was written before the read, so a response can be
+	// read without the request beside it.
+	BytesSent   int `json:"bytes_sent"`
+	ReadSeconds int `json:"read_seconds"`
+	// TunnelClosed is constant true, and says so on purpose: AC14's contract is
+	// that a second round trip cannot ride this approval, and the response is
+	// where an operator reading a transcript can see that it did not.
+	TunnelClosed bool `json:"tunnel_closed"`
+}
+
+// PortForwardRef names the pod resource_port_forward opens a tunnel to, addressed
+// by coordinate (prd-resource-generic AC14).
+type PortForwardRef struct {
+	APIVersion string
+	Kind       string
+	Namespace  *string
+	Name       string
+}
+
 // LogOptions controls a read of the log subresource.
 type LogOptions struct {
 	Container    *string

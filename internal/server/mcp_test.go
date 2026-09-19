@@ -110,7 +110,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"ping", "api_resources", "resource_list", "resource_get", "resource_watch",
 		"resource_create", "resource_update", "resource_patch", "resource_delete",
 		"resource_delete_collection",
-		"resource_exec", "resource_attach",
+		"resource_exec", "resource_attach", "resource_port_forward",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",

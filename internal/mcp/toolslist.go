@@ -485,6 +485,60 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "resource_port_forward",
+      "description": "Make a single round trip to one port of one named Kubernetes pod through the pods/portforward subresource: the tunnel opens, the payload is written once, the answer is read under caps, and the tunnel closes. It is not a session — nothing stays open between calls, because an approval buys one round trip (prd-approval-gate AC7); a standing tunnel is kubectl port-forward's job. Exercises the create verb on pods/portforward only and always requires human approval — this reaches pod ports a network policy closed, so the approval screen carries the port and the payload verbatim. readSeconds defaults to 5 and may not exceed 30; the answer is capped at 256KiB and a cut answer says so.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "apiVersion": {
+            "type": "string",
+            "description": "Group/version of the pod kind, e.g. \"v1\"."
+          },
+          "kind": {
+            "type": "string",
+            "description": "Kind to forward to, e.g. \"Pod\". A kind with no portforward subresource is refused."
+          },
+          "namespace": {
+            "type": "string",
+            "description": "Namespace. Required for pods; rejected for cluster-scoped kinds."
+          },
+          "name": {
+            "type": "string",
+            "description": "Pod name. Required; this tool forwards to one named pod, not a selection."
+          },
+          "port": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65535,
+            "description": "Pod port to reach. Required, and shown on the approval screen — it is most of what an operator is judging."
+          },
+          "payload": {
+            "type": "string",
+            "description": "Bytes to write once, as text. The approval screen carries it verbatim. Omit to send nothing and just read what the port says on connect."
+          },
+          "payloadBase64": {
+            "type": "string",
+            "description": "Bytes to write once, base64-encoded, for payloads that are not text. Mutually exclusive with payload."
+          },
+          "readSeconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "description": "How long to read the answer before closing. Defaults to 5. The tunnel closes when the call returns either way."
+          }
+        },
+        "required": ["apiVersion", "kind", "name", "port"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Port Forward Resource",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": false
+      }
+    },
+    {
       "name": "dear_baby_reset_user",
       "description": "Reset dear-baby onboarding for the user with the given email by exec'ing the bundled /reset-user CLI inside a running dear-baby backend pod. Clears onboarded_at, due_date, voice coachmark dismissal, first_record_at, and ai_preview. Records themselves are preserved.",
       "inputSchema": {

@@ -166,6 +166,19 @@ func (f *fakeK8s) AttachResource(_ context.Context, ref k8s.AttachRef, container
 	return &k8s.AttachOutcome{Pod: ref.Name, ReadSeconds: readSeconds, StdinWritten: stdin != nil}, nil
 }
 
+func (f *fakeK8s) PortForwardResource(_ context.Context, ref k8s.PortForwardRef, port int, payload []byte, readSeconds int) (*k8s.PortForwardOutcome, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return &k8s.PortForwardOutcome{
+		Pod:              ref.Name,
+		Port:             port,
+		ResponseEncoding: "utf-8",
+		BytesSent:        len(payload),
+		ReadSeconds:      readSeconds,
+		TunnelClosed:     true,
+	}, nil
+}
+
 type installationTokenCall struct {
 	repositories []string
 	permissions  map[string]any
