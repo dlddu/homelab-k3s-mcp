@@ -297,20 +297,23 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   반응이 출력에 나타남
 - **검증 AC**: AC13
 - **자동화**: Go 단위 `internal/mcp/attach_test.go::TestAttachJoinsTheRunningProcess`·
-  `TestAttachRefusalsCostNoApproval`·`TestAttachContextCarriesTheStdin` 착지(2026-09-18 —
+  `TestAttachRefusalsCostNoApproval`·`TestAttachContextCarriesTheStdin` (2026-09-18 착지 —
   좌표·컨테이너·읽기 창 전달, `readSeconds` 미지정 시 기본 5, `readSeconds=31`·`0`·비정수의
   **클러스터 호출 0·승인 요청 0** 거부, stdin 전달과 빈 문자열이 부재와 구분됨, 상한 잘림 표시,
-  쌍이 `create on pods/attach`, 승인 `context` 가 stdin 을 그대로 실음). 통합 e2e 는
-  **(미작성)** — 저작해서 CI 에 태웠더니 **제품 결함**이 드러나 파일을 등재하지 않고 물렸다
-  (`rct_20260918-0004` 시도 1, PR #139 / run 35408563767). **`resource_attach` 는 `stdin` 이
-  주어지면 `readSeconds` 창을 지키지 않는다** — 같은 파드·같은 `readSeconds=3` 인데 stdin 없는
-  접속은 3.00초를 붙어 있었고(서버 로그 00:16:21.991 → 00:16:24.993) stdin 을 실은 접속은
-  **0.016초**(00:16:27.127 → 00:16:27.143) 만에 `stdout: ""` 로, 그것도 **에러가 아니라 성공
-  응답**으로 돌아왔다. 그래서 이 시나리오의 세 번째 기대 결과(「`stdin` 이 대상 프로세스에
-  전달되어 그 반응이 출력에 나타남」)에 하네스가 도달할 수 없다 — 16ms 창에는 되울림이 들어올
-  자리가 없다. 자세한 근거·소관·해제 조건은 `docs/doc-tracker/` 의 구현 대기 행(시나리오 13)에
-  있다. **파드 로그로 「새 프로세스가 뜨지 않았다」를 확인하는 절과 stdin 에 대한 대상 프로세스의
-  반응은 단위로 관측할 수 없어 그쪽 몫이다**
+  쌍이 `create on pods/attach`, 승인 `context` 가 stdin 을 그대로 실음)과
+  `internal/k8s/attach_test.go` 의 `attachStdinReader` 부분테스트 셋(2026-09-19 착지 — 창이
+  열린 동안 EOF 에 닿지 않음, 페이로드를 다 흘린 뒤에도 창이 닫힐 때까지 `Read` 가 답하지 않음,
+  빈 `stdin` 도 부재와 달리 창을 지킴). 통합
+  `tests/integration/resource_generic_ac13.py` 는 같은 계약을 **실물 kubelet · 실물
+  gatekeeper** 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 `stdin:true` busybox 파드에
+  `readSeconds=3` 으로 붙어 돌아온 줄이 **파드 로그에도 있고** 티커 번호가 1 보다 크다는 것(둘
+  다 「새 프로세스가 뜨지 않았다」의 증인이다), `readSeconds=31` 이 **호출 앞뒤의 gatekeeper
+  요청 수를 바꾸지 않고** 거부된다는 것, 그리고 실어 보낸 `stdin` 의 되울림이 응답과 파드 로그
+  **양쪽에** 나타난다는 것. 마지막 하나는 2026-09-18 까지 하네스가 도달할 수 없던 자리다 —
+  `resource_attach` 가 `stdin` 을 받으면 `readSeconds` 창을 0.016초로 걷고도 **성공 응답**을
+  돌려주던 제품 결함(`rct_20260918-0004` 시도 1, PR #139 / run 35408563767)이 창을 지키도록
+  고쳐지면서(#147) 열렸다. **파드 로그로 「새 프로세스가 뜨지 않았다」를 확인하는 절과 stdin 에
+  대한 대상 프로세스의 반응은 단위로 관측할 수 없어 이 파일의 몫이다**
 
 ### 시나리오 14: 포트 포워드는 단발 왕복이다
 - **사전 조건**: 동일, HTTP 를 서빙하는 파드
