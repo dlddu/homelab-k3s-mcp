@@ -39,6 +39,10 @@ type updateResourceCall struct {
 	ref k8s.UpdateRef
 }
 
+type deleteCollectionCall struct {
+	ref k8s.DeleteCollectionRef
+}
+
 type deleteResourceCall struct {
 	ref k8s.DeleteRef
 }
@@ -55,6 +59,7 @@ type fakeK8s struct {
 	updateCalls      []updateResourceCall
 	patchCalls       []patchResourceCall
 	deleteCalls      []deleteResourceCall
+	deleteCollection []deleteCollectionCall
 	execCalls        []execCall
 
 	execResponse  func() (*k8s.ExecOutcome, error)
@@ -123,6 +128,18 @@ func (f *fakeK8s) DeleteResource(_ context.Context, ref k8s.DeleteRef) (*k8s.Res
 	defer f.mu.Unlock()
 	f.deleteCalls = append(f.deleteCalls, deleteResourceCall{ref: ref})
 	return &k8s.ResourceResult{Resource: "configmaps", Namespace: "default"}, nil
+}
+
+func (f *fakeK8s) DeleteCollection(_ context.Context, ref k8s.DeleteCollectionRef) (*k8s.DeleteCollectionResult, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleteCollection = append(f.deleteCollection, deleteCollectionCall{ref: ref})
+	return &k8s.DeleteCollectionResult{
+		Resource:      "configmaps",
+		Namespace:     ref.Namespace,
+		LabelSelector: ref.LabelSelector,
+		FieldSelector: ref.FieldSelector,
+	}, nil
 }
 
 func (f *fakeK8s) ExecInPod(_ context.Context, namespace, labelSelector string, container *string, command []string) (*k8s.ExecOutcome, error) {

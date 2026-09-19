@@ -52,6 +52,11 @@ type Handler struct {
 	// Never nil — a deployment without a cluster client gets one that refuses.
 	gateReader k8s.TargetReader
 
+	// gateCollectionReader is the plural of gateReader: the `list on ⟨kind⟩`
+	// half of AC11's table. A separate field for the same reason gateReader is
+	// one; k8s.CollectionTargetReader holds it. Never nil.
+	gateCollectionReader k8s.CollectionTargetReader
+
 	sensitiveKinds []string
 
 	// registry is the dispatchable tool set. Held on the Handler rather than
@@ -89,6 +94,19 @@ func WithGateReader(reader k8s.TargetReader) Option {
 	}
 }
 
+// WithGateCollectionReader installs the reader the gate uses for the `list`
+// half of AC11's table. Its own option rather than a second argument to
+// WithGateReader because the failure is silent: a gate missing only this one
+// still describes a collection delete, from arguments that do not say what
+// will be deleted.
+func WithGateCollectionReader(reader k8s.CollectionTargetReader) Option {
+	return func(h *Handler) {
+		if reader != nil {
+			h.gateCollectionReader = reader
+		}
+	}
+}
+
 // NewHandler builds an MCP handler backed by the given services.
 func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Service, grafanaSvc grafana.Service, osSvc opensearch.Service, sessionSvc sessionplatform.Service, opts ...Option) *Handler {
 	h := &Handler{
@@ -103,6 +121,8 @@ func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Servi
 		sensitiveKinds:  []string{defaultSensitiveKind},
 		registry:        toolRegistry,
 	}
+	h.gateCollectionReader = k8s.NewUnavailableTargetReader(
+		"the approval gate has no kubernetes client to read a selection with")
 	for _, opt := range opts {
 		opt(h)
 	}
@@ -216,6 +236,9 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 	// the gate itself is a handler that can forget to (prd-approval-gate AC1).
 	if entry.createBatch {
 		return h.callCreateBatch(ctx, name, entry, rawArgs)
+	}
+	if entry.collectionGate {
+		return h.callDeleteCollection(ctx, name, entry, rawArgs)
 	}
 	decision, approved, rerr := h.authorize(ctx, name, entry, rawArgs)
 	if rerr != nil {

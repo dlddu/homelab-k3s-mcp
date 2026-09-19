@@ -25,6 +25,10 @@ type Service interface {
 
 	DeleteResource(ctx context.Context, ref DeleteRef) (*ResourceResult, error)
 
+	// DeleteCollection removes one namespace's selection with the
+	// deletecollection verb (prd-resource-generic AC11).
+	DeleteCollection(ctx context.Context, ref DeleteCollectionRef) (*DeleteCollectionResult, error)
+
 	// ExecInPod runs command inside the first Running pod matching labelSelector
 	// in namespace. container is required when the pod has more than one
 	// container; pass nil to default to the pod's only container.
@@ -82,6 +86,10 @@ func (u *Unavailable) PatchResource(context.Context, PatchRef) (*ResourceResult,
 }
 
 func (u *Unavailable) DeleteResource(context.Context, DeleteRef) (*ResourceResult, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) DeleteCollection(context.Context, DeleteCollectionRef) (*DeleteCollectionResult, error) {
 	return nil, unavailableErr(u.reason)
 }
 

@@ -109,6 +109,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 	want := []string{
 		"ping", "api_resources", "resource_list", "resource_get", "resource_watch",
 		"resource_create", "resource_update", "resource_patch", "resource_delete",
+		"resource_delete_collection",
 		"resource_exec", "resource_attach",
 		"dear_baby_reset_user", "github_app_installation_token",
 		"aws_config_get", "grafana_token",
@@ -216,6 +217,23 @@ func TestToolsListAdvertisesResourceTools(t *testing.T) {
 	for _, absent := range []string{"labelSelector", "fieldSelector", "subresource"} {
 		if _, ok := props[absent]; ok {
 			t.Errorf("resource_delete advertises %q; deleting a selection is the deletecollection verb", absent)
+		}
+	}
+
+	// AC11 rests on the mirror image of that absence, and on one presence. A
+	// client offered either wrong shape will send it, and the refusal that
+	// follows is a worse answer than never having advertised it.
+	coll := findTool(t, tools, "resource_delete_collection")
+	wantStrSlice(t, enumStrings(t, at(t, coll, "inputSchema", "required")), "apiVersion", "kind", "namespace")
+	collProps := at(t, coll, "inputSchema", "properties").(map[string]any)
+	for _, absent := range []string{"name", "subresource"} {
+		if _, ok := collProps[absent]; ok {
+			t.Errorf("resource_delete_collection advertises %q; deleting one named object is the delete verb", absent)
+		}
+	}
+	for _, present := range []string{"labelSelector", "fieldSelector"} {
+		if _, ok := collProps[present]; !ok {
+			t.Errorf("resource_delete_collection does not advertise %q, which is how a selection is chosen", present)
 		}
 	}
 }
