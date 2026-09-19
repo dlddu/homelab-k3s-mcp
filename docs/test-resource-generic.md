@@ -320,7 +320,20 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   왕복이 불가능(1승인 1실행이 터널에도 적용됨). 상한 초과가 잘리고 표시됨.
   승인 요청 `context` 에 **포트와 페이로드 전문**이 담김
 - **검증 AC**: AC14
-- **자동화**: (미작성) — 계획: 통합 `resource_generic_ac14.py`
+- **자동화**: Go 단위 `internal/k8s/port_forward_test.go` 다섯
+  (`TestRoundTripSendsOnceAndCloses`, `TestRoundTripSurfacesTheErrorStream`,
+  `TestRoundTripStopsAtTheByteCap`, `TestRoundTripEndsWhenTheWindowDoes`,
+  `TestPortForwardOutcomeReportsItsEncoding`)과 `internal/mcp/port_forward_test.go` 셋
+  (`TestPortForwardMakesOneRoundTrip`, `TestPortForwardRefusalsCostNoApproval`,
+  `TestPortForwardContextCarriesPortAndPayload`). 통합
+  `tests/integration/resource_generic_ac14.py` 는 같은 계약을 실물 apiserver·실물
+  gatekeeper 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 busybox `httpd` 파드에
+  요청을 한 번 보내고 답을 받아 `tunnelClosed` 로 끝나는 것, 승인 화면이 포트와 페이로드
+  **전문**을 싣는 것, 같은 호출을 한 번 더 하면 첫 승인이 재사용되지 않고 **새 id** 의 승인
+  요청이 서며 그것을 거절하면 두 번째 왕복이 일어나지 않는 것, 상한을 넘기는 응답이 정확히
+  256 KiB 에서 잘리고 `responseTruncated` 로 표시되는 것, 그리고 창 상한을 넘긴
+  `readSeconds` 가 **승인 요청을 만들기 전에** 거부되는 것. 단위 층의 가짜 SPDY 연결은 쓰기
+  반쪽을 닫는 구현과 닫지 않는 구현을 구별하지 못한다 — 그 자리를 이 파일이 잰다
 
 ### 시나리오 15: 프록시는 경로를 숨기지 않는다
 - **사전 조건**: kind 실물 gatekeeper, HTTP 파드와 그 Service, 노드 1개
