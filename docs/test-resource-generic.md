@@ -274,9 +274,19 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   목록**이 담김. `namespace` 누락은 거부. 0건 셀렉터는 승인 요청을 만들지 않고 알림.
   대상이 늘어난 마지막 케이스는 실행이 거부됨
 - **검증 AC**: AC12
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestDeleteCollectionRequiresNamespace`,
-  `TestDeleteCollectionContextCarriesTargets`, `TestDeleteCollectionZeroMatchSkipsApproval`.
-  통합 `resource_generic_ac12.py`
+- **자동화**: Go 단위 `delete_collection_test.go` 여섯 착지(2026-09-19 —
+  `TestCollectionWithoutNamespaceIsRefusedBeforeAnyApproval`,
+  `TestEmptySelectionAsksNobodyAndDeletesNothing`,
+  `TestCollectionContextCarriesCountAndNames`,
+  `TestCollectionContextTruncatesNamesButNotTheCount`,
+  `TestCollectionThatGrewAfterApprovalIsRefused`,
+  `TestApprovedCollectionDeleteSendsTheSelectorsUnchanged`). 통합
+  `tests/integration/resource_generic_ac12.py` 는 같은 계약을 실물 apiserver·실물
+  gatekeeper 왕복으로 관측한다(2026-09-19 착지) — 승인 화면이 대상 수 5와 다섯 이름을
+  싣는 것, 승인 뒤 그 다섯만 사라지고 다른 레이블 2개는 남는 것, `namespace` 누락과 0건
+  셀렉터가 **승인 요청조차 만들지 않는** 것, 승인과 실행 사이에 같은 레이블이 하나 늘면
+  실행이 거부되는 것. 단위 층의 가짜 목록 판독기는 자기가 받은 셀렉터를 기록할 뿐이라
+  「다른 레이블은 남는다」를 구별하지 못한다 — 그 자리를 이 파일이 잰다
 
 ### 시나리오 13: 실행 중 컨테이너 stdio 접속
 - **사전 조건**: 동일, stdout 을 주기 출력하며 stdin 을 읽는 파드
