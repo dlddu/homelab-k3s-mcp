@@ -96,8 +96,16 @@
 
 ### `github-mock` — `UPS`
 
-**대상**: `api.github.com`의 installation-token 엔드포인트
-(`POST /app/installations/<id>/access_tokens`).
+**대상**: `api.github.com`의 App installation 엔드포인트 —
+`POST /app/installations/<id>/access_tokens`(토큰 발급) ·
+`GET /app/installations/<id>`(설치 권한 조회) · `DELETE /installation/token`(발급 토큰 폐기).
+셋은 `github_app_installation_token` 의 AC5 경로가 실제로 거치는 상류 호출 전부다.
+
+여기에 더해 **테스트 전용 관리 표면**을 같은 프로세스가 연다(`/_admin/requests` 로 받은 요청을
+돌려주고 `/_admin/config` 로 응답 모드를 바꾼다). GitHub 에는 없는 경로이므로 상류 흉내가
+아니라 픽스처의 노브이고, `/_admin/` 접두사 아래에만 있어 실 API 경로와 겹치지 않는다.
+`AC5` 의 주장 대부분이 「일어나면 안 되는 요청」이라 **반환값이 아니라 요청 기록**이 판정
+근거이고, 그 기록을 e2e 가 읽을 자리가 필요하다.
 
 **실환경 불가 사유**: 실 상류는 GitHub의 공개 SaaS이고, 실제 응답을 받으려면 살아 있는 GitHub
 App의 private key·installation id가 필요하다. CI 클러스터 안에 GitHub를 띄울 수 없고, 실 API를

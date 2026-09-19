@@ -448,9 +448,15 @@ jobs:
           PF_PID=$!
           ( while true; do kubectl -n http-trace port-forward svc/http-trace 8090:8081 >>/tmp/pf-trace.log 2>&1; sleep 1; done ) &
           TRACE_PID=$!
-          trap 'kill $PF_PID $TRACE_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp" || true; pkill -f "port-forward svc/http-trace" || true' EXIT
+          ( while true; do kubectl -n github-mock port-forward svc/github-mock 8093:80 >>/tmp/pf-ghmock.log 2>&1; sleep 1; done ) &
+          GH_MOCK_PID=$!
+          trap 'kill $PF_PID $TRACE_PID $GH_MOCK_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp" || true; pkill -f "port-forward svc/http-trace" || true; pkill -f "port-forward svc/github-mock" || true' EXIT
           python tests/integration/run_all.py --group primary \
             --base-url http://127.0.0.1:8080 --trace-url http://127.0.0.1:8090
+        env:
+          # github_app_installation_token_ac5.py drives the mock's knobs and
+          # reads its request log; the other github-app files never touch it.
+          GITHUB_MOCK_URL: http://127.0.0.1:8093
 
       # 인증을 켜고 자격증명 시크릿을 하나도 붙이지 않은 배포 변형
       # (tests/k8s/kind/auth-fixture.yaml). 인증 게이트와 "미설정 시 graceful 거부" 는
