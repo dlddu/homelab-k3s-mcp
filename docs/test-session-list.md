@@ -11,7 +11,7 @@
 > 모킹 정책상 실 구성요소를 CI에서 확보할 수 있으면 스텁을 쓸 수 없기 때문이고, 덕분에
 > `docs/e2e-mocking-policy.md`의 허용목록에 새 항목이 늘지 않았다. 세션은 제어면의 실 상태
 > 저장소에 시드한다(`tests/integration/_session_platform.py`). 파일 단위 매핑의 SSOT는
-> `doc-tracker.md`이고 `check_ac_mapping.py`가 CI에서 강제한다.
+> `doc-tracker/`이고 `check_ac_mapping.py`가 CI에서 강제한다.
 
 ## 테스트 시나리오
 

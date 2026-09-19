@@ -28,7 +28,7 @@ session-platform 세션의 누적 워크로드 출력을 오프셋 커서로 읽
 > 선행 조건이던 "session-platform 배포가 클러스터에서 제거된 상태"는 2026-09-03 해소됐다
 > (제어면 재배포 · `SESSION_PLATFORM_ENDPOINT` 배선 완료).
 > AC2의 **실클러스터 절반**(스냅샷 세션이 read 한 번으로 실제 파드를 되살리는지)과 AC1~AC4의
-> 통합 e2e는 아직 없다 — `docs/doc-tracker.md`의 e2e 렌즈가 공백으로 계수한다.
+> 통합 e2e는 아직 없다 — `docs/doc-tracker/`의 e2e 렌즈가 공백으로 계수한다.
 
 ## Acceptance Criteria
 

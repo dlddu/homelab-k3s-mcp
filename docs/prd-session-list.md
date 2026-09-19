@@ -23,7 +23,7 @@ session-platform 제어면(control plane)이 보유한 세션 목록을 조회�
 > 배포가 클러스터에서 제거돼 있었고 도구도 없었다). 2026-09-03 기준 제어면은 재배포됐고
 > (`session-platform` 네임스페이스, Service `control-plane`), `SESSION_PLATFORM_ENDPOINT`
 > 배선과 도구 구현(`internal/sessionplatform` + `internal/mcp`)이 끝났다. 자동화 현황은
-> `doc-tracker.md`가 SSOT다.
+> `doc-tracker/`가 SSOT다.
 
 ## Acceptance Criteria
 

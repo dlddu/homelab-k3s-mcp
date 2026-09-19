@@ -241,7 +241,7 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 
 인계 근거는 [원본 task의 첫 시도 실행 지침](https://github.com/dlddu/reconciler/blob/dcdb9df5046cfa272d88a7fab76cf2899334174e/data/reconciliation-tasks/tbm_homelab-k3s-mcp-scenario-e2e.json)의
 「범위 밖」 2번이다. [PR #92](https://github.com/dlddu/homelab-k3s-mcp/pull/92)는 문서 근거를
-고친 슬라이스이며 이 주입 수단을 구현하지 않았다. 현재 인계는 [doc-tracker](doc-tracker.md)의
+고친 슬라이스이며 이 주입 수단을 구현하지 않았다. 현재 인계는 [doc-tracker](doc-tracker/index.md)의
 `test-approval-gate.md#시나리오 5` 구현 대기 행에도 남아 있다.
 
 1. ~~`tbm_homelab-k3s-mcp-scenario-e2e`가 실물 gatekeeper 이미지·kind 픽스처를 확보한다.~~

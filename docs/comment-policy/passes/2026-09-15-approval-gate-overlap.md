@@ -20,7 +20,7 @@ and all prior ledger decision text remain as history.
 ## Removal evidence
 
 All line references below are pinned to the reviewed source. The design
-decisions remain in [doc-tracker](../../doc-tracker.md).
+decisions remain in [doc-tracker](../../doc-tracker/index.md).
 
 | Comment body | Removed lines | Existing recovery source and matching knowledge |
 | --- | ---: | --- |

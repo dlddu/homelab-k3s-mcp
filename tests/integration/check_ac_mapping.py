@@ -65,7 +65,7 @@ import run_all
 HERE = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent.parent
 DOCS = REPO_ROOT / "docs"
-TRACKER = DOCS / "doc-tracker.md"
+TRACKER = sorted((DOCS / "doc-tracker").glob("[0-9][0-9][0-9][0-9]-[0-9][0-9].md"))[-1]
 
 #: `docs/test-<domain>.md` 의 시나리오 헤딩. 번호와 제목을 함께 딴다.
 SCENARIO_HEADING_RE = re.compile(r"^### 시나리오 (\d+):[ \t]*(.*)$", re.MULTILINE)

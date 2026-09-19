@@ -42,7 +42,7 @@ from collections import deque
 HERE = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent
 DOCS = REPO_ROOT / "docs"
-TRACKER = DOCS / "doc-tracker.md"
+TRACKER = sorted((DOCS / "doc-tracker").glob("[0-9][0-9][0-9][0-9]-[0-9][0-9].md"))[-1]
 HUB = DOCS / "index.html"
 
 #: `reader.html?doc=<docs 기준 상대경로>.md` 규약은 doc-tracker 의 「이 레포에 맞춘 뷰어 규약」
@@ -68,7 +68,7 @@ def categorize(rel: str) -> str | None:
     """`docs/` 기준 상대경로 → 종류. 분류 불가면 None(= D1 실패)."""
     if rel == "values.md":
         return "가치"
-    if rel == "doc-tracker.md":
+    if rel.startswith("doc-tracker/"):
         return "상태 추적"
     if "/" not in rel and rel.startswith("prd-"):
         return "PRD"
