@@ -252,14 +252,18 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **자동화**: Go 단위 `resource_test.go::TestExecStreamsAndCaps` 착지(2026-09-17 —
   stdout·stderr 구분 전달과 좌표·컨테이너·명령 전달, 인자 사전 거부(클러스터 호출 0),
   상한 잘림·시간 상한 표시, AC6의 승인 뒤 재생성 거부) · `exec_test.go::TestExecStreamOutcome`
-  착지(2026-09-18 — 스트림 종료의 분류 여섯 갈래). 통합 e2e 는 **(미작성)** — 재저작 대기다.
-  `rct_20260918-0003` 시도 2 가 `tests/integration/resource_generic_ac11.py` 를 저작해
-  CI 에서 실물로 돌렸을 때 **성공한 exec 가 `exitCode: null · success: false` 로 온다**는
-  제품 결함을 관측해 파일을 등재하지 않고 물렸는데, **그 제품 결함은 `rct_20260918-0005`
-  에서 닫혔다**(`internal/k8s/exec.go` 가 `streamErr == nil` 을 성공 갈래로 분류한다. 같은
-  슬라이스가 바이트 상한이 에러로 새던 두 번째 자리도 함께 닫아, 이 시나리오의 `yes` 단계가
-  응답으로 돌아온다). 남은 잔여는 **파일 재저작 하나**이고 소관은 `tbm_homelab-k3s-mcp-scenario-e2e`
-  다 — 자세한 근거는 `docs/doc-tracker.md` 의 구현 대기 행(시나리오 11)에 있다.
+  착지(2026-09-18 — 스트림 종료의 분류 여섯 갈래). 통합
+  `tests/integration/resource_generic_ac11.py` 는 같은 계약을 실물 kubelet 왕복으로
+  관측한다(2026-09-19 재저작) — `resource-generic-multi` 파드에서 stdout·stderr 가 갈라져
+  오는 것, `container` 누락이 승인 뒤 apiserver 거절로 후보 이름(`chatty`·`quiet`)을 실어
+  오는 것, `yes` 의 끝없는 출력이 256KiB 상한에서 잘리고 `stdoutTruncated` 로 표시되는 것.
+  이 파일은 한 번 물렸다가 돌아왔다 — `rct_20260918-0003` 시도 2 의 첫 실물 왕복이
+  **성공한 exec 가 `exitCode: null · success: false` 로 온다**는 제품 결함을 관측해 등재를
+  물렸고, 그 결함은 `rct_20260918-0005`(#137)가 `internal/k8s/exec.go` 의 분류를
+  `execStreamOutcome` 으로 뽑아 닫았다(같은 슬라이스가 바이트 상한이 `APIError` 로 새던 두
+  번째 자리도 함께 닫아 `yes` 단계가 응답으로 돌아온다). 그래서 `echo` 왕복의
+  `exitCode: 0 · success: true · isError: false` 와 `yes` 왕복의 구조화 응답 속
+  `stdoutTruncated: true` 가 그 두 자리의 회귀 방지선이다.
 
 ### 시나리오 12: 컬렉션 일괄 삭제
 - **사전 조건**: kind 실물 gatekeeper, 같은 레이블을 단 ConfigMap 5개와 다른 레이블 2개
