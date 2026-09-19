@@ -57,6 +57,7 @@ EXPECTED_TOOLS = {
     "resource_delete_collection",
     "resource_exec",
     "resource_attach",
+    "resource_port_forward",
     "dear_baby_reset_user",
     "grafana_token",
     "github_app_installation_token",

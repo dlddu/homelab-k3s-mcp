@@ -50,6 +50,13 @@ type countingK8s struct {
 	lastAttachReadSeconds int
 	attachOutcome         *k8s.AttachOutcome
 	attachErr             error
+
+	lastPortForward            k8s.PortForwardRef
+	lastPortForwardPort        int
+	lastPortForwardPayload     []byte
+	lastPortForwardReadSeconds int
+	portForwardOutcome         *k8s.PortForwardOutcome
+	portForwardErr             error
 }
 
 func (c *countingK8s) count() int {
@@ -238,6 +245,41 @@ func (c *countingK8s) AttachResource(_ context.Context, ref k8s.AttachRef, conta
 		}
 	}
 	return outcome, nil
+}
+
+// PortForwardResource records the port and the payload because those are the
+// assertion (AC14): they are what the approval screen showed, and a call count
+// cannot tell a forward to 8080 from a forward to 6379.
+func (c *countingK8s) PortForwardResource(_ context.Context, ref k8s.PortForwardRef, port int, payload []byte, readSeconds int) (*k8s.PortForwardOutcome, error) {
+	c.hit()
+	c.mu.Lock()
+	c.lastPortForward = ref
+	c.lastPortForwardPort = port
+	c.lastPortForwardPayload = payload
+	c.lastPortForwardReadSeconds = readSeconds
+	outcome, err := c.portForwardOutcome, c.portForwardErr
+	c.mu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+	if outcome == nil {
+		outcome = &k8s.PortForwardOutcome{
+			Pod:              ref.Name,
+			Port:             port,
+			Response:         "HTTP/1.1 200 OK\r\n\r\n",
+			ResponseEncoding: "utf-8",
+			BytesSent:        len(payload),
+			ReadSeconds:      readSeconds,
+			TunnelClosed:     true,
+		}
+	}
+	return outcome, nil
+}
+
+func (c *countingK8s) portForward() (k8s.PortForwardRef, int, []byte, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lastPortForward, c.lastPortForwardPort, c.lastPortForwardPayload, c.lastPortForwardReadSeconds
 }
 
 func (c *countingK8s) attach() (k8s.AttachRef, *string, *string, int) {

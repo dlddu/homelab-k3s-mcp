@@ -57,6 +57,12 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 
 func (w *limitedWriter) String() string { return w.buf.String() }
 
+// Bytes hands back what was kept without deciding it is text. The streaming
+// tools that read command output want the string; port forward reaches whatever
+// is listening on a port and has to look at the bytes before it can say whether
+// they are text at all (AC14).
+func (w *limitedWriter) Bytes() []byte { return w.buf.Bytes() }
+
 // streamSubresourceServed answers the discovery question requireSubresource
 // answers for scale, worded for the streaming subresources — reusing it would
 // have the refusal say "has no replicas", which is about scale, not about

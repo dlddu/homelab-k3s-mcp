@@ -42,6 +42,10 @@ type Service interface {
 	// AttachResource joins the streams of the process already running in one
 	// named pod (prd-resource-generic AC13).
 	AttachResource(ctx context.Context, ref AttachRef, container *string, stdin *string, readSeconds int) (*AttachOutcome, error)
+
+	// PortForwardResource opens a tunnel to one port of one named pod, makes a
+	// single round trip through it, and closes it (prd-resource-generic AC14).
+	PortForwardResource(ctx context.Context, ref PortForwardRef, port int, payload []byte, readSeconds int) (*PortForwardOutcome, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -102,5 +106,9 @@ func (u *Unavailable) ExecResource(context.Context, ExecRef, *string, []string) 
 }
 
 func (u *Unavailable) AttachResource(context.Context, AttachRef, *string, *string, int) (*AttachOutcome, error) {
+	return nil, unavailableErr(u.reason)
+}
+
+func (u *Unavailable) PortForwardResource(context.Context, PortForwardRef, int, []byte, int) (*PortForwardOutcome, error) {
 	return nil, unavailableErr(u.reason)
 }
