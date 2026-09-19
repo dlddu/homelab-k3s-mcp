@@ -3,7 +3,7 @@ package k8s
 import (
 	"context"
 	"errors"
-	"strings"
+	"io"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -28,10 +28,10 @@ const (
 // no command, no exit code, and the process keeps running after the window
 // closes.
 //
-// stdin, when given, is written once right after attaching. AC13 says "한 번
-// 써 넣는다" and means it literally — the reader is handed the payload and
-// nothing else, so a process that reads a line gets that line and then EOF
-// rather than a stream that stays open waiting for a second turn.
+// stdin, when given, is written once right after attaching — and then the read
+// half stays open for the rest of the window, which is what attachStdinReader
+// is for. AC13 contracts both halves at once, and a reader that ends at the
+// payload makes the second half cancel the first.
 func (s *KubeService) AttachResource(ctx context.Context, ref AttachRef, container *string, stdin *string, readSeconds int) (*AttachOutcome, error) {
 	if readSeconds <= 0 {
 		readSeconds = AttachDefaultReadSeconds
@@ -88,7 +88,10 @@ func (s *KubeService) AttachResource(ctx context.Context, ref AttachRef, contain
 
 	opts := remotecommand.StreamOptions{Stdout: stdoutBuf, Stderr: stderrBuf}
 	if stdin != nil {
-		opts.Stdin = strings.NewReader(*stdin)
+		// done is the window's own context, so the payload outlives the write
+		// exactly as long as the read does — and a byte cap that cancels early
+		// releases the reader with it instead of leaving a goroutine parked.
+		opts.Stdin = &attachStdinReader{payload: []byte(*stdin), done: ctx.Done()}
 	}
 
 	streamErr := attacher.StreamWithContext(ctx, opts)
@@ -108,4 +111,43 @@ func (s *KubeService) AttachResource(ctx context.Context, ref AttachRef, contain
 		StdoutTruncated: stdoutBuf.full,
 		StderrTruncated: stderrBuf.full,
 	}, nil
+}
+
+// attachStdinReader yields the payload once and then withholds EOF until done
+// closes, which is how AC13's two halves — "collect output for readSeconds" and
+// "write stdin once right after attaching" — can both be true at the same time.
+//
+// Handing the stream a reader that ends at the payload makes the second half
+// cancel the first. client-go closes the remote stdin stream as soon as its copy
+// finishes, the API server reads that close as the attach ending, and the window
+// is gone: the same pod at readSeconds=3 stayed attached 3.00s without stdin and
+// 0.016s with it, returning an empty stdout as a *success* (isError:false,
+// stdinWritten:true), so no assertion counted it. Waiting out the window here
+// keeps "write it once" literally true — the payload is still yielded exactly
+// once, in order, and never re-sent. What changes is only what the target
+// process sees afterwards: silence instead of EOF, and neither AC13 nor the PRD
+// contracts EOF.
+//
+// It is a named type rather than a closure over StreamOptions because the
+// regression has to be assertable without a cluster. The SPDY executor cannot be
+// reached from a unit test, so a decision left inside AttachResource goes
+// unwatched until a real round trip catches it — which is exactly how this one
+// survived two assessments (the execStreamOutcome precedent).
+type attachStdinReader struct {
+	payload []byte
+	off     int
+	done    <-chan struct{}
+}
+
+func (r *attachStdinReader) Read(p []byte) (int, error) {
+	if r.off < len(r.payload) {
+		if len(p) == 0 {
+			return 0, nil
+		}
+		n := copy(p, r.payload[r.off:])
+		r.off += n
+		return n, nil
+	}
+	<-r.done
+	return 0, io.EOF
 }
