@@ -44,7 +44,7 @@ spec:
           # Flux 는 deploy 를 추적한다. main 에 남은 값은 deploy 방식 전환 직전의 마지막
           # 고정값일 뿐 운영과 무관하다. 손으로 고칠 일은 없다(롤백은 main 에 revert PR).
           # 불변 태그라 imagePullPolicy 는 기본값(IfNotPresent)이 그대로 옳다.
-          image: ghcr.io/dlddu/homelab-k3s-mcp:dc86afb92bc6a06c3c6f3912e9e38d07388ebd5c
+          image: ghcr.io/dlddu/homelab-k3s-mcp:e49417167ad54f9751939f727d9b1e168c537089
           ports:
             - name: http
               containerPort: 3000
