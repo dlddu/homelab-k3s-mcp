@@ -24,6 +24,12 @@ data:
         r"^/app/installations/(?P<id>\d+)/access_tokens$"
     )
     INSTALLATION_RE = re.compile(r"^/app/installations/(?P<id>\d+)$")
+    COMMIT_STATUS_RE = re.compile(
+        r"^/repos/(?P<owner>[^/]+)/(?P<repo>[^/]+)/statuses/(?P<sha>[0-9a-fA-F]{40})$"
+    )
+
+    INSTALLATION_ACCOUNT_LOGIN = "dlddu"
+    UNPROCESSABLE_SHA = "f" * 40
 
     DEFAULT_PERMISSIONS = {"contents": "read", "metadata": "read"}
 
@@ -90,7 +96,11 @@ data:
                 permissions.update(config()["installation_permissions"] or {})
                 self._json(
                     200,
-                    {"id": int(match.group("id")), "permissions": permissions},
+                    {
+                        "id": int(match.group("id")),
+                        "account": {"login": INSTALLATION_ACCOUNT_LOGIN},
+                        "permissions": permissions,
+                    },
                 )
                 return
             self._json(404, {"message": "Not Found"})
@@ -110,6 +120,62 @@ data:
                     CONFIG.update(DEFAULT_CONFIG)
                     CONFIG.update(payload)
                     self._json(200, dict(CONFIG))
+                return
+
+            match = COMMIT_STATUS_RE.match(self.path)
+            if match:
+                raw = self._read_body()
+                record("POST", self.path, self.headers, raw)
+
+                if not self.headers.get("Authorization", "").startswith("Bearer "):
+                    self._json(401, {"message": "Requires authentication"})
+                    return
+
+                if self.headers.get("X-GitHub-Api-Version") != "2022-11-28":
+                    self._json(400, {"message": "Missing X-GitHub-Api-Version"})
+                    return
+
+                if not (self.headers.get("Accept") or "").startswith(
+                    "application/vnd.github"
+                ):
+                    self._json(400, {"message": "Missing Accept header"})
+                    return
+
+                try:
+                    payload = json.loads(raw) if raw else {}
+                except json.JSONDecodeError:
+                    self._json(400, {"message": "Invalid JSON"})
+                    return
+
+                sha = match.group("sha")
+                if sha.lower() == UNPROCESSABLE_SHA:
+                    self._json(
+                        422,
+                        {
+                            "message": "Validation Failed",
+                            "errors": [
+                                {
+                                    "resource": "Status",
+                                    "code": "custom",
+                                    "message": f"No commit found for SHA: {sha}",
+                                }
+                            ],
+                        },
+                    )
+                    return
+
+                created = {
+                    "id": 1,
+                    "state": payload.get("state", ""),
+                    "context": payload.get("context", ""),
+                    "sha": sha,
+                    "created_at": "2026-01-01T00:00:00Z",
+                }
+                if payload.get("description"):
+                    created["description"] = payload["description"]
+                if payload.get("target_url"):
+                    created["target_url"] = payload["target_url"]
+                self._json(201, created)
                 return
 
             match = INSTALLATION_TOKEN_RE.match(self.path)

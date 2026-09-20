@@ -96,10 +96,22 @@
 
 ### `github-mock` — `UPS`
 
-**대상**: `api.github.com`의 App installation 엔드포인트 —
+**대상**: `api.github.com`의 App 엔드포인트 —
 `POST /app/installations/<id>/access_tokens`(토큰 발급) ·
-`GET /app/installations/<id>`(설치 권한 조회) · `DELETE /installation/token`(발급 토큰 폐기).
-셋은 `github_app_installation_token` 의 AC5 경로가 실제로 거치는 상류 호출 전부다.
+`GET /app/installations/<id>`(설치 권한과 설치 계정 `account.login` 조회) ·
+`DELETE /installation/token`(발급 토큰 폐기) ·
+`POST /repos/<owner>/<repo>/statuses/<sha>`(커밋 status 기록).
+앞의 셋은 `github_app_installation_token` 의 AC5 경로가 거치는 상류 호출 전부이고, **넷 전부가**
+`github_commit_status_create` 가 거치는 전부다 — 그 도구는 owner 를 호출자에게서 받지 않고
+`GET /app/installations/<id>` 응답의 `account.login` 에서 읽은 뒤(`internal/github` 의
+`installationOwner`) 좁은 토큰을 발급해 status 를 쓰고 그 토큰을 폐기한다. 그래서 설치 조회는
+권한뿐 아니라 **계정 login 까지** 돌려주어야 한다.
+
+status 기록은 `sha` 가 `f` 40자일 때만 GitHub 모양의 `422 Validation Failed` 를 돌려주고 그 밖의
+`sha` 에는 `201` 과 생성된 status 를 돌려준다. 실패 갈래를 `/_admin/config` 노브가 아니라 **sha
+로** 가른 것은 [`test-github-commit-status.md`](test-github-commit-status.md) 시나리오 2 가 성공
+호출과 실패 호출을 **한 구성 상태에서** 차례로 한 뒤 두 발급 본문을 함께 읽기 때문이다 — 노브면
+그 사이에 구성을 갈아야 하고, 그러면 한 창에서 두 본문을 재는 판정이 성립하지 않는다.
 
 여기에 더해 **테스트 전용 관리 표면**을 같은 프로세스가 연다(`/_admin/requests` 로 받은 요청을
 돌려주고 `/_admin/config` 로 응답 모드를 바꾼다). GitHub 에는 없는 경로이므로 상류 흉내가

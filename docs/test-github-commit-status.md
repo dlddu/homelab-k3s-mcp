@@ -11,12 +11,22 @@
 ## 픽스처
 
 통합 테스트는 기존 `github-mock`(`tests/k8s/kind/github-mock.yaml`)을 쓴다. 기록 엔드포인트
-(`/_admin/requests`)와 응답 모드 노브(`/_admin/config`)는 토큰 도구 AC5 작업이 이미 세웠으므로,
-남은 것은 **`POST /repos/{owner}/{repo}/statuses/{sha}`(422 모드 포함)** 와
-**`GET /app/installations/{id}` 응답의 `account.login`** 둘이다 — 구현은 owner 를 호출자에게서 받지
-않고 그 필드에서 읽는데(2026-09-20), 현 스텁은 `{id, permissions}` 만 돌려준다. 이 둘을 더하면서
-`docs/e2e-mocking-policy.md`의 `github-mock` 등재 「대상」을 같은 PR에서 넓혀야 한다. 새 상류를
-띄우는 것이 아니라 기존 등재의 대상을 넓히는 것이다.
+(`/_admin/requests`)와 응답 모드 노브(`/_admin/config`)는 토큰 도구 AC5 작업이 세웠고,
+**`POST /repos/{owner}/{repo}/statuses/{sha}`(422 갈래 포함)** 와
+**`GET /app/installations/{id}` 응답의 `account.login`** 은 2026-09-20 에 섰다
+(`rct_20260920-0001` — `docs/e2e-mocking-policy.md` 의 `github-mock` 등재 「대상」 확대와 같은 PR).
+**픽스처 쪽 선행은 이제 없다** — 남은 것은 아래 각 시나리오의 전용 e2e 저작뿐이다.
+
+그 스텁이 세우는 계약 셋은 e2e 가 그대로 기대해도 되는 값이다:
+
+| 계약 | 값 |
+| --- | --- |
+| 설치 계정 login(= 경로의 `{owner}`) | `dlddu` |
+| 성공 응답 | `201` · `{"id": 1, "state", "context", "sha", "created_at": "2026-01-01T00:00:00Z"}` (+ 보낸 `description`·`target_url`) |
+| 422 갈래를 여는 `sha` | `f` 40자 (`"f" * 40`). 그 밖의 40자 hex 는 전부 성공 갈래다 |
+
+`id` 가 1(≠0)인 것은 의도된 선택이다 — 스텁이 0 을 돌려주면 도구가 `id` 를 **파싱하지 못한**
+경우의 Go 제로값과 구분되지 않아, 「도구 응답의 `id` 가 스텁 응답과 같다」가 공허하게 통과한다.
 
 ## 테스트 시나리오
 
