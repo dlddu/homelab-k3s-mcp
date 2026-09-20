@@ -661,6 +661,49 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "github_commit_status_create",
+      "description": "Write one commit status on a commit in a repository the server's GitHub App is installed on. The caller never receives a credential: the server mints an installation token scoped to that one repository and to statuses: write, spends it on this single call, and discards it. The owner is the installation account and is not a parameter. Only contexts starting with one of the prefixes in GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES may be written, and a deployment without that setting refuses every call. Requires GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "repository": {
+            "type": "string",
+            "description": "Repository name without its owner, e.g. \"homelab-k3s-mcp\". Must be installed for the App."
+          },
+          "sha": {
+            "type": "string",
+            "description": "Full 40-character hex commit SHA. Short SHAs, branches and tags are rejected."
+          },
+          "state": {
+            "type": "string",
+            "enum": ["error", "failure", "pending", "success"],
+            "description": "Status state."
+          },
+          "context": {
+            "type": "string",
+            "description": "Status label, e.g. \"homelab-k3s-mcp/e2e\". Must start with one of the server's allowed prefixes."
+          },
+          "description": {
+            "type": "string",
+            "description": "Short human-readable description, 140 characters or fewer."
+          },
+          "target_url": {
+            "type": "string",
+            "description": "Absolute http(s) URL the status links to."
+          }
+        },
+        "required": ["repository", "sha", "state", "context"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Create GitHub Commit Status",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "aws_config_get",
       "description": "Fetch the AWS config file from the preconfigured S3 bucket and return its contents. The bucket and key are fixed on the server via AWS_CONFIG_S3_BUCKET and AWS_CONFIG_S3_KEY, so this tool takes no arguments. The server reads the object using credentials obtained by assuming AWS_CONFIG_ROLE_ARN via STS; the base credentials for that AssumeRole call come from the default AWS credential chain (the instance profile in production). Returns the object contents as text plus metadata (size, content type, ETag, last-modified).",
       "inputSchema": {

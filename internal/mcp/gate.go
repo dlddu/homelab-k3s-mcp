@@ -192,6 +192,7 @@ var toolRegistry = map[string]toolEntry{
 	},
 
 	"github_app_installation_token": {handle: (*Handler).githubAppInstallationToken},
+	"github_commit_status_create":   {handle: (*Handler).githubCommitStatusCreate},
 	"opensearch_search":             {handle: (*Handler).opensearchSearch},
 	"opensearch_document_put":       {handle: (*Handler).opensearchDocumentPut},
 	"opensearch_document_delete":    {handle: (*Handler).opensearchDocumentDelete},

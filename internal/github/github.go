@@ -35,6 +35,7 @@ const (
 	kindUnavailable errKind = iota
 	kindAPI
 	kindRejected
+	kindInvalid
 )
 
 // Error is the error type returned by Service.
@@ -49,6 +50,8 @@ func (e *Error) Error() string {
 		return "github app unavailable: " + e.msg
 	case kindRejected:
 		return "github token request rejected: " + e.msg
+	case kindInvalid:
+		return "github commit status refused: " + e.msg
 	default:
 		return "github api error: " + e.msg
 	}
@@ -66,9 +69,11 @@ type InstallationToken struct {
 	RepositorySelection string         `json:"repository_selection,omitempty"`
 }
 
-// Service mints installation tokens for the configured GitHub App.
+// Service mints installation tokens for the configured GitHub App and spends
+// the one permission it will not hand out as a token.
 type Service interface {
 	CreateInstallationToken(ctx context.Context, repositories []string, permissions map[string]any) (*InstallationToken, error)
+	CreateCommitStatus(ctx context.Context, in CommitStatusInput) (*CommitStatus, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -96,6 +101,8 @@ type Client struct {
 	apiBase        string
 	userAgent      string
 	http           *http.Client
+
+	statusContextPrefixes []string
 }
 
 // FromEnv builds a Client from the GITHUB_APP_* environment variables. It
@@ -131,12 +138,13 @@ func FromEnv() (*Client, error) {
 	}
 
 	return &Client{
-		clientID:       clientID,
-		installationID: installationID,
-		privateKey:     privateKey,
-		apiBase:        strings.TrimRight(apiBase, "/"),
-		userAgent:      version.Name + "/" + version.Version,
-		http:           &http.Client{Timeout: httpClientTimeout},
+		clientID:              clientID,
+		installationID:        installationID,
+		privateKey:            privateKey,
+		apiBase:               strings.TrimRight(apiBase, "/"),
+		userAgent:             version.Name + "/" + version.Version,
+		http:                  &http.Client{Timeout: httpClientTimeout},
+		statusContextPrefixes: contextPrefixesFromEnv(),
 	}, nil
 }
 
@@ -160,7 +168,14 @@ func permissionLevel(permissions map[string]any, name string) string {
 	return strings.ToLower(strings.TrimSpace(level))
 }
 
-func (c *Client) installationPermissions(ctx context.Context, jwtToken string) (map[string]any, error) {
+type installation struct {
+	Permissions map[string]any `json:"permissions"`
+	Account     struct {
+		Login string `json:"login"`
+	} `json:"account"`
+}
+
+func (c *Client) fetchInstallation(ctx context.Context, jwtToken string) (*installation, error) {
 	url := fmt.Sprintf("%s/app/installations/%d", c.apiBase, c.installationID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -183,16 +198,37 @@ func (c *Client) installationPermissions(ctx context.Context, jwtToken string) (
 		return nil, apiError(fmt.Sprintf("%s returned %s: %s", url, resp.Status, string(respBody)))
 	}
 
-	var installation struct {
-		Permissions map[string]any `json:"permissions"`
-	}
-	if err := json.Unmarshal(respBody, &installation); err != nil {
+	var parsed installation
+	if err := json.Unmarshal(respBody, &parsed); err != nil {
 		return nil, apiError(fmt.Sprintf("parse installation: %v", err))
 	}
-	if installation.Permissions == nil {
-		return nil, apiError(fmt.Sprintf("%s returned no permissions", url))
+	return &parsed, nil
+}
+
+func (c *Client) installationPermissions(ctx context.Context, jwtToken string) (map[string]any, error) {
+	parsed, err := c.fetchInstallation(ctx, jwtToken)
+	if err != nil {
+		return nil, err
 	}
-	return installation.Permissions, nil
+	if parsed.Permissions == nil {
+		return nil, apiError(fmt.Sprintf("%s/app/installations/%d returned no permissions", c.apiBase, c.installationID))
+	}
+	return parsed.Permissions, nil
+}
+
+// installationOwner is the owner half of every repository path this server
+// builds. A caller cannot aim a status outside the installation because it
+// never supplies that half.
+func (c *Client) installationOwner(ctx context.Context, jwtToken string) (string, error) {
+	parsed, err := c.fetchInstallation(ctx, jwtToken)
+	if err != nil {
+		return "", err
+	}
+	if parsed.Account.Login == "" {
+		return "", apiError(fmt.Sprintf("%s/app/installations/%d returned no account login",
+			c.apiBase, c.installationID))
+	}
+	return parsed.Account.Login, nil
 }
 
 func (c *Client) effectivePermissions(ctx context.Context, jwtToken string, requested map[string]any) (map[string]any, error) {
@@ -245,26 +281,13 @@ func (c *Client) revokeToken(ctx context.Context, token string) error {
 	return nil
 }
 
-func (c *Client) CreateInstallationToken(ctx context.Context, repositories []string, permissions map[string]any) (*InstallationToken, error) {
-	jwtToken, err := c.appJWT()
-	if err != nil {
-		return nil, err
-	}
-
-	effective, err := c.effectivePermissions(ctx, jwtToken, permissions)
-	if err != nil {
-		return nil, err
-	}
-
+// mintInstallationToken is the raw exchange, shared by the token tool and by
+// CreateCommitStatus. AC5's guard is deliberately *not* here: it belongs to the
+// path that hands the token to a caller, and this one is also reached by the
+// narrow action that spends statuses: write without returning it.
+func (c *Client) mintInstallationToken(ctx context.Context, jwtToken string, body map[string]any) (*InstallationToken, error) {
 	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", c.apiBase, c.installationID)
 
-	body := map[string]any{}
-	if repositories != nil {
-		body["repositories"] = repositories
-	}
-	if effective != nil {
-		body["permissions"] = effective
-	}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("encode request body: %v", err))
@@ -295,6 +318,32 @@ func (c *Client) CreateInstallationToken(ctx context.Context, repositories []str
 	if err := json.Unmarshal(respBody, &token); err != nil {
 		return nil, apiError(fmt.Sprintf("parse installation token: %v", err))
 	}
+	return &token, nil
+}
+
+func (c *Client) CreateInstallationToken(ctx context.Context, repositories []string, permissions map[string]any) (*InstallationToken, error) {
+	jwtToken, err := c.appJWT()
+	if err != nil {
+		return nil, err
+	}
+
+	effective, err := c.effectivePermissions(ctx, jwtToken, permissions)
+	if err != nil {
+		return nil, err
+	}
+
+	body := map[string]any{}
+	if repositories != nil {
+		body["repositories"] = repositories
+	}
+	if effective != nil {
+		body["permissions"] = effective
+	}
+
+	token, err := c.mintInstallationToken(ctx, jwtToken, body)
+	if err != nil {
+		return nil, err
+	}
 
 	if permissionLevel(token.Permissions, statusesPermission) == "write" {
 		msg := "installation token came back carrying statuses: write; it was revoked and is not returned"
@@ -303,5 +352,5 @@ func (c *Client) CreateInstallationToken(ctx context.Context, repositories []str
 		}
 		return nil, apiError(msg)
 	}
-	return &token, nil
+	return token, nil
 }

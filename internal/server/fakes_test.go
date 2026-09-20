@@ -201,6 +201,7 @@ type installationTokenCall struct {
 type fakeGitHub struct {
 	mu       sync.Mutex
 	calls    []installationTokenCall
+	statuses []github.CommitStatusInput
 	response func() (*github.InstallationToken, error)
 }
 
@@ -216,6 +217,18 @@ func (f *fakeGitHub) CreateInstallationToken(_ context.Context, repositories []s
 		ExpiresAt:           "2026-05-07T01:00:00Z",
 		Permissions:         map[string]any{"contents": "read"},
 		RepositorySelection: "all",
+	}, nil
+}
+
+func (f *fakeGitHub) CreateCommitStatus(_ context.Context, in github.CommitStatusInput) (*github.CommitStatus, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.statuses = append(f.statuses, in)
+	return &github.CommitStatus{
+		ID:      1,
+		State:   in.State,
+		Context: in.Context,
+		SHA:     in.SHA,
 	}, nil
 }
 
