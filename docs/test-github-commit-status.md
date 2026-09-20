@@ -52,7 +52,10 @@
 - **기대 결과**: 여섯 모두 도구 에러이고 스텁 요청 카운터가 0이다(토큰 발급 요청도 0)
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `TestCommitStatusValidatesBeforeGitHub`(표 기반 6행 — 각 행이 상류 요청 수 0을
-  단언한다, 2026-09-20 착지). 통합은 **(미작성)** — `github_commit_status_ac3.py` 계획
+  단언한다, 2026-09-20 착지). 통합 e2e 는 `tests/integration/github_commit_status_ac3.py` 가 여섯
+  호출을 한 창에 몰아 넣고 끝에 github-mock 의 요청 로그가 비어 있음을 단언한다 — 거부가 입력
+  검증에서 왔다는 것은 필드를 지목하는 문면으로 가르고, 「로그가 비어 있다」가 공허하지 않다는
+  것은 유효한 한 벌이 로그를 남기는 포지티브 컨트롤로 가른다
 
 ### 시나리오 4: context 네임스페이스 밖은 거부
 - **사전 조건**: (a) 시나리오 1과 동일한 배포, (b) `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES` 미설정
@@ -71,8 +74,9 @@
 - **실행 단계**: 유효한 입력으로 호출한 뒤 `ping`
 - **기대 결과**: `github app unavailable: …` 도구 에러, 직후 `ping` 정상
 - **검증 AC**: AC5
-- **자동화**: Go 단위 `TestCommitStatusUnavailableReturnsToolError`(2026-09-20 착지). 통합은
-  **(미작성)** — `github_commit_status_ac5.py` 계획
+- **자동화**: Go 단위 `TestCommitStatusUnavailableReturnsToolError`(2026-09-20 착지). 통합 e2e 는
+  `tests/integration/github_commit_status_ac5.py` 가 auth-variant 배포(`auth-fixture.yaml`)에서
+  유효한 입력의 거부 문면과 직후 `ping` 을 함께 단언한다
 
 ### 시나리오 6: 어노테이션 광고
 - **사전 조건**: 임의 배포
@@ -81,4 +85,6 @@
   `openWorldHint=true`
 - **검증 AC**: AC6
 - **자동화**: Go 단위 `TestToolsListAdvertisesCommitStatus`(`internal/server/mcp_test.go`,
-  세 힌트를 이름으로 단언, 2026-09-20 착지). 통합은 **(미작성)** — `github_commit_status_ac6.py` 계획
+  세 힌트를 이름으로 단언, 2026-09-20 착지). 통합 e2e 는
+  `tests/integration/github_commit_status_ac6.py` 가 배포된 서버의 `tools/list` 에서 세 힌트를
+  한 벌로 되읽는다
