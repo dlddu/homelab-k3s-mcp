@@ -367,10 +367,14 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestProxyOutcomeReportsItsEncoding`, 256KiB 에서 잘리고 `truncated` 가 참이 되는 것은
   `TestProxyOutcomeMarksACutBody` 의 자리다(문면은 `prd-resource-generic` AC15 · 2026-09-19
   기재 — 코드가 먼저 착지하고 문서가 뒤따랐다). 통합
-  `resource_generic_ac15.py` 는 **(미작성)** — 가짜 게이트가 구별하지 못하는 자리(실물
-  승인 화면에 실제로 무엇이 실리는지, `nodes/proxy` 의 `/exec` 이 승인 뒤 **정말 실행되는지**)가
-  그 파일의 몫이고, 소관은 `tbm_homelab-k3s-mcp-scenario-e2e` 다 — **창·상한·인코딩은 실물이
-  아니어도 관측되므로 그 파일의 차단 요인이 아니다**
+  `tests/integration/resource_generic_ac15.py` 가 2026-09-20 착지했다 — 가짜 게이트가
+  구별하지 못하는 자리를 잰다: 실물 승인 화면에 실제로 무엇이 실리는지(`/healthz` 와 `/exec` 의
+  쌍을 두 화면에서 뽑아 **서로 대조**한다), 그리고 승인된 프록시 호출이 apiserver 의
+  `⟨kind⟩/proxy` 를 지나 대상이 정말 답하는지(파드가 돌려주는 본문과 kubelet 의 `ok`).
+  고권한 표시가 **막지 않는다**는 쪽은 `/exec` 호출이 승인 뒤 우리 층에서 거부되지 않는 것으로
+  잰다 — kubelet 의 응답 코드는 스트리밍 리다이렉트 처리에 달린 것이라 이 시나리오의 계약이
+  아니므로 단언하지 않는다. **창·상한·인코딩은 실물이 아니어도 관측되므로 이 파일이 다시 재지
+  않고, 그 귀속은 위의 Go 단위 아홉에 그대로 남는다**
 
 ### 시나리오 16: 민감 종류는 읽기도 쓰기도 승인을 거친다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 gatekeeper
