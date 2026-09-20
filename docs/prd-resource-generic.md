@@ -324,10 +324,26 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
   게이트는 kubelet의 고권한 엔드포인트(`/exec`·`/attach`·`/portForward`·`/run`·`/logs`·
   `/containerLogs`)를 `context`에 **표시**한다. 막지 않는다 — 승인 화면에서 눈에 띄게
   하는 것뿐이다.
+
+  요청·응답 모델에 맞추기 위해 `readSeconds`(기본 10, 상한 30) 동안 응답을 읽고 닫으며,
+  상한을 넘는 값은 클러스터에 닿기 전에 거부된다. 다른 셋과 달리 이 도구의 창은 **경로
+  허용목록을 두지 않기로 한 선택의 따름결과**다 — `/containerLogs?follow=true`처럼 끝나지
+  않도록 **설계된** 엔드포인트가 그대로 열려 있으므로, 이 왕복을 끝내는 것은 시간뿐이다.
+  AC12·AC13과 같은 이유로 **본문에는 256KiB의 바이트 상한**을 두고, 상한에 걸리면 응답의
+  `truncated`가 참이 된다.
+
+  응답은 대상 자신의 HTTP 상태(`status`)와 본문(`body`)에 더해 `bodyEncoding`과 실제로 쓴
+  창 `readSeconds`를 함께 돌려준다. `bodyEncoding`은 본문이 UTF-8 그대로인지(`utf-8`)
+  base64로 감싼 바이트인지(`base64`)를 말한다 — 이 도구는 `/metrics`의 텍스트도 이진
+  페이로드도 같은 자리로 돌려주고, **잘린 본문과 이진 본문은 말해 주지 않으면 온전한 본문과
+  구별되지 않는다.**
 - **달성 가치**: V1, V3
 - **검증 방법**: `Pod`·`Service`·`Node` 대상의 `GET`·`POST`가 동작하고 각각 `get`·`create`
   쌍으로 게이트를 탄다. 승인 없는 `GET`도 거부된다. `nodes/proxy`의 `/exec` 경로 호출이
   **실행되되** 그 승인 요청 `context`에 경로 전문과 고권한 표시가 함께 담긴다.
+  `readSeconds=31`이 **클러스터 호출 없이** 거부되고, 미지정이면 기본 10이 쓰인다. 상한을
+  넘기는 본문이 잘리고 `truncated`로 그렇게 말하며, 이진 본문이 `bodyEncoding=base64`로
+  표시된다.
 
 ### AC16: 민감 종류는 읽기도 쓰기도 승인 게이트를 거친다
 - **설명**: `v1/Secret`을 비롯한 **민감 종류**(`RESOURCE_GATED_KINDS`, 기본 `v1/Secret`)를
