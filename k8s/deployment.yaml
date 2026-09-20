@@ -59,6 +59,13 @@ spec:
             # value rather than a Secret.
             - name: SESSION_PLATFORM_ENDPOINT
               value: http://control-plane.session-platform.svc.cluster.local
+            # github_commit_status_create 가 쓸 수 있는 context 네임스페이스
+            # (prd-github-commit-status AC4). 자격증명이 아니라 정책이라 Secret 이
+            # 아닌 평문 env 이고, 여기 있는 값이 운영의 단일 출처다 —
+            # homelab-k3s-mcp-github-app Secret 에 같은 키가 있어도 env 가 이긴다.
+            # 비우거나 지우면 모든 호출이 거부된다(fail-closed).
+            - name: GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES
+              value: review/
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth
