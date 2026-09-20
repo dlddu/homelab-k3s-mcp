@@ -23,7 +23,7 @@
 | `deletecollection` | `resource_delete_collection` | `context`에 대상 수와 이름 목록이 필수 |
 | `create` on `pods/exec` | `resource_exec` | SPDY 실행기가 POST로 스트림을 연다 |
 | `create` on `pods/attach` | `resource_attach` | 새 프로세스가 아니라 주 프로세스 stdio에 붙는다 |
-| `create` on `pods/portforward` | `resource_port_forward` | 파드 네트워크로 단발 TCP 왕복 |
+| `create` on `pods/portforward` | `resource_port_forward` | 파드 포트로의 지속 TCP 세션 하나(수명 상한 안에서 여러 왕복) |
 | HTTP 메서드별 verb on `⟨kind⟩/proxy` | `resource_proxy` | `Pod`·`Service`·`Node`. 경로 제한 없음. `GET`도 게이트를 탄다 |
 
 ### 읽기 게이트 — 민감 종류
@@ -143,8 +143,11 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
   - `deletecollection` — 셀렉터, **삭제될 대상 수와 이름 목록**(많으면 앞 20개와 총 개수)
   - `exec` — 컨테이너 이름과 **실행할 명령 전문**(요약·생략 금지)
   - `attach` — 컨테이너 이름, `readSeconds`, 그리고 `stdin`이 있으면 **그 내용 전문**
-  - `port_forward` — 대상 포트와 **보낼 페이로드 전문**. 네트워크 정책이 막아 둔 포트에
-    도달할 수 있으므로 어디로 무엇을 보내는지가 승인의 전부다
+  - `port_forward` — 대상 파드·포트, **세션 수명 상한**(`sessionSeconds`), 그리고 첫
+    페이로드가 있으면 **그 전문**. 네트워크 정책이 막아 둔 포트에 도달할 수 있으므로 어디로
+    얼마 동안 여는지가 승인의 전부다. 승인 하나가 세션 하나를 열고 세션 안의 이후 송신은
+    승인 화면에 오르지 않으므로(`prd-resource-generic` AC14), 운영자는 페이로드가 아니라
+    **그 포트에 그 시간 동안 무엇이든 보낼 수 있는 권한**을 승인하는 것이다
   - `proxy` — HTTP 메서드, 대상 종류·이름, **경로와 본문 전문**
   - `get`·`watch`(민감 종류) — 어떤 종류의 어떤 대상을 읽는지
 
