@@ -80,9 +80,17 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   않음.
   좌표를 해석할 수 없는 호출은 승인 요청을 만들지 않고 거부
 - **검증 AC**: AC3
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestContextIncludesVerbSpecificDetail`,
-  `TestExecContextIncludesFullCommand`, `TestUnresolvableTargetIsRejectedBeforeRequest`.
-  통합 `approval_gate_ac3.py`
+- **자동화**: 통합 `tests/integration/approval_gate_ac3.py` — 게이트 대상 쌍 열하나
+  (`create/update/patch/delete/deletecollection on configmaps` · `update on deployments/scale` ·
+  `patch on deployments` · `create on pods/{exec,attach,portforward,proxy}`)를 각각 한 번씩
+  태워 실물 gatekeeper 의 요청 레코드에서 `context` 를 되읽고, verb 별 상세(교체본·레플리카
+  이동·patchType 과 패치 본문·`gracePeriodSeconds`·대상 수와 이름·명령·stdin·페이로드·
+  메서드와 경로와 본문)를 전문으로 대조한다. 공통 계약(도구 이름·쌍·좌표·요청 시각)과 쌍의
+  전집은 모은 열한 화면을 놓고 한 번에 판정하고, 좌표 해석 실패는 **승인 요청 수**로 잰다.
+  판정은 전부 거부라 픽스처를 바꾸지 않는다. 단위 근거는
+  `internal/mcp/gate_test.go::TestApprovedCallReachesKubernetesWithAJudgeableContext` ·
+  `TestContextIncludesCurrentAndTargetReplicas` · `TestUnresolvableTargetIsRejectedBeforeRequest`,
+  `internal/mcp/delete_collection_test.go::TestCollectionContextCarriesCountAndNames`
 
 ### 시나리오 4: 폴링으로 판정을 관측한다
 - **사전 조건**: kind 실물 gatekeeper
