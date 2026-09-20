@@ -61,10 +61,7 @@ type ExecRef struct {
 	Name       string
 }
 
-// AttachOutcome captures one read window on a running container's streams. It
-// is a separate type from ExecOutcome because nothing was started, so nothing
-// ended: the process is still running when the window closes and there is no
-// exit code to report.
+// AttachOutcome captures one read window on a running container's streams.
 type AttachOutcome struct {
 	Pod    string `json:"pod"`
 	Stdout string `json:"stdout"`
