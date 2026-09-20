@@ -342,11 +342,15 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **사전 조건**: kind 실물 gatekeeper, HTTP 파드와 그 Service, 노드 1개
 - **실행 단계**: `kind=Pod`로 `GET`(승인) → `kind=Service`로 `POST`(승인) →
   `kind=Node`로 `/healthz` `GET`(승인) → `kind=Node`로 `/exec/⟨ns⟩/⟨pod⟩/⟨c⟩?command=id`
-  호출하고 승인 요청 `context` 수집 후 승인 → `GET`을 승인 없이 호출
+  호출하고 승인 요청 `context` 수집 후 승인 → `GET`을 승인 없이 호출 →
+  `readSeconds=31`로 호출
 - **기대 결과**: 네 경우 모두 메서드에 대응하는 쌍(`get`/`create`)으로 게이트를 탐.
   `/healthz`와 `/exec`이 **같은 쌍**으로 표현되어 쌍만으로는 구별되지 않음. `/exec` 호출의
   `context`에 **경로 전문과 고권한 표시**가 함께 담기고, 승인하면 실제로 실행됨 —
-  경로 허용목록이 없음을 확인한다. 승인 없는 `GET`도 거부됨
+  경로 허용목록이 없음을 확인한다. 승인 없는 `GET`도 거부됨. `readSeconds=31`은 **클러스터
+  호출 0·승인 요청 0**으로 거부되고, 미지정 호출은 기본 10을 씀. 응답이 대상 자신의
+  `status`와 함께 `bodyEncoding`·`truncated`·`readSeconds`를 싣고, 상한을 넘긴 본문은
+  `truncated`가 참, 이진 본문은 `bodyEncoding=base64`
 - **검증 AC**: AC15
 - **자동화**: Go 단위 `internal/mcp/proxy_test.go` 넷(`TestProxyAllPathsGated`,
   `TestProxyKubeletHighPowerPathFlagged`, `TestProxyWideningIsDocumented`,
@@ -356,10 +360,17 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestApiserverRefusalIsToldFromTheTargets`)이 2026-09-19 착지했다 — 메서드→verb 다섯 쌍이
   전부 게이트를 타는 것(`GET` 포함), `/exec` 과 `/healthz` 가 **같은 쌍**으로 표현되는데도
   승인 `context` 는 경로 전문과 고권한 표시로 둘을 가르는 것, 그 표시가 **막지 않는 것**,
-  그리고 경로 허용목록이 코드에 존재하지 않는 것을 단언한다. 통합
+  그리고 경로 허용목록이 코드에 존재하지 않는 것을 단언한다. **읽기 창과 본문 상한 절도 같은
+  아홉이 이미 덮는다** — `readSeconds=31`·`0`·비정수가 **클러스터 호출 0·승인 요청 0** 으로
+  거부되는 것과 미지정 시 기본 10 이 쓰이는 것은 `TestProxyRefusalsCostNoApproval`·
+  `TestProxyAllPathsGated`, `bodyEncoding` 의 `utf-8`/`base64` 판정은
+  `TestProxyOutcomeReportsItsEncoding`, 256KiB 에서 잘리고 `truncated` 가 참이 되는 것은
+  `TestProxyOutcomeMarksACutBody` 의 자리다(문면은 `prd-resource-generic` AC15 · 2026-09-19
+  기재 — 코드가 먼저 착지하고 문서가 뒤따랐다). 통합
   `resource_generic_ac15.py` 는 **(미작성)** — 가짜 게이트가 구별하지 못하는 자리(실물
   승인 화면에 실제로 무엇이 실리는지, `nodes/proxy` 의 `/exec` 이 승인 뒤 **정말 실행되는지**)가
-  그 파일의 몫이고, 소관은 `tbm_homelab-k3s-mcp-scenario-e2e` 다
+  그 파일의 몫이고, 소관은 `tbm_homelab-k3s-mcp-scenario-e2e` 다 — **창·상한·인코딩은 실물이
+  아니어도 관측되므로 그 파일의 차단 요인이 아니다**
 
 ### 시나리오 16: 민감 종류는 읽기도 쓰기도 승인을 거친다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 gatekeeper
