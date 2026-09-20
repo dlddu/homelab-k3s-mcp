@@ -44,12 +44,18 @@ docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본�
   명시적 선언**이다 — 사각지대가 조용히 커지는 성질을 없애는 것이 이 규칙의 목적이다.
 
 위 여덟은 **등재 범위가 변했는지**만 재고 그 판정이 **무엇을 물었는지**는 보지 않아,
-복원 경로 ①② 만 검토한 판정도 rc=0 으로 착지한다. R9 가 그 자리를 메운다:
+복원 경로 ①② 만 검토한 판정도 rc=0 으로 착지한다. R9·R10 이 그 자리를 **두 표면 모두에서**
+메운다 — 같은 판정을 `check_paths34()` 하나로 돌리고 잔량 마커만 표면별로 읽는다:
 
 * **R9** 줄 주석 원장 행이 결과 칸에 `복원경로 ③:` 와 `복원경로 ④:` 를 **둘 다** 담고,
   그 판정을 **어느 지문에서 내렸는지**를 「복원경로 ③④ 판정 @지문 <12자>」 로 못박되
   그 지문이 **그 행의 현재 지문 셀과 같을 때만** ③④ 판정 완료로 센다. 그리고
   **완료 행 수 + 잔량 마커 == 전체 행 수**.
+* **R10** docstring 원장 행에 대한 같은 판정. R9 가 2026-09-20 에 설 때 줄 주석 표면만
+  덮어, docstring 23행 / 1665줄은 ③④ 를 한 번도 묻지 않은 채 **어떤 계기로도 다시 묻게 되지
+  않는** 상태였다 — 줄 주석 쪽 잔량은 `ledger.md` 의 마커가 세고 그 파일은 to-be 지문에
+  들어가 재감지를 열지만, docstring 쪽에는 셀 마커 자체가 없어 **재감지 경로가 0** 이었다.
+  그 표면만 영구 초록이 되는 성질을 없애는 것이 이 규칙의 목적이다.
 
   지문에 묶는 것이 이 규칙의 핵심이다. 이 원장의 재판정 관례는 결과 칸을 **덮어쓰지 않고**
   새 판정을 앞에 붙이며 옛 문면을 「이하 이전 이력 보존」으로 남기는 것이다(2026-09-19 의
@@ -65,6 +71,10 @@ docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본�
   토큰을 맨 글리프(`③`)로 세지 않는 것은 함정 회피다: 이 원장의 판정 산문에는 *제거 유형*을
   가리키는 ①②③ 이 흔해(「② 문서 재진술」 류) 글리프만 세면 그 열거가 검사를 거짓
   통과시킨다. 판정의 옳고 그름은 여전히 기계 밖이다.
+
+  **두 표면의 잔량 마커는 갈라 둔다**(`복원경로-잔량` / `docstring-복원경로-잔량`). 한 마커로
+  합치면 어느 표면이 움직였는지가 diff 에서 사라지고, 한쪽의 판정이 다른 쪽의 미판정을
+  가릴 수 있다 — R4 와 R8 을 갈라 둔 것과 같은 이유다.
 
 통과하면 **두 표면의 현재 인구조사를 출력한다.** 그 수치는 문서 프로즈에 적지 않는다 —
 낡는 형태를 없애는 것이 이 게이트의 목적이고, 최신값이 필요하면 여기서 읽는다.
@@ -121,6 +131,8 @@ DOC_REMAINING_CLOSE = "<!-- /docstring-잔량 -->"
 
 PATHS34_REMAINING_OPEN = "<!-- 복원경로-잔량 -->"
 PATHS34_REMAINING_CLOSE = "<!-- /복원경로-잔량 -->"
+DOC_PATHS34_REMAINING_OPEN = "<!-- docstring-복원경로-잔량 -->"
+DOC_PATHS34_REMAINING_CLOSE = "<!-- /docstring-복원경로-잔량 -->"
 
 # 결과 칸이 ③④ 를 물었다고 주장하려면 이 둘을 모두 담아야 한다(가독 근거).
 PATHS34_TOKENS = ("복원경로 ③:", "복원경로 ④:")
@@ -345,6 +357,49 @@ def check_ledger(
     return sum(row["lines"] for row in rows)
 
 
+def check_paths34(rows: list[dict], remaining: int, rule: str, surface: str) -> int:
+    """한 표면의 ③④ 판정 래칫(R9·R10)을 검사하고 판정 완료 행 수를 돌려준다.
+
+    두 표면이 **같은 함수**를 쓰는 것이 의도다. R9 가 줄 주석 쪽에 먼저 섰을 때 docstring
+    쪽에는 같은 규칙이 없었고, 그 비대칭은 문서로는 보이지 않았다 — 게이트 출력에 항이
+    없다는 사실만으로는 「그 표면은 면제」인지 「아직 안 세웠다」인지 갈리지 않는다. 규칙을
+    함수로 공유하면 한쪽만 느슨해지는 경로가 코드에서 사라진다.
+    """
+    done = 0
+    stale: list[str] = []
+    for row in rows:
+        result = row["result"]
+        anchored = set(PATHS34_ANCHOR_RE.findall(result))
+        has_prose = all(token in result for token in PATHS34_TOKENS)
+        if has_prose and row["fingerprint"] in anchored:
+            done += 1
+        elif anchored or has_prose:
+            # ③④ 를 물은 흔적은 있는데 현재 지문에 묶인 판정이 아니다 = 재판정으로 낡았다.
+            stale.append(f"{row['fingerprint']}({' '.join(row['paths'][:2])})")
+
+    if stale:
+        fail(
+            rule,
+            f"{surface} 표면에서 ③④ 판정이 현재 지문에 묶여 있지 않은 행 {len(stale)}개:"
+            f" {', '.join(stale)}."
+            " 그 행은 판정 이후 주석이 바뀌었다 — 새 내용에 대해 ③④ 를 다시 묻고"
+            " 「복원경로 ③④ 판정 @지문 <현재 지문>」 으로 못박거나, 잔량 마커를 올려"
+            " 「이 행의 새 내용은 아직 묻지 않았다」를 diff 에 남길 것.",
+        )
+
+    if done + remaining != len(rows):
+        fail(
+            rule,
+            f"{surface} 표면의 ③④ 판정 완료 {done}행 + 잔량 {remaining}행 !="
+            f" 원장 전체 {len(rows)}행. 행을 더하면서 결과 칸에"
+            f" `{PATHS34_TOKENS[0]}`·`{PATHS34_TOKENS[1]}` 와 현재 지문 앵커를 적지"
+            " 않았다면 잔량 마커를 올려 「이 행은 복원 경로 ③④ 를 아직 묻지 않았다」를"
+            " diff 에 남길 것. 이 수는 단조 감소가 아니다 — 재판정은 그 행을 미판정으로"
+            " 되돌리고, 그 증가가 곧 「새 내용은 아직 묻지 않았다」는 신호다.",
+        )
+    return done
+
+
 def main() -> int:
     for required in (POLICY_README, LEDGER):
         if not required.exists():
@@ -360,6 +415,9 @@ def main() -> int:
     doc_remaining = parse_total(text, DOC_REMAINING_OPEN, DOC_REMAINING_CLOSE)
     paths34_remaining = parse_total(
         text, PATHS34_REMAINING_OPEN, PATHS34_REMAINING_CLOSE
+    )
+    doc_paths34_remaining = parse_total(
+        text, DOC_PATHS34_REMAINING_OPEN, DOC_PATHS34_REMAINING_CLOSE
     )
 
     in_scope = set(scan_files())
@@ -406,39 +464,13 @@ def main() -> int:
             " 한다 — 잔량 갱신은 「이만큼은 아직 판정받지 않았다」는 선언이다.",
         )
 
-    # R9 — 복원 경로 ③④ 판정 래칫(지문에 묶인다)
-    paths34_done = 0
-    paths34_stale: list[str] = []
-    for row in rows:
-        result = row["result"]
-        anchored = set(PATHS34_ANCHOR_RE.findall(result))
-        has_prose = all(token in result for token in PATHS34_TOKENS)
-        if has_prose and row["fingerprint"] in anchored:
-            paths34_done += 1
-        elif anchored or has_prose:
-            # ③④ 를 물은 흔적은 있는데 현재 지문에 묶인 판정이 아니다 = 재판정으로 낡았다.
-            paths34_stale.append(f"{row['fingerprint']}({' '.join(row['paths'][:2])})")
-
-    if paths34_stale:
-        fail(
-            "R9",
-            f"③④ 판정이 현재 지문에 묶여 있지 않은 행 {len(paths34_stale)}개:"
-            f" {', '.join(paths34_stale)}."
-            " 그 행은 판정 이후 주석이 바뀌었다 — 새 내용에 대해 ③④ 를 다시 묻고"
-            " 「복원경로 ③④ 판정 @지문 <현재 지문>」 으로 못박거나, 잔량 마커를 올려"
-            " 「이 행의 새 내용은 아직 묻지 않았다」를 diff 에 남길 것.",
-        )
-
-    if paths34_done + paths34_remaining != len(rows):
-        fail(
-            "R9",
-            f"③④ 판정 완료 {paths34_done}행 + 잔량 {paths34_remaining}행 !="
-            f" 원장 전체 {len(rows)}행. 행을 더하면서 결과 칸에"
-            f" `{PATHS34_TOKENS[0]}`·`{PATHS34_TOKENS[1]}` 와 현재 지문 앵커를 적지"
-            " 않았다면 잔량 마커를 올려 「이 행은 복원 경로 ③④ 를 아직 묻지 않았다」를"
-            " diff 에 남길 것. 이 수는 단조 감소가 아니다 — 재판정은 그 행을 미판정으로"
-            " 되돌리고, 그 증가가 곧 「새 내용은 아직 묻지 않았다」는 신호다.",
-        )
+    # R9 — 줄 주석 표면의 복원 경로 ③④ 판정 래칫(지문에 묶인다)
+    paths34_done = check_paths34(rows, paths34_remaining, "R9", "줄 주석")
+    # R10 — 같은 판정을 docstring 표면에서. 한 함수를 공유하는 것이 「두 표면이 같은 엄격도로
+    # 재어진다」의 유일한 기계 근거다 — 갈라 쓰면 한쪽만 조용히 느슨해진다.
+    doc_paths34_done = check_paths34(
+        doc_rows, doc_paths34_remaining, "R10", "docstring"
+    )
 
     if failures:
         for line in failures:
@@ -452,7 +484,7 @@ def main() -> int:
     share = (ledger_sum * 100.0 / len(hits)) if hits else 0.0
     doc_share = (doc_sum * 100.0 / len(doc_hits)) if doc_hits else 0.0
     print(
-        f"OK: 규칙 R1~R9 위반 없음 — {census(hits)}"
+        f"OK: 규칙 R1~R10 위반 없음 — {census(hits)}"
         f" · 판정 완료 {ledger_sum}줄({share:.1f}%) / 등재 범위 {len(rows)}"
         f" · 미판정 잔량 {remaining}줄"
         f" · 복원경로 ③④ 판정 {paths34_done}/{len(rows)}행(잔량 {paths34_remaining})"
@@ -467,6 +499,8 @@ def main() -> int:
         f"     {docstring_census(doc_hits)}"
         f" · 판정 완료 {doc_sum}줄({doc_share:.1f}%) / 등재 범위 {len(doc_rows)}"
         f" · 미판정 잔량 {doc_remaining}줄"
+        f" · 복원경로 ③④ 판정 {doc_paths34_done}/{len(doc_rows)}행"
+        f"(잔량 {doc_paths34_remaining})"
     )
     for row in doc_rows:
         print(
