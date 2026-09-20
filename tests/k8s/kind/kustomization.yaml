@@ -11,6 +11,30 @@ images:
     newName: homelab-k3s-mcp
     newTag: ci
 
+patches:
+  # base 의 GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES 는 운영 값(review/)이고, env 는
+  # envFrom 을 이기므로 CI 시크릿의 값이 가려진다. e2e 의 context 는 homelab-k3s-mcp/
+  # 네임스페이스라 여기서 되돌린다. 이름으로 병합하는 strategic merge 라 base 의 env
+  # 순서가 바뀌어도 따라간다.
+  # 대상은 `target` 으로 짚는다 — base 의 Deployment 는 `metadata.namespace` 를 들고 있어서,
+  # 패치 본문만으로 짚으면 id 가 `[noNs]` 로 잡혀 매칭에 실패한다.
+  - target:
+      kind: Deployment
+      name: homelab-k3s-mcp
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: homelab-k3s-mcp
+      spec:
+        template:
+          spec:
+            containers:
+              - name: server
+                env:
+                  - name: GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES
+                    value: homelab-k3s-mcp/
+
 configMapGenerator:
   - name: homelab-k3s-mcp-oauth
     literals:
