@@ -1,7 +1,7 @@
 # Gatekeeper-wired SUT variant for the approval-gate e2e
-# (approval_gate_ac{2,4,9}.py).
+# (approval_gate_ac{2,4,9}.py) and resource_generic_ac17.py.
 #
-# The primary kind deployment can carry the gate too, but two observation
+# The primary kind deployment can carry the gate too, but three observation
 # designs need their own env values, and env is per deployment:
 #
 # * GATEKEEPER_TIMEOUT_SECONDS=5 with GATEKEEPER_POLL_INTERVAL_SECONDS=1 --
@@ -14,6 +14,9 @@
 #   create body carries a users.id, and ids are cuid values a fixture cannot
 #   know in advance. ci.yml seeds the user through the forward-auth path and
 #   pins the discovered id into the secret this deployment consumes.
+# * RESOURCE_GATED_KINDS -- test-resource-generic.md scenario 17(b) asks for a
+#   fixture CRD to be read through the sensitive-kind gate. That list is
+#   replaced rather than extended per deployment (see the env comment below).
 #
 # GATEKEEPER_BASE_URL points at the recording proxy (gatekeeper-trace), not at
 # gatekeeper directly, so scenario 2 can assert the create contract. The
@@ -113,6 +116,15 @@ spec:
               value: "5"
             - name: GATEKEEPER_POLL_INTERVAL_SECONDS
               value: "1"
+            # test-resource-generic.md#시나리오 17 (b) asks for a fixture CRD added to
+            # the sensitive-kind list, and this list is per deployment. It cannot go
+            # on the primary: resource_generic_ac1.py reads the same CRD there and
+            # would start needing an approval for it. The default value is repeated
+            # on purpose -- this env replaces the list rather than extending it, so
+            # dropping v1/Secret here would silently ungate every Secret read this
+            # deployment serves.
+            - name: RESOURCE_GATED_KINDS
+              value: v1/Secret,homelab-k3s-mcp.test/v1/ResourceGenericSample
           envFrom:
             - secretRef:
                 name: homelab-k3s-mcp-gatekeeper

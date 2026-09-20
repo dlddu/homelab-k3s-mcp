@@ -50,6 +50,14 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 `kubectl apply`가 파일을 읽는 시점에 종류를 해석하므로 한 파일에 두면 아직 서지 않은 종류를
 가리켜 파일 전체가 거부된다.
 
+위 목록 중 **HTTP 서빙 파드·attach 대상 파드·난수 토큰 Secret**은 이 파일이 아니라 그것을
+요구하는 e2e가 스스로 세운다(`resource_generic_ac14.py`·`ac15.py`·`ac17.py`). 러너가 파일을
+자동 발견하므로 그 편이 `ci.yml` 배선을 늘리지 않고, 대상의 수명이 그것을 쓰는 파일 안에서
+끝나 같은 네임스페이스를 보는 다른 파일의 전제를 흔들지 않는다. 시나리오 17의 Secret은
+그래서 `resource_generic_ac17.py`가 세우며, 토큰은 매 실행 새로 뽑는 값이 아니라 **이 레포
+어디에도 없는 상수**다 — 어떤 응답에서 발견되면 그것이 그 Secret에서 새어 나온 것이라고
+단정할 수 있다는 것이 「고유」의 쓸모다.
+
 변경 verb 시나리오는 전부 승인이 필요하므로 `test-approval-gate.md`의 gatekeeper 픽스처를
 공유하고, 승인은 forward-auth 헤더로 `PATCH /api/requests/{id}/approve`를 직접 호출해
 대신한다.
@@ -414,9 +422,22 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   쌍으로 막을 수 없는 경로임을 시나리오로 못박는다. 막는 것은 `context` 의 경로 노출뿐임.
   (d) `watch` 는 이제 부여되어 403 이 아니라 **민감 종류 게이트**에서 거부 — `watch` 미부여로 스트림 우회 경로 없음
 - **검증 AC**: AC17
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestSecretListCarriesNoValues`,
-  `TestNoRawListFallbackForGatedKinds`, `TestAllStreamSubresourcesGated`(표 기반 4종).
-  통합 `resource_generic_ac17.py`(watch 403 확인 포함)
+- **자동화**: 통합 `tests/integration/resource_generic_ac17.py` 가 다섯 갈래를 각각 단언한다 —
+  (a) 미승인 `resource_list` 가 `Name/Type/Data/Age` 네 컬럼만 담고 토큰이 응답 어디에도 없으며
+  승인 요청도 만들지 않는 것, (b) `RESOURCE_GATED_KINDS` 에 더해진 픽스처 CRD 의 `resource_get` 이
+  `get on resourcegenericsamples` 쌍으로 거부되고 같은 도구의 비민감 종류 대조군은 지나가는 것,
+  (c) 스트림 넷이 각각 자기 쌍(`create on pods/{exec,attach,portforward}` · `get on pods/proxy`)으로
+  거부되고 그 화면에 명령·stdin·페이로드·경로가 **전문**으로 실리되 토큰은 실리지 않는 것,
+  (c') 노드 프록시 호출의 쌍이 `create on nodes/proxy` 뿐이라 민감 종류 판정에 걸리지 않는 것,
+  (d) SA 토큰의 직접 `watch` 가 403 이 아니라 200 이고 같은 watch 가 `watch on secrets` 로 거부되는 것.
+  대상 Secret·서빙 파드는 이 파일이 스스로 세우고(`resource_generic_ac15.py` 와 같은 방식 —
+  픽스처 YAML 과 `ci.yml` 을 늘리지 않는다), 실행 대상은 `gatekeeper-variant` 다((b) 의
+  `RESOURCE_GATED_KINDS` 가 배포당 env 라 primary 로는 세울 수 없다).
+  기대 결과의 「k8s 호출 카운트 0」은 SUT 내부 사실이라 통합이 셀 수 없으므로(감사 프록시 부재),
+  시나리오 16 과 같이 **밖에서 관측 가능한 등가물**(응답·거부 문면·승인 화면 어디에도 토큰이 없고
+  대상이 그대로 남는 것)을 단언하고 호출 수 자체는 Go 단위에 남긴다 — 계획:
+  `resource_test.go::TestSecretListCarriesNoValues`, `TestNoRawListFallbackForGatedKinds`,
+  `TestAllStreamSubresourcesGated`(표 기반 4종)
 
 ### 시나리오 18: 권한 밖은 권한 밖이라고 말한다
 - **사전 조건**: RBAC 에 없는 종류(예: `rbac.authorization.k8s.io/v1/ClusterRole`)
