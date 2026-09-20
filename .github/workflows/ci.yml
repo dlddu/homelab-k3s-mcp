@@ -223,6 +223,7 @@ jobs:
             --from-literal=GITHUB_APP_CLIENT_ID=Iv1.testclientid12345 \
             --from-literal=GITHUB_APP_INSTALLATION_ID=67890 \
             --from-literal=GITHUB_API_BASE_URL=http://github-mock.github-mock.svc.cluster.local \
+            --from-literal=GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES=homelab-k3s-mcp/ \
             --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
 
