@@ -15,8 +15,6 @@ import (
 	"testing"
 )
 
-const statusPathPrefix = "/repos/dlddu/test/statuses/"
-
 var statusPathRe = regexp.MustCompile(`^/repos/[^/]+/[^/]+/statuses/[0-9a-fA-F]{40}$`)
 
 type recordedRequest struct {
@@ -85,10 +83,11 @@ func (f *fakeGitHub) handler() http.HandlerFunc {
 			description, _ := body["description"].(string)
 			targetURL, _ := body["target_url"].(string)
 			_ = json.NewEncoder(w).Encode(map[string]any{
-				"id":          9001,
-				"state":       state,
-				"context":     statusContext,
-				"sha":         strings.TrimPrefix(r.URL.Path, statusPathPrefix),
+				"id":      9001,
+				"state":   state,
+				"context": statusContext,
+				// No "sha", as on real GitHub. A stub that echoes it fills in
+				// the field for the tool and hides a missing fill (seen live).
 				"description": description,
 				"target_url":  targetURL,
 				"created_at":  "2026-09-20T00:00:00Z",
