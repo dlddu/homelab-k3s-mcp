@@ -22,8 +22,12 @@
 | 계약 | 값 |
 | --- | --- |
 | 설치 계정 login(= 경로의 `{owner}`) | `dlddu` |
-| 성공 응답 | `201` · `{"id": 1, "state", "context", "sha", "created_at": "2026-01-01T00:00:00Z"}` (+ 보낸 `description`·`target_url`) |
+| 성공 응답 | `201` · `{"id": 1, "state", "context", "created_at": "2026-01-01T00:00:00Z"}` (+ 보낸 `description`·`target_url`). **`sha` 는 싣지 않는다** |
 | 422 갈래를 여는 `sha` | `f` 40자 (`"f" * 40`). 그 밖의 40자 hex 는 전부 성공 갈래다 |
+
+`sha` 를 싣지 않는 것도 의도된 선택이다 — 실 GitHub 의 status 생성 응답에 `sha` 키가 없다. 스텁이 그것을
+실어 주면 도구가 응답을 그대로 넘기기만 해도 「응답의 `sha` 가 요청한 값이다」가 통과하는데, 운영에서는
+빈 문자열이 나간다(2026-09-21 운영 호출에서 실제로 그렇게 드러났다).
 
 `id` 가 1(≠0)인 것은 의도된 선택이다 — 스텁이 0 을 돌려주면 도구가 `id` 를 **파싱하지 못한**
 경우의 Go 제로값과 구분되지 않아, 「도구 응답의 `id` 가 스텁 응답과 같다」가 공허하게 통과한다.
@@ -36,7 +40,7 @@
   `context=homelab-k3s-mcp/e2e`, `description`, `target_url`로 호출. (b) 스텁이 422를 돌려주도록
   정한 SHA로 같은 호출
 - **기대 결과**: (a) 스텁이 `statuses/{sha}`에 네 필드를 받았고, 도구 응답의 `id`·`state`·`context`·
-  `sha`·`created_at`이 스텁 응답과 같다. (b) 스텁의 422 문면을 담은 도구 에러
+  `created_at`이 스텁 응답과 같으며 `sha` 는 요청한 값이다(스텁 응답에는 없다 — 픽스처 절). (b) 스텁의 422 문면을 담은 도구 에러
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `TestCommitStatusCreatesStatus`·`TestCommitStatusSurfacesGitHubError`
   (`internal/github/commitstatus_test.go`, 2026-09-20 착지). 통합은 **(미작성)** —

@@ -200,5 +200,8 @@ func (c *Client) postCommitStatus(ctx context.Context, token, owner string, in C
 	if err := json.Unmarshal(respBody, &status); err != nil {
 		return nil, apiError(fmt.Sprintf("parse commit status: %v", err))
 	}
+	// GitHub's create-status response carries no sha: the status sits on the
+	// commit this request addressed, so that is the one reported back.
+	status.SHA = in.SHA
 	return &status, nil
 }
