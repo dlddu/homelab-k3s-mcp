@@ -112,6 +112,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"resource_delete_collection",
 		"resource_exec", "resource_attach", "resource_port_forward", "resource_proxy",
 		"dear_baby_reset_user", "github_app_installation_token",
+		"github_commit_status_create",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 		"session_list", "session_read", "session_write",
@@ -740,6 +741,82 @@ func TestToolsListAdvertisesGitHubToken(t *testing.T) {
 	if at(t, token, "annotations", "title") != "GitHub App Installation Token" ||
 		at(t, token, "annotations", "openWorldHint") != true {
 		t.Fatalf("annotations = %v", token["annotations"])
+	}
+}
+
+// TestToolsListAdvertisesCommitStatus covers prd-github-commit-status AC6. The
+// three hints are asserted by name rather than as a whole map: destructiveHint
+// false is the claim a client acts on (a status is appended, never overwritten)
+// and it is the one a copy-pasted tool entry gets wrong.
+func TestToolsListAdvertisesCommitStatus(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	tools := toolsList(t, app)
+	tool := findTool(t, tools, "github_commit_status_create")
+
+	props := at(t, tool, "inputSchema", "properties").(map[string]any)
+	for _, name := range []string{"repository", "sha", "state", "context", "description", "target_url"} {
+		if _, ok := props[name]; !ok {
+			t.Errorf("missing input property %q", name)
+		}
+	}
+	if _, ok := props["owner"]; ok {
+		t.Errorf("owner is the installation account and must not be an input")
+	}
+	for hint, want := range map[string]any{
+		"readOnlyHint":    false,
+		"destructiveHint": false,
+		"openWorldHint":   true,
+	} {
+		if got := at(t, tool, "annotations", hint); got != want {
+			t.Errorf("annotation %s = %v, want %v", hint, got, want)
+		}
+	}
+}
+
+func TestCommitStatusDispatches(t *testing.T) {
+	fake := &fakeGitHub{}
+	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	sha := "0123456789abcdef0123456789abcdef01234567"
+	body := callTool(t, app, 73, "github_commit_status_create", map[string]any{
+		"repository": "homelab-k3s-mcp",
+		"sha":        sha,
+		"state":      "success",
+		"context":    "homelab-k3s-mcp/e2e",
+	})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if got := at(t, body, "result", "structuredContent", "sha"); got != sha {
+		t.Errorf("structuredContent sha = %v, want %v", got, sha)
+	}
+	if len(fake.statuses) != 1 {
+		t.Fatalf("service saw %d calls, want 1", len(fake.statuses))
+	}
+	if in := fake.statuses[0]; in.Repository != "homelab-k3s-mcp" || in.State != "success" ||
+		in.Context != "homelab-k3s-mcp/e2e" || in.SHA != sha {
+		t.Errorf("service input = %+v, want the arguments as sent", in)
+	}
+}
+
+// TestCommitStatusRefusesNonStringArgument keeps a typo from being forwarded as
+// an empty field and refused deep in the client, where the message would blame
+// the value rather than its type.
+func TestCommitStatusRefusesNonStringArgument(t *testing.T) {
+	fake := &fakeGitHub{}
+	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 74, "github_commit_status_create", map[string]any{
+		"repository": "homelab-k3s-mcp",
+		"sha":        123,
+		"state":      "success",
+		"context":    "homelab-k3s-mcp/e2e",
+	})
+	if _, ok := body["error"]; !ok {
+		t.Fatalf("body = %v, want a JSON-RPC error", body)
+	}
+	if len(fake.statuses) != 0 {
+		t.Errorf("service saw %d calls, want 0", len(fake.statuses))
 	}
 }
 

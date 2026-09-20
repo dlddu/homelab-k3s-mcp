@@ -10,9 +10,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 )
+
+const statusPathPrefix = "/repos/dlddu/test/statuses/"
+
+var statusPathRe = regexp.MustCompile(`^/repos/[^/]+/[^/]+/statuses/[0-9a-fA-F]{40}$`)
 
 type recordedRequest struct {
 	Method string
@@ -25,6 +30,10 @@ type fakeGitHub struct {
 	installation map[string]any
 	// nil echoes back whatever the mint request asked for, as GitHub does.
 	mintedPermissions map[string]any
+	// empty omits `account` from the installation.
+	account string
+	// 0 is 201. 422 answers with GitHub's wording for an unknown commit.
+	statusStatus int
 
 	requests []recordedRequest
 }
@@ -47,7 +56,11 @@ func (f *fakeGitHub) handler() http.HandlerFunc {
 				return
 			}
 			w.WriteHeader(http.StatusOK)
-			_ = json.NewEncoder(w).Encode(map[string]any{"id": 42, "permissions": f.installation})
+			body := map[string]any{"id": 42, "permissions": f.installation}
+			if f.account != "" {
+				body["account"] = map[string]any{"login": f.account}
+			}
+			_ = json.NewEncoder(w).Encode(body)
 		case r.Method == http.MethodPost && r.URL.Path == "/app/installations/42/access_tokens":
 			permissions := f.mintedPermissions
 			if permissions == nil {
@@ -60,6 +73,26 @@ func (f *fakeGitHub) handler() http.HandlerFunc {
 				"permissions":          permissions,
 				"repository_selection": "all",
 			})
+		case r.Method == http.MethodPost && statusPathRe.MatchString(r.URL.Path):
+			if f.statusStatus == http.StatusUnprocessableEntity {
+				w.WriteHeader(http.StatusUnprocessableEntity)
+				_, _ = w.Write([]byte(`{"message":"No commit found for SHA"}`))
+				return
+			}
+			w.WriteHeader(http.StatusCreated)
+			state, _ := body["state"].(string)
+			statusContext, _ := body["context"].(string)
+			description, _ := body["description"].(string)
+			targetURL, _ := body["target_url"].(string)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id":          9001,
+				"state":       state,
+				"context":     statusContext,
+				"sha":         strings.TrimPrefix(r.URL.Path, statusPathPrefix),
+				"description": description,
+				"target_url":  targetURL,
+				"created_at":  "2026-09-20T00:00:00Z",
+			})
 		case r.Method == http.MethodDelete && r.URL.Path == "/installation/token":
 			w.WriteHeader(http.StatusNoContent)
 		default:
@@ -67,6 +100,15 @@ func (f *fakeGitHub) handler() http.HandlerFunc {
 			_, _ = w.Write([]byte(`{"message":"Not Found"}`))
 		}
 	}
+}
+
+func (f *fakeGitHub) bodyOf(method, path string) map[string]any {
+	for _, req := range f.requests {
+		if req.Method == method && req.Path == path {
+			return req.Body
+		}
+	}
+	return nil
 }
 
 func (f *fakeGitHub) countOf(method, path string) int {
