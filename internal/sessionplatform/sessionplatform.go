@@ -64,9 +64,7 @@ const (
 	kindTooLarge
 	// kindQuotaExhausted is the control plane's 507: the session's bounded
 	// output history is full, so further writes are refused for good while
-	// the output already accumulated stays readable. Splitting it from
-	// kindTooLarge keeps AC4's four refusals four, instead of letting two of
-	// them collapse onto whatever prose the control plane happens to send.
+	// the output already accumulated stays readable.
 	kindQuotaExhausted
 )
 
@@ -125,9 +123,7 @@ type Session struct {
 // ReadResult is one read of a session's accumulated output. Path names the
 // state branch the control plane took to serve the read ("active",
 // "idle->active->read" or "snapshot->restore->read"), and Session is the
-// session as it stands *after* the read. Both are carried so a caller can see
-// that a single read woke a parked session and brought its pod back —
-// session_read/AC2 is precisely the requirement that this not be silent.
+// session as it stands *after* the read (session_read/AC2).
 type ReadResult struct {
 	Session    Session `json:"session"`
 	Path       string  `json:"path"`
@@ -142,7 +138,7 @@ type ReadResult struct {
 // ReadSession. That absence is the contract, not an omission. Path names the
 // state branch that served the write ("active", "idle->active->write" or
 // "snapshot->restore->write") and Session is the session as it stands
-// afterwards, because a write activates its target exactly as a read does.
+// afterwards (session_write/AC2).
 type WriteResult struct {
 	Session Session `json:"session"`
 	Path    string  `json:"path"`
