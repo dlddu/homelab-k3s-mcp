@@ -52,8 +52,7 @@ async def test_github_app_installation_token_ac4_private_key_not_exposed(
             f"{forbidden!r} leaked into the github_app_installation_token "
             f"response: {serialized}"
         )
-    # A signed App JWT is a compact JWS ("eyJ..."); only the installation token
-    # may be handed out.
+    # A signed App JWT is a compact JWS ("eyJ...").
     assert "eyJ" not in serialized, serialized
 
     env_text, _ = parse_env_resource(result)
