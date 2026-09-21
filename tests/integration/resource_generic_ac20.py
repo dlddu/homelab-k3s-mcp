@@ -185,8 +185,6 @@ async def test_resource_generic_ac20_probe_kind_is_absent_before_install(
         f"프로브 종류가 설치 전에 이미 있다 — 「전/후」가 성립하지 않는다: "
         f"{sorted(k for k in kinds if PROBE_GROUP in k)}"
     )
-    # 대조군: 같은 답에 클러스터가 반드시 갖는 종류는 들어 있다. 이게 없으면 위의 「없다」는
-    # api_resources 가 빈 답을 준 것과 구별되지 않는다.
     assert "apps/v1/Deployment" in kinds, (
         f"api_resources 에 apps/v1/Deployment 가 없다 — 답 자체가 온전하지 않다: "
         f"{len(kinds)} 종"
