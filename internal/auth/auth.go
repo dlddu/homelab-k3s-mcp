@@ -14,11 +14,14 @@ import (
 	"math/big"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 )
 
 const httpClientTimeout = 10 * time.Second
@@ -208,11 +211,13 @@ func (c *Config) keyForKid(ctx context.Context, kid string) *rsa.PublicKey {
 	return key
 }
 
-func (c *Config) verify(ctx context.Context, raw string) error {
+// verify checks the JWT and returns its subject — the principal the event
+// record names (prd-event-log AC1).
+func (c *Config) verify(ctx context.Context, raw string) (string, error) {
 	// In API-key-only mode there is no issuer, JWKS URI, or HTTP client, so no
 	// JWT can verify. Refuse before keyForKid would try to fetch a nil JWKS.
 	if !c.OAuthConfigured() {
-		return fmt.Errorf("oauth verification not configured")
+		return "", fmt.Errorf("oauth verification not configured")
 	}
 
 	keyFunc := func(token *jwt.Token) (any, error) {
@@ -227,13 +232,17 @@ func (c *Config) verify(ctx context.Context, raw string) error {
 		return key, nil
 	}
 
-	_, err := jwt.Parse(raw, keyFunc,
+	var claims jwt.RegisteredClaims
+	_, err := jwt.ParseWithClaims(raw, &claims, keyFunc,
 		jwt.WithValidMethods([]string{"RS256"}),
 		jwt.WithAudience(c.Audience),
 		jwt.WithIssuer(c.Issuer),
 		jwt.WithExpirationRequired(),
 	)
-	return err
+	if err != nil {
+		return "", err
+	}
+	return claims.Subject, nil
 }
 
 // ProtectedResourceMetadata is the OAuth 2.0 protected-resource document.
@@ -264,18 +273,25 @@ func (c *Config) APIKeyCount() int {
 	return len(c.apiKeys)
 }
 
-// matchAPIKey reports whether raw equals any configured static API key. Each
-// comparison uses subtle.ConstantTimeCompare so equal-length keys are checked
-// without leaking content through timing, and the loop accumulates the result
-// without an early return so the number of comparisons never reveals which key
-// (if any) matched.
+// matchAPIKey reports whether raw equals any configured static API key.
 func (c *Config) matchAPIKey(raw string) bool {
+	return c.apiKeyIndex(raw) != 0
+}
+
+// apiKeyIndex returns the 1-based position of raw in MCP_API_KEYS, or 0 when
+// it matches none. The position is what the event record names as the
+// principal (prd-event-log AC1): an identifier that survives in a log without
+// being the key. Each comparison uses subtle.ConstantTimeCompare so
+// equal-length keys are checked without leaking content through timing, and
+// the loop selects the index without an early return so the number of
+// comparisons never reveals which key (if any) matched.
+func (c *Config) apiKeyIndex(raw string) int {
 	rawBytes := []byte(raw)
-	var matched int
-	for _, key := range c.apiKeys {
-		matched |= subtle.ConstantTimeCompare(rawBytes, []byte(key))
+	var index int
+	for i, key := range c.apiKeys {
+		index = subtle.ConstantTimeSelect(subtle.ConstantTimeCompare(rawBytes, []byte(key)), i+1, index)
 	}
-	return matched == 1
+	return index
 }
 
 // RequireBearer wraps next, rejecting requests that present neither a valid
@@ -287,18 +303,26 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 			c.unauthorized(w, authErr)
 			return
 		}
-		if c.matchAPIKey(token) {
+		if index := c.apiKeyIndex(token); index != 0 {
 			slog.Debug("mcp authenticated", "method", "api_key")
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(w, withPrincipal(r, eventlog.Principal{Method: "api_key", ID: strconv.Itoa(index)}))
 			return
 		}
-		if err := c.verify(r.Context(), token); err != nil {
+		subject, err := c.verify(r.Context(), token)
+		if err != nil {
 			c.unauthorized(w, "invalid_token")
 			return
 		}
 		slog.Debug("mcp authenticated", "method", "jwt")
-		next.ServeHTTP(w, r)
+		next.ServeHTTP(w, withPrincipal(r, eventlog.Principal{Method: "jwt", ID: subject}))
 	})
+}
+
+// withPrincipal hands the authenticated identity down the request so the
+// dispatcher's record can name who called (prd-event-log AC1);
+// eventlog.Principal holds why the credential itself never travels with it.
+func withPrincipal(r *http.Request, p eventlog.Principal) *http.Request {
+	return r.WithContext(eventlog.WithPrincipal(r.Context(), p))
 }
 
 func extractBearer(r *http.Request) (token string, authErr string) {
