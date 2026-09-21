@@ -8,9 +8,9 @@
 - AC4: 실행되지 않은 호출도 남는다 (PRD: 이벤트 기록)
 - AC5: stdout 너머 보존, 그리고 수집기 미설정 시 graceful (PRD: 이벤트 기록)
 
-> **현재 전 시나리오가 ⏳ 구현 대기다.** 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했고
-> (AC1·AC3 — `msg="tool call"` 한 줄, 필드 `tool`·`principal`·`target.*`·`result`), 시나리오 4·5 는
-> 남은 차단이 전용 파일 저작뿐이다. 나머지의 해제 조건은 각 시나리오에 적는다. 등재는
+> **시나리오 4·5 는 전용 e2e 로 닫혔고(2026-09-21 · `rct_20260921-0003`), 나머지 일곱은 ⏳ 구현 대기다.**
+> 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했다(AC1·AC3 — `msg="tool call"` 한 줄, 필드
+> `tool`·`principal`·`target.*`·`result`). 남은 일곱의 해제 조건은 각 시나리오에 적는다. 등재는
 > `doc-tracker/`의 ⏳ 표에 있다.
 
 ## 테스트 시나리오
@@ -52,7 +52,10 @@
 - **실행 단계**: 자격증명을 발급하는 도구 셋을 호출한 뒤 레코드 전문을 수집한다
 - **기대 결과**: 발급된 토큰 값·API 키·JWT 원문을 **값 그대로 검색해 0건**이다
 - **검증 AC**: AC3
-- **자동화**: (미작성) — 선행 없음(AC1·AC3 착지, 2026-09-21). 저작만 남았다
+- **자동화**: 통합 `tests/integration/event_log_ac3_credentials.py`(primary) — 발급 도구 셋을 부른 뒤
+  SUT 파드 로그의 `msg="tool call"` 레코드를 모아, 응답에서 뽑은 발급 값·서버가 쥔 API 키·http-trace 가
+  기록한 STS 발급 키·JWT 모양을 검색해 0건임을 단언한다(레코드가 도구당 정확히 하나 늘었고 응답에
+  값이 있음을 먼저 단언한다). Go 단위 `internal/mcp/eventlog_test.go::TestRecordsCarryNoCredentialsPayloadsOrBodies`(가짜 통합)
 
 ### 시나리오 5: Secret 본문·스트림 페이로드 비노출
 
@@ -61,7 +64,10 @@
 - **기대 결과**: Secret 데이터 값과 exec 명령의 페이로드·응답 본문이 레코드에 없다.
   도구 응답에는 있고 레코드에는 없다는 **두 관측이 같은 실행에서** 나온다
 - **검증 AC**: AC3
-- **자동화**: (미작성) — 선행 없음(AC3 착지 · gatekeeper 픽스처 있음). 저작만 남았다
+- **자동화**: 통합 `tests/integration/event_log_ac3_payloads.py`(gatekeeper-variant) — 자기 Secret 과 그것을
+  마운트한 파드를 세우고 `AUTO_APPROVE` 로 승인된 `resource_get(kind=Secret)`·`resource_exec` 를 태운 뒤,
+  같은 호출의 레코드에서 값·명령·본문을 검색해 0건임을 단언한다(응답에 base64 값과 stdout 이 있음을 먼저
+  단언한다). Go 단위는 시나리오 4 와 같은 테스트
 
 ### 시나리오 6: 인증 실패도 레코드를 남긴다
 
