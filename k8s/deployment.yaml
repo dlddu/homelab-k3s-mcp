@@ -21,6 +21,17 @@ spec:
       app.kubernetes.io/component: server
   template:
     metadata:
+      # 📡 이벤트 기록의 수집 경로는 이 라벨이다(prd-event-log AC5 — 「수집 경로는 배포
+      # 구성으로 정한다」의 실체). 서버는 레코드를 stdout 한 줄(`msg="tool call"`)로만 내고,
+      # 보존은 클러스터의 Grafana Alloy(`alloy` ns, `loki.source.kubernetes "pod_logs"`)가
+      # 전 파드 stdout 을 긷어 Grafana Cloud Loki 로 보내는 것으로 성립한다. Alloy 는
+      # `app.kubernetes.io/name` 을 `app` 라벨로, 컨테이너 이름을 `container` 라벨로 옮기므로
+      # 파드가 교체돼도 `{namespace="homelab-k3s-mcp", app="homelab-k3s-mcp", container="server"}`
+      # 한 셀렉터로 이전 구간까지 조회된다 — 이 이름들을 바꾸면 그 순간 조회 셀렉터가 끊긴다.
+      # 서버가 수집기와 연결을 갖지 않는 것이 AC5 의 fail-open 이 구조적인 이유다: 수집기가
+      # 없거나 닿지 않아도 기동·도구·stdout 은 영향받을 경로 자체가 없다. 서버 안에 Loki push
+      # sink 를 두지 않는 것도 같은 이유에 더해, Alloy 가 같은 줄을 이미 긷고 있어 두 번 실리면
+      # AC1 「호출당 한 레코드」가 질의 층에서 깨지기 때문이다.
       labels:
         app.kubernetes.io/name: homelab-k3s-mcp
         app.kubernetes.io/component: server

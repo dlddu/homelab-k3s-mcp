@@ -12,9 +12,12 @@
 > 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했고(AC1·AC3 — `msg="tool call"` 한 줄, 필드
 > `tool`·`principal`·`target.*`·`result`), 같은 날 거부 사유와 게이트 판정이 필드로 더해졌다(AC2·AC4 —
 > `reason`, `gate.request_id`·`gate.decision`·`gate.auto_approved`; 인증 실패도
-> `principal=unauthenticated reason=auth_failed` 로 남는다). 남은 일곱 중 시나리오 2·3·6·7 은 남은
-> 차단이 전용 파일 저작뿐이다. 나머지의 해제 조건은 각 시나리오에 적는다. 등재는 `doc-tracker/`의
-> ⏳ 표에 있다.
+> `principal=unauthenticated reason=auth_failed` 로 남는다). **AC5 의 수집 경로는 같은 날 배포 구성으로
+> 확정했다**(`rct_20260921-0006` — 서버는 stdout 한 줄만 내고, 클러스터의 Grafana Alloy 가 전 파드 stdout 을
+> Grafana Cloud Loki 로 보낸다; 선언은 `k8s/deployment.yaml` 파드 템플릿 라벨의 주석, 셀렉터는
+> `{namespace="homelab-k3s-mcp", app="homelab-k3s-mcp", container="server"}`). 남은 일곱 중 시나리오
+> 2·3·6·7·8 은 남은 차단이 전용 파일 저작뿐이다. 나머지의 해제 조건은 각 시나리오에 적는다. 등재는
+> `doc-tracker/`의 ⏳ 표에 있다.
 
 ## 테스트 시나리오
 
@@ -104,7 +107,11 @@
 - **기대 결과**: 기동 성공, 도구 정상 응답, stdout 레코드 정상. **수집 실패가 도구 응답을
   실패로 만들지 않는다**
 - **검증 AC**: AC5
-- **자동화**: (미작성) — 표면 구현이 선행
+- **자동화**: (미작성) — 선행 없음(AC5 착지 2026-09-21: 서버는 수집기와 연결을 갖지 않으므로 두 변형의
+  서버 측 관측은 같다 — 기동·도구 응답·stdout 레코드. **kind 하네스가 곧 「수집기 미설정」 변형이다**(Alloy 가
+  없다); 「도달 불가」 변형은 수집기(Alloy→Loki)의 장애이지 서버의 상태가 아니라, 서버 쪽에서 가를 구성 축이
+  없는 것이 곧 이 설계의 fail-open 이다. `event_log_ac3_credentials.py` 가 같은 변형에서 이미 셋을 관측한다).
+  저작만 남았다
 
 ### 시나리오 9: 파드 교체 뒤에도 남는다
 
@@ -114,7 +121,11 @@
 - **기대 결과**: 재시작 전 레코드가 조회된다 — 「stdout 너머 보존」이 파드 수명과 무관함을
   이 시나리오가 단독으로 증명한다
 - **검증 AC**: AC5
-- **자동화**: (미작성) — 표면 구현 + 수집 경로 배포가 선행
+- **자동화**: (미작성) — 수집 경로는 배포됐으나(운영: Alloy → Grafana Cloud Loki) **kind 하네스에는 수집 경로가
+  없다**(Loki·Alloy 픽스처 부재) — 해제 조건은 `doc-tracker/` ⏳ 표의 이 행. 운영 검증 절차: 교체 전 파드 이름을
+  적어 두고 롤아웃 뒤 `grafana_token` 의 읽기 토큰으로
+  `` {namespace="homelab-k3s-mcp", container="server", pod="<교체 전 파드>"} |= `msg="tool call"` `` 를 조회한다
+  (2026-09-21 실측: 4시간 창에서 교체된 파드 5개의 레코드 196건 조회 — `| logfmt` 로 `result`·`reason` 이 라벨이 된다)
 
 ---
 
