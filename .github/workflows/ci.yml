@@ -226,6 +226,17 @@ jobs:
             --from-literal=GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES=homelab-k3s-mcp/ \
             --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
+          # The same App, minus GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES, for the
+          # prefix-less variant (tests/k8s/kind/commit-status-variant.yaml) that
+          # test-github-commit-status.md#시나리오 4 (b) observes. Secrets are
+          # namespaced, so it is minted here from the same key rather than copied.
+          kubectl create namespace homelab-k3s-mcp-commit-status-variant --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp-commit-status-variant create secret generic homelab-k3s-mcp-github-app \
+            --from-literal=GITHUB_APP_CLIENT_ID=Iv1.testclientid12345 \
+            --from-literal=GITHUB_APP_INSTALLATION_ID=67890 \
+            --from-literal=GITHUB_API_BASE_URL=http://github-mock.github-mock.svc.cluster.local \
+            --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       # AWS_CONFIG_S3_ENDPOINT points at the http-trace proxy rather than at
       # MinIO directly (the proxy forwards to MinIO preserving the signed Host
@@ -334,6 +345,11 @@ jobs:
       - name: Apply auth-variant fixture
         run: kubectl apply -f tests/k8s/kind/auth-fixture.yaml
 
+      # GitHub App configured, context prefix deliberately absent — the only
+      # deployment where github_commit_status_ac4.py's (b) branch is observable.
+      - name: Apply commit-status-variant fixture
+        run: kubectl apply -f tests/k8s/kind/commit-status-variant.yaml
+
       - name: Apply gatekeeper-variant fixture
         run: kubectl apply -f tests/k8s/kind/gatekeeper-variant.yaml
 
@@ -406,6 +422,9 @@ jobs:
 
       - name: Wait for auth-variant rollout
         run: kubectl -n homelab-k3s-mcp-auth rollout status deploy/homelab-k3s-mcp-auth --timeout=120s
+
+      - name: Wait for commit-status-variant rollout
+        run: kubectl -n homelab-k3s-mcp-commit-status-variant rollout status deploy/homelab-k3s-mcp-commit-status-variant --timeout=120s
 
       - name: Wait for gatekeeper-variant rollout
         run: kubectl -n homelab-k3s-mcp-gatekeeper-variant rollout status deploy/homelab-k3s-mcp-gatekeeper-variant --timeout=120s

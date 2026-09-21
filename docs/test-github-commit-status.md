@@ -43,8 +43,11 @@
   `created_at`이 스텁 응답과 같으며 `sha` 는 요청한 값이다(스텁 응답에는 없다 — 픽스처 절). (b) 스텁의 422 문면을 담은 도구 에러
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `TestCommitStatusCreatesStatus`·`TestCommitStatusSurfacesGitHubError`
-  (`internal/github/commitstatus_test.go`, 2026-09-20 착지). 통합은 **(미작성)** —
-  `github_commit_status_ac1.py` 계획
+  (`internal/github/commitstatus_test.go`, 2026-09-20 착지). 통합 e2e 는
+  `tests/integration/github_commit_status_ac1.py` 가 (a) 를 양 끝에서 잰다 — github-mock 의
+  요청 기록에서 `statuses/{sha}` 본문의 네 필드를, 도구 응답에서 `id`·`state`·`context`·
+  `created_at` 이 스텁 계약과 같고 `sha` 가 요청값임을 — 그리고 (b) 의 422 문면이 스텁의
+  `message` 를 축자로 담는지와 그 거부가 실제 기록된 상류 응답에서 왔는지를 함께 단언한다
 
 ### 시나리오 2: 내부 토큰 스코프와 비노출
 - **사전 조건**: 시나리오 1과 동일
@@ -56,8 +59,11 @@
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `TestCommitStatusMintsNarrowToken`·`TestCommitStatusNeverReturnsToken`
   (발급 본문을 문자열로 대조하고, 성공·실패 두 결과를 직렬화해 토큰·PEM·JWT 부재를 단언한다).
-  `TestCommitStatusDiscardsItsToken` 이 「쓰고 버린다」의 폐기 호출까지 잰다. 통합은 **(미작성)** —
-  `github_commit_status_ac2.py` 계획
+  `TestCommitStatusDiscardsItsToken` 이 「쓰고 버린다」의 폐기 호출까지 잰다. 통합 e2e 는
+  `tests/integration/github_commit_status_ac2.py` 가 성공·실패 호출 각각의 발급 요청 본문을
+  github-mock 기록에서 읽어 JSON 동치를 단언하고, 두 결과의 직렬화 전체에 토큰·PEM·JWT 가
+  없음을 재되, 같은 기록의 폐기 요청(`DELETE /installation/token`) 헤더에 그 토큰이 실려
+  있음을 포지티브 컨트롤로 삼아 「없다」가 공허하지 않게 한다
 
 ### 시나리오 3: 잘못된 입력은 상류에 닿지 않는다
 - **사전 조건**: 시나리오 1과 동일, 스텁 요청 카운터 초기화
@@ -80,8 +86,12 @@
   기록된다. (b) 도구 에러이고 상류 요청 0
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `TestCommitStatusRejectsForeignContext`(거부 문면이 허용 접두사 목록을 보여 주는
-  것까지)·`TestCommitStatusRefusesWhenNoPrefixConfigured`(2026-09-20 착지). 통합은 **(미작성)** —
-  `github_commit_status_ac4.py` 계획 (b는 env 한 줄이 다른 배포 변형이 필요하다)
+  것까지)·`TestCommitStatusRefusesWhenNoPrefixConfigured`(2026-09-20 착지). 통합 e2e 는
+  `tests/integration/github_commit_status_ac4.py` 한 파일이 두 배포를 대조한다 — (a) 는 primary
+  에서 거부 문면의 허용 접두사 목록과 상류 요청 0, 이어지는 자기 접두사 호출의 기록을 재고,
+  (b) 는 접두사 env 만 없는 전용 변형(`tests/k8s/kind/commit-status-variant.yaml`)에 자기
+  포트포워드로 닿아 거부 문면이 `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES` 를 지목하는지(= App
+  미설정의 `unavailable` 문면이 아님)와 상류 요청 0 을 잰다
 
 ### 시나리오 5: 미설정 시 도구 에러
 - **사전 조건**: GitHub App env 미설정 배포(`auth-fixture.yaml` 변형)
