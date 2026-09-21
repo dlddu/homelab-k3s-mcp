@@ -200,8 +200,7 @@ type Call struct {
 	// implementation has to remember.
 	//
 	// An error is a refusal: AC3 ends by saying a call whose detail cannot be
-	// built gets no approval request at all, because an approval screen that
-	// cannot say what it is approving makes the button a formality.
+	// built gets no approval request at all.
 	Describe func(context.Context) (string, error)
 }
 
