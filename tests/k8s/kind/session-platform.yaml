@@ -2,14 +2,8 @@
 #
 # session_list reads the control plane's in-cluster REST API
 # (GET /api/v1/sessions), so session-list/AC1..AC3 need one to exist. This
-# deploys the REAL component rather than an upstream stand-in: the published
-# image is a public GHCR package (the session-platform repo notes as much in
-# k8s/deployment.yaml -- "GHCR 패키지는 공개라 imagePullSecret 은 필요 없다") and
-# ships a linux/arm64 manifest, so the CI runner's kind node pulls it directly.
-# docs/e2e-mocking-policy.md therefore leaves no exception category open for a
-# stand-in here: `IMG` applies only while the real component's image cannot be
-# obtained in CI, and `UPS` only to upstreams that cannot run in the CI cluster
-# at all. Running the real thing is what the policy asks for, and this fixture
+# deploys the REAL component rather than an upstream stand-in: running the
+# real thing is what docs/e2e-mocking-policy.md asks for, and this fixture
 # adds no allowlist entry.
 #
 # Names mirror production on purpose. The base deployment
@@ -33,27 +27,19 @@
 #     which is what session-read/AC1 and session-write/AC1 need and no more.
 # No env here reads a Secret, so this fixture needs none.
 #
-# DATA_PLANE_IMAGE **is** set, and that is what changed on 2026-09-04.
-# session-list only ever needed the control plane's own state store, so the
-# first version of this fixture left the variable unset and the tests seeded
-# session ConfigMaps directly. session-read/AC1 and session-write/AC1 cannot be
-# observed that way: `Service.Read` calls `agent.Read(ctx, sess.Pod, offset)`,
-# and the agent client resolves that pod name to an IP through the Kubernetes
-# API before dialling `:8090/read`, so a session whose stored pod name has no
-# live pod behind it has nothing to read. Creating one through the product API
-# is the path under test, not a shortcut around it.
+# DATA_PLANE_IMAGE **is** set because session-read/AC1 and session-write/AC1
+# cannot be observed from seeded session ConfigMaps: `Service.Read` calls
+# `agent.Read(ctx, sess.Pod, offset)`, and the agent client resolves that pod
+# name to an IP through the Kubernetes API before dialling `:8090/read`, so a
+# session whose stored pod name has no live pod behind it has nothing to read.
+# Creating one through the product API is the path under test, not a shortcut
+# around it.
 #
 # The data plane image is the real published component at the *same commit tag*
 # as the control plane above: session-platform's docker-build-push.yaml
 # publishes both from one workflow under the commit SHA, so a matching pair is
-# guaranteed to speak the same agent contract. It is a public GHCR package with
-# a linux/arm64 manifest, exactly like the control plane, so
-# docs/e2e-mocking-policy.md leaves no category open for a stand-in agent here
-# either -- `IMG` applies only while the real image cannot be obtained in CI.
-# This fixture still adds no allowlist entry. Its ~268 MiB of compressed layers
-# are pulled by a ci.yml step and loaded into the kind node *before* any test
-# runs, because the control plane gives a session pod two minutes to become
-# Ready (defaultReadyTimeout) and that budget must not be spent on a pull.
+# guaranteed to speak the same agent contract. This fixture still adds no
+# allowlist entry.
 #
 # Session pods carry `serviceAccountName: data-plane` with an automounted token
 # (ClientOrchestrator.buildPod), so that ServiceAccount must exist here or the

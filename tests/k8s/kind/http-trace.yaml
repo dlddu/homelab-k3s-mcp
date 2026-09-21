@@ -8,17 +8,6 @@ metadata:
 # Recording reverse proxy that makes the AssumeRole -> SigV4 access path
 # OBSERVABLE, which the fixtures on their own are not.
 #
-# Why this exists: the MinIO fixture accepts the base credentials the CI secret
-# carries (minioadmin) exactly as readily as assumed-role credentials, and the
-# OpenSearch fixture runs with the security plugin disabled, so it accepts
-# signed and unsigned requests alike. A server that never assumed a role would
-# therefore pass every outcome-based e2e assertion in tests/integration --
-# making those assertions vacuous with respect to
-# aws-config-get/AC2 and opensearch-{search/AC3,document-put/AC4,
-# document-delete/AC4}. This proxy sits in front of both upstreams and records
-# WHICH credential signed each request, so the tests can assert the access path
-# itself rather than only its outcome.
-#
 # Wiring (see .github/workflows/ci.yml): AWS_CONFIG_S3_ENDPOINT and
 # OPENSEARCH_STS_ENDPOINT point at :9000 (MinIO co-locates S3 and STS) and
 # OPENSEARCH_ENDPOINT points at :9200. The trace is read over :8081.

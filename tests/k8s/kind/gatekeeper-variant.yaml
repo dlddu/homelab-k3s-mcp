@@ -25,9 +25,7 @@
 #
 # The dedicated ClusterRoleBinding exists for the same reason the primary's
 # does (k8s/rbac.yaml): authorization is per ServiceAccount, and the primary's
-# binding names only the primary namespace's SA. MCP_AUTH_DISABLED here is the
-# allowlisted GATE relaxation -- auth is not the subject of these files, and
-# tests/k8s/kind/auth-fixture.yaml is the registered replacement surface.
+# binding names only the primary namespace's SA.
 apiVersion: v1
 kind: Namespace
 metadata:
