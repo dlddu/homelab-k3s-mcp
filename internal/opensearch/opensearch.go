@@ -2,8 +2,7 @@
 // HTTP with SigV4 request signing (service "aoss"). The base credentials come
 // from the default AWS credential chain (the instance profile in production);
 // they are used only to assume the configured role via STS, and the resulting
-// role credentials sign every data-plane request. No static AWS keys and no
-// OpenSearch client dependency are involved.
+// role credentials sign every data-plane request.
 package opensearch
 
 import (
@@ -167,8 +166,7 @@ type Client struct {
 // OPENSEARCH_REGION sets the AWS region when the default chain does not
 // provide one (it also determines the SigV4 signing region). When
 // OPENSEARCH_STS_ENDPOINT is set, the AssumeRole call is routed to that
-// endpoint. This targets STS-compatible servers such as MinIO and is intended
-// for smoke testing; production leaves it unset to use real AWS.
+// endpoint.
 func FromEnv(ctx context.Context) (*Client, error) {
 	endpoint := os.Getenv("OPENSEARCH_ENDPOINT")
 	if endpoint == "" {
