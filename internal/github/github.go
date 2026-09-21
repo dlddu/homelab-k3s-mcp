@@ -221,8 +221,7 @@ func (c *Client) installationPermissions(ctx context.Context, jwtToken string) (
 }
 
 // installationOwner is the owner half of every repository path this server
-// builds. A caller cannot aim a status outside the installation because it
-// never supplies that half.
+// builds — CreateCommitStatus says why a caller never supplies that half.
 func (c *Client) installationOwner(ctx context.Context, jwtToken string) (string, error) {
 	parsed, err := c.fetchInstallation(ctx, jwtToken)
 	if err != nil {
