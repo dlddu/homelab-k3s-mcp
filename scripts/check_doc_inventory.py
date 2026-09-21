@@ -58,7 +58,6 @@ CLAIM_RE = re.compile(
     re.MULTILINE,
 )
 
-#: PRD(도구)와 PRD(공통)는 표에서만 갈리고 집계에서는 한 칸이므로 여기서도 합친다.
 CATEGORIES = ("가치", "PRD", "테스트", "상태 추적", "정책")
 POLICY_PREFIXES = ("comment-policy/",)
 POLICY_FILES = ("e2e-mocking-policy.md",)
