@@ -45,9 +45,15 @@ metadata:
 # storage and a web listen address; server.NewServer additionally refuses to
 # start with zero connectors ("server: no connectors specified",
 # server/server.go). enablePasswordDB satisfies that by appending dex's built-in
-# local connector, and no static passwords are defined -- nothing can actually
-# log in through it, which is fine because these ACs need only discovery and the
-# key set, never an interactive flow.
+# local connector. AC2/AC8 need only discovery and the key set, never a login.
+#
+# The password grant below is for test-event-log.md#시나리오 6 (2026-09-21): an
+# expired JWT has to be one this issuer signed, so event_log_ac4_auth_failed.py
+# mints one through `POST /token` (grant_type=password, the local connector)
+# and lets it expire. idTokens is short for that reason alone; nothing else in
+# this cluster consumes a dex token. The static client id equals the servers'
+# MCP_OAUTH_AUDIENCE because dex sets `aud` to the client id. The bcrypt hash is
+# dex's own example hash of the string "password" (examples/config-dev.yaml).
 #
 # Memory storage keeps the signing keys in-process; dex creates the initial RSA
 # key set at startup, which is what makes /keys non-empty on the first fetch.
@@ -68,6 +74,19 @@ data:
     web:
       http: 0.0.0.0:5556
     enablePasswordDB: true
+    oauth2:
+      passwordConnector: local
+    staticClients:
+      - id: homelab-k3s-mcp
+        name: homelab-k3s-mcp e2e
+        secret: ci-oauth-e2e-client-secret
+    staticPasswords:
+      - email: e2e@homelab-k3s-mcp.test
+        hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+        username: e2e
+        userID: 1f7a0c7e-5b2e-4f43-9c1a-6c6f2b0e4d21
+    expiry:
+      idTokens: 20s
 ---
 apiVersion: apps/v1
 kind: Deployment
