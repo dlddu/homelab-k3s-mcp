@@ -25,8 +25,7 @@ MINT_PATH = f"/app/installations/{EXPECTED_INSTALLATION_ID}/access_tokens"
 INSTALLATION_PATH = f"/app/installations/{EXPECTED_INSTALLATION_ID}"
 REVOKE_PATH = "/installation/token"
 
-# The admin surface of tests/k8s/kind/github-mock.yaml, port-forwarded by the
-# "Run integration tests (primary deployment)" step. It is reached directly
+# The admin surface of tests/k8s/kind/github-mock.yaml. It is reached directly
 # rather than through _helpers because this is the only file that drives the
 # mock's knobs; the http-trace proxy in front of MinIO/OpenSearch is the shared
 # case and lives there.
@@ -177,9 +176,6 @@ async def run() -> None:
             await test_ac5_unreadable_installation_refuses(session)
             await test_ac5_token_carrying_statuses_write_is_revoked(session)
         finally:
-            # The mock is shared process state; the github-app lane runs one
-            # file at a time, so leaving a knob on would silently rewrite what
-            # the next file in the lane observes.
             reset_mock()
         print("ok: github-app-installation-token/AC5")
 
