@@ -196,11 +196,9 @@ func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
 // bounds are one statement: 0 is a replica count and -1 is not.
 //
 // The refusals assert the gate was never called, which is the half scenario 8
-// spells out — "승인 요청조차 만들지 않음". It holds only because these checks run
-// during pair resolution rather than in the handler, and the handler is
-// downstream of authorize. The set that gets this treatment is exactly the set
-// scenario 8 names; a missing `name` is still refused in the handler, the way
-// resource_patch refuses it.
+// spells out — "승인 요청조차 만들지 않음" (updatePairs). The set that gets this
+// treatment is exactly the set scenario 8 names; a missing `name` is still
+// refused in the handler, the way resource_patch refuses it.
 func TestUpdateScaleBounds(t *testing.T) {
 	for _, replicas := range []int64{3, 0, 1} {
 		t.Run(fmt.Sprintf("replicas=%d", replicas), func(t *testing.T) {
@@ -272,9 +270,7 @@ func TestUpdateScaleBounds(t *testing.T) {
 // to say "the ones matching this".
 //
 // Every refusal also asserts the gate was never called — the half scenario 10
-// spells out as "인자 검증에서 거부됨". It holds only because these checks run
-// during pair resolution rather than in the handler, which is downstream of
-// authorize.
+// spells out as "인자 검증에서 거부됨" (deletePairs).
 func TestDeleteIsSingleObjectOnly(t *testing.T) {
 	t.Run("named object", func(t *testing.T) {
 		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
