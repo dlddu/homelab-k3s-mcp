@@ -16,9 +16,7 @@ from _helpers import base_url, open_session, parse_env_resource, wait_for_health
 
 # The CI kind fixture configures the server with this Grafana issuer credential
 # (.github/workflows/ci.yml "Create test Grafana secret":
-# GRAFANA_ISSUER_TOKEN=glsa_mock_issuer). The grafana-mock only ever returns the
-# minted read token (token=glc_mock_<name>), so the issuer credential must never
-# surface in the tool response.
+# GRAFANA_ISSUER_TOKEN=glsa_mock_issuer).
 ISSUER_TOKEN = "glsa_mock_issuer"
 
 
