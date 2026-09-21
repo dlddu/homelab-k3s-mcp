@@ -76,10 +76,6 @@ func parseDeleteCollectionTarget(obj map[string]any) (deleteCollectionSelection,
 }
 
 // callDeleteCollection is the gate path for a selection rather than an object.
-// It exists beside authorize for the reason callCreateBatch does: that path
-// reads its one object inside Describe, and this call has to read *before*
-// deciding whether to ask — Describe is only reached once gate.Authorize has
-// already resolved to ask, so a zero-target call could not be withdrawn there.
 func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry toolEntry, raw json.RawMessage) (any, *rpcErr) {
 	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, raw)
 	if err != nil {
@@ -103,11 +99,6 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 	}
 
 	if len(approved.Targets) == 0 {
-		// Nothing is deleted either, though AC11 only asks that nobody be
-		// disturbed: the apiserver would accept the call happily, but an
-		// unapproved deletecollection is a gated verb reaching the cluster
-		// without a verdict, and "it would have removed nothing" is an
-		// argument this layer is in no position to make after the fact.
 		slog.Info("collection delete matched nothing; no approval requested",
 			"tool", name, "pairs", pairsText(gated), "namespace", ref.Namespace)
 		return successResult(map[string]any{
@@ -161,11 +152,6 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 
 // confirmCollectionUnchanged re-reads the selection and refuses when it is not
 // the one that was approved (prd-approval-gate AC6).
-//
-// What it compares is the target set and not the list's own resourceVersion.
-// That version is the collection's revision at read time and advances on
-// writes this selection never contained, so comparing it would refuse honest
-// calls on any busy cluster while catching nothing the set comparison misses.
 //
 // Growth is the case AC11 names, but shrinkage and replacement are refused on
 // the same footing: a list with different names on it is a different approval.
