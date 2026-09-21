@@ -106,9 +106,7 @@ type Client struct {
 // integration is simply not configured (as opposed to misconfigured).
 //
 // When AWS_CONFIG_S3_ENDPOINT is set, both the STS and S3 calls are routed to
-// that endpoint with path-style S3 addressing. This targets S3-compatible
-// servers such as MinIO (which co-locates the STS and S3 APIs on one port) and
-// is intended for smoke testing; production leaves it unset to use real AWS.
+// that endpoint with path-style S3 addressing.
 func FromEnv(ctx context.Context) (*Client, error) {
 	bucket := os.Getenv("AWS_CONFIG_S3_BUCKET")
 	if bucket == "" {
