@@ -7,9 +7,7 @@
 # carries a single static key — so tests/integration/platform_auth_safety_ac1.py
 # and platform_auth_safety_ac7.py can assert that
 # unauthenticated / unknown-key requests are rejected (401) and the configured
-# key authorizes. No credential secrets are attached: main.go's buildXService
-# helpers degrade to an "unavailable" service when a secret is absent and the
-# server still starts, which is all the auth-gate assertions need.
+# key authorizes. No credential secrets are attached.
 #
 # Kubernetes is the one integration that absence alone cannot switch off -- it
 # reads an in-cluster ServiceAccount, not a secret -- so MCP_K8S_DISABLED below
