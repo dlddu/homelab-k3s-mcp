@@ -103,6 +103,10 @@ func busy(msg string) *Error            { return &Error{kind: kindBusy, msg: msg
 func tooLarge(msg string) *Error        { return &Error{kind: kindTooLarge, msg: msg} }
 func quotaExhausted(msg string) *Error  { return &Error{kind: kindQuotaExhausted, msg: msg} }
 
+// Unavailable reports whether this is the "not configured" kind — the one
+// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
+
 // Session is one session as the control plane reports it. The fields mirror the
 // control plane's `Session` schema; only those the session_list PRD exposes are
 // carried, so a field the control plane adds later stays invisible until a PRD

@@ -535,3 +535,79 @@ func TestRequireBearerHandsDownAPrincipalWithoutTheCredential(t *testing.T) {
 		}
 	})
 }
+
+// recordingSink keeps the records this layer emits, as values.
+type recordingSink struct{ records []eventlog.Record }
+
+func (s *recordingSink) Emit(_ context.Context, r eventlog.Record) { s.records = append(s.records, r) }
+
+// prd-event-log AC4: a tool call that fails authentication is recorded as a
+// refused call with its reason, whichever way it failed — no header, a key
+// nobody configured, a JWT that does not verify. AC3 crosses here: the record
+// names the tool and says "unauthenticated", never the credential presented.
+func TestRequireBearerRecordsTheCallItRefuses(t *testing.T) {
+	const badKey = "not-a-configured-key"
+	const badJWT = "eyJhbGciOiJSUzI1NiJ9.NOT-A-VALID-JWT.sig"
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"resource_get","arguments":{"apiVersion":"v1","kind":"Secret","namespace":"default","name":"s-1"}}}`
+	cases := []struct {
+		name, header string
+	}{
+		{"no header", ""},
+		{"unknown api key", "Bearer " + badKey},
+		{"unverifiable jwt", "Bearer " + badJWT},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sink := &recordingSink{}
+			cfg := &Config{apiKeys: []string{"first-key"}, events: sink}
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body))
+			if tc.header != "" {
+				req.Header.Set("Authorization", tc.header)
+			}
+			cfg.RequireBearer(http.NotFoundHandler()).ServeHTTP(rec, req)
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", rec.Code)
+			}
+			if len(sink.records) != 1 {
+				t.Fatalf("records = %d, want 1: %+v", len(sink.records), sink.records)
+			}
+			got := sink.records[0]
+			want := eventlog.Record{Tool: "resource_get", Principal: eventlog.Unauthenticated, Result: eventlog.ResultRefused, Reason: eventlog.ReasonAuthFailed}
+			if got != want {
+				t.Errorf("record = %+v, want %+v", got, want)
+			}
+			for _, forbidden := range []string{badKey, badJWT, "first-key"} {
+				if strings.Contains(got.Principal.String(), forbidden) {
+					t.Errorf("principal %q carries %q", got.Principal, forbidden)
+				}
+			}
+		})
+	}
+}
+
+// AC4 counts refused tool calls, not refused requests: a body that is not a
+// tools/call — initialize, tools/list, nothing at all — leaves no record,
+// the same as it would authenticated.
+func TestRequireBearerRecordsOnlyToolCalls(t *testing.T) {
+	cases := map[string]string{
+		"initialize": `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
+		"tools/list": `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		"not json":   `{"method":"tools/call",`,
+		"empty":      ``,
+	}
+	for name, body := range cases {
+		t.Run(name, func(t *testing.T) {
+			sink := &recordingSink{}
+			cfg := &Config{apiKeys: []string{"first-key"}, events: sink}
+			rec := httptest.NewRecorder()
+			cfg.RequireBearer(http.NotFoundHandler()).ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(body)))
+			if rec.Code != http.StatusUnauthorized {
+				t.Fatalf("status = %d, want 401", rec.Code)
+			}
+			if len(sink.records) != 0 {
+				t.Errorf("records = %+v, want none for a request that named no tool", sink.records)
+			}
+		})
+	}
+}

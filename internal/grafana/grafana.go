@@ -54,6 +54,10 @@ func (e *Error) Error() string {
 func unavailable(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 func apiError(msg string) *Error    { return &Error{kind: kindAPI, msg: msg} }
 
+// Unavailable reports whether this is the "not configured" kind — the one
+// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
+
 // Credentials bundles a freshly minted short-lived token with the static
 // Grafana Cloud query endpoints and their numeric instance IDs. Token is the
 // shared HTTP Basic password for both the metrics and logs users.

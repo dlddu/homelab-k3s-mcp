@@ -118,7 +118,7 @@ func (h *Handler) resourceCreate(ctx context.Context, raw json.RawMessage) (any,
 		return nil, errf(-32603, "create execution requires exactly one approved document")
 	}
 	if _, err := h.k8s.CreateResource(ctx, docs[0].ref); err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	return successResult(createCoordinate(docs[0].ref)), nil
 }

@@ -51,12 +51,60 @@ func TestToolCallIsRecordedOnStdoutWithThePrincipal(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("stdout carries %d tool-call records, want 1:\n%s", len(records), buf.String())
 	}
-	for _, want := range []string{"tool=ping", "principal=api_key:2", "result=success", `target.kind=""`} {
+	for _, want := range []string{"tool=ping", "principal=api_key:2", "result=success", `target.kind=""`, `reason=""`, `gate.decision=""`} {
 		if !strings.Contains(records[0], want) {
 			t.Errorf("record %q is missing %q", records[0], want)
 		}
 	}
 	if strings.Contains(buf.String(), "second-key") {
 		t.Errorf("stdout carries the API key:\n%s", buf.String())
+	}
+}
+
+// prd-event-log AC4 at the wire: a tool call the auth layer turns away still
+// leaves the one record, on the same stdout and in the same shape, saying it
+// was refused for authentication — without the key that was tried (AC3).
+func TestRefusedToolCallIsRecordedOnStdoutWithoutTheCredential(t *testing.T) {
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	t.Setenv("MCP_AUTH_DISABLED", "")
+	t.Setenv("MCP_API_KEYS", "first-key,second-key")
+	t.Setenv("MCP_OAUTH_ISSUER", "")
+	t.Setenv("MCP_OAUTH_AUDIENCE", "")
+	t.Setenv("MCP_OAUTH_RESOURCE", "")
+	cfg, err := auth.FromEnv(context.Background())
+	if err != nil {
+		t.Fatalf("FromEnv() = %v", err)
+	}
+	app := appWith(cfg)
+
+	const wrongKey = "third-key-nobody-configured"
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","arguments":{}}}`))
+	req.Header.Set("Authorization", "Bearer "+wrongKey)
+	app.ServeHTTP(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401: %s", rec.Code, rec.Body.String())
+	}
+
+	var records []string
+	for _, line := range strings.Split(buf.String(), "\n") {
+		if strings.Contains(line, `msg="tool call"`) {
+			records = append(records, line)
+		}
+	}
+	if len(records) != 1 {
+		t.Fatalf("stdout carries %d tool-call records, want 1:\n%s", len(records), buf.String())
+	}
+	for _, want := range []string{"tool=ping", "principal=unauthenticated", "result=refused", "reason=auth_failed"} {
+		if !strings.Contains(records[0], want) {
+			t.Errorf("record %q is missing %q", records[0], want)
+		}
+	}
+	if strings.Contains(buf.String(), wrongKey) {
+		t.Errorf("stdout carries the refused key:\n%s", buf.String())
 	}
 }

@@ -179,7 +179,7 @@ func (h *Handler) resourceProxy(ctx context.Context, raw json.RawMessage) (any, 
 
 	outcome, err := h.k8s.ProxyResource(ctx, args.ref, args.method, args.path, args.body, args.contentType, args.readSeconds)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	return successResult(map[string]any{

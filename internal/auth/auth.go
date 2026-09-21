@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/big"
 	"net/http"
@@ -38,9 +39,19 @@ type Config struct {
 	// apiKeys are static bearer credentials for non-interactive automation.
 	apiKeys []string
 
+	// events receives the record of a call this layer refused (prd-event-log
+	// AC4). nil means eventlog.Log, as on the dispatcher.
+	events eventlog.Sink
+
 	mu   sync.RWMutex
 	keys map[string]*rsa.PublicKey
 }
+
+// maxRecordedBody bounds how much of a refused request is read to learn the
+// tool it named. A tools/call body larger than this leaves no record: the
+// name cannot be trusted from a prefix, and reading further would be doing
+// work for a caller that did not authenticate.
+const maxRecordedBody = 1 << 20
 
 type providerMetadata struct {
 	JWKSURI string `json:"jwks_uri"`
@@ -300,7 +311,7 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, authErr := extractBearer(r)
 		if authErr != "" {
-			c.unauthorized(w, authErr)
+			c.unauthorized(w, r, authErr)
 			return
 		}
 		if index := c.apiKeyIndex(token); index != 0 {
@@ -310,12 +321,61 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 		}
 		subject, err := c.verify(r.Context(), token)
 		if err != nil {
-			c.unauthorized(w, "invalid_token")
+			c.unauthorized(w, r, "invalid_token")
 			return
 		}
 		slog.Debug("mcp authenticated", "method", "jwt")
 		next.ServeHTTP(w, withPrincipal(r, eventlog.Principal{Method: "jwt", ID: subject}))
 	})
+}
+
+// recordRefusal leaves the record of a tool call that never reached the
+// dispatcher (prd-event-log AC4). This layer ends the request before the
+// dispatcher parses it, so it reads the tool name itself — and only for a
+// body that is a tools/call: a refused initialize or tools/list was never a
+// tool call, and the records are the set of tool calls, authenticated or not.
+// The principal is Unauthenticated, never what was presented (AC3).
+func (c *Config) recordRefusal(r *http.Request) {
+	tool, ok := refusedToolName(r.Body)
+	if !ok {
+		return
+	}
+	c.sink().Emit(r.Context(), eventlog.Record{
+		Tool:      tool,
+		Principal: eventlog.Unauthenticated,
+		Result:    eventlog.ResultRefused,
+		Reason:    eventlog.ReasonAuthFailed,
+	})
+}
+
+// refusedToolName reads the tool a JSON-RPC tools/call body names. The shape
+// is the dispatcher's request envelope, read here for the one field a record
+// needs; it is not a second parser of the protocol.
+func refusedToolName(body io.Reader) (string, bool) {
+	if body == nil {
+		return "", false
+	}
+	raw, err := io.ReadAll(io.LimitReader(body, maxRecordedBody+1))
+	if err != nil || len(raw) > maxRecordedBody {
+		return "", false
+	}
+	var req struct {
+		Method string `json:"method"`
+		Params struct {
+			Name string `json:"name"`
+		} `json:"params"`
+	}
+	if err := json.Unmarshal(raw, &req); err != nil || req.Method != "tools/call" {
+		return "", false
+	}
+	return req.Params.Name, true
+}
+
+func (c *Config) sink() eventlog.Sink {
+	if c.events != nil {
+		return c.events
+	}
+	return eventlog.Log{}
 }
 
 // withPrincipal hands the authenticated identity down the request so the
@@ -340,7 +400,8 @@ func extractBearer(r *http.Request) (token string, authErr string) {
 	return rest, ""
 }
 
-func (c *Config) unauthorized(w http.ResponseWriter, authErr string) {
+func (c *Config) unauthorized(w http.ResponseWriter, r *http.Request, authErr string) {
+	c.recordRefusal(r)
 	var challenge string
 	if c.OAuthConfigured() {
 		challenge = fmt.Sprintf(

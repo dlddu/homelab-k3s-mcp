@@ -51,6 +51,10 @@ func (e *Error) Error() string {
 func unavailable(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 func fetchError(msg string) *Error  { return &Error{kind: kindFetch, msg: msg} }
 
+// Unavailable reports whether this is the "not configured" kind — the one
+// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
+
 // Object is the fetched S3 config object and its metadata.
 type Object struct {
 	Bucket       string `json:"bucket"`

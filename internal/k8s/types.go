@@ -28,6 +28,10 @@ func (e *Error) Error() string {
 // unavailableErr reports that the kubernetes integration is not usable.
 func unavailableErr(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 
+// Unavailable reports whether this is the "not configured" kind — the one
+// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
+
 // APIError wraps an error returned by the kubernetes apiserver.
 func APIError(msg string) *Error { return &Error{kind: kindAPI, msg: msg} }
 

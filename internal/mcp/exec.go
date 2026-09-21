@@ -108,7 +108,7 @@ func (h *Handler) resourceExec(ctx context.Context, raw json.RawMessage) (any, *
 
 	outcome, err := h.k8s.ExecResource(ctx, ref, container, command)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{
