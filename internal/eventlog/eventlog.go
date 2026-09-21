@@ -32,12 +32,19 @@ type Principal struct {
 // layer that forgot to fill it in.
 var Anonymous = Principal{Method: "none"}
 
+// Unauthenticated is the principal of a call auth refused (AC4). It is not
+// Anonymous: that one passed an auth layer that asks nothing, this one failed
+// an auth layer that asked. What it presented is not here either (AC3).
+var Unauthenticated = Principal{Method: "unauthenticated"}
+
 // String renders the principal for the record: "jwt:<sub>", "api_key:<n>",
-// or "anonymous".
+// "anonymous" or "unauthenticated".
 func (p Principal) String() string {
 	switch p.Method {
 	case "", "none":
 		return "anonymous"
+	case "unauthenticated":
+		return "unauthenticated"
 	default:
 		return p.Method + ":" + p.ID
 	}
@@ -82,14 +89,53 @@ const (
 	ResultError   Result = "error"
 )
 
-// Record is one tool call: AC1's five fields. The timestamp is not a field
-// here because the sink stamps it at emission — a record built before the
-// call and stamped after it would carry the wrong moment.
+// Reason is why a refused call was refused (AC2, AC4). The eight values are
+// prd-metrics AC2's, verbatim: that AC is the single source of the set, and
+// the two layers have to split refusals the same way or a refusal rate seen
+// in the metrics cannot be followed into the records.
+type Reason string
+
+const (
+	ReasonAuthFailed       Reason = "auth_failed"
+	ReasonInvalidInput     Reason = "invalid_input"
+	ReasonUnconfigured     Reason = "unconfigured"
+	ReasonGateRejected     Reason = "gate_rejected"
+	ReasonGateExpired      Reason = "gate_expired"
+	ReasonGateTimeout      Reason = "gate_timeout"
+	ReasonGateUnreachable  Reason = "gate_unreachable"
+	ReasonGateUnconfigured Reason = "gate_unconfigured"
+)
+
+// Reasons is the closed set, in prd-metrics AC2's order. It exists so the
+// metrics of that PRD can pre-register every series from here rather than
+// from a second list that can drift.
+var Reasons = []Reason{
+	ReasonAuthFailed, ReasonInvalidInput, ReasonUnconfigured,
+	ReasonGateRejected, ReasonGateExpired, ReasonGateTimeout, ReasonGateUnreachable, ReasonGateUnconfigured,
+}
+
+// Gate is what the approval gate said about a gated call (AC2). Decision is
+// the backend's verdict as the gate layer names it; it stays "approved" on a
+// call the gate layer refused after the verdict (a target that moved, an
+// approval already spent), which is exactly the case Reason and Decision are
+// two fields for. AutoApproved is prd-approval-gate AC9's notice as a field.
+type Gate struct {
+	RequestID    string
+	Decision     string
+	AutoApproved bool
+}
+
+// Record is one tool call: AC1's five fields, plus AC2's reason and gate.
+// The timestamp is not a field here because the sink stamps it at emission
+// — a record built before the call and stamped after it would carry the
+// wrong moment.
 type Record struct {
 	Tool      string
 	Principal Principal
 	Target    Target
 	Result    Result
+	Reason    Reason
+	Gate      Gate
 }
 
 // Sink receives records. The dispatcher holds one so a test can capture
@@ -115,7 +161,9 @@ func (Log) Emit(ctx context.Context, r Record) {
 }
 
 // Attrs renders a record as slog attributes, in the field order AC1 lists
-// them (time is the handler's own attribute).
+// them (time is the handler's own attribute). The reason and gate keys are
+// present on every record, empty on a success, for the same reason the
+// target keys are.
 func Attrs(r Record) []slog.Attr {
 	return []slog.Attr{
 		slog.String("tool", r.Tool),
@@ -127,5 +175,11 @@ func Attrs(r Record) []slog.Attr {
 			slog.String("name", r.Target.Name),
 		),
 		slog.String("result", string(r.Result)),
+		slog.String("reason", string(r.Reason)),
+		slog.Group("gate",
+			slog.String("request_id", r.Gate.RequestID),
+			slog.String("decision", r.Gate.Decision),
+			slog.Bool("auto_approved", r.Gate.AutoApproved),
+		),
 	}
 }

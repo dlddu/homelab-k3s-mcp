@@ -166,7 +166,7 @@ func (h *Handler) resourcePortForward(ctx context.Context, raw json.RawMessage) 
 
 	outcome, err := h.k8s.PortForwardResource(ctx, args.ref, args.port, args.payload, args.readSeconds)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	return successResult(map[string]any{

@@ -38,7 +38,7 @@ func (h *Handler) githubCommitStatusCreate(ctx context.Context, raw json.RawMess
 
 	status, err := h.github.CreateCommitStatus(ctx, in)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{

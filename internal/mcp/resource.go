@@ -41,7 +41,7 @@ func parseCoordinate(obj map[string]any) (coordinate, *rpcErr) {
 func (h *Handler) apiResources(ctx context.Context) (any, *rpcErr) {
 	items, err := h.k8s.APIResources(ctx)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	return successResult(map[string]any{"items": items}), nil
 }
@@ -85,7 +85,7 @@ func (h *Handler) resourceList(ctx context.Context, raw json.RawMessage) (any, *
 
 	result, err := h.k8s.ListResources(ctx, query)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	effectiveLimit := limit
@@ -153,7 +153,7 @@ func (h *Handler) resourceWatch(ctx context.Context, raw json.RawMessage) (any, 
 
 	result, err := h.k8s.WatchResources(ctx, query)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{
@@ -219,7 +219,7 @@ func (h *Handler) resourceGet(ctx context.Context, raw json.RawMessage) (any, *r
 
 	result, err := h.k8s.GetResource(ctx, ref)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{
@@ -291,7 +291,7 @@ func (h *Handler) resourceUpdate(ctx context.Context, raw json.RawMessage) (any,
 
 	result, err := h.k8s.UpdateResource(ctx, ref)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{
@@ -446,7 +446,7 @@ func (h *Handler) resourcePatch(ctx context.Context, raw json.RawMessage) (any, 
 
 	result, err := h.k8s.PatchResource(ctx, ref)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{
@@ -489,7 +489,7 @@ func (h *Handler) resourceDelete(ctx context.Context, raw json.RawMessage) (any,
 
 	result, err := h.k8s.DeleteResource(ctx, ref)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{

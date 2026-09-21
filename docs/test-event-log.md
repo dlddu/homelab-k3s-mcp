@@ -9,9 +9,12 @@
 - AC5: stdout 너머 보존, 그리고 수집기 미설정 시 graceful (PRD: 이벤트 기록)
 
 > **시나리오 4·5 는 전용 e2e 로 닫혔고(2026-09-21 · `rct_20260921-0003`), 나머지 일곱은 ⏳ 구현 대기다.**
-> 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했다(AC1·AC3 — `msg="tool call"` 한 줄, 필드
-> `tool`·`principal`·`target.*`·`result`). 남은 일곱의 해제 조건은 각 시나리오에 적는다. 등재는
-> `doc-tracker/`의 ⏳ 표에 있다.
+> 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했고(AC1·AC3 — `msg="tool call"` 한 줄, 필드
+> `tool`·`principal`·`target.*`·`result`), 같은 날 거부 사유와 게이트 판정이 필드로 더해졌다(AC2·AC4 —
+> `reason`, `gate.request_id`·`gate.decision`·`gate.auto_approved`; 인증 실패도
+> `principal=unauthenticated reason=auth_failed` 로 남는다). 남은 일곱 중 시나리오 2·3·6·7 은 남은
+> 차단이 전용 파일 저작뿐이다. 나머지의 해제 조건은 각 시나리오에 적는다. 등재는 `doc-tracker/`의
+> ⏳ 표에 있다.
 
 ## 테스트 시나리오
 
@@ -35,7 +38,9 @@
 - **기대 결과**: 네 레코드의 판정 필드가 서로 다른 값으로 갈리고, `request_id`가 gatekeeper 쪽
   요청과 일치한다. 「거절」과 「통신 실패」가 같은 값으로 뭉치지 않는다
 - **검증 AC**: AC2
-- **자동화**: (미작성) — 표면 구현 + gatekeeper 픽스처가 선행
+- **자동화**: (미작성) — 선행 없음(AC2 착지 2026-09-21: `gate.decision` 은 `approved`·`rejected`·
+  `expired`·`timeout`·`unreachable`·`unconfigured` 여섯 값, `gate.request_id` 동반; 실물 gatekeeper
+  픽스처는 `tests/k8s/kind/gatekeeper-fixture.yaml`). 저작만 남았다
 
 ### 시나리오 3: `AUTO_APPROVE` 표기
 
@@ -44,7 +49,8 @@
 - **기대 결과**: 레코드의 자동 승인 표기 필드가 참이다. 끈 변형에서는 거짓이고, 두 경우의
   판정 필드는 모두 「승인」이라 **표기 필드 없이는 구별되지 않는다**
 - **검증 AC**: AC2
-- **자동화**: (미작성) — 표면 구현이 선행
+- **자동화**: (미작성) — 선행 없음(AC2 착지 2026-09-21: `gate.auto_approved` 필드; `AUTO_APPROVE`
+  변형은 `approval_gate_ac9.py` 가 이미 태운다). 저작만 남았다
 
 ### 시나리오 4: 자격증명 값 비노출
 
@@ -76,7 +82,9 @@
 - **기대 결과**: 두 호출 모두 결과 필드가 거부이고 사유가 인증 실패인 레코드를 남긴다.
   **주체 필드에 제시된 자격증명 값이 실리지 않는다**(AC3과의 교차)
 - **검증 AC**: AC4, AC3
-- **자동화**: (미작성) — 표면 구현이 선행
+- **자동화**: (미작성) — 선행 없음(AC4 착지 2026-09-21: 인증 층이 tools/call 본문의 401 마다
+  `principal=unauthenticated result=refused reason=auth_failed` 한 줄을 남긴다; 만료 JWT 는 OIDC
+  픽스처로 만든다). 저작만 남았다
 
 ### 시나리오 7: 검증·게이트·미설정 거부의 기록
 
@@ -85,7 +93,9 @@
 - **기대 결과**: 셋 다 레코드가 남고 사유가 서로 다르다. 클러스터·외부 시스템에 요청이
   **나가지 않았음**도 함께 관측된다
 - **검증 AC**: AC4
-- **자동화**: (미작성) — 표면 구현이 선행
+- **자동화**: (미작성) — 선행 없음(AC2·AC4 착지 2026-09-21: 사유는 `invalid_input`·`gate_*`·
+  `unconfigured` 로 갈리고 미설정 거부는 `result=refused` 다; 통합 미설정 변형은 `auth-variant`).
+  저작만 남았다
 
 ### 시나리오 8: 수집기 미설정·도달 불가에서의 graceful
 

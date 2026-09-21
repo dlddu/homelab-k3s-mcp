@@ -566,11 +566,11 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 			"pairs", pairsText(gated),
 			"error", err.Error(),
 		)
-		return nil, nil, errf(-32603, "%s", err.Error())
+		return nil, nil, gateRefusal(err)
 	}
 	if err := decision.Consume(); err != nil {
 		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
-		return nil, nil, errf(-32603, "%s", err.Error())
+		return nil, nil, errf(-32603, "%s", err.Error()).afterVerdict(decision)
 	}
 
 	// AC6: the approval was for that object in that state. This is the last
@@ -636,7 +636,7 @@ func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decis
 	current, err := h.gateReader.ReadTarget(ctx, *ref)
 	if err != nil {
 		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
-		return errf(-32603, "refusing %s: the approved target could not be re-read before execution: %s", name, err.Error())
+		return errf(-32603, "refusing %s: the approved target could not be re-read before execution: %s", name, err.Error()).afterVerdict(decision)
 	}
 	if current.ResourceVersion == approved.ResourceVersion && current.UID == approved.UID {
 		return nil
@@ -653,7 +653,7 @@ func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decis
 		"request_id", decision.RequestID,
 		"error", reason,
 	)
-	return errf(-32603, "%s", reason)
+	return errf(-32603, "%s", reason).afterVerdict(decision)
 }
 
 // approvalContext renders what the operator sees. Arguments go in verbatim

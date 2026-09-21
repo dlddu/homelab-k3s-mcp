@@ -41,6 +41,50 @@ const (
 // ErrNotConfigured is the refusal used when the gate has no backend to ask (AC5).
 var ErrNotConfigured = errors.New("approval gate is not configured (GATEKEEPER_BASE_URL/GATEKEEPER_API_KEY): refusing")
 
+// Verdict is how the gate answered, as the record names it (prd-event-log
+// AC2). Six values: approved, and the five refusals prd-metrics AC2 lists —
+// rejected and expired are the backend's own words, timeout is this client
+// giving up on PENDING, unreachable is a request that produced no verdict
+// (transport, 409, 5xx, an unreadable or unknown answer), unconfigured is a
+// gate with no backend to ask.
+type Verdict string
+
+const (
+	VerdictApproved     Verdict = "approved"
+	VerdictRejected     Verdict = "rejected"
+	VerdictExpired      Verdict = "expired"
+	VerdictTimeout      Verdict = "timeout"
+	VerdictUnreachable  Verdict = "unreachable"
+	VerdictUnconfigured Verdict = "unconfigured"
+)
+
+// Refusal is every answer of Authorize that is not a Decision, typed so the
+// record can carry the verdict and the request id without parsing the prose
+// a human reads. Verdict is empty when the call was refused before any
+// verdict was sought — its approval context could not be built (Call.Describe);
+// what that means for the record is the caller's to say, because only the
+// caller knows whether the context failed on its arguments or on a reader
+// that was never configured.
+type Refusal struct {
+	Verdict   Verdict
+	RequestID string
+	Err       error
+}
+
+func (r *Refusal) Error() string { return r.Err.Error() }
+
+// Unwrap keeps errors.Is(err, ErrNotConfigured) true through the refusal.
+func (r *Refusal) Unwrap() error { return r.Err }
+
+func refuse(verdict Verdict, requestID string, err error) error {
+	return &Refusal{Verdict: verdict, RequestID: requestID, Err: err}
+}
+
+// unavailable is what every integration's "not configured" error can say
+// about itself (prd-event-log AC4); a Describe that fails that way is an
+// unconfigured gate, not a bad call.
+type unavailable interface{ Unavailable() bool }
+
 // ErrConsumed reports a second attempt to spend one approval (AC7).
 var ErrConsumed = errors.New("approval has already been spent; request a new one")
 
@@ -218,7 +262,7 @@ func NewUnavailable(reason error) *Unavailable {
 // AC5 requires an unconfigured gate to refuse without touching the kubernetes
 // API, and Describe is where the pre-approval read lives (AC6, AC11).
 func (u *Unavailable) Authorize(context.Context, Call) (*Decision, error) {
-	return nil, u.reason
+	return nil, refuse(VerdictUnconfigured, "", u.reason)
 }
 
 // Client is the live gate backed by the gatekeeper HTTP API.
@@ -276,12 +320,16 @@ func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
 	// why Describe is called here rather than by the caller (see Call.Describe).
 	context, err := call.describe(ctx)
 	if err != nil {
-		return nil, err
+		var u unavailable
+		if errors.As(err, &u) && u.Unavailable() {
+			return nil, refuse(VerdictUnconfigured, "", err)
+		}
+		return nil, refuse("", "", err)
 	}
 
 	externalID, err := c.newID()
 	if err != nil {
-		return nil, fmt.Errorf("refusing %s: %w", call.Tool, err)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: %w", call.Tool, err))
 	}
 
 	created, err := c.create(ctx, call, context, externalID)
@@ -300,7 +348,7 @@ func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
 			AutoApproved:  true,
 		}, nil
 	case created.AutoRejected:
-		return nil, fmt.Errorf("refusing %s: approval auto-rejected (request %s)", call.Tool, created.ID)
+		return nil, refuse(VerdictRejected, created.ID, fmt.Errorf("refusing %s: approval auto-rejected (request %s)", call.Tool, created.ID))
 	}
 
 	return c.poll(ctx, call, created.ID, externalID)
@@ -316,35 +364,35 @@ func (c *Client) create(ctx context.Context, call Call, approvalContext, externa
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
-		return nil, fmt.Errorf("refusing %s: %w", call.Tool, err)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: %w", call.Tool, err))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/api/requests", bytes.NewReader(raw))
 	if err != nil {
-		return nil, fmt.Errorf("refusing %s: %w", call.Tool, err)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: %w", call.Tool, err))
 	}
 	req.Header.Set("content-type", "application/json")
 	req.Header.Set("x-api-key", c.cfg.APIKey)
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("refusing %s: approval request failed: %w", call.Tool, err)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: approval request failed: %w", call.Tool, err))
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode == http.StatusConflict {
-		return nil, fmt.Errorf("refusing %s: approval request id collided (409)", call.Tool)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: approval request id collided (409)", call.Tool))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
-		return nil, fmt.Errorf("refusing %s: approval backend returned %d", call.Tool, resp.StatusCode)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: approval backend returned %d", call.Tool, resp.StatusCode))
 	}
 
 	var decoded requestResponse
 	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
-		return nil, fmt.Errorf("refusing %s: unreadable approval response: %w", call.Tool, err)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: unreadable approval response: %w", call.Tool, err))
 	}
 	if decoded.ID == "" {
-		return nil, fmt.Errorf("refusing %s: approval response carried no request id", call.Tool)
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: approval response carried no request id", call.Tool))
 	}
 	return &decoded, nil
 }
@@ -356,7 +404,7 @@ func (c *Client) poll(ctx context.Context, call Call, requestID, externalID stri
 	for {
 		state, err := c.get(ctx, requestID)
 		if err != nil {
-			return nil, fmt.Errorf("refusing %s: %w", call.Tool, err)
+			return nil, refuse(VerdictUnreachable, requestID, fmt.Errorf("refusing %s: %w", call.Tool, err))
 		}
 
 		switch state.Status {
@@ -368,20 +416,22 @@ func (c *Client) poll(ctx context.Context, call Call, requestID, externalID stri
 				AutoApproved:  state.AutoApproved,
 			}, nil
 		case StatusRejected:
-			return nil, fmt.Errorf("refusing %s: approval rejected (request %s)", call.Tool, requestID)
+			return nil, refuse(VerdictRejected, requestID, fmt.Errorf("refusing %s: approval rejected (request %s)", call.Tool, requestID))
 		case StatusExpired:
-			return nil, fmt.Errorf("refusing %s: approval expired (request %s)", call.Tool, requestID)
+			return nil, refuse(VerdictExpired, requestID, fmt.Errorf("refusing %s: approval expired (request %s)", call.Tool, requestID))
 		case StatusPending, "":
 			// keep waiting
 		default:
-			return nil, fmt.Errorf("refusing %s: unknown approval status %q (request %s)", call.Tool, state.Status, requestID)
+			return nil, refuse(VerdictUnreachable, requestID, fmt.Errorf("refusing %s: unknown approval status %q (request %s)", call.Tool, state.Status, requestID))
 		}
 
 		select {
 		case <-ctx.Done():
-			return nil, fmt.Errorf("refusing %s: %w", call.Tool, ctx.Err())
+			// The caller stopped waiting: a timeout from the record's side,
+			// whoever's clock ran out.
+			return nil, refuse(VerdictTimeout, requestID, fmt.Errorf("refusing %s: %w", call.Tool, ctx.Err()))
 		case <-deadline:
-			return nil, fmt.Errorf("refusing %s: no approval within %s (request %s)", call.Tool, c.cfg.Timeout, requestID)
+			return nil, refuse(VerdictTimeout, requestID, fmt.Errorf("refusing %s: no approval within %s (request %s)", call.Tool, c.cfg.Timeout, requestID))
 		case <-c.afterFunc(c.cfg.PollInterval):
 		}
 	}

@@ -138,7 +138,7 @@ func (h *Handler) resourceAttach(ctx context.Context, raw json.RawMessage) (any,
 
 	outcome, err := h.k8s.AttachResource(ctx, args.ref, args.container, args.stdin, args.readSeconds)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	return successResult(map[string]any{

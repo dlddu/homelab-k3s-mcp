@@ -32,7 +32,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 		})
 		if err != nil {
 			slog.Warn("approval refused", "tool", name, "pairs", pairsText(pairs), "error", err.Error())
-			return nil, errf(-32603, "%s", err.Error())
+			return nil, gateRefusal(err)
 		}
 		if decision == nil || decision.RequestID == "" || seenRequests[decision.RequestID] ||
 			(decision.ExternalID != "" && seenExternal[decision.ExternalID]) {
@@ -59,6 +59,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 				"request_id", d.RequestID, "external_id", d.ExternalID,
 				"processed_by_id", d.ProcessedByID, "auto_approved", d.AutoApproved)
 			executed = append(executed, d)
+			noteGate(ctx, d)
 			result, callErr := entry.handle(h, ctx, doc.raw)
 			if callErr != nil {
 				failure = callErr.message

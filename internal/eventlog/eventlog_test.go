@@ -14,6 +14,7 @@ func TestPrincipalRendersWithoutTheCredential(t *testing.T) {
 		{Method: "api_key", ID: "2"}:                 "api_key:2",
 		{}:                                           "anonymous",
 		Anonymous:                                    "anonymous",
+		Unauthenticated:                              "unauthenticated",
 	}
 	for p, want := range cases {
 		if got := p.String(); got != want {
@@ -50,10 +51,50 @@ func TestLogWritesOneLineWithEveryField(t *testing.T) {
 	for _, want := range []string{
 		"time=", `msg="tool call"`, "tool=ping", "principal=anonymous",
 		`target.apiVersion=""`, `target.kind=""`, `target.namespace=""`, `target.name=""`,
-		"result=success",
+		"result=success", `reason=""`,
+		`gate.request_id=""`, `gate.decision=""`, "gate.auto_approved=false",
 	} {
 		if !strings.Contains(line, want) {
 			t.Errorf("record %q is missing %q", line, want)
+		}
+	}
+}
+
+// AC2: a refused, gated call renders its reason and the gate's answer as
+// fields, not as prose in a message.
+func TestLogRendersReasonAndGateAsFields(t *testing.T) {
+	var buf bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+
+	Log{}.Emit(context.Background(), Record{
+		Tool: "resource_patch", Principal: Anonymous, Result: ResultRefused,
+		Reason: ReasonGateRejected,
+		Gate:   Gate{RequestID: "req-7", Decision: "rejected"},
+	})
+
+	line := buf.String()
+	for _, want := range []string{
+		"result=refused", "reason=gate_rejected",
+		"gate.request_id=req-7", "gate.decision=rejected", "gate.auto_approved=false",
+	} {
+		if !strings.Contains(line, want) {
+			t.Errorf("record %q is missing %q", line, want)
+		}
+	}
+}
+
+// prd-metrics AC2: the reason set is the eight values, closed and ordered.
+func TestReasonsAreTheEightOfPRDMetricsAC2(t *testing.T) {
+	want := []Reason{"auth_failed", "invalid_input", "unconfigured",
+		"gate_rejected", "gate_expired", "gate_timeout", "gate_unreachable", "gate_unconfigured"}
+	if len(Reasons) != len(want) {
+		t.Fatalf("Reasons = %v, want %v", Reasons, want)
+	}
+	for i := range want {
+		if Reasons[i] != want[i] {
+			t.Errorf("Reasons[%d] = %q, want %q", i, Reasons[i], want[i])
 		}
 	}
 }

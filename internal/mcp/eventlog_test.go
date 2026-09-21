@@ -130,12 +130,119 @@ func TestRecordResultFollowsHowTheCallEnded(t *testing.T) {
 		t.Fatalf("kubernetes calls = %d, want 0 — every refusal above must be recorded as a call that never ran", fake.count())
 	}
 
-	h.k8s = k8s.NewUnavailable("kubernetes integration is disabled")
-	if _, rerr := callTool(t, h, "resource_get", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1"}`); rerr != nil {
-		t.Fatalf("resource_get against an unavailable client = %v, want a tool error, not a JSON-RPC error", rerr)
+	h.github = failingGitHub{}
+	if _, rerr := callTool(t, h, "github_app_installation_token", ""); rerr != nil {
+		t.Fatalf("github_app_installation_token against a failing backend = %v, want a tool error, not a JSON-RPC error", rerr)
 	}
-	if got := lastRecord(t, sink, 4); got.Result != eventlog.ResultError {
-		t.Errorf("tool-error record = %+v, want result=error", got)
+	if got := lastRecord(t, sink, 4); got.Result != eventlog.ResultError || got.Reason != "" {
+		t.Errorf("tool-error record = %+v, want result=error and no reason", got)
+	}
+}
+
+// failingGitHub is a configured integration whose upstream failed: the
+// contrast AC4 draws with an integration nobody configured.
+type failingGitHub struct{}
+
+func (failingGitHub) CreateInstallationToken(context.Context, []string, map[string]any) (*github.InstallationToken, error) {
+	return nil, errors.New("github api error: 502 from api.github.com")
+}
+
+func (failingGitHub) CreateCommitStatus(context.Context, github.CommitStatusInput) (*github.CommitStatus, error) {
+	return nil, errors.New("unused")
+}
+
+// AC2 + AC4: every refusal carries one of the eight reasons, and the reasons
+// tell the classes apart — the arguments, the gate's five answers, an
+// integration that was never configured. The response the client sees is
+// unchanged in each case; only the record learned to say why.
+func TestRefusalRecordsCarryTheirReason(t *testing.T) {
+	coordinate := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1"}`
+	patch := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`
+	verdict := func(v gatekeeper.Verdict, id string) error {
+		return &gatekeeper.Refusal{Verdict: v, RequestID: id, Err: errors.New("refusing resource_patch: " + string(v))}
+	}
+	cases := []struct {
+		name    string
+		gate    gatekeeper.Gate
+		tool    string
+		args    string
+		reason  eventlog.Reason
+		gateRec eventlog.Gate
+		rpc     bool // the client sees a JSON-RPC error rather than a tool error
+	}{
+		{name: "unknown tool", gate: &scriptedGate{}, tool: "no_such_tool", reason: eventlog.ReasonInvalidInput, rpc: true},
+		{name: "bad coordinate", gate: &scriptedGate{}, tool: "resource_get", args: `{"kind":"ConfigMap"}`, reason: eventlog.ReasonInvalidInput, rpc: true},
+		{name: "gate rejected", gate: &scriptedGate{err: verdict(gatekeeper.VerdictRejected, "req-1")}, tool: "resource_patch", args: patch,
+			reason: eventlog.ReasonGateRejected, gateRec: eventlog.Gate{RequestID: "req-1", Decision: "rejected"}, rpc: true},
+		{name: "gate expired", gate: &scriptedGate{err: verdict(gatekeeper.VerdictExpired, "req-2")}, tool: "resource_patch", args: patch,
+			reason: eventlog.ReasonGateExpired, gateRec: eventlog.Gate{RequestID: "req-2", Decision: "expired"}, rpc: true},
+		{name: "gate timeout", gate: &scriptedGate{err: verdict(gatekeeper.VerdictTimeout, "req-3")}, tool: "resource_patch", args: patch,
+			reason: eventlog.ReasonGateTimeout, gateRec: eventlog.Gate{RequestID: "req-3", Decision: "timeout"}, rpc: true},
+		{name: "gate unreachable", gate: &scriptedGate{err: verdict(gatekeeper.VerdictUnreachable, "")}, tool: "resource_patch", args: patch,
+			reason: eventlog.ReasonGateUnreachable, gateRec: eventlog.Gate{Decision: "unreachable"}, rpc: true},
+		{name: "gate unconfigured", gate: gatekeeper.NewUnavailable(nil), tool: "resource_patch", args: patch,
+			reason: eventlog.ReasonGateUnconfigured, gateRec: eventlog.Gate{Decision: "unconfigured"}, rpc: true},
+		{name: "gate answered with prose only", gate: &scriptedGate{err: errors.New("something went wrong")}, tool: "resource_patch", args: patch,
+			reason: eventlog.ReasonGateUnreachable, rpc: true},
+		{name: "integration unconfigured", gate: &scriptedGate{}, tool: "resource_get", args: coordinate, reason: eventlog.ReasonUnconfigured},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h, fake, sink := recordedHandler(t, tc.gate)
+			if tc.reason == eventlog.ReasonUnconfigured {
+				h.k8s = k8s.NewUnavailable("kubernetes integration is disabled")
+			}
+			_, rerr := callTool(t, h, tc.tool, tc.args)
+			if (rerr != nil) != tc.rpc {
+				t.Fatalf("rpc error = %v, want json-rpc error %v — the response shape must not have changed", rerr, tc.rpc)
+			}
+			got := lastRecord(t, sink, 1)
+			if got.Result != eventlog.ResultRefused || got.Reason != tc.reason || got.Gate != tc.gateRec {
+				t.Errorf("record = %+v, want result=refused reason=%s gate=%+v", got, tc.reason, tc.gateRec)
+			}
+			if fake.count() != 0 {
+				t.Errorf("kubernetes calls = %d, want 0 — a refusal is a call that never ran", fake.count())
+			}
+		})
+	}
+}
+
+// AC2: an approved call carries the request id it ran under, and an
+// AUTO_APPROVE'd one says so as a field — the two are told apart by nothing
+// else, since the verdict is "approved" on both.
+func TestApprovedRecordsCarryTheRequestIdAndTheAutoApprovalFlag(t *testing.T) {
+	patch := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`
+	for name, auto := range map[string]bool{"human": false, "auto": true} {
+		t.Run(name, func(t *testing.T) {
+			h, _, sink := recordedHandler(t, &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-" + name, AutoApproved: auto}})
+			if _, rerr := callTool(t, h, "resource_patch", patch); rerr != nil {
+				t.Fatalf("resource_patch = %v", rerr)
+			}
+			got := lastRecord(t, sink, 1)
+			want := eventlog.Gate{RequestID: "req-" + name, Decision: "approved", AutoApproved: auto}
+			if got.Result != eventlog.ResultSuccess || got.Reason != "" || got.Gate != want {
+				t.Errorf("record = %+v, want result=success and gate=%+v", got, want)
+			}
+		})
+	}
+}
+
+// AC2's two fields disagree on purpose when the gate layer withholds an
+// approval the backend granted (AC7): the verdict stays "approved", the
+// reason says the call was refused by the gate all the same.
+func TestASpentApprovalIsRefusedWithTheVerdictKept(t *testing.T) {
+	decision := &gatekeeper.Decision{RequestID: "req-spent"}
+	if err := decision.Consume(); err != nil {
+		t.Fatal(err)
+	}
+	h, _, sink := recordedHandler(t, &scriptedGate{decision: decision})
+	if _, rerr := callTool(t, h, "resource_patch", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`); rerr == nil {
+		t.Fatal("a spent approval ran the call")
+	}
+	got := lastRecord(t, sink, 1)
+	want := eventlog.Gate{RequestID: "req-spent", Decision: "approved"}
+	if got.Result != eventlog.ResultRefused || got.Reason != eventlog.ReasonGateRejected || got.Gate != want {
+		t.Errorf("record = %+v, want result=refused reason=gate_rejected gate=%+v", got, want)
 	}
 }
 

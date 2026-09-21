@@ -122,16 +122,17 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 	})
 	if err != nil {
 		slog.Warn("approval refused", "tool", name, "pairs", pairsText(gated), "error", err.Error())
-		return nil, errf(-32603, "%s", err.Error())
+		return nil, gateRefusal(err)
 	}
 	if err := decision.Consume(); err != nil {
 		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
-		return nil, errf(-32603, "%s", err.Error())
+		return nil, errf(-32603, "%s", err.Error()).afterVerdict(decision)
 	}
 
 	if rerr := h.confirmCollectionUnchanged(ctx, name, decision, gated, ref, approved); rerr != nil {
 		return nil, rerr
 	}
+	noteGate(ctx, decision)
 
 	slog.Info("approval granted",
 		"tool", name,
@@ -166,7 +167,7 @@ func (h *Handler) confirmCollectionUnchanged(
 	current, err := h.gateCollectionReader.ListTargets(ctx, *ref)
 	if err != nil {
 		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
-		return errf(-32603, "refusing %s: the approved selection could not be re-read before execution: %s", name, err.Error())
+		return errf(-32603, "refusing %s: the approved selection could not be re-read before execution: %s", name, err.Error()).afterVerdict(decision)
 	}
 	if sameTargets(approved.Targets, current.Targets) {
 		return nil
@@ -183,7 +184,7 @@ func (h *Handler) confirmCollectionUnchanged(
 		"request_id", decision.RequestID,
 		"error", reason,
 	)
-	return errf(-32603, "%s", reason)
+	return errf(-32603, "%s", reason).afterVerdict(decision)
 }
 
 // sameTargets reports whether two snapshots name the same objects in the same
@@ -266,7 +267,7 @@ func (h *Handler) resourceDeleteCollection(ctx context.Context, raw json.RawMess
 		GracePeriodSeconds: sel.grace,
 	})
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -164,14 +165,125 @@ type rpcErrorBody struct {
 	Message string `json:"message"`
 }
 
-// rpcErr is an internal carrier for a JSON-RPC error (code + message).
+// rpcErr is an internal carrier for a JSON-RPC error (code + message), and
+// of what the record says about the refusal it is (prd-event-log AC2): a
+// JSON-RPC error never reaches a handler, so every one of them is a refused
+// call that needs a reason.
 type rpcErr struct {
 	code    int
 	message string
+
+	// reason is the refusal's reason when the site that produced the error
+	// knows it; reasonOf fills the rest in from the code.
+	reason eventlog.Reason
+	// gate is what the gate said, on the errors produced after it answered.
+	gate eventlog.Gate
 }
 
 func errf(code int, format string, args ...any) *rpcErr {
 	return &rpcErr{code: code, message: fmt.Sprintf(format, args...)}
+}
+
+// reasonOf is the reason a JSON-RPC error records. -32602 is the arguments
+// (a missing or unknown name, a coordinate that does not parse, a gate pair
+// that cannot be named); every other code this dispatcher produces is the
+// gate layer refusing before it could ask — a declaration the gate cannot
+// work from, an execution step that found no approval on the context.
+func (e *rpcErr) reasonOf() eventlog.Reason {
+	if e.reason != "" {
+		return e.reason
+	}
+	if e.code == -32602 {
+		return eventlog.ReasonInvalidInput
+	}
+	return eventlog.ReasonGateUnconfigured
+}
+
+// afterVerdict marks a refusal that came after the gate had approved: the
+// approval was spent already (AC7), or the target moved under it (AC6). The
+// record keeps the backend's verdict and says the gate layer withheld the
+// approval anyway — that is the case Reason and Gate.Decision differ for.
+func (e *rpcErr) afterVerdict(decision *gatekeeper.Decision) *rpcErr {
+	e.reason = eventlog.ReasonGateRejected
+	e.gate = gateOf(decision)
+	return e
+}
+
+// gateRefusal turns the gate's answer into the JSON-RPC error the caller has
+// always received, carrying the verdict for the record. A gate that answers
+// with an untyped error gave no verdict, which is what unreachable means; a
+// typed refusal without a verdict is a call whose approval context could not
+// be built, and that is the call's own fault: its arguments named something
+// that could not be read.
+func gateRefusal(err error) *rpcErr {
+	e := errf(-32603, "%s", err.Error())
+	var refusal *gatekeeper.Refusal
+	if !errors.As(err, &refusal) {
+		e.reason = eventlog.ReasonGateUnreachable
+		return e
+	}
+	e.gate = eventlog.Gate{RequestID: refusal.RequestID, Decision: string(refusal.Verdict)}
+	switch refusal.Verdict {
+	case gatekeeper.VerdictRejected:
+		e.reason = eventlog.ReasonGateRejected
+	case gatekeeper.VerdictExpired:
+		e.reason = eventlog.ReasonGateExpired
+	case gatekeeper.VerdictTimeout:
+		e.reason = eventlog.ReasonGateTimeout
+	case gatekeeper.VerdictUnconfigured:
+		e.reason = eventlog.ReasonGateUnconfigured
+	case "":
+		e.reason = eventlog.ReasonInvalidInput
+	default:
+		e.reason = eventlog.ReasonGateUnreachable
+	}
+	return e
+}
+
+// gateOf renders an approval for the record (AC2's request id and AC9's
+// auto-approval notice, as fields).
+func gateOf(decision *gatekeeper.Decision) eventlog.Gate {
+	if decision == nil {
+		return eventlog.Gate{}
+	}
+	return eventlog.Gate{
+		RequestID:    decision.RequestID,
+		Decision:     string(gatekeeper.VerdictApproved),
+		AutoApproved: decision.AutoApproved,
+	}
+}
+
+// callNote is what a call learns about itself on the way that the result
+// alone does not say: the gate's answer on a gated path that returns a
+// result, and a handler's failure being an integration that was never
+// configured. It rides on the context because the handlers and the gated
+// paths return the same (result, error) pair they always have — the record
+// is the dispatcher's, and this is how the layers below tell it what they
+// saw without writing records of their own.
+type callNote struct {
+	reason eventlog.Reason
+	gate   eventlog.Gate
+}
+
+type callNoteKey struct{}
+
+func noteFrom(ctx context.Context) *callNote {
+	note, _ := ctx.Value(callNoteKey{}).(*callNote)
+	return note
+}
+
+// noteGate records the approval a gated path is about to execute under.
+func noteGate(ctx context.Context, decision *gatekeeper.Decision) {
+	if note := noteFrom(ctx); note != nil {
+		g := gateOf(decision)
+		if note.gate.RequestID != "" {
+			// A batch spends one approval per document; the record names
+			// them all, in order.
+			g.RequestID = note.gate.RequestID + "," + g.RequestID
+			g.AutoApproved = note.gate.AutoApproved && g.AutoApproved
+		}
+		note.gate = g
+	}
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -233,8 +345,10 @@ func initializeResult() any {
 // (an unknown name, a bad coordinate, the gate) has no handler to write one.
 func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result any, rerr *rpcErr) {
 	record := eventlog.Record{Principal: eventlog.PrincipalFrom(ctx)}
+	note := &callNote{}
+	ctx = context.WithValue(ctx, callNoteKey{}, note)
 	defer func() {
-		record.Result = outcome(result, rerr)
+		record.Result, record.Reason, record.Gate = outcome(result, rerr, note)
 		h.sink().Emit(ctx, record)
 	}()
 
@@ -275,6 +389,9 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 	if rerr != nil {
 		return nil, rerr
 	}
+	if decision != nil {
+		noteGate(ctx, decision)
+	}
 	if approved != nil {
 		ctx = context.WithValue(ctx, approvedTargetKey{}, *approved)
 	}
@@ -293,21 +410,30 @@ func (h *Handler) sink() eventlog.Sink {
 	return eventlog.Log{}
 }
 
-// outcome classifies a call's end for the record (AC1's three results). A
-// JSON-RPC error is always a refusal: every path that produces one — argument
-// validation, the gate, an unknown name — returns before the handler runs,
-// so nothing reached the cluster or an external system. A handler that ran
-// and set isError reports an error; anything else is success.
-func outcome(result any, rerr *rpcErr) eventlog.Result {
+// outcome classifies a call's end for the record (AC1's three results, AC2's
+// reason and gate). A JSON-RPC error is always a refusal: every path that
+// produces one — argument validation, the gate, an unknown name — returns
+// before the handler runs, so nothing reached the cluster or an external
+// system. A handler that ran and set isError reports an error — unless what
+// failed was an integration nobody configured, which is a refusal too (AC4):
+// nothing was sent there either. Anything else is success.
+func outcome(result any, rerr *rpcErr, note *callNote) (eventlog.Result, eventlog.Reason, eventlog.Gate) {
 	if rerr != nil {
-		return eventlog.ResultRefused
+		gate := rerr.gate
+		if gate == (eventlog.Gate{}) {
+			gate = note.gate
+		}
+		return eventlog.ResultRefused, rerr.reasonOf(), gate
 	}
 	if m, ok := result.(map[string]any); ok {
 		if isErr, _ := m["isError"].(bool); isErr {
-			return eventlog.ResultError
+			if note.reason != "" {
+				return eventlog.ResultRefused, note.reason, note.gate
+			}
+			return eventlog.ResultError, "", note.gate
 		}
 	}
-	return eventlog.ResultSuccess
+	return eventlog.ResultSuccess, "", note.gate
 }
 
 // recordTarget reads the four coordinate fields off a generic tool's
@@ -372,7 +498,7 @@ func (h *Handler) dearBabyResetUser(ctx context.Context, raw json.RawMessage) (a
 	command := []string{dearBabyResetBin, *email}
 	outcome, err := h.k8s.ExecInPod(ctx, *namespace, selector, &container, command)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{
@@ -426,7 +552,7 @@ func (h *Handler) githubAppInstallationToken(ctx context.Context, raw json.RawMe
 
 	token, err := h.github.CreateInstallationToken(ctx, repositories, permissions)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	return installationTokenResult(token), nil
 }
@@ -473,7 +599,7 @@ func installationTokenEnv(token *github.InstallationToken) string {
 func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
 	obj, err := h.aws.GetConfig(ctx)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	payload := map[string]any{
@@ -502,7 +628,7 @@ func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
 func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 	sessions, err := h.sessionPlatform.ListSessions(ctx)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	items := make([]any, 0, len(sessions))
 	for _, s := range sessions {
@@ -560,7 +686,7 @@ func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *r
 
 	result, err := h.sessionPlatform.ReadSession(ctx, *id, offset)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	return successResult(map[string]any{
@@ -599,7 +725,7 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 
 	result, err := h.sessionPlatform.WriteSession(ctx, *id, payload)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 
 	return successResult(map[string]any{
@@ -611,7 +737,7 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {
 	creds, err := h.grafana.CreateToken(ctx)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	return grafanaTokenResult(creds), nil
 }
@@ -668,7 +794,7 @@ func (h *Handler) opensearchSearch(ctx context.Context, raw json.RawMessage) (an
 
 	result, err := h.opensearch.Search(ctx, *query, index, size)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	payload := map[string]any{
 		"query": *query,
@@ -700,7 +826,7 @@ func (h *Handler) opensearchDocumentPut(ctx context.Context, raw json.RawMessage
 
 	result, err := h.opensearch.PutDocument(ctx, *index, id, document)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	return successResult(map[string]any{
 		"index":  result.Index,
@@ -725,7 +851,7 @@ func (h *Handler) opensearchDocumentDelete(ctx context.Context, raw json.RawMess
 
 	result, err := h.opensearch.DeleteDocument(ctx, *index, *id)
 	if err != nil {
-		return toolError(err), nil
+		return toolError(ctx, err), nil
 	}
 	return successResult(map[string]any{
 		"index":  result.Index,
@@ -805,7 +931,17 @@ func toolText(text string, isError bool) any {
 	}
 }
 
-func toolError(err error) any {
+// toolError renders a handler's failure for the client, and tells the record
+// when that failure was an integration that is not configured: the response
+// looks the same either way (the caller has always read the message), the
+// record does not (AC4 counts an unconfigured refusal, not an error).
+func toolError(ctx context.Context, err error) any {
+	var u interface{ Unavailable() bool }
+	if errors.As(err, &u) && u.Unavailable() {
+		if note := noteFrom(ctx); note != nil {
+			note.reason = eventlog.ReasonUnconfigured
+		}
+	}
 	return toolText(err.Error(), true)
 }
 

@@ -201,54 +201,77 @@ func TestExpiredVerdictIsRefused(t *testing.T) {
 }
 
 // AC5: every path that is not an observed approval refuses. The table is the
-// list the AC itself enumerates.
+// list the AC itself enumerates. Each row also names the verdict the refusal
+// carries for the record (prd-event-log AC2): a human reads the prose, the
+// record reads the type, and the two must not disagree.
 func TestEveryFailurePathRefuses(t *testing.T) {
 	cases := []struct {
-		name    string
-		backend *fakeBackend
-		tune    func(*Client)
-		want    string
+		name      string
+		backend   *fakeBackend
+		tune      func(*Client)
+		want      string
+		verdict   Verdict
+		requestID string
 	}{
 		{
-			name:    "rejected",
-			backend: &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusRejected}}},
-			want:    "rejected",
+			name:      "rejected",
+			backend:   &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusRejected}}},
+			want:      "rejected",
+			verdict:   VerdictRejected,
+			requestID: "req-1",
 		},
 		{
-			name:    "expired",
-			backend: &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusExpired}}},
-			want:    "expired",
+			name:      "expired",
+			backend:   &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusExpired}}},
+			want:      "expired",
+			verdict:   VerdictExpired,
+			requestID: "req-1",
 		},
 		{
-			name:    "no verdict before the timeout",
-			backend: &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusPending}}},
-			tune:    func(c *Client) { c.cfg.Timeout = 20 * time.Millisecond },
-			want:    "no approval within",
+			name:      "no verdict before the timeout",
+			backend:   &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusPending}}},
+			tune:      func(c *Client) { c.cfg.Timeout = 20 * time.Millisecond },
+			want:      "no approval within",
+			verdict:   VerdictTimeout,
+			requestID: "req-1",
 		},
 		{
 			name:    "external id collision",
 			backend: &fakeBackend{createStatus: http.StatusConflict},
 			want:    "409",
+			verdict: VerdictUnreachable,
 		},
 		{
 			name:    "backend 5xx",
 			backend: &fakeBackend{createStatus: http.StatusInternalServerError},
 			want:    "returned 500",
+			verdict: VerdictUnreachable,
 		},
 		{
 			name:    "unreadable response",
 			backend: &fakeBackend{createBody: "not json"},
 			want:    "unreadable",
+			verdict: VerdictUnreachable,
 		},
 		{
 			name:    "response without a request id",
 			backend: &fakeBackend{createBody: `{"status":"PENDING"}`},
 			want:    "no request id",
+			verdict: VerdictUnreachable,
 		},
 		{
-			name:    "auto rejected",
-			backend: &fakeBackend{createBody: `{"id":"req-1","status":"REJECTED","autoRejected":true}`},
-			want:    "auto-rejected",
+			name:      "unknown status",
+			backend:   &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: "MAYBE"}}},
+			want:      "unknown approval status",
+			verdict:   VerdictUnreachable,
+			requestID: "req-1",
+		},
+		{
+			name:      "auto rejected",
+			backend:   &fakeBackend{createBody: `{"id":"req-1","status":"REJECTED","autoRejected":true}`},
+			want:      "auto-rejected",
+			verdict:   VerdictRejected,
+			requestID: "req-1",
 		},
 	}
 
@@ -262,9 +285,55 @@ func TestEveryFailurePathRefuses(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.want) {
 				t.Errorf("error = %q, want it to mention %q", err, tc.want)
 			}
+			var refusal *Refusal
+			if !errors.As(err, &refusal) {
+				t.Fatalf("error %T is not a *Refusal; the record cannot classify it", err)
+			}
+			if refusal.Verdict != tc.verdict || refusal.RequestID != tc.requestID {
+				t.Errorf("refusal = {%s %q}, want {%s %q}", refusal.Verdict, refusal.RequestID, tc.verdict, tc.requestID)
+			}
 		})
 	}
 }
+
+// AC2 (prd-event-log): the refusals that never reach the backend carry their
+// own verdict — unreachable when no request went through, unconfigured when
+// there was nobody to ask, and none at all when the call itself could not be
+// described.
+func TestRefusalsBeforeAVerdictAreTypedToo(t *testing.T) {
+	unreachable := New(Config{BaseURL: "http://127.0.0.1:1", APIKey: "k", Timeout: time.Second, PollInterval: time.Millisecond}, "homelab-k3s-mcp")
+	cases := map[string]struct {
+		gate    Gate
+		call    Call
+		verdict Verdict
+	}{
+		"unreachable":  {gate: unreachable, call: sampleCall(), verdict: VerdictUnreachable},
+		"unconfigured": {gate: NewUnavailable(nil), call: sampleCall(), verdict: VerdictUnconfigured},
+		"undescribed":  {gate: unreachable, call: describedCall(func(context.Context) (string, error) { return "", errors.New("target could not be read") }), verdict: ""},
+		"reader unconfigured": {gate: unreachable, call: describedCall(func(context.Context) (string, error) {
+			return "", unavailableReader{}
+		}), verdict: VerdictUnconfigured},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			_, err := tc.gate.Authorize(context.Background(), tc.call)
+			var refusal *Refusal
+			if !errors.As(err, &refusal) {
+				t.Fatalf("Authorize() = %v (%T), want a *Refusal", err, err)
+			}
+			if refusal.Verdict != tc.verdict {
+				t.Errorf("verdict = %q, want %q", refusal.Verdict, tc.verdict)
+			}
+		})
+	}
+}
+
+// unavailableReader stands in for a gate reader that was never configured:
+// what internal/k8s's "not configured" error says about itself.
+type unavailableReader struct{}
+
+func (unavailableReader) Error() string     { return "kubernetes client unavailable: not configured" }
+func (unavailableReader) Unavailable() bool { return true }
 
 // AC5: a network that never answers is a refusal, not a hang that eventually
 // runs the call.
