@@ -131,9 +131,11 @@
   이른 신호가 되는 것은 **부수 효과**이며, 안전 보증 자체는 V3의 몫이다. 이 가치를 보안 근거로
   세우면 V3의 「기본값이 안전하게」가 관측에 기대게 되는데, 관측은 fail-open이라
   (`prd-event-log` AC5) 방어선이 될 수 없다.
-- **현재 상태 (2026-09-21)**: 씨앗만 있다 — `internal/mcp/gate.go`·`internal/auth/auth.go`·
-  `internal/server/server.go`의 `slog` 3자리. 집계 가능한 필드도, 메트릭 표면도, 보존도 없다.
-  PRD 2건(`prd-event-log`·`prd-metrics`)이 계약을 세웠고 **구현은 0**이다.
+- **현재 상태 (2026-09-21, 같은 날 갱신)**: `prd-event-log` **AC1·AC3 이 착지했다** — `internal/eventlog`
+  의 레코드(`{시각, 도구, 주체, 대상, 결과}`)를 디스패처가 호출당 한 줄로 stdout 에 낸다. 주체는 JWT
+  `sub` 또는 API 키 위치이고, 좌표 네 필드 외의 값(인자·응답 본문·자격증명·Secret 데이터·exec
+  페이로드)은 레코드에 실릴 자리가 없다. 거부 사유·게이트 판정 필드(AC2)·인증 실패 레코드(AC4)·
+  stdout 너머 보존(AC5)과 **메트릭 표면 전부**(`prd-metrics`)는 아직 0이다.
 - **관련 구성**: 도구 표면이 아니라 서버 공통 기반 — `internal/mcp/gate.go`, `internal/auth`,
   `internal/server`
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
+	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
@@ -63,6 +64,11 @@ type Handler struct {
 	// read from the package global so a test can dispatch against a tool that
 	// production does not ship.
 	registry map[string]toolEntry
+
+	// events receives one record per tools/call (prd-event-log AC1). nil
+	// means eventlog.Log — the field exists so a test can read records as
+	// values instead of scraping the log.
+	events eventlog.Sink
 }
 
 // Option customises a Handler at construction.
@@ -103,6 +109,16 @@ func WithGateCollectionReader(reader k8s.CollectionTargetReader) Option {
 	return func(h *Handler) {
 		if reader != nil {
 			h.gateCollectionReader = reader
+		}
+	}
+}
+
+// WithEventSink routes tool-call records somewhere other than the default
+// log.
+func WithEventSink(sink eventlog.Sink) Option {
+	return func(h *Handler) {
+		if sink != nil {
+			h.events = sink
 		}
 	}
 }
@@ -210,7 +226,18 @@ func initializeResult() any {
 	}
 }
 
-func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *rpcErr) {
+// toolsCall is the one place a tool call is recorded (prd-event-log AC1).
+// The record is written here, after the outcome and around every exit, rather
+// than by the handlers: a handler that writes its own record is a handler
+// that can forget to, and a refusal that happens before any handler runs
+// (an unknown name, a bad coordinate, the gate) has no handler to write one.
+func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result any, rerr *rpcErr) {
+	record := eventlog.Record{Principal: eventlog.PrincipalFrom(ctx)}
+	defer func() {
+		record.Result = outcome(result, rerr)
+		h.sink().Emit(ctx, record)
+	}()
+
 	obj, ok := decodeObject(params)
 	if !ok {
 		return nil, errf(-32602, "missing tool name")
@@ -223,6 +250,7 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 	if !ok {
 		return nil, errf(-32602, "missing tool name")
 	}
+	record.Tool = name
 
 	args := params // arguments are re-decoded per tool from the raw params
 	rawArgs := extractArguments(args)
@@ -230,6 +258,9 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 	entry, ok := h.registry[name]
 	if !ok {
 		return nil, errf(-32602, "unknown tool: %s", name)
+	}
+	if entry.decl.resolve != nil {
+		record.Target = recordTarget(rawArgs)
 	}
 
 	// The gate runs here rather than inside the handlers. A handler that calls
@@ -248,11 +279,55 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (any, *
 		ctx = context.WithValue(ctx, approvedTargetKey{}, *approved)
 	}
 
-	result, rerr := entry.handle(h, ctx, rawArgs)
+	result, rerr = entry.handle(h, ctx, rawArgs)
 	if rerr != nil {
 		return nil, rerr
 	}
 	return annotateAutoApproval(result, decision), nil
+}
+
+func (h *Handler) sink() eventlog.Sink {
+	if h.events != nil {
+		return h.events
+	}
+	return eventlog.Log{}
+}
+
+// outcome classifies a call's end for the record (AC1's three results). A
+// JSON-RPC error is always a refusal: every path that produces one — argument
+// validation, the gate, an unknown name — returns before the handler runs,
+// so nothing reached the cluster or an external system. A handler that ran
+// and set isError reports an error; anything else is success.
+func outcome(result any, rerr *rpcErr) eventlog.Result {
+	if rerr != nil {
+		return eventlog.ResultRefused
+	}
+	if m, ok := result.(map[string]any); ok {
+		if isErr, _ := m["isError"].(bool); isErr {
+			return eventlog.ResultError
+		}
+	}
+	return eventlog.ResultSuccess
+}
+
+// recordTarget reads the four coordinate fields off a generic tool's
+// arguments, and only those four (AC3): the rest of the arguments — a
+// manifest, a patch, an exec command, a proxy body — never reach the record.
+func recordTarget(rawArgs json.RawMessage) eventlog.Target {
+	obj, ok := decodeObject(rawArgs)
+	if !ok {
+		return eventlog.Target{}
+	}
+	field := func(key string) string {
+		s, _ := obj[key].(string)
+		return s
+	}
+	return eventlog.Target{
+		APIVersion: field("apiVersion"),
+		Kind:       field("kind"),
+		Namespace:  field("namespace"),
+		Name:       field("name"),
+	}
 }
 
 // extractArguments pulls the "arguments" field out of the raw tools/call params.
