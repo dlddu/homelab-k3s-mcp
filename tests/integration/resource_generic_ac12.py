@@ -124,9 +124,6 @@ async def test_a_call_without_a_namespace_asks_nobody(session, gate: str) -> Non
         assert "namespace is required" in str(exc), exc
     else:
         raise AssertionError("namespace 없는 컬렉션 삭제가 거부되지 않았다")
-    # 거부가 승인 요청을 만들지 않았음까지 재는 이유: namespace 를 비운 호출은
-    # apiserver 가 **모든 네임스페이스**로 읽는다. 승인 화면에 그 호출이 올라가는 것
-    # 자체가 사고이고, 「거부됐다」만 재는 단언은 그 사고를 통과시킨다.
     assert _pending_count(gate, LABEL) == before, "거부가 승인 요청을 만들었다"
     assert all(_exists(name) for name in DOOMED), "거부된 호출이 객체를 지웠다"
 

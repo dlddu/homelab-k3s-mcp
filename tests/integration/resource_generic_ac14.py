@@ -169,9 +169,6 @@ async def test_one_round_trip_answers_and_closes(session, gate: str) -> dict:
     task, row = await _pending(session, gate, args, marker)
 
     context = row["context"]
-    # 포트와 페이로드를 **같은 화면에서** 재는 것은 시나리오의 요구 그대로다. 페이로드는
-    # 요약이 아니라 전문이어야 하므로 JSON 이 싣는 그대로(줄바꿈이 이스케이프된 형태)를
-    # 찾는다 — 마커만 찾으면 헤더 한 줄만 실어도 통과한다.
     assert re.search(r'"port"\s*:\s*8080', context), f"포트가 화면에 없다:\n{context}"
     verbatim = json.dumps(args["payload"])[1:-1]
     assert verbatim in context, f"페이로드 전문이 화면에 없다:\n{context}"
@@ -200,8 +197,6 @@ async def test_a_second_round_trip_needs_its_own_approval(
     assert get_request(gate, first["id"])["status"] == "APPROVED", (
         "첫 승인이 PENDING 으로 남아 있다 — 아래 관측이 「새 요청」을 가리지 못한다"
     )
-    # 첫 승인이 터널째 재사용된다면 이 호출은 아무도 부르지 않고 그대로 답을 들고 돌아올
-    # 것이다. 실제로 일어나는 것은 그 반대이고, 아래 두 줄이 그 반대를 잰다.
     args = _forward_args("/small.txt", ROUND_TRIP_MARKER, readSeconds=10)
     task, row = await _pending(session, gate, args, ROUND_TRIP_MARKER)
     assert row["id"] != first["id"], (
@@ -229,8 +224,6 @@ async def test_an_answer_over_the_cap_is_cut_and_says_so(session, gate: str) -> 
     assert result.isError is False, result
     payload = result.structuredContent
     assert payload["responseTruncated"] is True, payload
-    # 길이를 상한과 **정확히** 대조하는 것이 이 케이스의 판별식이다. 창이 만료해 끊긴 응답은
-    # 상한보다 짧고, 그때 `responseTruncated` 는 거짓이다 — 「잘렸다」만 재면 둘이 섞인다.
     assert len(payload["response"]) == MAX_OUTPUT_BYTES, len(payload["response"])
     assert payload["tunnelClosed"] is True, payload
 
@@ -249,8 +242,6 @@ async def test_arguments_over_the_cap_are_refused_before_anyone_is_asked(
         assert "readSeconds must be between 1 and 30" in str(exc), exc
     else:
         raise AssertionError("상한을 넘긴 readSeconds 가 거부되지 않았다")
-    # 승인 요청 0건까지 재는 이유: 이 거부가 승인 **뒤에** 오면 운영자는 이미 포트에 닿는
-    # 것을 승인한 뒤다. 「거부됐다」만 재는 단언은 그 순서 사고를 통과시킨다.
     assert len(list_requests(gate, status="PENDING")) == before, (
         "인자 거부가 승인 요청을 만들었다"
     )

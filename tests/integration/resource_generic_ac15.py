@@ -57,9 +57,6 @@ from _workload import NAMESPACE
 POD = "rg-ac15-http"
 SERVICE = "rg-ac15-http"
 
-#: apiserver 의 파드 프록시는 ``name`` 에 포트가 없으면 80 으로 간다. 이 파일은 이름에 포트를
-#: 붙이지 않는 형태(= 시나리오가 적는 「``kind=Pod`` 로 ``GET``」)를 그대로 쓰므로, 파드가 80 을
-#: 들어야 왕복이 성립한다.
 PORT = 80
 
 POD_BODY = "ac15-pod-body"
@@ -286,8 +283,6 @@ async def test_the_node_paths_share_a_pair_and_only_the_screen_tells_them_apart(
 
     await decide(gate, exec_row["id"], "APPROVED")
     result = await task
-    # 경로 허용목록이 있었다면 **승인 뒤에도** 거부됐을 자리다 — 이 줄이 그 허용목록의 부재를
-    # 실물에서 되받는다.
     assert result.isError is False, result
     payload = result.structuredContent
     assert payload["verb"] == "get", payload
