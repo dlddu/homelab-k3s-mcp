@@ -8,16 +8,16 @@
 - AC4: 실행되지 않은 호출도 남는다 (PRD: 이벤트 기록)
 - AC5: stdout 너머 보존, 그리고 수집기 미설정 시 graceful (PRD: 이벤트 기록)
 
-> **시나리오 2·3·4·5·6·7·8 은 전용 e2e 로 닫혔고(2026-09-21 · `rct_20260921-0003` 4·5, `rct_20260921-0006`
-> 2·3·6·7, `rct_20260921-0008` 8), 9 는 🚫 e2e 예외(규칙 4 — 하네스에 수집 경로가 없다), 1 은 ⏳ 구현 대기다.** 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했고
+> **시나리오 1~8 은 전용 e2e 로 닫혔고(2026-09-21 · `rct_20260921-0003` 4·5, `rct_20260921-0006`
+> 2·3·6·7, `rct_20260921-0008` 8, `rct_20260921-0010` 1), 9 는 🚫 e2e 예외(규칙 4 — 하네스에 수집 경로가 없다).** 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했고
 > (AC1·AC3 — `msg="tool call"` 한 줄, 필드 `tool`·`principal`·`target.*`·`result`), 같은 날 거부 사유와
 > 게이트 판정이 필드로 더해졌다(AC2·AC4 — `reason`, `gate.request_id`·`gate.decision`·`gate.auto_approved`;
 > 인증 실패도 `principal=unauthenticated reason=auth_failed` 로 남는다). **AC5 의 수집 경로는 같은 날 배포
 > 구성으로 확정했다**(`rct_20260921-0006` — 서버는 stdout 한 줄만 내고, 클러스터의 Grafana Alloy 가 전 파드
 > stdout 을 Grafana Cloud Loki 로 보낸다; 선언은 `k8s/deployment.yaml` 파드 템플릿 라벨의 주석, 셀렉터는
-> `{namespace="homelab-k3s-mcp", app="homelab-k3s-mcp", container="server"}`). 1 의 해제 조건은 그 시나리오에
-> 적는다(메트릭 표면 — 등재는 `doc-tracker/`의 ⏳ 표). 9 의 예외 사유와 대체 검증(운영 LogQL 절차)은 그 시나리오의
-> 자동화 칸과 `doc-tracker/`의 🚫 표에 있다.
+> `{namespace="homelab-k3s-mcp", app="homelab-k3s-mcp", container="server"}`). 1 의 등식 절은 메트릭 표면
+> (`prd-metrics` AC1 · `rct_20260921-0008`)이 서면서 잴 수 있게 됐다. 9 의 예외 사유와 대체 검증(운영 LogQL 절차)은
+> 그 시나리오의 자동화 칸과 `doc-tracker/`의 🚫 표에 있다.
 
 ## 테스트 시나리오
 
@@ -31,8 +31,11 @@
   같은 구간의 레코드 수가 `mcp_tool_calls_total` 증가분과 **같다** — 두 층의 수가 어긋나면
   집계의 기준이 둘이 된다
 - **검증 AC**: AC1
-- **자동화**: (미작성) — 레코드 방출 지점은 착지했다(2026-09-21). 남은 선행: 기대 결과의 등식 절이
-  요구하는 `mcp_tool_calls_total`(`prd-metrics` AC1)
+- **자동화**: `tests/integration/event_log_ac1_records.py`(primary · 2026-09-21 `rct_20260921-0010`) — `resource_get`(모든 네임스페이스에
+  있는 `kube-root-ca.crt` ConfigMap) · `ping` · `grafana_token`(grafana-mock) 을 한 번씩 부르고, 도구별 레코드가 정확히
+  하나 늘며 `time`·`tool`·`principal`·`target.*`·`result` 가 있음을, `ping` 의 `target.*` 넷이 **키는 있되 값이 빈** 것을
+  단언한다. 등식 절은 같은 구간의 `msg="tool call"` 줄 수 차(3)와 `mcp_tool_calls_total` 전 계열 합의 차를 대조한다
+  (`_metrics.py` 로 파드 9090 스크레이프) — 레인 미선언이라 그 구간에 남의 호출이 없다
 
 ### 시나리오 2: 게이트 판정 여섯의 구분
 

@@ -1,0 +1,116 @@
+# METRICS_DISABLED=1 변형 — tests/integration/metrics_ac5_boundary.py 가 apply 하고 finally 에서 네임스페이스째 지운다.
+# ci.yml 의 상시 픽스처로 올리지 말 것: 파일이 거두는 배포라 상시 apply 와는 삭제·재적용이 경주한다.
+# MCP_API_KEYS 는 tests/integration/_auth_variant.py 의 API_KEY 와 같아야 한다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-metrics-off
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-metrics-off
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-metrics-off
+  namespace: homelab-k3s-mcp-metrics-off
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-metrics-off
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-metrics-off
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-metrics-off
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            - name: MCP_API_KEYS
+              value: ci-e2e-key
+            - name: MCP_K8S_DISABLED
+              value: "1"
+            - name: METRICS_DISABLED
+              value: "1"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-metrics-off
+  namespace: homelab-k3s-mcp-metrics-off
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-metrics-off
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-metrics-off
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
