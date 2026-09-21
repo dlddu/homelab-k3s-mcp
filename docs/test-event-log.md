@@ -8,15 +8,15 @@
 - AC4: 실행되지 않은 호출도 남는다 (PRD: 이벤트 기록)
 - AC5: stdout 너머 보존, 그리고 수집기 미설정 시 graceful (PRD: 이벤트 기록)
 
-> **시나리오 4·5 는 전용 e2e 로 닫혔고(2026-09-21 · `rct_20260921-0003`), 나머지 일곱은 ⏳ 구현 대기다.**
-> 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했고(AC1·AC3 — `msg="tool call"` 한 줄, 필드
-> `tool`·`principal`·`target.*`·`result`), 같은 날 거부 사유와 게이트 판정이 필드로 더해졌다(AC2·AC4 —
-> `reason`, `gate.request_id`·`gate.decision`·`gate.auto_approved`; 인증 실패도
-> `principal=unauthenticated reason=auth_failed` 로 남는다). **AC5 의 수집 경로는 같은 날 배포 구성으로
-> 확정했다**(`rct_20260921-0006` — 서버는 stdout 한 줄만 내고, 클러스터의 Grafana Alloy 가 전 파드 stdout 을
-> Grafana Cloud Loki 로 보낸다; 선언은 `k8s/deployment.yaml` 파드 템플릿 라벨의 주석, 셀렉터는
-> `{namespace="homelab-k3s-mcp", app="homelab-k3s-mcp", container="server"}`). 남은 일곱 중 시나리오
-> 2·3·6·7·8 은 남은 차단이 전용 파일 저작뿐이다. 나머지의 해제 조건은 각 시나리오에 적는다. 등재는
+> **시나리오 2·3·4·5·6·7 은 전용 e2e 로 닫혔고(2026-09-21 · `rct_20260921-0003` 4·5, `rct_20260921-0006`
+> 2·3·6·7), 나머지 셋(1·8·9)은 ⏳ 구현 대기다.** 레코드 방출 지점은 2026-09-21 에 디스패처에 착지했고
+> (AC1·AC3 — `msg="tool call"` 한 줄, 필드 `tool`·`principal`·`target.*`·`result`), 같은 날 거부 사유와
+> 게이트 판정이 필드로 더해졌다(AC2·AC4 — `reason`, `gate.request_id`·`gate.decision`·`gate.auto_approved`;
+> 인증 실패도 `principal=unauthenticated reason=auth_failed` 로 남는다). **AC5 의 수집 경로는 같은 날 배포
+> 구성으로 확정했다**(`rct_20260921-0006` — 서버는 stdout 한 줄만 내고, 클러스터의 Grafana Alloy 가 전 파드
+> stdout 을 Grafana Cloud Loki 로 보낸다; 선언은 `k8s/deployment.yaml` 파드 템플릿 라벨의 주석, 셀렉터는
+> `{namespace="homelab-k3s-mcp", app="homelab-k3s-mcp", container="server"}`). 남은 셋 중 8 은 저작만 남았고,
+> 1·9 의 해제 조건은 각 시나리오에 적는다(1 은 메트릭 표면, 9 는 kind 하네스의 수집 경로). 등재는
 > `doc-tracker/`의 ⏳ 표에 있다.
 
 ## 테스트 시나리오
@@ -41,9 +41,12 @@
 - **기대 결과**: 네 레코드의 판정 필드가 서로 다른 값으로 갈리고, `request_id`가 gatekeeper 쪽
   요청과 일치한다. 「거절」과 「통신 실패」가 같은 값으로 뭉치지 않는다
 - **검증 AC**: AC2
-- **자동화**: (미작성) — 선행 없음(AC2 착지 2026-09-21: `gate.decision` 은 `approved`·`rejected`·
-  `expired`·`timeout`·`unreachable`·`unconfigured` 여섯 값, `gate.request_id` 동반; 실물 gatekeeper
-  픽스처는 `tests/k8s/kind/gatekeeper-fixture.yaml`). 저작만 남았다
+- **자동화**: 통합 `tests/integration/event_log_ac2_decisions.py`(gatekeeper-variant) — 승인·거절은 forward-auth
+  헤더로 판정을 내리고 타임아웃은 변형의 5초 마감을 기다리며, 미설정은 게이트 백엔드가 없는 auth-variant 에
+  짧은 포트포워드로 닿아 만든다. 네 레코드의 `gate.decision` 이 서로 다르고 앞 셋의 `gate.request_id` 가
+  gatekeeper 요청 id 와 같음을 단언한다(타임아웃 레코드는 `approval_gate_ac4.py` 의 타이머 경주대로
+  `timeout`/`expired` 중 하나, `reason` 은 그 판정을 따른다). Go 단위
+  `internal/mcp/eventlog_test.go::TestRefusalRecordsCarryTheirReason`(가짜 게이트)
 
 ### 시나리오 3: `AUTO_APPROVE` 표기
 
@@ -52,8 +55,11 @@
 - **기대 결과**: 레코드의 자동 승인 표기 필드가 참이다. 끈 변형에서는 거짓이고, 두 경우의
   판정 필드는 모두 「승인」이라 **표기 필드 없이는 구별되지 않는다**
 - **검증 AC**: AC2
-- **자동화**: (미작성) — 선행 없음(AC2 착지 2026-09-21: `gate.auto_approved` 필드; `AUTO_APPROVE`
-  변형은 `approval_gate_ac9.py` 가 이미 태운다). 저작만 남았다
+- **자동화**: 통합 `tests/integration/event_log_ac2_auto_approved.py`(gatekeeper-variant) — 같은 사용자의 자동
+  응답 모드를 `AUTO_APPROVE` 로 켜 한 번, `NONE` 으로 되돌려 사람 대신 승인해 한 번 같은 도구를 태운 뒤,
+  두 레코드가 `gate.decision=approved` 로 같고 `gate.auto_approved` 만 `true`/`false` 로 갈리며 그 필드를
+  빼면 (대상 이름·요청 id 외) 나머지 필드가 같음을 단언한다. Go 단위
+  `internal/mcp/eventlog_test.go::TestApprovedRecordsCarryTheRequestIdAndTheAutoApprovalFlag`
 
 ### 시나리오 4: 자격증명 값 비노출
 
@@ -85,9 +91,11 @@
 - **기대 결과**: 두 호출 모두 결과 필드가 거부이고 사유가 인증 실패인 레코드를 남긴다.
   **주체 필드에 제시된 자격증명 값이 실리지 않는다**(AC3과의 교차)
 - **검증 AC**: AC4, AC3
-- **자동화**: (미작성) — 선행 없음(AC4 착지 2026-09-21: 인증 층이 tools/call 본문의 401 마다
-  `principal=unauthenticated result=refused reason=auth_failed` 한 줄을 남긴다; 만료 JWT 는 OIDC
-  픽스처로 만든다). 저작만 남았다
+- **자동화**: 통합 `tests/integration/event_log_ac4_auth_failed.py`(oauth-variant — API 키와 OAuth 를 둘 다 가진
+  배포) — 잘못된 API 키와, 실 발급자 dex 가 password grant 로 서명해 준 뒤 만료된 JWT 로 원시 `tools/call`
+  을 보내 둘 다 401 과 `principal=unauthenticated result=refused reason=auth_failed` 레코드를 단언한다
+  (만료 전 같은 토큰의 성공 레코드 `principal=jwt:<sub>` 가 대조군). 제시한 키 값·JWT 원문·JWT 모양이 두
+  거부 레코드에 없음을 단언한다. Go 단위 `internal/auth/auth_test.go::TestRequireBearerRecordsTheCallItRefuses`
 
 ### 시나리오 7: 검증·게이트·미설정 거부의 기록
 
@@ -96,9 +104,12 @@
 - **기대 결과**: 셋 다 레코드가 남고 사유가 서로 다르다. 클러스터·외부 시스템에 요청이
   **나가지 않았음**도 함께 관측된다
 - **검증 AC**: AC4
-- **자동화**: (미작성) — 선행 없음(AC2·AC4 착지 2026-09-21: 사유는 `invalid_input`·`gate_*`·
-  `unconfigured` 로 갈리고 미설정 거부는 `result=refused` 다; 통합 미설정 변형은 `auth-variant`).
-  저작만 남았다
+- **자동화**: 통합 `tests/integration/event_log_ac4_refusals.py`(auth-variant — 통합·게이트 미설정 변형) —
+  `kind` 없는 좌표(`-32602`), 게이트 백엔드 없는 배포의 게이트 대상 호출, 미설정 통합 도구를 각각 불러
+  세 레코드의 `reason` 이 `invalid_input`·`gate_unconfigured`·`unconfigured` 로 갈리고 셋 다 `result=refused`
+  임을 단언한다. 「나가지 않았음」은 게이트 레코드의 빈 `gate.request_id` 와 gatekeeper 요청 목록의 부재,
+  미설정 응답의 고정 문면, 좌표 거부의 코드로 잰다. Go 단위
+  `internal/server/eventlog_test.go::TestRefusedToolCallIsRecordedOnStdoutWithoutTheCredential`
 
 ### 시나리오 8: 수집기 미설정·도달 불가에서의 graceful
 
