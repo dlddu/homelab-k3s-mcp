@@ -58,6 +58,15 @@ const (
 	VerdictUnconfigured Verdict = "unconfigured"
 )
 
+// Verdicts is the closed set, in the order above. prd-metrics AC3's
+// mcp_gate_wait_seconds{decision} pre-registers one series per value from
+// this list, so the six are enumerated here once rather than counted again
+// where the histogram lives.
+var Verdicts = []Verdict{
+	VerdictApproved, VerdictRejected, VerdictExpired,
+	VerdictTimeout, VerdictUnreachable, VerdictUnconfigured,
+}
+
 // Refusal is every answer of Authorize that is not a Decision, typed so the
 // record can carry the verdict and the request id without parsing the prose
 // a human reads. Verdict is empty when the call was refused before any

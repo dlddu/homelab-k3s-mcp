@@ -457,6 +457,19 @@ func validateRegistry(registered map[string]toolEntry, advertised []string) erro
 // Validate reports whether the tool registry and the advertised tools/list
 // agree. main calls it before listening so a mismatch stops the process rather
 // than shipping a tool whose pairs nobody declared (AC1).
+// ToolNames is the dispatchable tool set, sorted. It is what the metrics of
+// prd-metrics enumerate the tool label from (AC1: every registered tool is
+// a series from the start, AC4: nothing else ever is), so it reads the same
+// registry the dispatcher dispatches from rather than the advertised list.
+func ToolNames() []string {
+	names := make([]string, 0, len(toolRegistry))
+	for name := range toolRegistry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
 func Validate() error {
 	advertised, err := advertisedToolNames()
 	if err != nil {
@@ -559,7 +572,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 			return approvalContext(name, gated, rawArgs, h.sensitiveKinds, ref, approved), nil
 		},
 	}
-	decision, err := h.gate.Authorize(ctx, call)
+	decision, err := h.askGate(ctx, call)
 	if err != nil {
 		slog.Warn("approval refused",
 			"tool", name,

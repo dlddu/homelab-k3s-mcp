@@ -60,9 +60,19 @@ spec:
             - name: http
               containerPort: 3000
               protocol: TCP
+            # 📈 메트릭 노출 포트(prd-metrics AC5). /mcp 와 **다른 리스너**다 — 인그레스
+            # (flux-cd-apps 의 IngressRoute)는 Service 의 `http` 포트만 가리키므로 이 포트는
+            # 클러스터 밖에 나가지 않고, 이 리스너의 mux 에는 `/metrics` 한 경로뿐이라 여기로
+            # 도구를 실행하거나 리소스를 읽을 길이 없다. 수집기 등록은 관측 스택 쪽이다
+            # (Alloy 의 `prometheus.scrape` 블록 — 이 포트 이름 `metrics` 로 고른다).
+            - name: metrics
+              containerPort: 9090
+              protocol: TCP
           env:
             - name: LISTEN_ADDR
               value: 0.0.0.0:3000
+            - name: METRICS_LISTEN_ADDR
+              value: 0.0.0.0:9090
             - name: LOG_LEVEL
               value: info
             # Base URL of the session-platform control plane for the session_*

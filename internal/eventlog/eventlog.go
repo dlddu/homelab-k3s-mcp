@@ -12,6 +12,7 @@ package eventlog
 import (
 	"context"
 	"log/slog"
+	"time"
 )
 
 // Principal is who made the call, spelled the way AC1 asks: a JWT is its
@@ -89,6 +90,11 @@ const (
 	ResultError   Result = "error"
 )
 
+// Results is the closed set, for the same reason Reasons is one: the
+// metrics of prd-metrics pre-register a series per value (AC1's "0 rather
+// than absent"), and a list here cannot drift from the constants above.
+var Results = []Result{ResultSuccess, ResultRefused, ResultError}
+
 // Reason is why a refused call was refused (AC2, AC4). The eight values are
 // prd-metrics AC2's, verbatim: that AC is the single source of the set, and
 // the two layers have to split refusals the same way or a refusal rate seen
@@ -136,6 +142,16 @@ type Record struct {
 	Result    Result
 	Reason    Reason
 	Gate      Gate
+
+	// Duration is how long the dispatcher held the call with the gate wait
+	// taken out, and GateWait how long the gate held it (prd-metrics AC3's
+	// two histograms). Neither reaches the log line: the record's field set
+	// is prd-event-log AC1/AC2's and closed, and "how long" is the metrics'
+	// question. They ride on the record only because both surfaces derive
+	// from this one emission point. Zero on a record the auth layer wrote —
+	// that call was never timed because nothing of it ran.
+	Duration time.Duration
+	GateWait time.Duration
 }
 
 // Sink receives records. The dispatcher holds one so a test can capture
@@ -144,6 +160,19 @@ type Record struct {
 // (both PRDs' "표면 개요" require a single derivation point).
 type Sink interface {
 	Emit(ctx context.Context, r Record)
+}
+
+// Fanout is a Sink that hands each record to every sink it holds, in
+// order. It is how the log line and the metrics of prd-metrics derive from
+// the one emission point both PRDs require without the dispatcher knowing
+// there are two of them.
+type Fanout []Sink
+
+// Emit implements Sink.
+func (f Fanout) Emit(ctx context.Context, r Record) {
+	for _, s := range f {
+		s.Emit(ctx, r)
+	}
 }
 
 // Log is the Sink that writes each record as one structured slog line on the
