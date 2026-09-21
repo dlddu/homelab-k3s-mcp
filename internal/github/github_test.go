@@ -86,8 +86,7 @@ func (f *fakeGitHub) handler() http.HandlerFunc {
 				"id":      9001,
 				"state":   state,
 				"context": statusContext,
-				// No "sha", as on real GitHub. A stub that echoes it fills in
-				// the field for the tool and hides a missing fill (seen live).
+				// No "sha" on purpose — docs/test-github-commit-status.md, 픽스처 절.
 				"description": description,
 				"target_url":  targetURL,
 				"created_at":  "2026-09-20T00:00:00Z",
