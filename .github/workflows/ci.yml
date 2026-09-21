@@ -321,6 +321,15 @@ jobs:
             --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
             --from-literal=GATEKEEPER_USER_ID="$GK_USER_ID" \
             --dry-run=client -o yaml | kubectl apply -f -
+          # The narrow-RBAC variant (tests/k8s/kind/rbac-narrow-fixture.yaml)
+          # takes the primary's values: direct gatekeeper URL and no user id,
+          # so its e2e decides approvals by hand under the default timeout.
+          kubectl create namespace homelab-k3s-mcp-rbac-narrow \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp-rbac-narrow create secret generic homelab-k3s-mcp-gatekeeper \
+            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
+            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
@@ -352,6 +361,12 @@ jobs:
 
       - name: Apply gatekeeper-variant fixture
         run: kubectl apply -f tests/k8s/kind/gatekeeper-variant.yaml
+
+      # Same image, own ServiceAccount bound to a narrow ClusterRole instead of
+      # cluster-admin — the only deployment where resource_generic_ac18.py can
+      # receive a 403 from the apiserver.
+      - name: Apply rbac-narrow fixture
+        run: kubectl apply -f tests/k8s/kind/rbac-narrow-fixture.yaml
 
       # The session pod image, preloaded into the kind node. The control plane
       # gives a session pod two minutes to report Ready and that budget covers
@@ -428,6 +443,9 @@ jobs:
 
       - name: Wait for gatekeeper-variant rollout
         run: kubectl -n homelab-k3s-mcp-gatekeeper-variant rollout status deploy/homelab-k3s-mcp-gatekeeper-variant --timeout=120s
+
+      - name: Wait for rbac-narrow rollout
+        run: kubectl -n homelab-k3s-mcp-rbac-narrow rollout status deploy/homelab-k3s-mcp-rbac-narrow --timeout=120s
 
       # Ready before the primary group runs: session_list_ac{1,2}.py seed and
       # read this control plane. The image is pulled from GHCR (not kind-loaded),
@@ -524,6 +542,8 @@ jobs:
           kubectl -n gatekeeper logs deploy/gatekeeper --tail=200 || true
           kubectl -n homelab-k3s-mcp-gatekeeper-variant get all -o wide || true
           kubectl -n homelab-k3s-mcp-gatekeeper-variant logs deploy/homelab-k3s-mcp-gatekeeper-variant --tail=200 || true
+          kubectl -n homelab-k3s-mcp-rbac-narrow get all -o wide || true
+          kubectl -n homelab-k3s-mcp-rbac-narrow logs deploy/homelab-k3s-mcp-rbac-narrow --tail=200 || true
           kubectl -n github-mock get all -o wide || true
           kubectl -n github-mock describe deploy/github-mock || true
           kubectl -n github-mock logs deploy/github-mock --tail=200 || true

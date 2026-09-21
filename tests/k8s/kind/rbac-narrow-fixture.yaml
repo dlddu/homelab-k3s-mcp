@@ -1,0 +1,200 @@
+# Narrow-RBAC SUT variant for test-resource-generic.md#시나리오 18
+# (resource_generic_ac18.py).
+#
+# The scenario's precondition is a kind the server's RBAC does not grant, and
+# no deployment in this harness can produce one: k8s/rbac.yaml binds the
+# primary's ServiceAccount to cluster-admin (2026-09-14 revision), and every
+# other variant (auth-fixture, oidc-fixture, gatekeeper-variant) binds its own
+# SA to the same cluster-admin. Narrowing k8s/rbac.yaml itself is an
+# operational-manifest change, outside the e2e lens; so the missing grant is
+# created here, in a deployment of its own, and nowhere else.
+#
+# This variant differs from the primary in exactly one respect that the
+# scenario observes: the ClusterRoleBinding's roleRef names the ClusterRole
+# below instead of cluster-admin. That role is shaped by the approval gate's
+# own read path, not by taste:
+#
+# * get/list/watch on the core, apps and rbac groups -- prd-approval-gate AC11
+#   reads the target object on the server's own permission BEFORE it asks
+#   for approval (internal/mcp/gate.go readGateTarget) and once more after it
+#   (confirmTargetUnchanged). Without `get` on clusterroles the call would be
+#   refused at that pre-read, before any approval request exists, and the
+#   scenario's "승인을 받은 뒤 ... resource_patch" would never be reached. The
+#   scenario's (verb, resource) pair is therefore (patch, clusterroles): the
+#   kind is readable, the verb is what is missing.
+# * patch on configmaps -- the one write grant, the e2e's positive control on
+#   THIS deployment.
+# * nothing at all on networking.k8s.io -- a kind with no grant of any verb,
+#   which is what the precondition says literally. There the pre-read itself
+#   is refused and the e2e asserts that no approval request was created.
+#
+# Widening any rule of this role (in particular granting `patch` on
+# clusterroles, or any verb on networkpolicies) turns resource_generic_ac18.py
+# red on purpose.
+#
+# Auth stays ON (MCP_API_KEYS, the throwaway key of auth-fixture.yaml), like
+# commit-status-variant.yaml, so this file adds no GATE entry to
+# docs/e2e-mocking-policy.md. The gate secret ci.yml creates in this namespace
+# carries the primary's values (direct gatekeeper URL, API key, no
+# GATEKEEPER_USER_ID): the e2e decides its approvals by hand, so the 300 s
+# default timeout applies and no auto-response mode can engage. There is no
+# dedicated run_all.py group -- resource_generic_ac18.py runs in the primary
+# group and reaches this Service through its own port-forward, the way
+# github_commit_status_ac4.py reaches its variant.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-rbac-narrow
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-k3s-mcp
+  namespace: homelab-k3s-mcp-rbac-narrow
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: homelab-k3s-mcp:rbac-narrow
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+rules:
+  - apiGroups: ["", "apps", "rbac.authorization.k8s.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-k3s-mcp:rbac-narrow
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: homelab-k3s-mcp:rbac-narrow
+subjects:
+  - kind: ServiceAccount
+    name: homelab-k3s-mcp
+    namespace: homelab-k3s-mcp-rbac-narrow
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-rbac-narrow
+  namespace: homelab-k3s-mcp-rbac-narrow
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # Same throwaway CI key as tests/k8s/kind/auth-fixture.yaml, so the
+            # e2e can reuse _auth_variant.API_KEY.
+            - name: MCP_API_KEYS
+              value: ci-e2e-key
+          envFrom:
+            # Created by ci.yml's "Seed the gatekeeper e2e user" step for THIS
+            # namespace, with the primary's values.
+            - secretRef:
+                name: homelab-k3s-mcp-gatekeeper
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-rbac-narrow
+  namespace: homelab-k3s-mcp-rbac-narrow
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-rbac-narrow
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP

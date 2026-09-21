@@ -445,8 +445,12 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **기대 결과**: apiserver 403을 그대로 흘리지 않고, 부여된 권한 밖임을 밝히는 에러를
   반환하며 그 메시지에 누락된 `(verb, resource)` 쌍이 담김
 - **검증 AC**: AC18
-- **자동화**: (미작성) — 계획: Go 단위 `resource_test.go::TestForbiddenIsTranslated`.
-  통합 `resource_generic_ac18.py`
+- **자동화**: Go 단위 `resource_test.go::TestForbiddenBecomesAGrantStatement`(번역 함수 —
+  가짜 403). 통합 `tests/integration/resource_generic_ac18.py` — 실물 403 은 좁은 ClusterRole 을
+  바인딩한 배포 변형(`tests/k8s/kind/rbac-narrow-fixture.yaml`)에서만 나오므로 파일이 자기
+  포트포워드로 그 변형에 닿는다. 게이트가 승인 전에 대상을 읽으므로(approval-gate AC11)
+  「승인 뒤 403」은 종류는 읽히고 verb 만 빠진 쌍 `(patch, clusterroles)` 로, 「RBAC 에 없는
+  종류」는 승인 요청이 생기기 전의 사전 읽기 거부 `(get, networkpolicies)` 로 각각 관측한다
 
 ### 시나리오 20: 종류 해석
 - **사전 조건**: 픽스처 CRD 설치 전/후 두 상태
