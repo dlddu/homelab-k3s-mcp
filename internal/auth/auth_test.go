@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 )
 
 // The AC1/AC2/AC7 request-path tests exercise only local logic (header parsing,
@@ -470,4 +472,66 @@ func signJWT(t *testing.T, key *rsa.PrivateKey, kid, issuer, audience string) st
 		t.Fatalf("sign jwt: %v", err)
 	}
 	return signed
+}
+
+// prd-event-log AC1/AC3: the identity handed to the dispatcher is the key's
+// position or the JWT's subject, and never the credential itself.
+func TestRequireBearerHandsDownAPrincipalWithoutTheCredential(t *testing.T) {
+	const (
+		kid      = "test-kid"
+		issuer   = "https://issuer.example.test"
+		audience = "homelab-k3s-mcp"
+		subject  = "operator@example.test"
+	)
+	key := newRSAKey(t)
+	cfg := &Config{
+		Issuer:   issuer,
+		Audience: audience,
+		Resource: "https://mcp.example.test/mcp",
+		apiKeys:  []string{"first-key", "second-key"},
+		keys:     map[string]*rsa.PublicKey{kid: &key.PublicKey},
+	}
+	tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
+		"iss": issuer,
+		"aud": audience,
+		"sub": subject,
+		"exp": time.Now().Add(time.Hour).Unix(),
+	})
+	tok.Header["kid"] = kid
+	signed, err := tok.SignedString(key)
+	if err != nil {
+		t.Fatalf("sign jwt: %v", err)
+	}
+
+	cases := []struct {
+		name, credential, want string
+	}{
+		{"second api key", "second-key", "api_key:2"},
+		{"first api key", "first-key", "api_key:1"},
+		{"jwt", signed, "jwt:" + subject},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var got eventlog.Principal
+			next := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+				got = eventlog.PrincipalFrom(r.Context())
+			})
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
+			req.Header.Set("Authorization", "Bearer "+tc.credential)
+			cfg.RequireBearer(next).ServeHTTP(rec, req)
+			if got.String() != tc.want {
+				t.Fatalf("principal = %q, want %q (status %d)", got, tc.want, rec.Code)
+			}
+			if strings.Contains(got.String(), tc.credential) {
+				t.Fatalf("principal %q carries the credential", got)
+			}
+		})
+	}
+
+	t.Run("no auth layer", func(t *testing.T) {
+		if got := eventlog.PrincipalFrom(context.Background()); got != eventlog.Anonymous {
+			t.Fatalf("principal without RequireBearer = %+v, want Anonymous", got)
+		}
+	})
 }
