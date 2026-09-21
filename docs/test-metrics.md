@@ -66,8 +66,8 @@
   ⑵ 이어서 **CRD를 하나 설치하고 그 커스텀 리소스를 조회**한 뒤 다시 스크레이프한다
 - **기대 결과**: 두 경우 모두 시계열 수가 **늘지 않는다**. ⑵가 이 시나리오의 무게중심이다 —
   `kind`가 라벨이면 클러스터가 CRD를 들일 때마다 계열이 늘고, 그 증가는 서버가 통제하지
-  못한다. 노출된 라벨 이름 집합이 정확히 `tool`·`result`·`reason` 셋이고, 리소스 좌표·주체
-  식별자·경로·명령이 라벨 값 어디에도 없다
+  못한다. 노출된 라벨 이름 집합이 정확히 `tool`·`result`·`reason`·`decision`(히스토그램 버킷의
+  `le` 외)이고, 리소스 좌표·주체 식별자·경로·명령이 라벨 값 어디에도 없다
 - **검증 AC**: AC4
 - **자동화**: `tests/integration/metrics_ac4_cardinality.py`(primary · 2026-09-21 `rct_20260921-0010`) — ⑴ 네임스페이스·이름만 다른
   `resource_get` 30회 뒤 계열 수 불변 ⑵ 파일이 CRD(`metricssamples.metrics.homelab-k3s-mcp.test`)를 세우고 established
