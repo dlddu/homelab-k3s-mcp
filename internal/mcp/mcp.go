@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
@@ -263,6 +264,12 @@ func gateOf(decision *gatekeeper.Decision) eventlog.Gate {
 type callNote struct {
 	reason eventlog.Reason
 	gate   eventlog.Gate
+
+	// gateWait is the time the gate held this call, summed over every
+	// Authorize a batch makes (prd-metrics AC3). askGate adds to it; the
+	// dispatcher subtracts it from the call's own duration so a human's
+	// deliberation never reads as tool latency.
+	gateWait time.Duration
 }
 
 type callNoteKey struct{}
@@ -344,11 +351,14 @@ func initializeResult() any {
 // that can forget to, and a refusal that happens before any handler runs
 // (an unknown name, a bad coordinate, the gate) has no handler to write one.
 func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result any, rerr *rpcErr) {
+	start := time.Now()
 	record := eventlog.Record{Principal: eventlog.PrincipalFrom(ctx)}
 	note := &callNote{}
 	ctx = context.WithValue(ctx, callNoteKey{}, note)
 	defer func() {
 		record.Result, record.Reason, record.Gate = outcome(result, rerr, note)
+		record.GateWait = note.gateWait
+		record.Duration = time.Since(start) - note.gateWait
 		h.sink().Emit(ctx, record)
 	}()
 
@@ -401,6 +411,19 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 		return nil, rerr
 	}
 	return annotateAutoApproval(result, decision), nil
+}
+
+// askGate is the one way a call reaches the gate, so the time the gate held
+// it is measured once, here, whichever of the three gated paths asked
+// (prd-metrics AC3). The gate's own answer is untouched — this only notes
+// how long it took.
+func (h *Handler) askGate(ctx context.Context, call gatekeeper.Call) (*gatekeeper.Decision, error) {
+	begin := time.Now()
+	decision, err := h.gate.Authorize(ctx, call)
+	if note := noteFrom(ctx); note != nil {
+		note.gateWait += time.Since(begin)
+	}
+	return decision, err
 }
 
 func (h *Handler) sink() eventlog.Sink {

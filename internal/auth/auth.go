@@ -371,6 +371,17 @@ func refusedToolName(body io.Reader) (string, bool) {
 	return req.Params.Name, true
 }
 
+// RecordTo routes the records this layer writes (a refused tools/call, AC4)
+// to a sink other than the default log. It is the auth-side twin of
+// mcp.WithEventSink: the two layers that emit records have to share one sink
+// for the metrics of prd-metrics to see every refusal, and auth is built by
+// FromEnv rather than with options, so the sink is set after the fact.
+func (c *Config) RecordTo(sink eventlog.Sink) {
+	if sink != nil {
+		c.events = sink
+	}
+}
+
 func (c *Config) sink() eventlog.Sink {
 	if c.events != nil {
 		return c.events

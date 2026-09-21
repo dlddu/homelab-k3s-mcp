@@ -22,7 +22,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 		if err != nil || len(pairs) != 1 || pairs[0] != doc.pair || pairs[0].Verb != "create" || entry.decl.target != nil {
 			return nil, errf(-32603, "create must declare exactly its document's create permission and no existing target")
 		}
-		decision, err := h.gate.Authorize(ctx, gatekeeper.Call{
+		decision, err := h.askGate(ctx, gatekeeper.Call{
 			Tool: name,
 			Pair: doc.pair,
 			Describe: func(context.Context) (string, error) {

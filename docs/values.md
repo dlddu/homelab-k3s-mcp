@@ -139,7 +139,10 @@
   인증 실패·입력 검증·게이트·통합 미설정 거부가 전부 레코드를 남긴다. stdout 너머 보존(AC5)은 **배포
   구성**이다 — 서버 측 출구는 stdout 한 줄뿐이고, 클러스터의 Grafana Alloy 가 전 파드 stdout 을 Grafana
   Cloud Loki 로 보낸다(선언은 `k8s/deployment.yaml` 파드 템플릿 라벨의 주석; 교체된 파드의 레코드가
-  한 셀렉터로 조회됨을 2026-09-21 에 실측). **메트릭 표면 전부**(`prd-metrics`)는 아직 0이다.
+  한 셀렉터로 조회됨을 2026-09-21 에 실측). **메트릭 표면**(`prd-metrics` AC1~AC5)도 같은 날 섰다 —
+  `internal/metrics` 가 레코드 sink 로 같은 방출 지점에서 네 계열을 파생하고(등록 도구 × 결과 3 ·
+  × 사유 8 · 처리 지연 · 게이트 대기 6 판정, 전부 기동 시점 선등록), 별도 리스너(`:9090`)의 `/metrics`
+  한 경로로 노출한다. 수집기(Alloy `prometheus.scrape`) 등록은 관측 스택 쪽에 남아 있다.
 - **관련 구성**: 도구 표면이 아니라 서버 공통 기반 — `internal/mcp/gate.go`, `internal/auth`,
   `internal/server`
 

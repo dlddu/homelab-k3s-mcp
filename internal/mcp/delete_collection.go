@@ -113,7 +113,7 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 		}), nil
 	}
 
-	decision, err := h.gate.Authorize(ctx, gatekeeper.Call{
+	decision, err := h.askGate(ctx, gatekeeper.Call{
 		Tool: name,
 		Pair: gated[0],
 		Describe: func(context.Context) (string, error) {

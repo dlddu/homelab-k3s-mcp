@@ -14,11 +14,13 @@ import (
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
+	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/mcp"
+	"github.com/dlddu/homelab-k3s-mcp/internal/metrics"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
@@ -79,13 +81,18 @@ func main() {
 	gate, gatedKinds := buildGate()
 	gateReader := buildGateReader(k8sSvc)
 	gateCollectionReader := buildGateCollectionReader(k8sSvc)
+	surface, sink := buildMetrics()
+	if authCfg != nil {
+		authCfg.RecordTo(sink)
+	}
 
 	srv := &http.Server{
 		Addr: addr,
 		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc,
 			mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader),
-			mcp.WithGateCollectionReader(gateCollectionReader)),
+			mcp.WithGateCollectionReader(gateCollectionReader), mcp.WithEventSink(sink)),
 	}
+	metricsSrv := buildMetricsServer(surface)
 
 	shutdownCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
@@ -97,6 +104,17 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+	if metricsSrv != nil {
+		go func() {
+			slog.Info("metrics listening", "addr", metricsSrv.Addr)
+			// Not os.Exit: a metrics port that cannot be bound loses the
+			// exposition and nothing else (prd-metrics AC5 — the collector's
+			// absence never reaches /mcp).
+			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				slog.Error("metrics listener failed; the exposition is off, /mcp is unaffected", "error", err)
+			}
+		}()
+	}
 
 	<-shutdownCtx.Done()
 	slog.Info("shutdown signal received")
@@ -106,6 +124,38 @@ func main() {
 	if err := srv.Shutdown(timeoutCtx); err != nil {
 		slog.Error("graceful shutdown failed", "error", err)
 	}
+	if metricsSrv != nil {
+		_ = metricsSrv.Shutdown(timeoutCtx)
+	}
+}
+
+// buildMetrics derives prd-metrics' surface from the one record stream both
+// layers emit (its "표면 개요": same derivation point as the event log). The
+// counters always exist — counting is not what AC5 lets a deployment turn
+// off, exposure is (buildMetricsServer) — and the sink they hang on is the
+// log line first, so a metrics failure could never cost a record.
+func buildMetrics() (*metrics.Metrics, eventlog.Sink) {
+	surface, err := metrics.New(mcp.ToolNames())
+	if err != nil {
+		slog.Error("refusing to start", "error", err)
+		os.Exit(1)
+	}
+	return surface, eventlog.Fanout{eventlog.Log{}, surface}
+}
+
+// buildMetricsServer is the metrics listener (prd-metrics AC5): its own port
+// so the ingress, which fronts LISTEN_ADDR only, never sees it. METRICS_DISABLED
+// turns the exposure off; METRICS_LISTEN_ADDR moves it. nil means no listener.
+func buildMetricsServer(surface *metrics.Metrics) *http.Server {
+	if disabled := os.Getenv("METRICS_DISABLED"); disabled == "1" || disabled == "true" {
+		slog.Warn("METRICS_DISABLED is set: metrics are counted but not exposed")
+		return nil
+	}
+	addr := os.Getenv("METRICS_LISTEN_ADDR")
+	if addr == "" {
+		addr = "0.0.0.0:9090"
+	}
+	return &http.Server{Addr: addr, Handler: server.MetricsApp(surface.Handler())}
 }
 
 func initLogger() {

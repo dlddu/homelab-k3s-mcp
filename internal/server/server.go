@@ -43,6 +43,19 @@ func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc 
 	return logging(mux)
 }
 
+// MetricsApp builds the handler of the metrics listener (prd-metrics AC5).
+// It is a second http.Handler for a second listener rather than a route on
+// App's mux on purpose: App is what the ingress reaches, and a path on it
+// would be public the moment it existed. On its own port the exposition is
+// reachable only inside the cluster, and the mux carries exactly one route —
+// there is no /mcp here to be reached without auth, and nothing on the
+// metrics handler can run a tool or read the cluster.
+func MetricsApp(exposition http.Handler) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("GET /metrics", exposition)
+	return mux
+}
+
 func root(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	_, _ = w.Write([]byte(version.Name))
