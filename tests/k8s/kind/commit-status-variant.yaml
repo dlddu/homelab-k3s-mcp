@@ -1,0 +1,146 @@
+# Prefix-less deployment variant for test-github-commit-status.md#시나리오 4 (b).
+#
+# The scenario's (b) branch asks for a deployment whose GitHub App is configured
+# but GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES is NOT set, so that every context is
+# refused fail-closed. No other variant can stand in for it:
+#
+# * the primary kind deployment sets the prefix (the kind overlay pins
+#   homelab-k3s-mcp/ over the production value review/), which is what (a)
+#   needs;
+# * auth-fixture.yaml attaches no credential secret at all, so there the call
+#   is refused earlier, as "github app unavailable", before the prefix check
+#   runs — an assertion on "tool error + zero upstream requests" would pass
+#   there vacuously without ever exercising the prefix guard.
+#
+# This variant therefore differs from the primary in exactly one respect: the
+# GitHub App secret ci.yml creates in this namespace carries the same client
+# id, installation id, API base URL and private key as the primary's, minus the
+# GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES key, and no env line supplies one either.
+# Adding that env (or that key to the secret) turns
+# tests/integration/github_commit_status_ac4.py red on purpose.
+#
+# Auth stays ON (MCP_API_KEYS, same throwaway key as auth-fixture.yaml) rather
+# than relaxed with MCP_AUTH_DISABLED, so this file adds no GATE entry to
+# docs/e2e-mocking-policy.md. Kubernetes is switched off like the auth variant
+# does: it reads an in-cluster ServiceAccount, not a secret, and nothing here
+# needs it. There is no dedicated run_all.py group — github_commit_status_ac4.py
+# runs in the primary group and reaches this Service through its own
+# port-forward, the way platform_auth_safety_ac8.py reaches the OAuth variants.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-commit-status-variant
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-commit-status-variant
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-commit-status-variant
+  namespace: homelab-k3s-mcp-commit-status-variant
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-commit-status-variant
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-commit-status-variant
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-commit-status-variant
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # Same throwaway CI key as tests/k8s/kind/auth-fixture.yaml, so the
+            # e2e can reuse _auth_variant.API_KEY.
+            - name: MCP_API_KEYS
+              value: ci-e2e-key
+            - name: MCP_K8S_DISABLED
+              value: "1"
+          envFrom:
+            # Created by ci.yml's "Create test GitHub App secret" step for THIS
+            # namespace, without GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES.
+            - secretRef:
+                name: homelab-k3s-mcp-github-app
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-commit-status-variant
+  namespace: homelab-k3s-mcp-commit-status-variant
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-commit-status-variant
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-commit-status-variant
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
