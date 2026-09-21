@@ -315,12 +315,10 @@ func (h *Handler) resourceUpdate(ctx context.Context, raw json.RawMessage) (any,
 // bounds the scale half holds: replicas is an integer in [0, MaxInt32].
 //
 // One function rather than a copy on each side, because both sides run it: the
-// gate runs it before an approval request exists, and the handler runs it again
-// after. `docs/test-resource-generic.md` scenario 8 wants a negative or missing
-// replicas refused with **no approval request made at all**, and the handler is
-// downstream of authorize, so the handler alone cannot deliver that. A second
-// copy is how the refusal the operator never saw and the refusal they did stop
-// agreeing about what a valid call is.
+// gate runs it before an approval request exists (updatePairs says why it
+// must), and the handler runs it again after. A second copy is how the refusal
+// the operator never saw and the refusal they did stop agreeing about what a
+// valid call is.
 func parseUpdateTarget(obj map[string]any) (string, int64, *rpcErr) {
 	subresource := ""
 	if s := optionalString(obj, "subresource"); s != nil {
@@ -531,8 +529,7 @@ func deletionText(result *k8s.ResourceResult, name string, grace *int64) string 
 // parseDeleteTarget reads AC10's one shape — a single object, optionally with a
 // grace period — and refuses every argument that would make it a selection.
 //
-// Both sides run it, for the reason parseUpdateTarget sets out above: a refusal
-// the operator never had to look at is only reachable ahead of authorize.
+// Both sides run it, for the reasons parseUpdateTarget and deletePairs set out.
 //
 // Refusing a stray subresource is not tidiness. genericPairs appends one to the
 // pair it resolves, so a subresource here would have the operator approve
