@@ -23,8 +23,6 @@ import subprocess
 
 import httpx
 
-# Re-exported, not used here: the two platform-auth-safety files import it from
-# this module and predate the move to _helpers.
 from _helpers import port_forward  # noqa: F401
 
 # --- dex (실 OIDC 발급자) -----------------------------------------------------
@@ -40,18 +38,14 @@ ISSUER = "http://dex.dex.svc.cluster.local:5556"
 
 OAUTH_NAMESPACE = "homelab-k3s-mcp-oauth"
 
-#: 구성 (c) — `MCP_OAUTH_*` 와 `MCP_API_KEYS` 를 둘 다 들고 있다.
-#: `oauth-variant` 러너 그룹이 이 배포를 상대로 돈다.
 BOTH_DEPLOYMENT = "homelab-k3s-mcp-oauth"
 BOTH_RESOURCE = "http://homelab-k3s-mcp-oauth.homelab-k3s-mcp-oauth.svc.cluster.local"
 
-#: 구성 (b) — `MCP_OAUTH_*` 만.
 OAUTH_ONLY_DEPLOYMENT = "homelab-k3s-mcp-oauth-only"
 OAUTH_ONLY_RESOURCE = (
     "http://homelab-k3s-mcp-oauth-only.homelab-k3s-mcp-oauth.svc.cluster.local"
 )
 
-#: 구성 (d) — 아무것도 미설정. 기동에 실패하는 것이 의도다.
 NO_AUTH_DEPLOYMENT = "homelab-k3s-mcp-no-auth"
 
 #: 세 변형이 공유하는 audience. `MCP_OAUTH_RESOURCE` 는 일부러 이것과 다른 값이라,
@@ -65,12 +59,8 @@ API_KEY = "ci-oauth-e2e-key"
 
 # --- 경로·문자열 --------------------------------------------------------------
 
-#: 보호 리소스 메타데이터 (RFC 9728). `internal/server/server.go` 가 OAuth 가 구성된
-#: 경우에만 이 라우트를 건다.
 PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource"
 
-#: OIDC 디스커버리. `internal/auth/auth.go::configureOAuth` 가 기동 시 발급자에게서
-#: 이것을 가져와 `jwks_uri` 를 읽는다.
 OPENID_CONFIGURATION_PATH = "/.well-known/openid-configuration"
 
 #: `auth.FromEnv` 가 어느 자격증명 경로도 구성되지 않았을 때 내는 오류의 고정 접두.
