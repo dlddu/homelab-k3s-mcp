@@ -33,10 +33,7 @@ data:
 
     DEFAULT_PERMISSIONS = {"contents": "read", "metadata": "read"}
 
-    # Knobs test-github-app-installation-token.md#시나리오 5 needs: an installation
-    # whose grant carries statuses:write, a mint that hands back more than it was
-    # asked for, and an unreadable installation. All three default to off so every
-    # other e2e sees the stock GitHub shapes.
+    # All three knobs default to off so every other e2e sees the stock GitHub shapes.
     DEFAULT_CONFIG = {
         "installation_status": 200,
         "installation_permissions": None,

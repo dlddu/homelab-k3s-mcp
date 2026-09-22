@@ -16,10 +16,6 @@ data:
     region = ap-northeast-2
     output = json
 ---
-# S3-compatible object store standing in for AWS S3 + STS. The server assumes
-# AWS_CONFIG_ROLE_ARN against MinIO's STS endpoint and reads the seeded object
-# with the resulting credentials, exercising the full aws_config_get path
-# end-to-end without touching real AWS.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
