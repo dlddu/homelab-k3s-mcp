@@ -261,8 +261,9 @@ func TestProxyRefusalsCostNoApproval(t *testing.T) {
 		{"port on a node", `{"apiVersion":"v1","kind":"Node","name":"worker-1","method":"GET","path":"/metrics","port":10250}`, "Pod and Service"},
 		{"port zero", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":0}`, "between 1 and 65535"},
 		{"port above the range", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"70000"}`, "between 1 and 65535"},
-		{"port name with a colon", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"https:metrics"}`, "valid port name"},
-		{"port name too long", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"a-very-long-port-name"}`, "valid port name"},
+		{"named port on a pod", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"metrics"}`, "takes a port number"},
+		{"port name with a colon", `{"apiVersion":"v1","kind":"Service","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"https:metrics"}`, "valid port name"},
+		{"port name too long", `{"apiVersion":"v1","kind":"Service","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"a-very-long-port-name"}`, "valid port name"},
 		{"port not a number or string", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":true}`, "port number or a named"},
 	}
 	for _, tc := range refusals {

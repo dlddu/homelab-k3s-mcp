@@ -387,8 +387,8 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   아니므로 단언하지 않는다. **창·상한·인코딩은 실물이 아니어도 관측되므로 이 파일이 다시 재지
   않고, 그 귀속은 위의 Go 단위 아홉에 그대로 남는다**. `port` 절(2026-09-22)은 Go 단위
   `TestProxyPortReachesTheChosenPort`(포트 전달 · `context` 의 `on port` · 응답 `port` · 미지정 시
-  기본)와 `TestProxyRefusalsCostNoApproval` 의 포트 행 일곱(`name` 에 붙인 포트 · `Node` · 범위 ·
-  이름 형식 · 타입), `internal/k8s/proxy_test.go` 의 `TestProxyTargetNameCarriesThePort`(apiserver
+  기본)와 `TestProxyRefusalsCostNoApproval` 의 포트 행 여덟(`name` 에 붙인 포트 · `Node` · `Pod` 의
+  이름 포트 · 범위 · 이름 형식 · 타입), `internal/k8s/proxy_test.go` 의 `TestProxyTargetNameCarriesThePort`(apiserver
   에 넘기는 `⟨이름⟩:⟨포트⟩`)가 잰다. 실물 파드의 둘째 포트로 도달하는 통합 단언은 아직 없다
 
 ### 시나리오 16: 민감 종류는 읽기도 쓰기도 승인을 거친다

@@ -562,7 +562,7 @@ const toolsListJSON = `{
           },
           "port": {
             "type": ["integer", "string"],
-            "description": "Pod or Service port to reach: a number (1-65535) or a named port (e.g. \"metrics\"). Optional; omitted = the apiserver's default (the first declared port). Refused for Node, whose proxy always reaches the kubelet. Shown on the approval screen next to the path."
+            "description": "Pod or Service port to reach: a number (1-65535), or for a Service also a named service port (e.g. \"metrics\") — the apiserver resolves names only for Services. Optional; omitted = the apiserver's default (the first declared port). Refused for Node, whose proxy always reaches the kubelet. Shown on the approval screen next to the path."
           },
           "method": {
             "type": "string",

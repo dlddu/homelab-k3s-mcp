@@ -138,6 +138,9 @@ func parseProxyPort(obj map[string]any, kind string) (*string, *rpcErr) {
 		port = strconv.FormatInt(n, 10)
 		return &port, nil
 	}
+	if strings.EqualFold(kind, "Pod") {
+		return nil, errf(-32602, "port %q: a Pod proxy takes a port number; the apiserver resolves port names only for a Service", port)
+	}
 	if !proxyPortName.MatchString(port) || strings.Contains(port, "--") {
 		return nil, errf(-32602, "port %q is neither a port number nor a valid port name (lowercase letters, digits and '-', at most 15, at least one letter)", port)
 	}
