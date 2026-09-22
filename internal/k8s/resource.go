@@ -27,14 +27,8 @@ import (
 )
 
 // tableAccept asks the apiserver for the same server-side rendering kubectl
-// gets (prd-resource-generic AC2, AC17).
-//
-// The parameters are derived from metav1 rather than typed out. The apiserver
-// matches them against a GroupVersionKind and treats one it does not recognise
-// as "no alternate representation available", which — because the header also
-// offers plain application/json — is answered with the ordinary list instead of
-// an error. A typo there is therefore not a failed request but an empty table,
-// and no test that feeds this package a Table it wrote itself can see it.
+// gets (prd-resource-generic AC2, AC17). What an unrecognised parameter does,
+// and why a self-made Table cannot see it, is at tableNegotiatingServer.
 var tableAccept = fmt.Sprintf(
 	"application/json;as=Table;v=%s;g=%s, application/json",
 	metav1.SchemeGroupVersion.Version, metav1.SchemeGroupVersion.Group,
@@ -315,13 +309,9 @@ func (s *KubeService) similarKinds(ctx context.Context, kind string) []string {
 // rankSimilarKinds is the candidate half of AC20's refusal, split from discovery
 // so the ranking can be exercised without a cluster.
 //
-// Containment answers prefixes and suffixes only. A name whose letters go
-// missing in the middle — `Deploymnt`, the input test-resource-generic.md
-// scenario 20 names — neither contains nor is contained by `deployment`, so the
-// refusal used to fall through to "call api_resources" on exactly the case AC20
-// exists for. Edit distance covers that class. Containment stays beside it
-// because a deliberate fragment like `Deploy` is a partial name rather than a
-// typo, and sits too far from any kind to survive the budget.
+// Containment stays beside edit distance because a deliberate fragment like
+// `Deploy` is a partial name rather than a typo, and sits too far from any kind
+// to survive the budget (TestUnknownKindSuggestsCandidates holds the shapes).
 func rankSimilarKinds(all []APIResource, kind string) []string {
 	want := strings.ToLower(kind)
 	budget := kindEditBudget(want)
@@ -351,8 +341,6 @@ func rankSimilarKinds(all []APIResource, kind string) []string {
 		seen[label] = true
 		found = append(found, candidate{label: label, distance: distance})
 	}
-	// Nearest first, so that cutting the list at five cannot drop the kind the
-	// caller meant in favour of an alphabetically earlier containment match.
 	sort.Slice(found, func(i, j int) bool {
 		if found[i].distance != found[j].distance {
 			return found[i].distance < found[j].distance
@@ -710,10 +698,8 @@ func objectNamespace(res resolved, kind string, namespace *string) (string, erro
 const ScaleSubresource = "scale"
 
 // UpdateResource replaces one object whole, or writes a replica count to its
-// scale subresource (AC8).
-//
-// The gate supplies the version: reading a fresher one here would silently
-// authorize a state the operator never saw.
+// scale subresource (AC8), under the version the gate approved
+// (mcp.confirmTargetUnchanged).
 func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error) {
 	if ref.ApprovedResourceVersion == "" {
 		return nil, apiErrorf("resource_update requires the approved target resourceVersion; request a new approval")
@@ -886,12 +872,8 @@ func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*Resourc
 	return &ResourceResult{Resource: res.gvr.Resource, Namespace: namespace, Object: object}, nil
 }
 
-// DeleteResource removes one object (AC10).
-//
-// The answer says the apiserver accepted the removal, not that the object is
-// gone: finalizers and a termination grace period both run after the call
-// returns, so a tool that reported "deleted" would be telling the operator
-// something it did not observe. What it can report is the request it made.
+// DeleteResource removes one object (AC10). The answer is the request it made,
+// not the object's fate (mcp.deletionText holds why).
 func (s *KubeService) DeleteResource(ctx context.Context, ref DeleteRef) (*ResourceResult, error) {
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
 	if err != nil {
