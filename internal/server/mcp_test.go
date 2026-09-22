@@ -1439,9 +1439,7 @@ func TestToolsListAdvertisesSessionRead(t *testing.T) {
 		t.Fatalf("required = %v, want [id]: offset defaults to 0", required)
 	}
 
-	// The PRD pins every hint, and readOnlyHint=false is the load-bearing one:
-	// a read activates its target, so a client must not treat this as a safe
-	// observation the way it treats session_list.
+	// The PRD pins every hint, and readOnlyHint=false is the load-bearing one.
 	if at(t, read, "annotations", "title") != "Read Session Output" ||
 		at(t, read, "annotations", "readOnlyHint") != false ||
 		at(t, read, "annotations", "destructiveHint") != false ||
@@ -1460,11 +1458,7 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 				LastAccess: "2026-09-04T00:00:00Z",
 			},
 			Path: "snapshot->restore->read",
-			// An incremental read: the payload is the 16-byte increment but
-			// the cursor is an absolute offset into the whole output. The two
-			// must never be conflated — the control plane's OpenAPI is
-			// explicit that clients pass back the issued cursor rather than a
-			// computed length.
+			// An absolute cursor, not len(payload): the two differ here on purpose.
 			Payload:    "restored output\n",
 			NextOffset: 1024,
 		}, nil
@@ -1482,8 +1476,7 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 		t.Fatalf("nextOffset = %v, want the server-issued cursor passed through verbatim",
 			at(t, body, "result", "structuredContent", "nextOffset"))
 	}
-	// AC2: the branch that served the call, and the session as it stands after
-	// it, are both visible — this read brought a reclaimed pod back.
+	// AC2: the branch and the session after the call are both visible.
 	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->read" {
 		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
 	}
@@ -1499,8 +1492,6 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 	}
 }
 
-// TestSessionReadOffsetDefaultsToZero: omitting the cursor means "everything
-// since the session started", so the tool must not require it.
 func TestSessionReadOffsetDefaultsToZero(t *testing.T) {
 	fake := &fakeSessionPlatform{}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
@@ -1514,9 +1505,7 @@ func TestSessionReadOffsetDefaultsToZero(t *testing.T) {
 	}
 }
 
-// TestSessionReadRejectsBadArguments is AC3 at the protocol layer. Each refusal
-// is a JSON-RPC invalid-params error rather than a tool error, and — the part
-// that AC3 actually cares about — none of them reaches the control plane.
+// TestSessionReadRejectsBadArguments is AC3 at the protocol layer.
 func TestSessionReadRejectsBadArguments(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -1571,7 +1560,6 @@ func TestSessionReadSurfacesNotFound(t *testing.T) {
 		!strings.Contains(text, "s-missing") {
 		t.Fatalf("text = %q, want a not-found error naming the session", text)
 	}
-	// Distinct from the unavailable refusal a caller sees with no endpoint.
 	if strings.Contains(text, "unavailable") {
 		t.Fatalf("text = %q, want a missing session to read differently from an unconfigured server", text)
 	}
@@ -1693,8 +1681,6 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	if at(t, body, "result", "structuredContent", "session", "pod") != "pod-91ab" {
 		t.Fatalf("session.pod = %v", at(t, body, "result", "structuredContent", "session", "pod"))
 	}
-	// The write is non-blocking, so it reports no output at all: a caller has
-	// to read to see what the prompt produced.
 	sc, _ := at(t, body, "result", "structuredContent").(map[string]any)
 	if _, present := sc["payload"]; present {
 		t.Fatalf("structuredContent = %v, want no output field: output is recovered with session_read", sc)
