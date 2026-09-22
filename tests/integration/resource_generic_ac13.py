@@ -19,9 +19,8 @@ Go 단위(``internal/mcp/attach_test.go``)가 인자 파싱·쌍·`readSeconds` 
 gatekeeper 요청 수가 같은지를 함께 본다 — 승인을 한 번 태우고 나서 오는 거부는 시나리오가 요구한
 그 거부가 아니다.
 
-**대상 파드는 이 파일이 세운다.** ``stdin: true`` 가 필요한 파드는 이 시나리오 전용이라
-``tests/k8s/kind/`` 에 두면 아무도 쓰지 않는 픽스처가 CI 에 상주하고, 이 레포는 이미 「각 파일이
-자기 선행 조건을 스스로 성립시킨다」를 택했다(``resource_generic_ac1.py`` 와 같은 자리).
+**대상 파드는 이 파일이 세운다** — 이 레포는 「각 파일이 자기 선행 조건을 스스로
+성립시킨다」를 택했다(``resource_generic_ac1.py`` 와 같은 자리).
 """
 
 from __future__ import annotations
