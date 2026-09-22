@@ -257,6 +257,13 @@ func TestProxyRefusalsCostNoApproval(t *testing.T) {
 		{"bodyBase64 not base64", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"POST","path":"/x","bodyBase64":"!!!"}`, "not valid base64"},
 		{"readSeconds over the cap", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/x","readSeconds":31}`, "between 1 and 30"},
 		{"readSeconds below one", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/x","readSeconds":0}`, "between 1 and 30"},
+		{"port folded into the name", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api:9090","method":"GET","path":"/metrics"}`, "separate port argument"},
+		{"port on a node", `{"apiVersion":"v1","kind":"Node","name":"worker-1","method":"GET","path":"/metrics","port":10250}`, "Pod and Service"},
+		{"port zero", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":0}`, "between 1 and 65535"},
+		{"port above the range", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"70000"}`, "between 1 and 65535"},
+		{"port name with a colon", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"https:metrics"}`, "valid port name"},
+		{"port name too long", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":"a-very-long-port-name"}`, "valid port name"},
+		{"port not a number or string", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":true}`, "port number or a named"},
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
@@ -277,4 +284,53 @@ func TestProxyRefusalsCostNoApproval(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProxyPortReachesTheChosenPort(t *testing.T) {
+	cases := []struct {
+		name string
+		kind string
+		port string
+		want string
+	}{
+		{"numeric port on a pod", "Pod", `9090`, "9090"},
+		{"numeric string is normalised", "Pod", `"09090"`, "9090"},
+		{"named port on a service", "Service", `"metrics"`, "metrics"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			h, fake, _ := testHandlerReading(t, gate, toolRegistry, newStateReader())
+			args := `{"apiVersion":"v1","kind":"` + tc.kind + `","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":` + tc.port + `}`
+			result, rerr := callTool(t, h, "resource_proxy", args)
+			if rerr != nil {
+				t.Fatalf("tools/call = %v, want the approved proxy call to run", rerr)
+			}
+			ref, _, _, _, _ := fake.proxy()
+			if ref.Name != "api" {
+				t.Errorf("name = %q, want the object name alone", ref.Name)
+			}
+			if ref.Port == nil || *ref.Port != tc.want {
+				t.Errorf("port = %v, want %q", ref.Port, tc.want)
+			}
+			if ctx := gate.context(0); !strings.Contains(ctx, "GET /metrics on port "+tc.want) {
+				t.Errorf("approval context does not name the port:\n%s", ctx)
+			}
+			structured := result.(map[string]any)["structuredContent"].(map[string]any)
+			if got, _ := structured["port"].(*string); got == nil || *got != tc.want {
+				t.Errorf("response port = %v, want %q", structured["port"], tc.want)
+			}
+		})
+	}
+
+	t.Run("no port leaves the apiserver default", func(t *testing.T) {
+		h, fake := approvingHandler(t)
+		args := `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/metrics"}`
+		if _, rerr := callTool(t, h, "resource_proxy", args); rerr != nil {
+			t.Fatalf("tools/call = %v, want the approved proxy call to run", rerr)
+		}
+		if ref, _, _, _, _ := fake.proxy(); ref.Port != nil {
+			t.Errorf("port = %q, want none", *ref.Port)
+		}
+	})
 }

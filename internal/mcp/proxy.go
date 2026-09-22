@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -44,6 +46,13 @@ func parseProxyTarget(obj map[string]any) (proxyArgs, *rpcErr) {
 	name := optionalString(obj, "name")
 	if name == nil {
 		return proxyArgs{}, errf(-32602, "name is required; this tool reaches one named object, not a selection")
+	}
+	if strings.Contains(*name, ":") {
+		return proxyArgs{}, errf(-32602, "name must be the object's name alone; %q reads as ⟨name⟩:⟨port⟩, which this tool takes as the separate port argument", *name)
+	}
+	port, rerr := parseProxyPort(obj, *kind)
+	if rerr != nil {
+		return proxyArgs{}, rerr
 	}
 	if sub, _ := obj["subresource"].(string); sub != "" {
 		return proxyArgs{}, errf(-32602, "resource_proxy always exercises ⟨kind⟩/proxy; name the object with apiVersion, kind and name, and pass no subresource")
@@ -93,6 +102,7 @@ func parseProxyTarget(obj map[string]any) (proxyArgs, *rpcErr) {
 			Kind:       *kind,
 			Namespace:  optionalString(obj, "namespace"),
 			Name:       *name,
+			Port:       port,
 		},
 		method:      upper,
 		path:        *path,
@@ -101,6 +111,40 @@ func parseProxyTarget(obj map[string]any) (proxyArgs, *rpcErr) {
 		readSeconds: readSeconds,
 	}, nil
 }
+
+func parseProxyPort(obj map[string]any, kind string) (*string, *rpcErr) {
+	raw, present := obj["port"]
+	if !present {
+		return nil, nil
+	}
+	if strings.EqualFold(kind, "Node") {
+		return nil, errf(-32602, "port applies to Pod and Service; a Node proxy always reaches the kubelet (prd-resource-generic AC15)")
+	}
+	var port string
+	switch v := raw.(type) {
+	case string:
+		port = v
+	default:
+		n, ok := intValue(v)
+		if !ok {
+			return nil, errf(-32602, "port must be a port number or a named container port")
+		}
+		port = strconv.FormatInt(n, 10)
+	}
+	if n, err := strconv.ParseInt(port, 10, 64); err == nil {
+		if n < 1 || n > 65535 {
+			return nil, errf(-32602, "port must be between 1 and 65535; %d was asked for", n)
+		}
+		port = strconv.FormatInt(n, 10)
+		return &port, nil
+	}
+	if !proxyPortName.MatchString(port) || strings.Contains(port, "--") {
+		return nil, errf(-32602, "port %q is neither a port number nor a valid port name (lowercase letters, digits and '-', at most 15, at least one letter)", port)
+	}
+	return &port, nil
+}
+
+var proxyPortName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,13}[a-z0-9])?$`)
 
 // parseProxyBody reads the bytes to send, in the two spellings
 // parsePortForwardPayload uses and for the same reason: AC15 says a body and
@@ -187,6 +231,7 @@ func (h *Handler) resourceProxy(ctx context.Context, raw json.RawMessage) (any, 
 		"kind":         args.ref.Kind,
 		"namespace":    args.ref.Namespace,
 		"name":         args.ref.Name,
+		"port":         args.ref.Port,
 		"method":       outcome.Method,
 		"verb":         outcome.Verb,
 		"path":         outcome.Path,

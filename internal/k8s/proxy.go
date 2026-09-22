@@ -80,7 +80,7 @@ func (s *KubeService) ProxyResource(ctx context.Context, ref ProxyRef, method, p
 
 	req := s.clientset.CoreV1().RESTClient().Verb(method).
 		Resource(res.gvr.Resource).
-		Name(ref.Name).
+		Name(proxyTargetName(ref)).
 		SubResource("proxy")
 	if namespace != "" {
 		req = req.Namespace(namespace)
@@ -155,6 +155,13 @@ func ProxyVerbForMethod(method string) string {
 		return "delete"
 	}
 	return ""
+}
+
+func proxyTargetName(ref ProxyRef) string {
+	if ref.Port == nil {
+		return ref.Name
+	}
+	return ref.Name + ":" + *ref.Port
 }
 
 // splitProxyPath separates the path from its query so each half can be handed
