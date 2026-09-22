@@ -10,8 +10,7 @@ Go 단위 ``internal/mcp/resource_test.go::TestExecStreamsAndCaps`` 가 인자 �
 그 사실이 응답에 표시되는지.
 
 대상은 기존 픽스처 ``tests/k8s/kind/resource-generic-fixture.yaml`` 의
-`resource-generic-multi` 파드다(컨테이너 `chatty`=busybox · `quiet`=pause). 이 렌즈의
-산출물은 e2e 뿐이라 픽스처를 새로 만들지 않고 이미 있는 다중 컨테이너 워크로드를 쓴다.
+`resource-generic-multi` 파드다(컨테이너 `chatty`=busybox · `quiet`=pause).
 
 `resource_exec` 은 **언제나** 승인을 거치므로 모든 케이스가 승인 댄스를 탄다. 컨테이너
 누락 케이스도 마찬가지다 — 그 거절은 인자 검증이 아니라 승인 뒤 kubelet 이 내는
@@ -32,11 +31,7 @@ Go 단위 ``internal/mcp/resource_test.go::TestExecStreamsAndCaps`` 가 인자 �
 단독으로** 돌리므로(`run_all.py` 머리말) 이 파일은 `resource-generic` 레인과 동시에 돌지
 않는다 — 여기서 기다리는 상대는 다른 테스트가 아니라 **아직 서지 않은 픽스처**다.
 
-**이 파일은 한 번 물렸다가 돌아왔다.** 첫 판(`rct_20260918-0003` 시도 2)의 실물 왕복이
-「성공한 exec 가 `exitCode: null · success: false` 로 온다」는 제품 결함을 드러내 등재를
-물렸고, #137 이 그 분류를 `execStreamOutcome` 으로 뽑아 닫으면서 바이트 상한이 응답 대신
-`APIError` 로 새던 두 번째 자리도 함께 닫혔다(경위는 `docs/doc-tracker.md` 변경 이력).
-그래서 아래 두 단언이 그 두 자리의 회귀 방지선이다 — `echo` 왕복의 `isError: false ·
+**아래 두 단언은 #137 이 닫은 두 자리의 회귀 방지선이다** — `echo` 왕복의 `isError: false ·
 exitCode: 0`, 그리고 `yes` 왕복이 **에러 텍스트가 아니라 구조화 응답**으로 싣는
 `stdoutTruncated`.
 
