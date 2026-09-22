@@ -231,7 +231,6 @@ def wait_for_single_ready_pod(selector: str, timeout: float = 120.0) -> None:
         last = proc.stdout.strip() or proc.stderr.strip()
         if proc.returncode == 0:
             pods = [entry for entry in proc.stdout.strip().split(";") if entry]
-            # One pod, no deletionTimestamp, Ready=True.
             if pods == ["|True"]:
                 return
         time.sleep(2)

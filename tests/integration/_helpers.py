@@ -29,21 +29,15 @@ import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
-# The complete tool surface the server advertises. ``internal/mcp/toolslist.go``
-# declares it statically, so it does not depend on which integrations are
-# configured -- both the primary deployment and the credential-less auth-variant
-# must advertise all of it. Keep it complete: the assertions below subtract this
-# set from what the server returned, so a tool missing *here* is not a failure,
-# it is a silently weaker check. That has now happened twice -- ``session_list``
-# was missing from 2026-09-03 until the session-list e2e slice noticed, and
-# ``session_read`` from 2026-09-04 until the session-write slice did -- so the
-# rule is that the PR adding a tool updates this set in the same commit.
+# The complete tool surface the server advertises. Keep it complete: the
+# assertions below subtract this set from what the server returned, so a tool
+# missing *here* is not a failure, it is a silently weaker check. That has now
+# happened twice -- ``session_list`` was missing from 2026-09-03 until the
+# session-list e2e slice noticed, and ``session_read`` from 2026-09-04 until
+# the session-write slice did -- so the rule is that the PR adding a tool
+# updates this set in the same commit.
 # ``internal/server/mcp_test.go::TestToolsListIncludesAllTools`` pins the same
-# surface by exact count on the Go side; the two lists must agree. Two files read
-# this: ``platform_auth_safety_ac5.py``
-# asserts it on the variant (that is the AC -- the server keeps advertising every
-# tool with each integration unset) and ``smoke.py`` asserts it on the primary
-# deployment as the shared precondition of the cases that drive those tools.
+# surface by exact count on the Go side; the two lists must agree.
 EXPECTED_TOOLS = {
     "ping",
     "api_resources",
@@ -170,11 +164,7 @@ async def assert_destructive_annotation(
 #
 # ci.yml opens one port-forward per runner group, held for as long as that
 # group's step lives. A file that has to reach some *other* service opens its
-# own, briefly, here. This lived in ``_oidc.py`` while dex was its only user;
-# ``_session_platform.py`` is the second (it drives the control plane's product
-# API to create the session its read/write cases need), so it moved to the
-# shared surface rather than being copied. ``_oidc`` re-exports the name, which
-# is why the platform-auth-safety files import it unchanged.
+# own, briefly, here.
 #
 # The apiserver's service proxy (``kubectl get --raw .../proxy/...``) is not an
 # alternative: it overwrites ``Authorization`` with its own credentials and
