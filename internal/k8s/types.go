@@ -153,6 +153,7 @@ type ProxyRef struct {
 	Kind       string
 	Namespace  *string
 	Name       string
+	Port       *string
 }
 
 // LogOptions controls a read of the log subresource.

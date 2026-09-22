@@ -140,3 +140,13 @@ func TestApiserverRefusalIsToldFromTheTargets(t *testing.T) {
 		t.Errorf("apiserverRefusal = %v for a 200, want nil", err)
 	}
 }
+
+func TestProxyTargetNameCarriesThePort(t *testing.T) {
+	port := "9090"
+	if got := proxyTargetName(ProxyRef{Name: "api", Port: &port}); got != "api:9090" {
+		t.Errorf("proxyTargetName = %q, want \"api:9090\"", got)
+	}
+	if got := proxyTargetName(ProxyRef{Name: "api"}); got != "api" {
+		t.Errorf("proxyTargetName = %q, want \"api\"", got)
+	}
+}

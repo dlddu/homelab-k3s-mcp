@@ -351,14 +351,17 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **실행 단계**: `kind=Pod`로 `GET`(승인) → `kind=Service`로 `POST`(승인) →
   `kind=Node`로 `/healthz` `GET`(승인) → `kind=Node`로 `/exec/⟨ns⟩/⟨pod⟩/⟨c⟩?command=id`
   호출하고 승인 요청 `context` 수집 후 승인 → `GET`을 승인 없이 호출 →
-  `readSeconds=31`로 호출
+  `readSeconds=31`로 호출 → `kind=Pod`에 `port`를 주어 `GET`(승인) → `name`에 `:⟨포트⟩`를
+  붙여 호출
 - **기대 결과**: 네 경우 모두 메서드에 대응하는 쌍(`get`/`create`)으로 게이트를 탐.
   `/healthz`와 `/exec`이 **같은 쌍**으로 표현되어 쌍만으로는 구별되지 않음. `/exec` 호출의
   `context`에 **경로 전문과 고권한 표시**가 함께 담기고, 승인하면 실제로 실행됨 —
   경로 허용목록이 없음을 확인한다. 승인 없는 `GET`도 거부됨. `readSeconds=31`은 **클러스터
   호출 0·승인 요청 0**으로 거부되고, 미지정 호출은 기본 10을 씀. 응답이 대상 자신의
   `status`와 함께 `bodyEncoding`·`truncated`·`readSeconds`를 싣고, 상한을 넘긴 본문은
-  `truncated`가 참, 이진 본문은 `bodyEncoding=base64`
+  `truncated`가 참, 이진 본문은 `bodyEncoding=base64`. `port`를 준 호출은 그 포트로 가고
+  `context`에 `on port ⟨포트⟩`가, 응답에 `port`가 실림. `name`에 포트를 붙인 호출은
+  **클러스터 호출 0·승인 요청 0**으로 거부됨
 - **검증 AC**: AC15
 - **자동화**: Go 단위 `internal/mcp/proxy_test.go` 넷(`TestProxyAllPathsGated`,
   `TestProxyKubeletHighPowerPathFlagged`, `TestProxyWideningIsDocumented`,
@@ -382,7 +385,11 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   고권한 표시가 **막지 않는다**는 쪽은 `/exec` 호출이 승인 뒤 우리 층에서 거부되지 않는 것으로
   잰다 — kubelet 의 응답 코드는 스트리밍 리다이렉트 처리에 달린 것이라 이 시나리오의 계약이
   아니므로 단언하지 않는다. **창·상한·인코딩은 실물이 아니어도 관측되므로 이 파일이 다시 재지
-  않고, 그 귀속은 위의 Go 단위 아홉에 그대로 남는다**
+  않고, 그 귀속은 위의 Go 단위 아홉에 그대로 남는다**. `port` 절(2026-09-22)은 Go 단위
+  `TestProxyPortReachesTheChosenPort`(포트 전달 · `context` 의 `on port` · 응답 `port` · 미지정 시
+  기본)와 `TestProxyRefusalsCostNoApproval` 의 포트 행 일곱(`name` 에 붙인 포트 · `Node` · 범위 ·
+  이름 형식 · 타입), `internal/k8s/proxy_test.go` 의 `TestProxyTargetNameCarriesThePort`(apiserver
+  에 넘기는 `⟨이름⟩:⟨포트⟩`)가 잰다. 실물 파드의 둘째 포트로 도달하는 통합 단언은 아직 없다
 
 ### 시나리오 16: 민감 종류는 읽기도 쓰기도 승인을 거친다
 - **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 gatekeeper

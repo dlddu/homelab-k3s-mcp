@@ -734,6 +734,9 @@ func proxyPathDetail(name string, rawArgs json.RawMessage) string {
 		return ""
 	}
 	detail := fmt.Sprintf("%s %s", args.method, args.path)
+	if args.ref.Port != nil {
+		detail += fmt.Sprintf(" on port %s", *args.ref.Port)
+	}
 	if kind, _ := obj["kind"].(string); strings.EqualFold(kind, "Node") {
 		if endpoint := kubeletHighPowerEndpoint(args.path); endpoint != "" {
 			detail += fmt.Sprintf(

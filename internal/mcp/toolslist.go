@@ -540,7 +540,7 @@ const toolsListJSON = `{
     },
     {
       "name": "resource_proxy",
-      "description": "Reach the HTTP endpoint of one named Kubernetes Pod, Service or Node through the apiserver's proxy subresource. The verb it exercises follows the HTTP method (GET->get, POST->create, PUT->update, PATCH->patch, DELETE->delete) on <kind>/proxy, and every method requires human approval — including GET. There is no path allowlist: the (verb, resource) pair cannot say what a proxy call does, so the path is carried verbatim on the approval screen instead, and kubelet's high-power endpoints on nodes/proxy (/exec, /attach, /portForward, /run, /logs, /containerLogs) are marked there rather than blocked. The target's own HTTP status is reported as the answer — a 404 from what is being proxied to is not a failure of this tool. The body is capped at 256KiB and a cut body says so; readSeconds defaults to 10 and may not exceed 30.",
+      "description": "Reach the HTTP endpoint of one named Kubernetes Pod, Service or Node through the apiserver's proxy subresource. The verb it exercises follows the HTTP method (GET->get, POST->create, PUT->update, PATCH->patch, DELETE->delete) on <kind>/proxy, and every method requires human approval — including GET. There is no path allowlist: the (verb, resource) pair cannot say what a proxy call does, so the path is carried verbatim on the approval screen instead, and kubelet's high-power endpoints on nodes/proxy (/exec, /attach, /portForward, /run, /logs, /containerLogs) are marked there rather than blocked. A Pod or Service port other than the default is chosen with port. The target's own HTTP status is reported as the answer — a 404 from what is being proxied to is not a failure of this tool. The body is capped at 256KiB and a cut body says so; readSeconds defaults to 10 and may not exceed 30.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -558,7 +558,11 @@ const toolsListJSON = `{
           },
           "name": {
             "type": "string",
-            "description": "Object name. Required; this tool reaches one named object, not a selection."
+            "description": "Object name. Required; this tool reaches one named object, not a selection. The object's name alone — a port goes in port, not after a colon here."
+          },
+          "port": {
+            "type": ["integer", "string"],
+            "description": "Pod or Service port to reach: a number (1-65535) or a named port (e.g. \"metrics\"). Optional; omitted = the apiserver's default (the first declared port). Refused for Node, whose proxy always reaches the kubelet. Shown on the approval screen next to the path."
           },
           "method": {
             "type": "string",
