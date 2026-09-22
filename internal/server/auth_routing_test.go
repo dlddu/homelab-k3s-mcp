@@ -12,9 +12,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 )
 
-// These tests cover platform AC8 at the routing layer: the OAuth
-// protected-resource discovery document is registered only when OAuth is
-// configured. In API-key-only mode the route is absent.
+// These tests cover platform AC8 at the routing layer.
 
 func appWith(authCfg *auth.Config) http.Handler {
 	return server.App(authCfg, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
@@ -37,7 +35,6 @@ func TestDiscoveryServedWhenOAuthConfigured(t *testing.T) {
 }
 
 func TestDiscoveryAbsentWhenOAuthNotConfigured(t *testing.T) {
-	// No Issuer => OAuthConfigured() == false (API-key-only mode).
 	cfg := &auth.Config{}
 
 	rec := httptest.NewRecorder()
@@ -49,10 +46,7 @@ func TestDiscoveryAbsentWhenOAuthNotConfigured(t *testing.T) {
 	}
 }
 
-// prd-metrics AC5: the metrics exposition is not a route of the handler the
-// ingress fronts — a GET /metrics there is a 404, not a scrape — and the
-// metrics handler carries no /mcp: there is no path on the metrics port that
-// reaches a tool, authenticated or not.
+// prd-metrics AC5 at the routing layer (server.MetricsApp doc holds why).
 func TestMetricsAreNotServedOnTheMCPListenerAndMCPIsNotOnTheMetricsOne(t *testing.T) {
 	t.Setenv("MCP_AUTH_DISABLED", "")
 	t.Setenv("MCP_API_KEYS", "first-key")
