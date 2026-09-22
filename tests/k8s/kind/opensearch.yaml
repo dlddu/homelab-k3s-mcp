@@ -5,11 +5,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
-# Single-node OpenSearch standing in for the AWS OpenSearch Serverless
-# collection. The security plugin is disabled, so the server's SigV4-signed
-# requests are accepted as-is; combined with the MinIO STS endpoint this
-# exercises the full AssumeRole -> SigV4 -> data-plane path of the
-# opensearch_* tools end-to-end without touching real AWS.
 #
 # The JVM heap is pinned to 512Mi and container limits are set explicitly to
 # keep the fixture from starving the shared CI runner.
