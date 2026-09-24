@@ -6,10 +6,7 @@
 
 Go 단위(``internal/mcp/resource_test.go`` 의 ``TestWatchWindowBounds`` ·
 ``TestWatchOnGatedKindRequiresApproval`` · ``TestWatchCarriesTheResumePoint``)가 인자
-계약과 게이트 분기를 이미 단언한다. **그 층이 못 보는 것**이 이 파일의 이유다: 실
-apiserver 가 열린 창 안에서 `MODIFIED` 를 실제로 밀어 주는지, 창이 닫히면 응답이
-돌아오는지, 그리고 `resourceVersion` 을 준 재관측이 실물 스트림에서 **이전 변경을 다시
-주지 않는지**.
+계약과 게이트 분기를 이미 단언한다. **그 층이 못 보는 것**이 이 파일의 이유다.
 
 댄스의 순서가 케이스마다 다르다. 평범한 종류의 창은 호출 즉시 열리므로 **호출 뒤에**
 대상을 흔들고, 민감 종류(`kind=Secret`)의 창은 승인이 떨어져야 열리므로 **승인 뒤에**
