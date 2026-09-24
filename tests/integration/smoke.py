@@ -4,9 +4,7 @@
 실행 대상: primary
 실행 순서: 0
 
-모델 `tbm_homelab-k3s-mcp-scenario-e2e` 의 규칙 3은 시나리오 대신 **스모크/인프라 확인(서버
-기동·`/healthz`·도구 표면 존재)** 을 주검증하는 파일을 허용하되 `docs/doc-tracker.md` 의
-「비-시나리오 파일」 절에 등재할 것을 요구한다. 이 파일이 그 등재분이다.
+이 파일은 `docs/doc-tracker.md` 「비-시나리오 파일」 절의 규칙 3 등재분이다.
 
 여기서 확인하는 것은 **뒤따르는 AC 파일들의 공유 선행 조건**이다: primary 그룹의 케이스들이
 구동하는 도구가 실제로 광고되고 있는지. `실행 순서: 0` 으로 그룹 맨 앞에서 돌기 때문에,
@@ -16,9 +14,7 @@
 이것은 platform-auth-safety/AC5(서버 수준 graceful degradation)가 **아니다**. 이 배포는
 모든 통합이 구성돼 있어 정상적인 tools/list 가 degradation 에 대해 아무것도 말해 주지
 않는다 — AC5 는 자격증명이 없는 배포에서만 관측되므로 그 전용 파일
-(`platform_auth_safety_ac5.py`)은 auth-variant 에서 돈다. 두 파일이 같은
-`_helpers.EXPECTED_TOOLS` 를 읽는 것은 의도한 것이다: 도구 표면은 구성과 무관하게
-`internal/mcp/toolslist.go` 가 정적으로 선언하므로 두 배포에서 같아야 한다.
+(`platform_auth_safety_ac5.py`)은 auth-variant 에서 돈다.
 """
 
 from __future__ import annotations

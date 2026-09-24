@@ -17,10 +17,8 @@ List 로 답이 오고**, 그 본문은 `metav1.Table` 로 전부 0인 값으로
 kind 는 픽스처가 아니라 kind 클러스터가 **반드시** 갖는 것(네임스페이스·파드)으로 골라,
 픽스처 배치가 바뀌어도 이 파일이 흔들리지 않게 했다.
 
-AC 단위의 검증이 아니다 — `prd-resource-generic` 의 AC 별 시나리오 e2e 는 자매 모델
-`tbm_homelab-k3s-mcp-scenario-e2e` 소관이고 `docs/doc-tracker.md` 의 구현 대기 표에 등재돼
-있다. 이 파일은 그 공백을 메우려는 것이 아니라, 도구가 **살아는 있는지**를 배포 계층에서
-한 번 재는 스모크다.
+AC 단위의 검증이 아니다 — 이 파일은 그 공백을 메우려는 것이 아니라, 도구가 **살아는
+있는지**를 배포 계층에서 한 번 재는 스모크다.
 """
 
 from __future__ import annotations
@@ -60,9 +58,8 @@ async def test_resource_get_reads_a_pod_that_list_found(
 ) -> None:
     """목록 → 이름 → 로그. 옛 `workload_logs` 가 갈음되려면 이 경로가 이어져야 한다.
 
-    `resource_get` 은 이름을 필수로 받으므로(그 도구는 list verb 를 행사하지 않는다) 이름을
-    얻는 유일한 경로가 `resource_list` 다. 두 도구를 따로 재면 목록이 빈 표를 돌려주는 동안에도
-    각자는 「통과」로 보인다 — 1차 시도에서 로그 경로가 관측조차 되지 못한 것이 그래서다.
+    `resource_get` 은 이름을 필수로 받으므로(그 도구는 list verb 를 행사하지 않는다) 이름을 얻는 유일한
+    경로가 `resource_list` 다. 두 도구를 따로 재면 목록이 빈 표를 돌려주는 동안에도 각자는 「통과」로 보인다.
     """
     listed = await session.call_tool(
         "resource_list",
