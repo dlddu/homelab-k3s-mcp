@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 6
 실행 대상: primary
+병렬 레인: gate-streams
 
 Go 단위(``internal/mcp/resource_test.go`` 의 ``TestWatchWindowBounds`` ·
 ``TestWatchOnGatedKindRequiresApproval`` · ``TestWatchCarriesTheResumePoint``)가 인자

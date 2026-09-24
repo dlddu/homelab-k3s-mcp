@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 15
 실행 대상: primary
+병렬 레인: gate-streams
 
 Go 단위 아홉(``internal/mcp/proxy_test.go`` 넷 · ``internal/k8s/proxy_test.go`` 다섯)이 이
 도구의 계약을 이미 단언하는데, 그 아홉은 전부 **가짜 게이트와 가짜 k8s 서비스** 위에서 돈다.
@@ -26,9 +27,9 @@ Go 단위 아홉(``internal/mcp/proxy_test.go`` 넷 · ``internal/k8s/proxy_test
 답한다」는 쪽은 상태 코드가 계약인 두 호출이 든다: 파드의 ``/ac15-pod.txt`` 는 우리가 넣어 둔
 본문을 그대로 돌려주고, 노드의 ``/healthz`` 는 kubelet 자신이 ``ok`` 로 답한다.
 
-``병렬 레인:`` 을 선언하지 않는 것은 의도다. 러너는 레인 없는 파일을 레인 단계가 끝난 뒤 단독으로
-돌리므로(``run_all.py`` 머리말), 이 파일이 세우고 지우는 파드·Service 가 같은 네임스페이스를 보는
-다른 파일과 겹치지 않는다.
+마커가 **경로**라 다른 레인과 겹칠 수 있는 자리가 하나 있다 — ``/healthz`` 는 다른 레인의 어떤
+승인 요청 인자에도 나오지 않아야 한다. 프록시·포트포워드로 ``/healthz`` 를 부르는 게이트 파일이
+생기면 이 파일과 같은 레인에 둔다.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, list_requests, wait_for_pending
+from _gatekeeper import count_requests, decide, gatekeeper_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -260,7 +261,7 @@ async def test_the_node_paths_share_a_pair_and_only_the_screen_tells_them_apart(
 
     exec_path = f"/exec/{NAMESPACE}/{POD}/httpd?command=id"
     exec_args = _proxy_args("Node", node, "GET", exec_path)
-    task, exec_row = await _pending(session, gate, exec_args, "/exec/")
+    task, exec_row = await _pending(session, gate, exec_args, exec_path)
     exec_context = exec_row["context"]
 
     assert _pair(exec_context) == _pair(healthz_context), (
@@ -282,7 +283,7 @@ async def test_the_node_paths_share_a_pair_and_only_the_screen_tells_them_apart(
 
 async def test_a_get_without_approval_is_refused(session, gate: str) -> None:
     args = _proxy_args("Pod", POD, "GET", POD_PATH)
-    before = len(list_requests(gate, status="PENDING"))
+    before = count_requests(gate, POD_PATH, "PENDING")
     task, row = await _pending(session, gate, args, POD_PATH)
     await decide(gate, row["id"], "REJECTED")
     try:
@@ -295,7 +296,7 @@ async def test_a_get_without_approval_is_refused(session, gate: str) -> None:
         )
     # 거부가 요청을 남기고 가지 않는지까지 본다. 남은 PENDING 이 늘어 있으면 다음 파일의
     # ``wait_for_pending`` 이 이 파일의 잔여를 집어 헛통과할 수 있다.
-    assert len(list_requests(gate, status="PENDING")) == before, (
+    assert count_requests(gate, POD_PATH, "PENDING") == before, (
         "거부 뒤에도 PENDING 승인 요청이 남았다"
     )
 

@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 8
 실행 대상: primary
+병렬 레인: resource-generic
 
 거부 셋은 두 층으로 갈린다. 음수·누락은 **승인 요청조차 만들기 전에** 거부된다
 (인자 검증이 게이트보다 앞서다 — gate.go::updatePairs →

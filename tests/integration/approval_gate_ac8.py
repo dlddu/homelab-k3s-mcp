@@ -2,6 +2,7 @@
 
 검증 시나리오: test-approval-gate.md#시나리오 8
 실행 대상: primary
+병렬 레인: gate-objects
 
 시나리오가 요구하는 것은 요청 id·externalId·도구·동사·대상 좌표가 로그에 남는
 것, 승인 실행에 processedById, 거부에 사유가 함께 남는 것이다. 이 로그는 SUT 파드

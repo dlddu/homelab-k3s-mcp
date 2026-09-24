@@ -2,6 +2,7 @@
 
 검증 시나리오: test-approval-gate.md#시나리오 10
 실행 대상: primary
+병렬 레인: gate-objects
 
 시나리오가 세는 표면은 넷이다 — **승인 요청 `context`** · **SUT 서버 로그** ·
 **에러 메시지** · **`resource_list` 응답**. 그리고 토큰이 등장해도 되는 자리는 하나다:
