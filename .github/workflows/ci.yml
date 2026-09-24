@@ -478,14 +478,15 @@ jobs:
           cat /tmp/bg/data-plane-load.log
           exit "$(cat /tmp/bg/data-plane-load.rc)"
 
-      # oauth-variant 그룹은 primary 와 겹쳐 돈다. 이 그룹이 부르는 것은 dex 와
-      # homelab-k3s-mcp-oauth 네임스페이스의 배포뿐이고 primary 파일은 그 어느 쪽도 건드리지
-      # 않는다(primary 의 카운터·로그 증가분 파일은 primary 파드만 센다). 반대로 auth-variant 는
-      # 여기 넣지 않는다: platform_auth_safety_ac8.py 가 같은 oauth 배포를 불러
-      # event_log_ac4_auth_failed.py 의 로그 증가분을 흔들고, metrics_ac2_reasons.py 는 primary 가
-      # 쓰는 실물 gatekeeper 에 요청을 띄운다. 그래서 auth-variant 는 아래 Wait 뒤에 돈다.
+      # oauth-variant·auth-variant 그룹은 primary 와 겹쳐 돈다. 둘이 부르는 것은 각자의 변형
+      # 배포(와 dex)이고, primary 의 카운터·로그 증가분 파일은 primary 파드만 센다. 실물
+      # gatekeeper 는 auth-variant 의 metrics_ac2_reasons.py 도 쓰지만 게이트 파일은 요청을 마커로만
+      # 집고 세므로(tests/integration/_gatekeeper.py 머리말) 겹쳐도 된다. 둘끼리는 차례로 돈다:
+      # auth-variant 의 platform_auth_safety_ac8.py 가 oauth 네임스페이스의 배포를 불러
+      # oauth-variant 의 event_log_ac4_auth_failed.py 가 재는 로그 증가분을 흔든다.
+      # gatekeeper-variant 는 gatekeeper 사용자의 자동 응답 모드를 바꾸므로 여기 넣지 않는다.
       # set +e 인 이유: 스텝 셸의 -e 가 서브셸에 물려 러너가 실패하면 .rc 를 못 남긴다.
-      - name: Start oauth-variant group in background
+      - name: Start oauth-variant and auth-variant groups in background
         run: |
           mkdir -p /tmp/bg
           ( set +e
@@ -493,10 +494,17 @@ jobs:
             PF_PID=$!
             python tests/integration/run_all.py --group oauth-variant --base-url http://127.0.0.1:8089 \
               >/tmp/bg/oauth-variant.log 2>&1
-            rc=$?
+            echo $? >/tmp/bg/oauth-variant.rc
             kill $PF_PID 2>/dev/null
             pkill -f "port-forward svc/homelab-k3s-mcp-oauth 8089:80"
-            echo $rc >/tmp/bg/oauth-variant.rc
+
+            ( while true; do kubectl -n homelab-k3s-mcp-auth port-forward svc/homelab-k3s-mcp-auth 8088:80 >>/tmp/pf-auth.log 2>&1; sleep 1; done ) &
+            PF_PID=$!
+            python tests/integration/run_all.py --group auth-variant --base-url http://127.0.0.1:8088 \
+              >/tmp/bg/auth-variant.log 2>&1
+            echo $? >/tmp/bg/auth-variant.rc
+            kill $PF_PID 2>/dev/null
+            pkill -f "port-forward svc/homelab-k3s-mcp-auth 8088:80"
           ) </dev/null >/dev/null 2>&1 &
 
       # 파일별 스텝을 나열하지 않는다. tests/integration/run_all.py 가 매칭 단위 파일을
@@ -525,7 +533,8 @@ jobs:
       # 실 OIDC 발급자(dex)를 가리키도록 MCP_OAUTH_* 를 세팅한 배포 변형
       # (tests/k8s/kind/oidc-fixture.yaml). 디스커버리 라우트는 OAuth 가 구성된 경우에만
       # 걸리므로 platform-auth-safety/AC2 는 이 배포에서만 관측된다. 러너는 primary 앞에서
-      # 백그라운드로 떴고, 여기서는 끝나기를 기다려 로그를 풀고 같은 코드로 끝난다.
+      # 백그라운드로 떴고, 여기서는 끝나기를 기다려 로그를 풀고 같은 코드로 끝난다(auth-variant 도
+      # 같은 방식).
       - name: Wait for integration tests (oauth-variant deployment)
         run: |
           timeout 300 bash -c 'until [ -f /tmp/bg/oauth-variant.rc ]; do sleep 1; done'
@@ -534,13 +543,13 @@ jobs:
 
       # 인증을 켜고 자격증명 시크릿을 하나도 붙이지 않은 배포 변형
       # (tests/k8s/kind/auth-fixture.yaml). 인증 게이트와 "미설정 시 graceful 거부" 는
-      # 이 배포에서만 관측된다.
-      - name: Run integration tests (auth-variant deployment)
+      # 이 배포에서만 관측된다. oauth-variant 뒤에 백그라운드로 돌았다. gatekeeper-variant 는
+      # 이 그룹(metrics_ac2_reasons.py 가 gatekeeper-variant 배포의 카운터를 잰다)이 끝난 뒤에 돈다.
+      - name: Wait for integration tests (auth-variant deployment)
         run: |
-          ( while true; do kubectl -n homelab-k3s-mcp-auth port-forward svc/homelab-k3s-mcp-auth 8088:80 >>/tmp/pf-auth.log 2>&1; sleep 1; done ) &
-          PF_PID=$!
-          trap 'kill $PF_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp-auth" || true' EXIT
-          python tests/integration/run_all.py --group auth-variant --base-url http://127.0.0.1:8088
+          timeout 300 bash -c 'until [ -f /tmp/bg/auth-variant.rc ]; do sleep 1; done'
+          cat /tmp/bg/auth-variant.log
+          exit "$(cat /tmp/bg/auth-variant.rc)"
 
       # 실물 gatekeeper 를 기록 프록시 뒤에 둔 배포 변형(tests/k8s/kind/gatekeeper-variant.yaml).
       # 승인 게이트의 요청 본문 계약(AC2)·만료 관측(AC4 (b))·자동 응답 모드(AC9)는

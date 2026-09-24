@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 14
 실행 대상: primary
+병렬 레인: gate-streams
 
 Go 단위 다섯(``internal/k8s/port_forward_test.go``)과 셋(``internal/mcp/port_forward_test.go``)이
 이 도구의 계약을 이미 단언한다 — 한 번 쓰고 쓰기 반쪽을 닫는 것, 에러 스트림을 올리는 것,
@@ -34,9 +35,9 @@ Go 단위 다섯(``internal/k8s/port_forward_test.go``)과 셋(``internal/mcp/po
 거절하면 두 번째 왕복은 일어나지 않는다. 첫 응답의 ``tunnelClosed`` 는 서버의 주장이고, 이
 케이스가 그 주장을 클러스터 쪽에서 되받는다.
 
-``병렬 레인:`` 을 선언하지 않는 것은 의도다. 러너는 레인 없는 파일을 레인 단계가 끝난 뒤
-단독으로 돌리므로(``run_all.py`` 머리말), 이 파일이 세우고 지우는 파드가 같은 네임스페이스를
-보는 다른 파일과 겹치지 않는다.
+같은 네임스페이스의 다른 레인과 겹쳐도 되는 것은 이 파일이 세우고 지우는 파드를 이름으로만
+다루기 때문이다. 인자 거부 케이스의 「승인 요청 0건」도 그래서 전체 PENDING 이 아니라 그 호출의
+마커를 담은 PENDING 으로 센다.
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, get_request, list_requests, wait_for_pending
+from _gatekeeper import count_requests, decide, gatekeeper_url, get_request, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -232,7 +233,7 @@ async def test_arguments_over_the_cap_are_refused_before_anyone_is_asked(
     session, gate: str
 ) -> None:
     marker = "rg-ac14-refused"
-    before = len(list_requests(gate, status="PENDING"))
+    before = count_requests(gate, marker, "PENDING")
     try:
         await session.call_tool(
             "resource_port_forward",
@@ -242,7 +243,7 @@ async def test_arguments_over_the_cap_are_refused_before_anyone_is_asked(
         assert "readSeconds must be between 1 and 30" in str(exc), exc
     else:
         raise AssertionError("상한을 넘긴 readSeconds 가 거부되지 않았다")
-    assert len(list_requests(gate, status="PENDING")) == before, (
+    assert count_requests(gate, marker, "PENDING") == before, (
         "인자 거부가 승인 요청을 만들었다"
     )
 

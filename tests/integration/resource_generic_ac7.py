@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 7
 실행 대상: primary
+병렬 레인: gate-objects
 
 Go 단위(``internal/k8s/create_test.go`` · ``internal/mcp/create_test.go``)가 HTTP 경계와
 디스패처를 이미 덮는다. 이 파일이 더하는 것은 **실물 apiserver 와 실물 gatekeeper 에서

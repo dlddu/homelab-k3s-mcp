@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 13
 실행 대상: primary
+병렬 레인: gate-streams
 
 Go 단위(``internal/mcp/attach_test.go``)가 인자 파싱·쌍·`readSeconds` 상한·stdin 전달·승인
 ``context`` 를 이미 덮는다. 이 파일이 더하는 것은 **실물 kubelet 과 실물 gatekeeper 에서 같은
@@ -32,7 +33,7 @@ import uuid
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, list_requests, wait_for_pending
+from _gatekeeper import count_requests, decide, gatekeeper_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -184,7 +185,7 @@ async def test_the_window_returns_the_running_process_stream(session) -> None:
 
 
 async def test_an_over_limit_window_is_refused_before_any_approval(session) -> None:
-    before = len(list_requests(_GATE))
+    before = count_requests(_GATE, POD)
     try:
         await session.call_tool(
             "resource_attach",
@@ -203,7 +204,7 @@ async def test_an_over_limit_window_is_refused_before_any_approval(session) -> N
     else:
         raise AssertionError(f"readSeconds={OVER_LIMIT_WINDOW} 호출이 성공했다")
 
-    assert len(list_requests(_GATE)) == before, (
+    assert count_requests(_GATE, POD) == before, (
         "상한 밖 창이 승인 요청을 만들었다 — 거부가 쌍 해석보다 뒤에 왔다는 뜻이다"
     )
 

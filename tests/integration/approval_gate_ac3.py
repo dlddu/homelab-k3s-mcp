@@ -2,6 +2,7 @@
 
 검증 시나리오: test-approval-gate.md#시나리오 3
 실행 대상: primary
+병렬 레인: resource-generic
 
 Go 단위가 이 계약의 문면을 이미 단언한다 — `internal/mcp/gate_test.go` 의
 `TestApprovedCallReachesKubernetesWithAJudgeableContext` ·
@@ -37,8 +38,9 @@ Go 단위가 이 계약의 문면을 이미 단언한다 — `internal/mcp/gate_
 `ensure_workload_fixture_baseline()` 으로 되돌린 뒤 **그때 읽은 값**과 대조하는 것이, 숫자를
 박아 두고 남의 실행 순서에 매달리는 것보다 이 단언을 오래 살게 한다.
 
-`병렬 레인:` 을 선언하지 않는 것은 의도다 — 이 파일은 승인 요청을 한 번에 하나만 띄우고
-마커로 집는데, 같은 게이트를 쓰는 다른 파일과 동시에 돌면 그 집기가 남의 요청을 볼 수 있다.
+레인이 `resource-generic` 인 것은 마커 때문이다 — 스케일·재시작 화면은 `workload-fixture` 와
+재시작 어노테이션 키로 집는데, 그 둘은 같은 Deployment 를 스케일·재시작하는
+`resource_generic_ac8.py`·`resource_generic_ac9.py` 의 요청에도 그대로 나온다.
 """
 
 from __future__ import annotations
@@ -53,7 +55,7 @@ from dataclasses import dataclass
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, list_requests, wait_for_pending
+from _gatekeeper import count_requests, decide, gatekeeper_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import (
     NAMESPACE,
@@ -86,6 +88,7 @@ PROXY_BODY = "ag-ac3-proxy-body"
 
 SCALE_TARGET_REPLICAS = 3
 GRACE_PERIOD_SECONDS = 7
+NAMELESS_MARK = "ag-ac3-nameless"
 
 #: 승인 화면의 두 머리 줄. `approvalContext` 가 이 철자로 쓴다.
 PAIR_RE = re.compile(r"^rbac: (.+)$", re.MULTILINE)
@@ -279,7 +282,7 @@ async def test_scale_shows_the_replica_move(session, gate: str) -> None:
             "subresource": "scale",
             "replicas": SCALE_TARGET_REPLICAS,
         },
-        "deployments/scale", "update on deployments/scale",
+        WORKLOAD, "update on deployments/scale",
         ("apps/v1", "Deployment/scale", NAMESPACE, WORKLOAD),
     )
     move = REPLICAS_RE.search(context)
@@ -360,7 +363,7 @@ async def test_delete_collection_shows_the_count_and_the_names(session, gate: st
             "namespace": NAMESPACE,
             "labelSelector": f"{COLLECTION_LABEL}={COLLECTION_VALUE}",
         },
-        COLLECTION_VALUE, "deletecollection on configmaps",
+        f"{COLLECTION_LABEL}={COLLECTION_VALUE}", "deletecollection on configmaps",
         ("v1", "ConfigMap", NAMESPACE),
     )
     # 수와 이름을 같은 화면에서 함께 잰다. 셀렉터만 실린 화면은 「무엇이 지워지는가」에 답하지
@@ -454,7 +457,7 @@ async def test_proxy_shows_the_method_the_path_and_the_body(session, gate: str) 
 async def test_an_unresolvable_coordinate_is_refused_without_an_approval_request(
     session, gate: str
 ) -> None:
-    before = len(list_requests(gate, status="PENDING"))
+    before = count_requests(gate, NAMELESS_MARK, "PENDING")
     try:
         result = await session.call_tool(
             "resource_patch",
@@ -463,7 +466,7 @@ async def test_an_unresolvable_coordinate_is_refused_without_an_approval_request
                 "kind": "ConfigMap",
                 "namespace": NAMESPACE,
                 "patchType": "merge",
-                "patch": {"data": {"key": "ag-ac3-nameless"}},
+                "patch": {"data": {"key": NAMELESS_MARK}},
             },
         )
     except McpError as exc:
@@ -475,7 +478,7 @@ async def test_an_unresolvable_coordinate_is_refused_without_an_approval_request
     # 승인 요청 0건까지 재는 이유: 이 거부가 승인 **뒤에** 오면 운영자는 자기가 무엇을
     # 승인했는지 화면에서 읽을 수 없었던 호출을 이미 승인한 뒤다. 「거부됐다」만 재는 단언은
     # 그 순서 사고를 통과시킨다.
-    assert len(list_requests(gate, status="PENDING")) == before, (
+    assert count_requests(gate, NAMELESS_MARK, "PENDING") == before, (
         "좌표 해석 실패가 승인 요청을 만들었다"
     )
 

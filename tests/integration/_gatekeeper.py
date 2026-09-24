@@ -8,8 +8,14 @@ kind 에 뜬 실물 gatekeeper(``tests/k8s/kind/gatekeeper-fixture.yaml``)와 �
 게이트 대상 도구 호출은 승인이 떨어질 때까지 **블록**한다. 그래서 모든 댄스는
 ``asyncio.create_task`` 로 도구 호출을 띄워 놓고 ``wait_for_pending`` 으로 생성된
 승인 요청을 찾아 판정을 내리는 순서로 간다. 요청 격리는 context 안에 들어가는
-고유 마커(대상 객체 이름)로 한다 — 이 그룹의 파일은 차례로 도니까 그 시각의
-PENDING 요청이 마커를 담는다는 것만으로 충분하다.
+고유 마커(대상 객체 이름)로 **만** 한다 — 레인이 다른 게이트 파일은 동시에 돌고
+(``run_all.py`` 의 병렬 레인), auth-variant 그룹도 primary 와 겹쳐 같은 gatekeeper 에
+요청을 띄운다. 그래서 두 가지가 서 있어야 한다:
+
+* 마커는 **다른 레인의 어떤 요청 context 에도 나오지 않는** 문자열이다. 겹치면 남의 요청을
+  집어 판정해 버린다 — 겹칠 수밖에 없는 파일(같은 대상을 건드리는 파일)은 같은 레인에 둔다.
+* 「승인 요청이 생기지 않았다」는 전체 요청 수가 아니라 ``count_requests`` 로 **마커를 담은
+  요청 수**를 센다. 전체 수는 남의 레인이 띄운 요청으로 움직인다.
 """
 
 from __future__ import annotations
@@ -17,6 +23,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import os
+import socket
 import time
 from collections.abc import Iterator
 
@@ -36,18 +43,27 @@ E2E_USER = "gatekeeper-e2e"
 #: 기록 프록시의 create 기록이 담는 필드 — 시나리오 2 의 요청 본문 계약 그 자체다.
 CREATE_BODY_FIELDS = ("externalId", "context", "requesterName", "timeoutSeconds")
 
-GATEKEEPER_LOCAL_PORT = 8095
 TRACE_LOCAL_PORT = 8096
+
+
+def _ephemeral_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
 
 
 @contextlib.contextmanager
 def gatekeeper_url() -> Iterator[str]:
-    """실물 gatekeeper API 의 로컬 URL."""
+    """실물 gatekeeper API 의 로컬 URL.
+
+    로컬 포트는 부를 때마다 빈 포트를 새로 고른다 — 동시에 도는 레인마다 이 포워드를 따로
+    열기 때문에 고정 포트면 둘째 레인이 ``port_forward`` 의 점유 단언에서 멈춘다.
+    """
     with port_forward(
         GATEKEEPER_NAMESPACE,
         GATEKEEPER_SERVICE,
         80,
-        GATEKEEPER_LOCAL_PORT,
+        _ephemeral_port(),
         "/api/health",
     ) as url:
         yield url
@@ -101,6 +117,11 @@ def list_requests(url: str, status: str | None = None) -> list[dict]:
     response = httpx.get(f"{url}{path}", timeout=10.0)
     response.raise_for_status()
     return response.json()
+
+
+def count_requests(url: str, marker: str, status: str | None = None) -> int:
+    """context 에 마커를 담은 요청 수(``status`` 를 주면 그 상태만)."""
+    return sum(1 for row in list_requests(url, status) if marker in row.get("context", ""))
 
 
 def get_request(url: str, request_id: str) -> dict:

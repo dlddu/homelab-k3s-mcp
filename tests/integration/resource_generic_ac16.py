@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 16
 실행 대상: primary
+병렬 레인: gate-objects
 
 여섯 verb(`get`·`watch`·`create`·`update`·`patch`·`delete`)를 **한 파일에서 전부** 태운다.
 일부만 떼어 닫으면 「민감 종류는 모든 동사에서 막힌다」가 아니라 「그 동사에서 막힌다」만
@@ -44,6 +45,8 @@ NAMESPACE = "workload-test"
 GATED_SECRET = "rg-ac16-secret"
 CREATED_SECRET = "rg-ac16-created"
 CONTROL_MAP = "rg-ac16-configmap"
+# name 이 없는 list 범위 watch 에는 대상 이름이 context 에 없다 — 이 셀렉터가 그 요청의 마커다.
+WATCH_SELECTOR = "rg-ac16=list-scope"
 
 TOKEN = "rg-ac16-token-5b93ce07af21"
 MASK_MARK = f"(masked, {len(TOKEN)}B)"
@@ -108,12 +111,12 @@ def _seed() -> None:
     _delete("secret", CREATED_SECRET)
 
 
-def _gated_calls() -> list[tuple[str, dict]]:
+def _gated_calls() -> list[tuple[str, dict, str]]:
     """여섯 verb 각각 한 호출. 좌표는 전부 같은 민감 종류다."""
     coordinate = {"apiVersion": "v1", "kind": "Secret", "namespace": NAMESPACE}
     return [
-        ("resource_get", {**coordinate, "name": GATED_SECRET}),
-        ("resource_watch", {**coordinate, "watchSeconds": 2}),
+        ("resource_get", {**coordinate, "name": GATED_SECRET}, GATED_SECRET),
+        ("resource_watch", {**coordinate, "watchSeconds": 2, "labelSelector": WATCH_SELECTOR}, WATCH_SELECTOR),
         (
             "resource_create",
             {
@@ -124,6 +127,7 @@ def _gated_calls() -> list[tuple[str, dict]]:
                     "stringData": {"token": TOKEN},
                 }
             },
+            CREATED_SECRET,
         ),
         (
             "resource_update",
@@ -137,6 +141,7 @@ def _gated_calls() -> list[tuple[str, dict]]:
                     "stringData": {"token": "replaced"},
                 },
             },
+            GATED_SECRET,
         ),
         (
             "resource_patch",
@@ -146,8 +151,9 @@ def _gated_calls() -> list[tuple[str, dict]]:
                 "patchType": "merge",
                 "patch": {"stringData": {"token": "patched"}},
             },
+            GATED_SECRET,
         ),
-        ("resource_delete", {**coordinate, "name": GATED_SECRET}),
+        ("resource_delete", {**coordinate, "name": GATED_SECRET}, GATED_SECRET),
     ]
 
 
@@ -176,10 +182,8 @@ async def _refuse(session, gate, tool: str, args: dict, marker: str) -> None:
 
 async def test_every_gated_verb_is_refused_without_approval(session, gate) -> None:
     before = _resource_version("secret", GATED_SECRET)
-    for tool, args in _gated_calls():
-        # 마커는 대상 이름이 아니라 **도구 이름**이다: 여섯 중 name 없이 도는 호출이
-        # 하나 있고(list 범위 watch), context 의 첫 줄 `tool: <name>` 은 여섯 다 갖는다.
-        await _refuse(session, gate, tool, args, f"tool: {tool}")
+    for tool, args, marker in _gated_calls():
+        await _refuse(session, gate, tool, args, marker)
 
     assert not _exists("secret", CREATED_SECRET), "거부된 create 가 객체를 남겼다"
     assert _exists("secret", GATED_SECRET), "거부된 delete 가 객체를 지웠다"

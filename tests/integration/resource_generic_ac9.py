@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 9
 실행 대상: primary
+병렬 레인: resource-generic
 
 네 patchType 은 각각 별도의 승인을 요구한다 — 내용으로 예외를 주지 않는 것이
 시나리오의 계약이고, 그래서 각 적용 앞에 승인 댄스가 온다. 재시작 패치는

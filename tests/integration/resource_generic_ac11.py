@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 11
 실행 대상: primary
+병렬 레인: gate-streams
 
 Go 단위 ``internal/mcp/resource_test.go::TestExecStreamsAndCaps`` 가 인자 전달과 상한
 표기를 이미 단언한다. 이 파일이 재는 것은 **실물 kubelet 왕복**이다 — SPDY 스트림이
@@ -27,9 +28,9 @@ Go 단위 ``internal/mcp/resource_test.go::TestExecStreamsAndCaps`` 가 인자 �
 자매 파일 `resource_generic_ac5.py` 가 같은 워크로드를 자기 사전 조건 루프로 기다려
 통과하는 것이 그 선례다.
 
-`병렬 레인:` 을 선언하지 않는 것은 의도다. 러너는 레인 없는 파일을 **레인 단계가 끝난 뒤
-단독으로** 돌리므로(`run_all.py` 머리말) 이 파일은 `resource-generic` 레인과 동시에 돌지
-않는다 — 여기서 기다리는 상대는 다른 테스트가 아니라 **아직 서지 않은 픽스처**다.
+같은 파드를 `resource_generic_ac5.py`(`resource-generic` 레인)도 읽지만 레인을 갈라도 되는
+것은, 그 파일이 재는 컨테이너 로그에 exec 스트림의 출력이 실리지 않기 때문이다. 이 파일이
+`chatty` 의 **로그에** 무언가를 남기는 명령을 쓰게 되면 두 파일을 한 레인으로 모은다.
 
 **아래 두 단언은 #137 이 닫은 두 자리의 회귀 방지선이다** — `echo` 왕복의 `isError: false ·
 exitCode: 0`, 그리고 `yes` 왕복이 **에러 텍스트가 아니라 구조화 응답**으로 싣는

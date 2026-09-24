@@ -2,6 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 18
 실행 대상: primary
+병렬 레인: gate-objects
 
 Go 단위 ``internal/k8s/resource_test.go::TestForbiddenBecomesAGrantStatement`` 가 번역
 함수 하나를 가짜 403 으로 단언한다. 실물 apiserver 가 이 SA 에게 실제로 403 을 주는 것,
@@ -189,7 +190,8 @@ async def test_resource_generic_ac18_ungranted_kind_is_refused_before_approval(
     translated pair — for the verb that was actually refused, get. The
     request-id set difference is the observation that nothing was asked of a
     human; a marker search would pass vacuously here because there is no
-    record to search.
+    record to search. The difference is narrowed to requests naming the
+    policy because other lanes' gate files add requests meanwhile.
     """
     before = {row["id"] for row in list_requests(gate)}
     try:
@@ -201,8 +203,12 @@ async def test_resource_generic_ac18_ungranted_kind_is_refused_before_approval(
         _assert_translated(str(exc), "get", "networkpolicies")
     else:
         raise AssertionError(f"권한 밖 종류의 patch 가 승인 요청까지 갔다: {result}")
-    after = {row["id"] for row in list_requests(gate)}
-    assert after == before, f"사전 읽기가 거부됐는데 승인 요청이 생겼다: {sorted(after - before)}"
+    created = sorted(
+        row["id"]
+        for row in list_requests(gate)
+        if row["id"] not in before and UNREADABLE_POLICY in row.get("context", "")
+    )
+    assert not created, f"사전 읽기가 거부됐는데 승인 요청이 생겼다: {created}"
 
 
 async def run() -> None:
