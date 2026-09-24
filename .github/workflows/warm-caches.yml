@@ -1,0 +1,74 @@
+name: Warm CI caches
+
+# ci.yml 은 PR 에서만 돈다. PR ref 에 저장된 Actions 캐시는 그 PR 과 그 PR 의 다음 run 만
+# 읽을 수 있고 다른 PR 은 읽지 못하므로, 한 번만 도는 reconcile 봇 PR 은 매번 빈 캐시로
+# 시작한다(Go 빌드 캐시·pip 캐시 전부). 기본 브랜치에 저장된 캐시는 모든 PR 이 읽는다 —
+# 이 워크플로가 main push 마다 ci.yml 과 **같은 키**로 캐시를 만들어 두는 이유다.
+#
+# 키가 같으려면 setup-go/setup-python 입력이 ci.yml 의 해당 잡과 글자 그대로 같아야 한다
+# (Go 버전·cache-dependency-path·러너 이미지). 여기만 고치거나 ci.yml 만 고치면 PR 은 다시
+# 조용히 미스가 난다 — 두 파일을 같이 고칠 것.
+#
+# setup-go·setup-python 은 키가 이미 있으면 다시 저장하지 않는다. 그래서 캐시 내용은
+# go.sum·ci.yml(또는 requirements.txt)이 바뀐 뒤 첫 main push 의 것으로 머물고, 그 뒤로 바뀐
+# 이 레포의 패키지만 PR 에서 다시 컴파일된다. 키가 이미 있을 때 이 run 은 복원만 하고 끝난다.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: local
+
+concurrency:
+  group: warm-caches-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ci.yml 의 lint(go vet · go build) 와 unit tests(go test) 가 공유하는 기본 키.
+  go-default:
+    name: go cache (lint + unit tests)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: go build
+        run: go build ./...
+      - name: go test
+        run: go test ./... -v
+
+  # ci.yml 의 integration tests 잡: CGO_ENABLED=0 과 go.sum + ci.yml 로 가른 키, 그리고
+  # 같은 잡의 pip 캐시. 빌드 명령·플래그는 그 잡의 Build server binary 와 같게 둔다
+  # (컴파일 액션 ID 가 같아야 캐시가 맞는다).
+  integration:
+    name: go + pip cache (integration tests)
+    runs-on: ubuntu-24.04-arm
+    env:
+      CGO_ENABLED: '0'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+          cache-dependency-path: |
+            go.sum
+            .github/workflows/ci.yml
+      - name: Build server binary
+        run: go build -ldflags="-s -w" -o /tmp/image-ctx/homelab-k3s-mcp .
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/integration/requirements.txt
+      - name: Install Python integration test deps
+        run: pip install -r tests/integration/requirements.txt

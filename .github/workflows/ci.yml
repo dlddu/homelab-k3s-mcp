@@ -125,6 +125,8 @@ jobs:
       # 캐시 키를 다른 두 잡과 가른다. setup-go 는 키가 이미 있으면 다시 저장하지 않아서,
       # 키를 공유하면 CGO 를 켠 채 빌드한 잡의 캐시가 먼저 저장돼 여기서는 영영 미스가 난다.
       # (go test 는 unit tests 잡이 같은 명령으로 돌리므로 여기서는 두지 않는다.)
+      # 이 키를 저장하는 쪽은 main push 의 warm-caches.yml 이다 — PR ref 에 저장된 캐시는
+      # 다른 PR 이 읽지 못한다. cache-dependency-path 를 바꾸면 거기도 똑같이 바꿀 것.
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
@@ -133,10 +135,13 @@ jobs:
             go.sum
             .github/workflows/ci.yml
 
+      # pip 캐시도 go 와 같은 이유로 main 의 warm-caches.yml 이 데운다.
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+          cache: pip
+          cache-dependency-path: tests/integration/requirements.txt
 
       - name: Install Python integration test deps
         run: pip install -r tests/integration/requirements.txt
@@ -473,6 +478,27 @@ jobs:
           cat /tmp/bg/data-plane-load.log
           exit "$(cat /tmp/bg/data-plane-load.rc)"
 
+      # oauth-variant 그룹은 primary 와 겹쳐 돈다. 이 그룹이 부르는 것은 dex 와
+      # homelab-k3s-mcp-oauth 네임스페이스의 배포뿐이고 primary 파일은 그 어느 쪽도 건드리지
+      # 않는다(primary 의 카운터·로그 증가분 파일은 primary 파드만 센다). 반대로 auth-variant 는
+      # 여기 넣지 않는다: platform_auth_safety_ac8.py 가 같은 oauth 배포를 불러
+      # event_log_ac4_auth_failed.py 의 로그 증가분을 흔들고, metrics_ac2_reasons.py 는 primary 가
+      # 쓰는 실물 gatekeeper 에 요청을 띄운다. 그래서 auth-variant 는 아래 Wait 뒤에 돈다.
+      # set +e 인 이유: 스텝 셸의 -e 가 서브셸에 물려 러너가 실패하면 .rc 를 못 남긴다.
+      - name: Start oauth-variant group in background
+        run: |
+          mkdir -p /tmp/bg
+          ( set +e
+            ( while true; do kubectl -n homelab-k3s-mcp-oauth port-forward svc/homelab-k3s-mcp-oauth 8089:80 >>/tmp/pf-oauth.log 2>&1; sleep 1; done ) &
+            PF_PID=$!
+            python tests/integration/run_all.py --group oauth-variant --base-url http://127.0.0.1:8089 \
+              >/tmp/bg/oauth-variant.log 2>&1
+            rc=$?
+            kill $PF_PID 2>/dev/null
+            pkill -f "port-forward svc/homelab-k3s-mcp-oauth 8089:80"
+            echo $rc >/tmp/bg/oauth-variant.rc
+          ) </dev/null >/dev/null 2>&1 &
+
       # 파일별 스텝을 나열하지 않는다. tests/integration/run_all.py 가 매칭 단위 파일을
       # 자동 발견해 각 파일이 모듈 docstring에 신고한 `실행 대상`(primary / auth-variant)
       # 별로 실행하므로, AC를 전용 파일로 쪼갤 때 이 워크플로를 고칠 필요가 없다.
@@ -488,13 +514,23 @@ jobs:
           TRACE_PID=$!
           ( while true; do kubectl -n github-mock port-forward svc/github-mock 8093:80 >>/tmp/pf-ghmock.log 2>&1; sleep 1; done ) &
           GH_MOCK_PID=$!
-          trap 'kill $PF_PID $TRACE_PID $GH_MOCK_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp" || true; pkill -f "port-forward svc/http-trace" || true; pkill -f "port-forward svc/github-mock" || true' EXIT
+          trap 'kill $PF_PID $TRACE_PID $GH_MOCK_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp 8080:80" || true; pkill -f "port-forward svc/http-trace" || true; pkill -f "port-forward svc/github-mock" || true' EXIT
           python tests/integration/run_all.py --group primary \
             --base-url http://127.0.0.1:8080 --trace-url http://127.0.0.1:8090
         env:
           # github_app_installation_token_ac5.py drives the mock's knobs and
           # reads its request log; the other github-app files never touch it.
           GITHUB_MOCK_URL: http://127.0.0.1:8093
+
+      # 실 OIDC 발급자(dex)를 가리키도록 MCP_OAUTH_* 를 세팅한 배포 변형
+      # (tests/k8s/kind/oidc-fixture.yaml). 디스커버리 라우트는 OAuth 가 구성된 경우에만
+      # 걸리므로 platform-auth-safety/AC2 는 이 배포에서만 관측된다. 러너는 primary 앞에서
+      # 백그라운드로 떴고, 여기서는 끝나기를 기다려 로그를 풀고 같은 코드로 끝난다.
+      - name: Wait for integration tests (oauth-variant deployment)
+        run: |
+          timeout 300 bash -c 'until [ -f /tmp/bg/oauth-variant.rc ]; do sleep 1; done'
+          cat /tmp/bg/oauth-variant.log
+          exit "$(cat /tmp/bg/oauth-variant.rc)"
 
       # 인증을 켜고 자격증명 시크릿을 하나도 붙이지 않은 배포 변형
       # (tests/k8s/kind/auth-fixture.yaml). 인증 게이트와 "미설정 시 graceful 거부" 는
@@ -505,16 +541,6 @@ jobs:
           PF_PID=$!
           trap 'kill $PF_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp-auth" || true' EXIT
           python tests/integration/run_all.py --group auth-variant --base-url http://127.0.0.1:8088
-
-      # 실 OIDC 발급자(dex)를 가리키도록 MCP_OAUTH_* 를 세팅한 배포 변형
-      # (tests/k8s/kind/oidc-fixture.yaml). 디스커버리 라우트는 OAuth 가 구성된 경우에만
-      # 걸리므로 platform-auth-safety/AC2 는 이 배포에서만 관측된다.
-      - name: Run integration tests (oauth-variant deployment)
-        run: |
-          ( while true; do kubectl -n homelab-k3s-mcp-oauth port-forward svc/homelab-k3s-mcp-oauth 8089:80 >>/tmp/pf-oauth.log 2>&1; sleep 1; done ) &
-          PF_PID=$!
-          trap 'kill $PF_PID 2>/dev/null || true; pkill -f "port-forward svc/homelab-k3s-mcp-oauth" || true' EXIT
-          python tests/integration/run_all.py --group oauth-variant --base-url http://127.0.0.1:8089
 
       # 실물 gatekeeper 를 기록 프록시 뒤에 둔 배포 변형(tests/k8s/kind/gatekeeper-variant.yaml).
       # 승인 게이트의 요청 본문 계약(AC2)·만료 관측(AC4 (b))·자동 응답 모드(AC9)는
