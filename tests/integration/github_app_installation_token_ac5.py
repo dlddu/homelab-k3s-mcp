@@ -38,9 +38,8 @@ MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/"
 def reset_mock(**config: Any) -> None:
     """Clear the recorded requests and set the mock's knobs to ``config``.
 
-    A config POST carries the whole configuration, so keys left out go back to
-    their default — ``reset_mock()`` with no arguments restores the stock mock
-    the other github-app files expect.
+    ``reset_mock()`` with no arguments restores the stock mock the other
+    github-app files expect.
     """
     httpx.post(f"{MOCK_URL}/_admin/config", json=config, timeout=10.0).raise_for_status()
     httpx.delete(f"{MOCK_URL}/_admin/requests", timeout=10.0).raise_for_status()
