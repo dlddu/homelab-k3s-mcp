@@ -8,10 +8,6 @@
 경우에만 라우팅된다(`internal/server/server.go`). 주 배포는 `MCP_AUTH_DISABLED=1` 이고
 auth-variant 는 API 키 전용이라, 이 AC 는 두 곳 어디에서도 관측되지 않는다.
 
-AC 의 검증 방법은 「보호 리소스 메타데이터가 발급자/리소스를 반환하고, **표준 MCP 클라이언트가
-이를 통해 인증을 자동 구성할 수 있다**」이다. 그래서 이 파일은 문서를 한 번 읽고 끝내지 않고,
-클라이언트가 실제로 걷는 순서 그대로 **연결된 사슬**을 걷는다 — 401 이 알려 주는 주소로 가서,
-그 문서가 지목한 발급자로 가서, 그 발급자의 OIDC 디스커버리가 가리키는 키 집합에 닿는다.
 사슬의 각 칸이 앞 칸이 준 값으로만 이어지므로, 중간의 한 칸이 낡으면 그 자리에서 끊긴다.
 """
 
@@ -109,11 +105,9 @@ async def test_platform_auth_safety_ac2_issuer_discovery_loads_jwks(url: str) ->
     경로가 아니다. 여기까지 걸리면 「표준 클라이언트가 이 문서로 인증을 자동 구성할 수 있다」가
     관측된 것이다.
 
-    **서버 쪽 동적 로드**는 이 배포가 Available 하다는 사실이 증거다. `auth.FromEnv` 는 기동 시
-    같은 `openid-configuration` 을 가져와 `jwks_uri` 가 없으면, 또는 그 JWKS 에 쓸 수 있는 RSA
-    키가 하나도 없으면 오류를 내고 `main.go` 가 `os.Exit(1)` 한다. 그 경로가 실제로 치명적이라는
-    것은 `platform_auth_safety_ac8.py` 가 자격증명을 하나도 주지 않은 변형에서 관측한다 —
-    그래서 이 단정은 공허하지 않다.
+    **서버 쪽 동적 로드**는 이 배포가 Available 하다는 사실이 증거다. 그 경로가 실제로
+    치명적이라는 것은 `platform_auth_safety_ac8.py` 가 자격증명을 하나도 주지 않은 변형에서
+    관측한다 — 그래서 이 단정은 공허하지 않다.
     """
     print("--- discovery: issuer OIDC discovery -> JWKS (AC: platform-auth-safety/AC2) ---")
     metadata = protected_resource_metadata(url)
