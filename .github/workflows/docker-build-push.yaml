@@ -20,9 +20,15 @@ name: Build and Push Docker Image to GHCR
 # ci.yml 의 통합 테스트는 검증용으로 이미지를 *빌드만* 한다(kind 에 load 한다).
 # 실제로 pull 가능한 태그를 발행하는 것은 이 워크플로다.
 #
-# 경로 필터를 두지 않는 것은 의도적이다: 프리뷰는 PR head SHA 태그를 참조하므로,
-# 문서만 고친 PR 에 `deploy/preview` 라벨이 붙어도 그 SHA 에 이미지가 있어야 환경이 뜬다.
-# 소스가 그대로면 buildx 의 gha 캐시가 통째로 히트하니 비용은 크지 않다.
+# PR 경로(workflow_call)에 경로 필터를 두지 않는 것은 의도적이다: 프리뷰는 PR head SHA
+# 태그를 참조하므로, 문서만 고친 PR 에 `deploy/preview` 라벨이 붙어도 그 SHA 에 이미지가
+# 있어야 환경이 뜬다. 소스가 그대로면 buildx 의 gha 캐시가 통째로 히트하니 비용은 크지 않다.
+#
+# main push 에는 경로 조건을 건다. 서버 바이너리(Go 소스)와 운영 매니페스트(k8s/)에 닿지
+# 않는 머지는 새 SHA 태그만 만들어 운영 파드를 재시작시킬 뿐이라 건너뛴다. 건너뛴 커밋은
+# deploy 브랜치에 반영되지 않는다 — 운영 커밋은 deploy 끝 커밋의 Source-Commit 트레일러가
+# 말한다. 제외 목록 방식이라 새 디렉터리는 기본으로 돈다. 제외를 늘리려면 바이너리(go:embed
+# 포함)와 Flux 가 그 경로를 읽지 않는지 먼저 확인할 것.
 
 # 트리거: main push 는 여기서 단독으로 받는다(발행 + pin, 테스트는 PR 에서 이미 통과).
 # PR 은 ci.yml 의 `image` 잡이 workflow_call 로 부르므로 발행 실패가 단일 필수 체크
@@ -31,6 +37,17 @@ name: Build and Push Docker Image to GHCR
 on:
   push:
     branches: [main]
+    paths:
+      - '**'
+      - '.dockerignore'
+      - '!docs/**'
+      - '!scripts/**'
+      - '!tests/**'
+      - '!**/*.md'
+      - '!**/*_test.go'
+      - '!.gitignore'
+      - '!.github/**'
+      - '.github/workflows/docker-build-push.yaml'
   workflow_call:
   workflow_dispatch:
 
