@@ -44,8 +44,9 @@ docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본�
   명시적 선언**이다 — 사각지대가 조용히 커지는 성질을 없애는 것이 이 규칙의 목적이다.
 
 위 여덟은 **등재 범위가 변했는지**만 재고 그 판정이 **무엇을 물었는지**는 보지 않아,
-복원 경로 ①② 만 검토한 판정도 rc=0 으로 착지한다. R9·R10 이 그 자리를 **두 표면 모두에서**
-메운다 — 같은 판정을 `check_paths34()` 하나로 돌리고 잔량 마커만 표면별로 읽는다:
+복원 경로 넷 중 어느 축도 묻지 않은 판정이 rc=0 으로 착지한다. R9~R12 가 그 자리를
+**두 축(③④ · ①②) × 두 표면 네 자리 모두에서** 메운다 — 같은 판정을 `check_paths()` 하나로
+돌리고 축별 토큰·앵커와 잔량 마커만 갈라 읽는다:
 
 * **R9** 줄 주석 원장 행이 결과 칸에 `복원경로 ③:` 와 `복원경로 ④:` 를 **둘 다** 담고,
   그 판정을 **어느 지문에서 내렸는지**를 「복원경로 ③④ 판정 @지문 <12자>」 로 못박되
@@ -75,6 +76,22 @@ docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본�
   **두 표면의 잔량 마커는 갈라 둔다**(`복원경로-잔량` / `docstring-복원경로-잔량`). 한 마커로
   합치면 어느 표면이 움직였는지가 diff 에서 사라지고, 한쪽의 판정이 다른 쪽의 미판정을
   가릴 수 있다 — R4 와 R8 을 갈라 둔 것과 같은 이유다.
+
+* **R11** 줄 주석 원장 행의 **복원 경로 ①② 축**에 대한 같은 판정: 결과 칸이 `복원경로 ①:` 와
+  `복원경로 ②:` 를 **둘 다** 담고 「복원경로 ①② 판정 @지문 <12자>」 의 지문이 **그 행의 현재
+  지문과 같을 때만** ①② 판정 완료로 센다. 그리고 **완료 행 수 + 잔량 마커 == 전체 행 수**.
+* **R12** 같은 판정을 docstring 원장에서.
+
+  **왜 축을 갈라 세는가.** R9·R10 이 닫은 것은 ③④ 축 하나이고, ①② 축에는 래칫이 없었다 —
+  그 축의 판정은 **다시 물게 될 계기 없이 낡는다.** 관측된 두 사건이 그 성질이다: docstring
+  원장 행 `#5` 의 보존된 ①② 판정은 「복원 경로 넷 어디에도 없다」고 단정한 여섯 자리 중
+  **넷이 저작 PR 본문에 있었고**, 행 `#6` 의 2026-09-07 ①② 판정은 **다섯 자리 전부에서 어긋난
+  채 18일간 초록으로 통과**했다. 두 경우 모두 ③④ 앵커는 초록이었다 — 한 축의 완료가 다른 축의
+  미판정을 가리므로, 축을 갈라 세지 않으면 이 성질은 게이트 출력에 나타나지 않는다.
+
+  **초기값이 「거의 전부 미판정」인 것은 후퇴가 아니다.** 이 래칫이 서는 시점에 ①② 판정이
+  현재 지문에 묶인 행은 docstring 표면의 한 행뿐이고 나머지는 모두 잔량으로 선언된다. 그 수는
+  줄어든 것이 아니라 **지금까지 세지 않았던 것을 처음 세는 값**이다.
 
 통과하면 **두 표면의 현재 인구조사를 출력한다.** 그 수치는 문서 프로즈에 적지 않는다 —
 낡는 형태를 없애는 것이 이 게이트의 목적이고, 최신값이 필요하면 여기서 읽는다.
@@ -133,11 +150,17 @@ PATHS34_REMAINING_OPEN = "<!-- 복원경로-잔량 -->"
 PATHS34_REMAINING_CLOSE = "<!-- /복원경로-잔량 -->"
 DOC_PATHS34_REMAINING_OPEN = "<!-- docstring-복원경로-잔량 -->"
 DOC_PATHS34_REMAINING_CLOSE = "<!-- /docstring-복원경로-잔량 -->"
+PATHS12_REMAINING_OPEN = "<!-- 복원경로①②-잔량 -->"
+PATHS12_REMAINING_CLOSE = "<!-- /복원경로①②-잔량 -->"
+DOC_PATHS12_REMAINING_OPEN = "<!-- docstring-복원경로①②-잔량 -->"
+DOC_PATHS12_REMAINING_CLOSE = "<!-- /docstring-복원경로①②-잔량 -->"
 
 # 결과 칸이 ③④ 를 물었다고 주장하려면 이 둘을 모두 담아야 한다(가독 근거).
 PATHS34_TOKENS = ("복원경로 ③:", "복원경로 ④:")
 # 그리고 그 판정이 어느 지문에서 나왔는지를 못박아야 한다(기계 근거).
 PATHS34_ANCHOR_RE = re.compile(r"복원경로 ③④ 판정 @지문 `([0-9a-f]{12})`")
+PATHS12_TOKENS = ("복원경로 ①:", "복원경로 ②:")
+PATHS12_ANCHOR_RE = re.compile(r"복원경로 ①② 판정 @지문 `([0-9a-f]{12})`")
 
 BACKTICKED_RE = re.compile(r"`([^`]+)`")
 FINGERPRINT_LEN = 12
@@ -357,43 +380,52 @@ def check_ledger(
     return sum(row["lines"] for row in rows)
 
 
-def check_paths34(rows: list[dict], remaining: int, rule: str, surface: str) -> int:
-    """한 표면의 ③④ 판정 래칫(R9·R10)을 검사하고 판정 완료 행 수를 돌려준다.
+def check_paths(
+    rows: list[dict],
+    remaining: int,
+    rule: str,
+    surface: str,
+    axis: str,
+    tokens: tuple[str, ...],
+    anchor_re: re.Pattern[str],
+) -> int:
+    """한 표면·한 축의 복원 경로 판정 래칫(R9~R12)을 검사하고 완료 행 수를 돌려준다.
 
-    두 표면이 **같은 함수**를 쓰는 것이 의도다. R9 가 줄 주석 쪽에 먼저 섰을 때 docstring
+    네 자리가 **같은 함수**를 쓰는 것이 의도다. R9 가 줄 주석 쪽에 먼저 섰을 때 docstring
     쪽에는 같은 규칙이 없었고, 그 비대칭은 문서로는 보이지 않았다 — 게이트 출력에 항이
     없다는 사실만으로는 「그 표면은 면제」인지 「아직 안 세웠다」인지 갈리지 않는다. 규칙을
-    함수로 공유하면 한쪽만 느슨해지는 경로가 코드에서 사라진다.
+    함수로 공유하면 한쪽만 느슨해지는 경로가 코드에서 사라진다. 축을 인자로 받는 것도 같은
+    근거다 — ③④ 에만 래칫이 서 있던 동안 ①② 축의 판정은 낡아도 초록이었다.
     """
     done = 0
     stale: list[str] = []
     for row in rows:
         result = row["result"]
-        anchored = set(PATHS34_ANCHOR_RE.findall(result))
-        has_prose = all(token in result for token in PATHS34_TOKENS)
+        anchored = set(anchor_re.findall(result))
+        has_prose = all(token in result for token in tokens)
         if has_prose and row["fingerprint"] in anchored:
             done += 1
         elif anchored or has_prose:
-            # ③④ 를 물은 흔적은 있는데 현재 지문에 묶인 판정이 아니다 = 재판정으로 낡았다.
+            # 그 축을 물은 흔적은 있는데 현재 지문에 묶인 판정이 아니다 = 재판정으로 낡았다.
             stale.append(f"{row['fingerprint']}({' '.join(row['paths'][:2])})")
 
     if stale:
         fail(
             rule,
-            f"{surface} 표면에서 ③④ 판정이 현재 지문에 묶여 있지 않은 행 {len(stale)}개:"
-            f" {', '.join(stale)}."
-            " 그 행은 판정 이후 주석이 바뀌었다 — 새 내용에 대해 ③④ 를 다시 묻고"
-            " 「복원경로 ③④ 판정 @지문 <현재 지문>」 으로 못박거나, 잔량 마커를 올려"
+            f"{surface} 표면에서 {axis} 판정이 현재 지문에 묶여 있지 않은 행"
+            f" {len(stale)}개: {', '.join(stale)}."
+            f" 그 행은 판정 이후 주석이 바뀌었다 — 새 내용에 대해 {axis} 를 다시 묻고"
+            f" 「복원경로 {axis} 판정 @지문 <현재 지문>」 으로 못박거나, 잔량 마커를 올려"
             " 「이 행의 새 내용은 아직 묻지 않았다」를 diff 에 남길 것.",
         )
 
     if done + remaining != len(rows):
         fail(
             rule,
-            f"{surface} 표면의 ③④ 판정 완료 {done}행 + 잔량 {remaining}행 !="
+            f"{surface} 표면의 {axis} 판정 완료 {done}행 + 잔량 {remaining}행 !="
             f" 원장 전체 {len(rows)}행. 행을 더하면서 결과 칸에"
-            f" `{PATHS34_TOKENS[0]}`·`{PATHS34_TOKENS[1]}` 와 현재 지문 앵커를 적지"
-            " 않았다면 잔량 마커를 올려 「이 행은 복원 경로 ③④ 를 아직 묻지 않았다」를"
+            f" `{tokens[0]}`·`{tokens[1]}` 와 현재 지문 앵커를 적지"
+            f" 않았다면 잔량 마커를 올려 「이 행은 복원 경로 {axis} 를 아직 묻지 않았다」를"
             " diff 에 남길 것. 이 수는 단조 감소가 아니다 — 재판정은 그 행을 미판정으로"
             " 되돌리고, 그 증가가 곧 「새 내용은 아직 묻지 않았다」는 신호다.",
         )
@@ -418,6 +450,12 @@ def main() -> int:
     )
     doc_paths34_remaining = parse_total(
         text, DOC_PATHS34_REMAINING_OPEN, DOC_PATHS34_REMAINING_CLOSE
+    )
+    paths12_remaining = parse_total(
+        text, PATHS12_REMAINING_OPEN, PATHS12_REMAINING_CLOSE
+    )
+    doc_paths12_remaining = parse_total(
+        text, DOC_PATHS12_REMAINING_OPEN, DOC_PATHS12_REMAINING_CLOSE
     )
 
     in_scope = set(scan_files())
@@ -465,11 +503,23 @@ def main() -> int:
         )
 
     # R9 — 줄 주석 표면의 복원 경로 ③④ 판정 래칫(지문에 묶인다)
-    paths34_done = check_paths34(rows, paths34_remaining, "R9", "줄 주석")
+    paths34_done = check_paths(
+        rows, paths34_remaining, "R9", "줄 주석", "③④", PATHS34_TOKENS,
+        PATHS34_ANCHOR_RE,
+    )
     # R10 — 같은 판정을 docstring 표면에서. 한 함수를 공유하는 것이 「두 표면이 같은 엄격도로
     # 재어진다」의 유일한 기계 근거다 — 갈라 쓰면 한쪽만 조용히 느슨해진다.
-    doc_paths34_done = check_paths34(
-        doc_rows, doc_paths34_remaining, "R10", "docstring"
+    doc_paths34_done = check_paths(
+        doc_rows, doc_paths34_remaining, "R10", "docstring", "③④", PATHS34_TOKENS,
+        PATHS34_ANCHOR_RE,
+    )
+    paths12_done = check_paths(
+        rows, paths12_remaining, "R11", "줄 주석", "①②", PATHS12_TOKENS,
+        PATHS12_ANCHOR_RE,
+    )
+    doc_paths12_done = check_paths(
+        doc_rows, doc_paths12_remaining, "R12", "docstring", "①②", PATHS12_TOKENS,
+        PATHS12_ANCHOR_RE,
     )
 
     if failures:
@@ -484,10 +534,11 @@ def main() -> int:
     share = (ledger_sum * 100.0 / len(hits)) if hits else 0.0
     doc_share = (doc_sum * 100.0 / len(doc_hits)) if doc_hits else 0.0
     print(
-        f"OK: 규칙 R1~R10 위반 없음 — {census(hits)}"
+        f"OK: 규칙 R1~R12 위반 없음 — {census(hits)}"
         f" · 판정 완료 {ledger_sum}줄({share:.1f}%) / 등재 범위 {len(rows)}"
         f" · 미판정 잔량 {remaining}줄"
         f" · 복원경로 ③④ 판정 {paths34_done}/{len(rows)}행(잔량 {paths34_remaining})"
+        f" · 복원경로 ①② 판정 {paths12_done}/{len(rows)}행(잔량 {paths12_remaining})"
     )
     for row in rows:
         print(
@@ -501,6 +552,8 @@ def main() -> int:
         f" · 미판정 잔량 {doc_remaining}줄"
         f" · 복원경로 ③④ 판정 {doc_paths34_done}/{len(doc_rows)}행"
         f"(잔량 {doc_paths34_remaining})"
+        f" · 복원경로 ①② 판정 {doc_paths12_done}/{len(doc_rows)}행"
+        f"(잔량 {doc_paths12_remaining})"
     )
     for row in doc_rows:
         print(
