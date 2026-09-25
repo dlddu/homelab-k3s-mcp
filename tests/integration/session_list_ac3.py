@@ -3,12 +3,8 @@
 검증 시나리오: test-session-list.md#시나리오 3
 실행 대상: auth-variant
 
-This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:
-auth is on (``MCP_API_KEYS`` set, ``MCP_AUTH_DISABLED`` unset) and no credential
-secret or integration endpoint is attached at all, so ``main.go``'s
-``build*Service`` helpers each degrade to ``NewUnavailable("")`` while the
-server still starts. ``SESSION_PLATFORM_ENDPOINT`` is one of the absent ones --
-the only place in the repo that sets it is the base deployment
+``SESSION_PLATFORM_ENDPOINT`` is one of the endpoints this variant leaves
+unattached: the only place in the repo that sets it is the base deployment
 (``k8s/deployment.yaml``), which this variant does not use -- so the AC's
 premise holds here and nowhere else.
 """
@@ -26,11 +22,7 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 
 async def test_session_list_ac3_unconfigured_refusal(session) -> None:
-    """AC: session-list/AC3
-
-    With SESSION_PLATFORM_ENDPOINT unset, session_list returns the unavailable
-    error instead of crashing, and the server keeps serving other tools.
-    """
+    """AC: session-list/AC3"""
     await assert_unavailable_refusal(
         session, "session_list", {}, SESSION_PLATFORM_REFUSAL
     )

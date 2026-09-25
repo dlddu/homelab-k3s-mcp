@@ -5,12 +5,7 @@
 병렬 레인: session
 
 **AC1의 검증 방법 네 절을 전부 단정한다.** 어느 하나를 빼면 커서 규약이 아니라 "읽으면 뭔가
-나온다"를 단정하는 것이 된다:
-
-1. ``offset=0``(미지정)이 세션 시작 이후 전체를 반환하고 서버가 ``nextOffset``을 발급한다.
-2. 그 커서로 재호출하면 **빈 payload와 동일한 커서**가 돌아온다(새 출력이 없을 때).
-3. 새 출력이 쌓인 뒤 같은 커서로 호출하면 **증분만** 돌아온다.
-4. 같은 커서를 반복 호출하면 **같은 구간**이 돌아온다 — 읽기는 비파괴적이다.
+나온다"를 단정하는 것이 된다.
 
 2와 4가 vacuous하지 않은 이유는 에이전트의 ``scrollback.Since``가 그것을 **구조로** 만들기
 때문이다: ``offset >= len``이면 빈 payload와 ``nextOffset = len``을 돌려주고, 그 미만이면
@@ -21,9 +16,6 @@
 직접 넣는다(``inject_through_control_plane``) — 여기서 ``session_write``를 쓰면 이 파일의 3번
 절이 session-write/AC1의 도구가 도는지에 함께 매달리게 된다. 셋업에서 다른 경로를 경유하는
 것은 검증으로 세지 않는다는 규칙 2의 단서가 이 자리를 위한 것이다.
-
-세션은 이 파일이 만들고 이 파일이 지운다 — 다른 파일이 무엇을 남겨 놨든 무관하고, 나갈 때
-파드까지 회수된다.
 """
 
 from __future__ import annotations
@@ -100,8 +92,7 @@ async def test_session_read_ac1_offset_zero_returns_everything(
     """AC: session-read/AC1 — omitted offset reads from session start.
 
     Returns the first read so the later cases can continue from the cursor the
-    server issued rather than one this file computed. The AC is explicit that
-    the caller passes the server's ``nextOffset`` back, so the test does too.
+    server issued rather than one this file computed.
     """
     first = await _read(session, session_id)
 
@@ -123,12 +114,7 @@ async def test_session_read_ac1_offset_zero_returns_everything(
 async def test_session_read_ac1_cursor_is_empty_without_new_output(
     session, session_id: str, cursor: int
 ) -> None:
-    """AC: session-read/AC1 — no new output is an empty payload at the same cursor.
-
-    Not an error and not a replay: the agent's ``Since`` returns nothing and
-    hands back the same offset, so a caller polling with the server's cursor
-    sees "nothing yet" without losing its place.
-    """
+    """AC: session-read/AC1 — no new output is an empty payload at the same cursor."""
     idle = await _read(session, session_id, cursor)
 
     assert idle["payload"] == "", f"expected no new output at {cursor}: {idle}"
@@ -142,14 +128,7 @@ async def test_session_read_ac1_cursor_is_empty_without_new_output(
 async def test_session_read_ac1_cursor_returns_only_the_increment(
     session, control_plane_url: str, session_id: str, cursor: int
 ) -> dict:
-    """AC: session-read/AC1 — after new output, the cursor returns only the delta.
-
-    Injects a command through the control plane (setup, not the tool under
-    test), then reads at the cursor the previous case ended on. The delta must
-    contain the command's own output and must *not* contain the opening span,
-    which is what makes this "only what accumulated since" rather than "the
-    whole buffer again".
-    """
+    """AC: session-read/AC1 — after new output, the cursor returns only the delta."""
     inject_through_control_plane(control_plane_url, session_id, COMMAND)
 
     deadline = time.monotonic() + INCREMENT_TIMEOUT

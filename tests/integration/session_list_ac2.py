@@ -45,14 +45,6 @@ LIST_CALLS = 3
 async def test_session_list_ac2_listing_is_passive(session) -> None:
     """AC: session-list/AC2 — repeated listings change nothing.
 
-    Asserts the three things the verification method names, against a control
-    plane holding an idle session and a snapshotted one:
-
-    * every session's ``state`` is identical across repeated calls (no idle
-      session was promoted, no snapshot restored),
-    * every session's ``lastAccess`` is identical (listing is not an access),
-    * the control plane started no pod (a restore would have provisioned one).
-
     The pod set is captured before the first call, so a pod appearing at any
     point during the calls is caught.
     """

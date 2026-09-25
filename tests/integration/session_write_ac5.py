@@ -3,12 +3,8 @@
 검증 시나리오: test-session-write.md#시나리오 5
 실행 대상: auth-variant
 
-This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:
-auth is on (``MCP_API_KEYS`` set, ``MCP_AUTH_DISABLED`` unset) and no credential
-secret or integration endpoint is attached at all, so ``main.go``'s
-``build*Service`` helpers each degrade to ``NewUnavailable("")`` while the
-server still starts. ``SESSION_PLATFORM_ENDPOINT`` is one of the absent ones --
-the only place in the repo that sets it is the base deployment
+``SESSION_PLATFORM_ENDPOINT`` is one of the endpoints this variant leaves
+unattached: the only place in the repo that sets it is the base deployment
 (``k8s/deployment.yaml``), which this variant does not use -- so the AC's
 premise holds here and nowhere else. ``session_list_ac3.py`` and
 ``session_read_ac4.py`` are the precedents for this seat; all three tools share
@@ -24,7 +20,7 @@ session on purpose -- with the endpoint unset the refusal must arrive before any
 target lookup could matter, so a caller cannot mistake it for a not-found. The
 payload is inert text for the same reason: nothing can execute it here, and this
 file must not be the one that first injects input into a workload (that is
-session-write/AC1, which is still blocked on a real data plane).
+session-write/AC1).
 """
 
 from __future__ import annotations
@@ -48,11 +44,7 @@ INERT_PAYLOAD = "e2e probe: this never reaches a workload\n"
 
 
 async def test_session_write_ac5_unconfigured_refusal(session) -> None:
-    """AC: session-write/AC5
-
-    With SESSION_PLATFORM_ENDPOINT unset, session_write returns the unavailable
-    error instead of crashing, and the server keeps serving other tools.
-    """
+    """AC: session-write/AC5"""
     await assert_unavailable_refusal(
         session,
         "session_write",
