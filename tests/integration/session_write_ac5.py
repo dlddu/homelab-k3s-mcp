@@ -34,12 +34,8 @@ from _auth_variant import (
 )
 from _helpers import base_url, open_session, wait_for_healthz
 
-#: 이 변형에는 제어면이 없으므로 어떤 id 도 조회될 수 없다. 거부가 대상 조회보다
-#: 먼저 일어난다는 사실을 드러내려고 실재하지 않는 id 를 고른다.
 UNRESOLVABLE_SESSION_ID = "e2e-write-ac5-unconfigured"
 
-#: 인자 검증(-32602)을 통과시키기 위한 유효한 문자열. 닿을 워크로드가 없으므로
-#: 실행되지 않는다 — 그 사실이 드러나도록 명령이 아닌 평문을 쓴다.
 INERT_PAYLOAD = "e2e probe: this never reaches a workload\n"
 
 

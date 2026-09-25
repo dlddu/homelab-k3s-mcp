@@ -29,8 +29,7 @@ from _session_platform import inject_through_control_plane, live_shell_session
 #: 제어면에 만들 세션 이름. 진단 로그에서 어느 파일의 세션인지 드러나야 한다.
 SESSION_NAME = "e2e read ac1"
 
-#: 증분으로 관측할 명령과 그 산출물의 마커. 쉘 프롬프트·에코와 섞이지 않도록
-#: 이 파일에서만 쓰는 유일 문자열을 고른다. 개행이 있어야 PTY 가 명령을 실행한다.
+#: 증분으로 관측할 명령과 그 산출물의 마커. 쉘 프롬프트·에코와 섞이지 않도록 이 파일에서만 쓰는 유일 문자열을 고른다.
 MARKER = "e2e-read-ac1-increment"
 COMMAND = f"printf '%s\\n' {MARKER}\n"
 
@@ -39,8 +38,6 @@ COMMAND = f"printf '%s\\n' {MARKER}\n"
 INCREMENT_TIMEOUT = 30.0
 INCREMENT_POLL = 0.5
 
-#: 쉘이 프롬프트를 다 쓸 때까지 기다리는 예산 — "새 출력이 없다"와 "같은 구간이
-#: 돌아온다"는 두 전제를 이 파일이 스스로 성립시키기 위한 것이다(``_quiet_end``).
 SETTLE_TIMEOUT = 30.0
 SETTLE_POLL = 0.5
 SETTLE_STABLE_POLLS = 3
@@ -205,7 +202,6 @@ async def run() -> None:
                 f"this file read before injecting it: {first}"
             )
 
-            # The span the previous case observed, re-read from the same cursor.
             await test_session_read_ac1_repeating_a_cursor_replays_the_span(
                 session, session_id, cursor, delta["payload"]
             )

@@ -14,8 +14,7 @@ from mcp.shared.exceptions import McpError
 from _helpers import base_url, open_session, wait_for_healthz
 from _session_platform import pod_names, seed_sessions, session_payload, sessions_from
 
-#: 실재하는 대상 세션. AC3의 "호출 후 대상 세션의 상태·lastAccess가 변하지 않는다"를
-#: 관측할 기준선이라, 두 실패 호출과 무관하게 존재하기만 하면 된다.
+#: 실재하는 대상 세션. 두 실패 호출과 무관하게 존재하기만 하면 되는 기준선이다.
 TARGET_SESSION = session_payload(
     session_id="e2e-read-ac3-target",
     name="e2e read target",
@@ -26,7 +25,6 @@ TARGET_SESSION = session_payload(
     last_access="2026-09-03T11:00:00Z",
 )
 
-#: 제어면에 없는 id. 시드가 만드는 유일한 세션과 겹치지 않는다.
 MISSING_SESSION_ID = "e2e-read-ac3-missing"
 
 
@@ -55,7 +53,6 @@ async def test_session_read_ac3_missing_session_is_not_found(session) -> None:
     assert block.type == "text", block
     assert "session platform not found" in block.text, block.text
     assert MISSING_SESSION_ID in block.text, block.text
-    # Distinct from the other two failure classes a caller can hit.
     assert "unavailable" not in block.text, block.text
     assert "invalid argument" not in block.text, block.text
     print("not-found ok:", block.text)
