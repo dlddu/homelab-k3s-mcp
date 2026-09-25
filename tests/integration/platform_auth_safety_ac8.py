@@ -8,12 +8,6 @@ AC 의 검증 방법은 네 구성을 **각각** 요구한다 — (a) API 키만
 도 미설정 → 기동 실패. 그래서 이 파일은 **네 배포를 대조하는 것 자체**가 검증이며, 자기 그룹의
 배포 하나만으로는 AC 를 관측할 수 없다.
 
-- (a) 는 이 파일의 `실행 대상` 인 auth-variant(`tests/k8s/kind/auth-fixture.yaml`) 다.
-  `MCP_API_KEYS` 만 세팅하고 `MCP_AUTH_DISABLED`·`MCP_OAUTH_*` 를 미설정으로 두는 것을
-  그 매니페스트가 주석으로 의도 선언해 둔 배포이고, 러너가 준 base URL 이 그것이다.
-- (b)(c)(d) 는 `tests/k8s/kind/oidc-fixture.yaml` 이 세우고, `_oidc.port_forward` 로 필요한
-  순간에만 짧게 연다.
-
 env 게이팅 자체는 `internal/auth/auth_test.go` 의 `FromEnv` 단위 테스트가 이미 4조합을 덮는다.
 여기서 더해지는 것은 그것이 **배포된 서버의 라우팅과 기동 여부로 실제로 나타나는가**다 —
 단위 테스트는 `App` 이 라우트를 걸지 않는 것까지만 보고, 파드가 뜨지 않는 것은 보지 못한다.
@@ -193,11 +187,6 @@ async def test_platform_auth_safety_ac8_c_both_paths() -> None:
     챌린지가 그것을 광고하는 것으로 관측한다. 이 배포의 키는 auth-variant 의 키와 **다른
     값**이라(`_oidc.API_KEY` vs `_auth_variant.API_KEY`), 두 배포가 서로의 자격증명으로 통과할
     수 없다.
-
-    OAuth 경로에서 **유효 JWT 로 인가까지** 태우는 것은 이 슬라이스의 범위 밖이다 — 발급자에게
-    실제 토큰을 받아 오려면 dex 에 정적 클라이언트와 password DB 를 붙여야 하고, AC8 이 (c) 에
-    요구하는 것은 두 경로가 함께 **구성되어 동작한다**는 것이다. 후속에서 그 구성이 붙으면
-    AC1 의 "유효 토큰 → 정상 처리" 절과 함께 강화하는 것이 자연스럽다.
     """
     print("--- config (c) both paths (AC: platform-auth-safety/AC8) ---")
     assert_deployment_available(OAUTH_NAMESPACE, BOTH_DEPLOYMENT)
