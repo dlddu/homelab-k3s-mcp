@@ -16,8 +16,7 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "dear-baby-test"
 
-# Defaults the tool applies when selector/container are omitted
-# (internal/mcp/mcp.go: dearBabyDefaultSelector / dearBabyDefaultContainer).
+# internal/mcp/mcp.go: dearBabyDefaultSelector / dearBabyDefaultContainer.
 DEFAULT_SELECTOR = "app=dear-baby"
 
 DEFAULT_CONTAINER = "backend"
@@ -28,14 +27,9 @@ POD_PREFIX = "dear-baby-fixture-"
 async def test_dear_baby_reset_user_ac2_explicit_target(session) -> None:
     """AC: dear-baby-reset-user/AC2 — email is mandatory, selector/container default but override.
 
-    Three clauses, one assertion each. (1) A call without ``email`` is rejected
-    before anything is exec'd — argument errors come back as JSON-RPC errors,
-    surfaced by the SDK as ``McpError``. (2) With selector/container omitted the
-    tool resolves the pod through the documented defaults and echoes them back.
-    (3) Both overrides are honoured, and the discriminator in each case is that
-    the call *fails*: an ignored ``selector`` would have resolved the fixture pod
-    anyway, and an ignored ``container`` would have exec'd ``backend`` and
-    succeeded.
+    The discriminator in each override clause is that the call *fails*: an
+    ignored ``selector`` would have resolved the fixture pod anyway, and an
+    ignored ``container`` would have exec'd ``backend`` and succeeded.
 
     The exact wording of the apiserver's invalid-container rejection is not
     asserted, only that the call fails and the override is echoed back — the

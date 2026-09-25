@@ -14,8 +14,7 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "dear-baby-test"
 
-# Defaults the tool applies when selector/container are omitted
-# (internal/mcp/mcp.go: dearBabyDefaultSelector / dearBabyDefaultContainer).
+# internal/mcp/mcp.go: dearBabyDefaultSelector / dearBabyDefaultContainer.
 DEFAULT_SELECTOR = "app=dear-baby"
 
 DEFAULT_CONTAINER = "backend"
@@ -26,20 +25,8 @@ POD_PREFIX = "dear-baby-fixture-"
 async def test_dear_baby_reset_user_ac1_reset_execution(session) -> None:
     """AC: dear-baby-reset-user/AC1 — a valid email execs the reset CLI in the backend pod.
 
-    Asserts the tool resolves a Running fixture pod, execs ``/reset-user`` with
-    the given email, and reports the CLI's own outcome: stdout carries the
-    reset line for that exact address, the exit code is 0 and ``success`` is
-    true. The not-found email is exercised as a control: it proves the success
-    assertions read the CLI's real output rather than a fixed payload, and shows
-    a failing reset surfaces as an error result that still carries the exit code
-    and stderr.
-
-    Not asserted: that the onboarding fields (onboarded_at, due_date, coachmark,
-    first_record_at, ai_preview) are actually cleared while the user record
-    survives. The kind fixture's ``/reset-user`` is a busybox stub script (see
-    tests/k8s/kind/dear-baby-fixture.yaml) with no database behind it, so field
-    level effects are unobservable here; observing them would need the real
-    dear-baby backend image plus a seeded database in the CI cluster.
+    The not-found email is exercised as a control: it proves the success
+    assertions read the CLI's real output rather than a fixed payload.
     """
     result = await session.call_tool(
         "dear_baby_reset_user",
