@@ -17,13 +17,6 @@
 ``sessionWrite``가 그 두 키만 넣는다). 반환 즉시 출력이 있는지를 시간으로 재는 대신 **응답의
 모양**으로 재는 이유는 그것이 구현이 약속한 계약이고 타이밍은 CI 부하에 흔들리기 때문이다.
 
-**claude-code 절은 범위 밖이다.** AC 본문의 두 번째 문장(프롬프트 1회 실행이 큐에 적재된다)은
-`workloadType=claude-code` 세션을 요구하는데, 이 하네스의 제어면은
-``DATA_PLANE_CLAUDE_CODE_IMAGE``를 갖지 않아 그 타입을 배포할 수 없다(그 파드는
-claude-code-credentials Secret 과 credential-proxy 사이드카를 필요로 한다). shell 절만으로
-「입력이 워크로드에 전달되어 실행되고 산출물이 누적 출력에 나타난다」는 AC의 관측 가능한
-핵심이 성립하며, claude-code 절은 `docs/doc-tracker.md`의 backlog 에 후속으로 적혀 있다.
-
 세션은 이 파일이 만들고 이 파일이 지운다(`_session_platform.live_shell_session`) — 다른 파일이
 무엇을 남겨 놨든 무관하고, 나갈 때 파드까지 회수된다.
 """

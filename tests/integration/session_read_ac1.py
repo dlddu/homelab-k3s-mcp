@@ -4,14 +4,6 @@
 실행 대상: primary
 병렬 레인: session
 
-**이 파일이 데이터 플레인을 요구하는 첫 e2e다.** 같은 도구의 AC3·AC4는 에이전트 파드에 닿지
-않아 먼저 닫혔지만(없는 id는 제어면 404, 잘못된 커서는 `internal/mcp`가 HTTP 이전에 거부,
-미설정 거부는 제어면 자체가 없는 변형), AC1의 커서는 **파드가 실제로 쌓은 바이트**다:
-``Service.Read``는 ``activate`` 뒤 ``agent.Read(ctx, sess.Pod, offset)``를 부르고 에이전트
-클라이언트는 그 파드 이름을 IP로 해석해 ``:8090/read?offset=N``을 친다. 그래서 이 파일은
-``_session_platform.live_shell_session``으로 제품 API를 통해 **실 shell 세션**을 만든다 —
-`tests/k8s/kind/session-platform.yaml`이 이번에 ``DATA_PLANE_IMAGE``를 갖춘 이유가 그것이다.
-
 **AC1의 검증 방법 네 절을 전부 단정한다.** 어느 하나를 빼면 커서 규약이 아니라 "읽으면 뭔가
 나온다"를 단정하는 것이 된다:
 
