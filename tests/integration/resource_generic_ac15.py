@@ -2,7 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 15
 실행 대상: primary
-병렬 레인: gate-streams
+병렬 레인: gate-tunnels
 
 Go 단위 아홉(``internal/mcp/proxy_test.go`` 넷 · ``internal/k8s/proxy_test.go`` 다섯)이 이
 도구의 계약을 이미 단언하는데, 그 아홉은 전부 **가짜 게이트와 가짜 k8s 서비스** 위에서 돈다.

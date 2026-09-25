@@ -2,7 +2,7 @@
 
 검증 시나리오: test-approval-gate.md#시나리오 7
 실행 대상: primary
-병렬 레인: gate-objects
+병렬 레인: gate-screens
 
 시나리오의 세 절 중 e2e 가 잴 수 있는 것은 요청-레코드 계약이다: 승인받아 실행한
 뒤 같은 도구 호출을 반복하면 **새** 승인 요청이 만들어지고(externalId 재사용

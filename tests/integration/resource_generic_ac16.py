@@ -2,7 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 16
 실행 대상: primary
-병렬 레인: gate-objects
+병렬 레인: gate-tunnels
 
 여섯 verb(`get`·`watch`·`create`·`update`·`patch`·`delete`)를 **한 파일에서 전부** 태운다.
 일부만 떼어 닫으면 「민감 종류는 모든 동사에서 막힌다」가 아니라 「그 동사에서 막힌다」만
