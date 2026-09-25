@@ -4,21 +4,14 @@
 실행 대상: primary
 병렬 레인: session
 
-**AC1의 검증 방법이 두 도구를 한 문장에 묶는다** — 「shell 세션에 명령을 write한 뒤 read로 그
-명령의 출력이 누적 출력에 나타남을 확인한다」. 그래서 이 파일은 ``session_write``를 주검증
+**AC1의 검증 방법이 두 도구를 한 문장에 묶으므로** 이 파일은 ``session_write``를 주검증
 대상으로 선언하되 ``session_read``로 결과를 관측한다. 규칙 2의 「셋업·관측에서 다른 AC의 도구를
 경유하는 것은 검증으로 세지 않는다」가 이 자리를 위한 단서다 — 이 파일이 단정하는 것은
 **주입이 워크로드에 도달했는가**이지 커서 규약이 아니고, 커서 규약은 `session_read_ac1.py`가
 자기 파일에서 따로 단정한다.
 
-**비블로킹이라는 절도 함께 단정한다.** AC 본문이 「호출은 실행 완료를 기다리지 않고 반환하며,
-산출물은 `session_read`의 누적 출력으로 관측된다」이므로, write 응답에 출력이 없다는 사실
-자체가 단정 대상이다 — ``WriteResult``는 ``path``와 ``session``만 싣는다(`internal/mcp`의
-``sessionWrite``가 그 두 키만 넣는다). 반환 즉시 출력이 있는지를 시간으로 재는 대신 **응답의
+**비블로킹이라는 절도 함께 단정한다.** 반환 즉시 출력이 있는지를 시간으로 재는 대신 **응답의
 모양**으로 재는 이유는 그것이 구현이 약속한 계약이고 타이밍은 CI 부하에 흔들리기 때문이다.
-
-세션은 이 파일이 만들고 이 파일이 지운다(`_session_platform.live_shell_session`) — 다른 파일이
-무엇을 남겨 놨든 무관하고, 나갈 때 파드까지 회수된다.
 """
 
 from __future__ import annotations
@@ -64,11 +57,9 @@ async def test_session_write_ac1_returns_without_waiting_for_the_workload(
 ) -> None:
     """AC: session-write/AC1 — the call is accepted and carries no output.
 
-    The control plane returns once the payload is accepted by the agent, not
-    once the shell has run it, so the result reports only which branch served
-    the write and the session as it stands afterwards. Asserting the *shape*
-    pins that contract: a result that carried the command's output would mean
-    the call had waited, and a caller could then stop using session_read.
+    Asserting the *shape* pins the non-blocking contract: a result that carried
+    the command's output would mean the call had waited, and a caller could then
+    stop using session_read.
     """
     result = await session.call_tool(
         "session_write", {"id": session_id, "payload": COMMAND}
@@ -90,12 +81,9 @@ async def test_session_write_ac1_payload_reaches_the_workload(
 ) -> None:
     """AC: session-write/AC1 — the injected command runs and its output accumulates.
 
-    Polls ``session_read`` until the marker appears in the accumulated output.
     The marker exists only in the *result* of running the command, never in the
     command text the PTY echoes back, so finding it is evidence that the shell
-    executed the payload rather than merely received it. The echo is asserted
-    separately, which separates the two failures: bytes that never arrived look
-    different from bytes that arrived and were not run.
+    executed the payload rather than merely received it.
     """
     deadline = time.monotonic() + OUTPUT_TIMEOUT
     payload = await _read_all(session, session_id)

@@ -3,13 +3,6 @@
 검증 시나리오: test-session-read.md#시나리오 3
 실행 대상: primary
 병렬 레인: session
-
-AC3은 **두 실패가 서로 구분된다**는 것과 **어느 쪽도 세션을 건드리지 않는다**는 것, 둘을 함께
-요구한다. 그래서 이 파일은 세 가지를 단정한다 — 없는 id 는 not-found 계열 **도구 에러**,
-잘못된 커서는 인자 검증 계열 **프로토콜 에러**(SDK 가 `McpError` 로 올린다), 그리고 두 호출
-뒤에도 실재하는 세션의 상태·`lastAccess` 가 그대로다.
-
-기준선은 이 파일이 스스로 세운다(`seed_sessions`) — 다른 파일이 무엇을 남겨 놨든 무관하다.
 """
 
 from __future__ import annotations
@@ -49,12 +42,10 @@ def _target_from(sessions: list[dict]) -> dict:
 async def test_session_read_ac3_missing_session_is_not_found(session) -> None:
     """AC: session-read/AC3 — an unknown id comes back as a not-found tool error.
 
-    The control plane answers 404 for a session it does not hold, and the client
-    surfaces that as its own error kind. Asserted as a normal tool result
-    carrying ``isError`` (not a transport failure), and asserted to be
-    *distinguishable*: the text must not read like the unconfigured refusal
-    (session-read/AC4) nor like the bad-cursor rejection below, or a caller
-    cannot tell "no such session" from "the integration is off".
+    Asserted to be *distinguishable*: the text must not read like the
+    unconfigured refusal (session-read/AC4) nor like the bad-cursor rejection
+    below, or a caller cannot tell "no such session" from "the integration is
+    off".
     """
     result = await session.call_tool("session_read", {"id": MISSING_SESSION_ID})
 
@@ -73,9 +64,7 @@ async def test_session_read_ac3_missing_session_is_not_found(session) -> None:
 async def test_session_read_ac3_bad_cursor_is_an_argument_error(session) -> None:
     """AC: session-read/AC3 — a negative or non-integer cursor is an argument error.
 
-    Both are rejected by the tool layer before any control plane request, so the
-    SDK raises ``McpError`` (JSON-RPC ``-32602``) rather than returning a tool
-    result — the same shape ``pod_describe_ac2.py`` asserts for its mutually
+    ``pod_describe_ac2.py`` asserts the same ``McpError`` shape for its mutually
     exclusive targeting arguments. The id is a *real* session here, so the
     rejection is provably about the cursor and not about the target.
     """
@@ -98,12 +87,7 @@ async def test_session_read_ac3_bad_cursor_is_an_argument_error(session) -> None
 async def test_session_read_ac3_target_is_untouched(session, before: dict) -> None:
     """AC: session-read/AC3 — neither failure moved the session.
 
-    ``before`` is the target as it stood ahead of the two rejected calls. A read
-    that had reached the control plane would have activated the session and
-    refreshed ``lastAccess``, so both fields staying identical is the observable
-    form of "어느 경우에도 세션 상태는 바뀌지 않는다". The pod set is compared
-    too: a restore would have provisioned one, and against the real control
-    plane that is a discriminator rather than a vacuous assertion.
+    ``before`` is the target as it stood ahead of the two rejected calls.
     """
     result = await session.call_tool("session_list", {})
     after = _target_from(sessions_from(result))

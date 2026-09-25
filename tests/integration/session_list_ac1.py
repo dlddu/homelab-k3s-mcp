@@ -43,8 +43,8 @@ SNAPSHOT_SESSION = session_payload(
 async def test_session_list_ac1_empty_inventory(session) -> None:
     """AC: session-list/AC1 — an empty control plane returns an empty list.
 
-    The AC's second clause: no sessions is not an error. Asserted before the
-    seeding half so the emptiness is one this file established, not a leftover.
+    Asserted before the seeding half so the emptiness is one this file
+    established, not a leftover.
     """
     clear_sessions()
 
@@ -55,13 +55,7 @@ async def test_session_list_ac1_empty_inventory(session) -> None:
 
 
 async def test_session_list_ac1_enumerates_sessions(session) -> None:
-    """AC: session-list/AC1 — every session, with the fields the AC names.
-
-    Seeds two sessions in different states and asserts both come back carrying
-    id, name, workloadType, state and lastAccess. The state-dependent shape is
-    asserted too: the active one names its pod, the snapshotted one omits the
-    field entirely rather than reporting an empty pod name.
-    """
+    """AC: session-list/AC1 — every session, with the fields the AC names."""
     seed_sessions([ACTIVE_SESSION, SNAPSHOT_SESSION])
 
     result = await session.call_tool("session_list", {})
