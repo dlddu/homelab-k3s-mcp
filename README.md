@@ -23,6 +23,10 @@ commit SHA**. There is no `latest`.
   by a ruleset (required status check `ci passed`), so nothing commits back to it. Flux
   tracks `deploy`, so the single answer to "which commit is production running?" is the
   `image:` line in `k8s/deployment.yaml` on `deploy`. Roll back with a revert PR to `main`.
+  Merges that touch neither the server's Go sources nor `k8s/` (only `docs/`, `scripts/`,
+  `tests/`, `*_test.go`, Markdown or other workflows) skip this workflow, so production is not
+  restarted; such a commit never reaches `deploy`, and its tip's `Source-Commit` trailer
+  still names what production runs.
 - **Tests run on pull requests only.** `.github/workflows/ci.yml` is triggered by
   `pull_request` alone; what lands on `main` has already passed `ci passed`, so a `main`
   push runs only the image publish + pin above. A `changes` job skips the unit tests when
