@@ -3,9 +3,6 @@
 검증 시나리오: test-opensearch-document-put.md#시나리오 1
 실행 대상: primary
 병렬 레인: aws
-
-이 케이스는 자기 인덱스 ``ci-put-ac1-<RUN_ID>`` 와 자기 질의 토큰만 쓰므로 다른
-파일이 무엇을 색인하든 관측하지 않는다.
 """
 
 from __future__ import annotations
