@@ -22,9 +22,9 @@ primary 를 상대로는 세울 수 없고, 반대로 primary 에 세우면 같�
 여기서 돈다). 판정을 직접 내리는 댄스(``wait_for_pending`` → ``decide``)를 쓰지 않는 것은 이
 배포의 ``GATEKEEPER_TIMEOUT_SECONDS`` 가 5 초라, 호출마다 그 5 초 창 안에서 폴링과 판정을 끝내야
 하는 경주를 만들기 때문이다. 자동 거부는 그 창을 없앤다 — **그리고 기록은 그대로 남아** 화면
-(``context``)을 되읽을 수 있다. 화면을 집는 기준은 마커가 아니라 **호출 직전에 없던 기록 id**
-다(``_refuse``): 이 게이트는 배포 넷이 공유하므로 같은 문자열을 담은 남의 기록이 있을 수 있고,
-마커로 집으면 그때 조용히 남의 화면을 읽는다.
+(``context``)을 되읽을 수 있다. 화면을 집는 기준은 **호출 직전에 없던 기록 id 이면서 그 호출의
+마커를 담은 것**이다(``_refuse``). 둘 다 필요하다: 이 게이트는 배포 넷이 공유해 같은 문자열을 담은
+남의 옛 기록이 있을 수 있고, primary 그룹이 이 그룹과 겹쳐 돌아 그사이 남이 거부한 기록도 생긴다.
 
 **「k8s 호출 카운트 0」 절에 대하여.** 시나리오는 미승인 거부에서 k8s 호출이 0 이기를 요구한다.
 호출 수 자체는 SUT 안의 사실이라 e2e 가 셀 수 없고(그 자리는 Go 단위의 몫이다), apiserver 감사
@@ -113,6 +113,8 @@ NODE_EXEC_PATH = f"/exec/{NAMESPACE}/{POD}/{CONTAINER}?command=cat&command={TOKE
 PAIR_RE = re.compile(r"^rbac: (.+)$", re.MULTILINE)
 
 AUTO_REJECT_MARK = "auto-rejected"
+# name 이 없는 (d) 의 watch 에는 대상 이름이 context 에 없다 — 이 셀렉터가 그 요청의 마커다.
+WATCH_SELECTOR = "rg-ac17=list-scope"
 
 #: 자동 거부 기록이 목록에 나타나기를 기다리는 창. 판정은 요청 생성 직후라 즉시지만, 기록
 #: 목록은 별도 조회라 한 박자 늦을 수 있다.
@@ -219,12 +221,11 @@ def _pair(context: str) -> str:
     return match.group(1).strip()
 
 
-async def _refuse(session, gate: str, tool: str, args: dict) -> str:
+async def _refuse(session, gate: str, tool: str, args: dict, marker: str) -> str:
     """게이트 대상 호출 하나를 태우고, 자동 거부로 끝났음을 확인한 뒤 그 화면을 돌려준다.
 
-    화면은 **이 호출이 새로 만든 기록**에서 읽는다 — 호출 직전의 거부 기록 id 집합을 찍어
-    두고 그 밖에 나타난 것을 집는다. 이 게이트는 배포 넷이 공유하므로, 화면 문자열로 집으면
-    같은 좌표를 쓴 남의 기록을 조용히 읽을 수 있다.
+    화면은 **이 호출이 새로 만든 기록**에서 읽는다 — 호출 직전의 거부 기록 id 집합 밖에
+    나타난 것 가운데 ``marker`` 를 담은 것을 집는다(모듈 머리말).
     """
     before = {row["id"] for row in list_requests(gate, status="REJECTED")}
     try:
@@ -241,7 +242,7 @@ async def _refuse(session, gate: str, tool: str, args: dict) -> str:
         fresh = [
             row
             for row in list_requests(gate, status="REJECTED")
-            if row["id"] not in before
+            if row["id"] not in before and marker in row.get("context", "")
         ]
         if fresh:
             return fresh[-1]["context"]
@@ -339,6 +340,7 @@ async def test_a_gated_custom_kind_is_refused_while_its_control_passes(
             "namespace": NAMESPACE,
             "name": SAMPLE,
         },
+        SAMPLE,
     )
     assert _pair(screen) == "get on resourcegenericsamples", screen
     assert SAMPLE in screen, f"대상 이름이 화면에 없다:\n{screen}"
@@ -373,6 +375,7 @@ async def test_the_four_stream_tools_are_refused_and_show_the_path_not_the_value
         gate,
         "resource_exec",
         {**coordinate, "container": CONTAINER, "command": EXEC_COMMAND},
+        POD,
     )
     assert _pair(exec_screen) == "create on pods/exec", exec_screen
     # 인자를 하나씩 다 찾는다. 앞머리(``sh``)만 실린 화면은 「셸을 연다」로 읽히고, 실제로 도는
@@ -392,6 +395,7 @@ async def test_the_four_stream_tools_are_refused_and_show_the_path_not_the_value
             "stdin": ATTACH_STDIN,
             "readSeconds": ATTACH_READ_SECONDS,
         },
+        POD,
     )
     assert _pair(attach_screen) == "create on pods/attach", attach_screen
     assert _verbatim(ATTACH_STDIN) in attach_screen, (
@@ -408,6 +412,7 @@ async def test_the_four_stream_tools_are_refused_and_show_the_path_not_the_value
             "payload": FORWARD_PAYLOAD,
             "readSeconds": ATTACH_READ_SECONDS,
         },
+        POD,
     )
     assert _pair(forward_screen) == "create on pods/portforward", forward_screen
     # 페이로드는 **전문**이어야 한다 — 앞 몇 글자만 실어도 부분 문자열 단언은 통과하고,
@@ -421,6 +426,7 @@ async def test_the_four_stream_tools_are_refused_and_show_the_path_not_the_value
         gate,
         "resource_proxy",
         {**coordinate, "method": "GET", "path": PROXY_PATH},
+        POD,
     )
     assert _pair(proxy_screen) == "get on pods/proxy", proxy_screen
     assert PROXY_PATH in proxy_screen, f"경로가 화면에 없다:\n{proxy_screen}"
@@ -451,6 +457,7 @@ async def test_the_node_proxy_is_recorded_only_as_the_node_pair(
             "method": "POST",
             "path": NODE_EXEC_PATH,
         },
+        POD,
     )
     pair = _pair(screen)
 
@@ -496,7 +503,9 @@ async def test_the_direct_watch_is_granted_by_rbac_and_refused_by_the_kind_gate(
             "kind": "Secret",
             "namespace": NAMESPACE,
             "watchSeconds": 2,
+            "labelSelector": WATCH_SELECTOR,
         },
+        WATCH_SELECTOR,
     )
     assert _pair(screen) == "watch on secrets", screen
     assert TOKEN not in screen, f"승인 화면에 토큰이 실렸다:\n{screen}"

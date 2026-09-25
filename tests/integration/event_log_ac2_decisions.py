@@ -40,7 +40,7 @@ VARIANT_DEPLOYMENT = "homelab-k3s-mcp-gatekeeper-variant"
 
 AUTH_NAMESPACE = "homelab-k3s-mcp-auth"
 AUTH_DEPLOYMENT = "homelab-k3s-mcp-auth"
-AUTH_LOCAL_PORT = 18085
+AUTH_LOCAL_PORT = 18089
 
 TARGET_APPROVED = "el-s2-approved"
 TARGET_REJECTED = "el-s2-rejected"
