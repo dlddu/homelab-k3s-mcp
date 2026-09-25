@@ -5,9 +5,7 @@
 병렬 레인: resource-generic
 
 `workload-fixture` 로 족한 것은 CI 가 `kubectl apply -f tests/k8s/kind/test-deployment.yaml`
-로 세워 잡음 두 필드가 다 붙기 때문이다. 그래도 **사전 조건 자체를 kubectl 로 먼저 단언한다**
-— 두 필드가 애초에 없으면 「걷어냈다」가 공전하므로, 잡음이 실재했음을 확인하고 나서
-사라졌음을 확인한다.
+로 세워 잡음 두 필드가 다 붙기 때문이다.
 
 「나머지 `spec`/`status` 는 온전」은 포함 관계가 아니라 **등가**로 잰다: `spec` 은 원본과
 완전히 같아야 하고, `metadata` 의 키 집합은 원본에서 **그 둘만** 뺀 것과 같아야 한다.
