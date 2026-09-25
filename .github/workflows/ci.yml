@@ -489,16 +489,28 @@ jobs:
       # (tests/integration/_gatekeeper.py 머리말) 겹쳐도 된다. gatekeeper-variant 가 바꾸는 자동
       # 응답 모드는 GATEKEEPER_USER_ID 를 물고 있는 그 변형의 요청에만 걸린다(primary 요청엔
       # 담당자가 없다).
-      # 셋끼리는 차례로 돈다: auth-variant 의 platform_auth_safety_ac8.py 가 oauth 배포를 불러
-      # oauth-variant 의 event_log_ac4_auth_failed.py 가 재는 로그 증가분을 흔들고,
-      # auth-variant 의 metrics_ac2_reasons.py 는 gatekeeper-variant 배포의 카운터를 재며(그
-      # 배포를 부르는 gatekeeper-variant 그룹과 겹치면 안 된다) event_log_ac2_decisions.py 는
-      # auth-variant 파드의 로그를 읽는다.
+      # auth-variant 는 나머지 둘과 겹치지 않는다: 그 그룹의 platform_auth_safety_ac8.py 가 oauth
+      # 배포를 불러 oauth-variant 의 event_log_ac4_auth_failed.py 가 재는 로그 증가분을 흔들고,
+      # metrics_ac2_reasons.py 는 gatekeeper-variant 배포의 카운터를 재며(그 배포를 부르는
+      # gatekeeper-variant 그룹과 겹치면 안 된다) event_log_ac2_decisions.py 는 auth-variant 파드의
+      # 로그를 읽는다. oauth-variant 와 gatekeeper-variant 는 서로 건드리는 것이 없어 동시에 돌고,
+      # auth-variant 는 둘이 다 끝난 뒤에 돈다.
       # set +e 인 이유: 스텝 셸의 -e 가 서브셸에 물려 러너가 실패하면 .rc 를 못 남긴다.
       - name: Start oauth-, auth- and gatekeeper-variant groups in background
         run: |
           mkdir -p /tmp/bg
           ( set +e
+            (
+              ( while true; do kubectl -n homelab-k3s-mcp-gatekeeper-variant port-forward svc/homelab-k3s-mcp-gatekeeper-variant 8092:80 >>/tmp/pf-gatekeeper.log 2>&1; sleep 1; done ) &
+              PF_PID=$!
+              python tests/integration/run_all.py --group gatekeeper-variant --base-url http://127.0.0.1:8092 \
+                >/tmp/bg/gatekeeper-variant.log 2>&1
+              echo $? >/tmp/bg/gatekeeper-variant.rc
+              kill $PF_PID 2>/dev/null
+              pkill -f "port-forward svc/homelab-k3s-mcp-gatekeeper-variant 8092:80"
+            ) &
+            GK_PID=$!
+
             ( while true; do kubectl -n homelab-k3s-mcp-oauth port-forward svc/homelab-k3s-mcp-oauth 8089:80 >>/tmp/pf-oauth.log 2>&1; sleep 1; done ) &
             PF_PID=$!
             python tests/integration/run_all.py --group oauth-variant --base-url http://127.0.0.1:8089 \
@@ -507,6 +519,7 @@ jobs:
             kill $PF_PID 2>/dev/null
             pkill -f "port-forward svc/homelab-k3s-mcp-oauth 8089:80"
 
+            wait $GK_PID
             ( while true; do kubectl -n homelab-k3s-mcp-auth port-forward svc/homelab-k3s-mcp-auth 8088:80 >>/tmp/pf-auth.log 2>&1; sleep 1; done ) &
             PF_PID=$!
             python tests/integration/run_all.py --group auth-variant --base-url http://127.0.0.1:8088 \
@@ -514,14 +527,6 @@ jobs:
             echo $? >/tmp/bg/auth-variant.rc
             kill $PF_PID 2>/dev/null
             pkill -f "port-forward svc/homelab-k3s-mcp-auth 8088:80"
-
-            ( while true; do kubectl -n homelab-k3s-mcp-gatekeeper-variant port-forward svc/homelab-k3s-mcp-gatekeeper-variant 8092:80 >>/tmp/pf-gatekeeper.log 2>&1; sleep 1; done ) &
-            PF_PID=$!
-            python tests/integration/run_all.py --group gatekeeper-variant --base-url http://127.0.0.1:8092 \
-              >/tmp/bg/gatekeeper-variant.log 2>&1
-            echo $? >/tmp/bg/gatekeeper-variant.rc
-            kill $PF_PID 2>/dev/null
-            pkill -f "port-forward svc/homelab-k3s-mcp-gatekeeper-variant 8092:80"
           ) </dev/null >/dev/null 2>&1 &
 
       # 파일별 스텝을 나열하지 않는다. tests/integration/run_all.py 가 매칭 단위 파일을
@@ -560,7 +565,7 @@ jobs:
 
       # 인증을 켜고 자격증명 시크릿을 하나도 붙이지 않은 배포 변형
       # (tests/k8s/kind/auth-fixture.yaml). 인증 게이트와 "미설정 시 graceful 거부" 는
-      # 이 배포에서만 관측된다. oauth-variant 뒤에 백그라운드로 돌았다.
+      # 이 배포에서만 관측된다. oauth-variant·gatekeeper-variant 가 끝난 뒤 백그라운드로 돌았다.
       - name: Wait for integration tests (auth-variant deployment)
         run: |
           timeout 300 bash -c 'until [ -f /tmp/bg/auth-variant.rc ]; do sleep 1; done'
@@ -569,7 +574,7 @@ jobs:
 
       # 실물 gatekeeper 를 기록 프록시 뒤에 둔 배포 변형(tests/k8s/kind/gatekeeper-variant.yaml).
       # 승인 게이트의 요청 본문 계약(AC2)·만료 관측(AC4 (b))·자동 응답 모드(AC9)는
-      # 이 배포에서만 관측된다. auth-variant 뒤에 백그라운드로 돌았다.
+      # 이 배포에서만 관측된다. oauth-variant 와 나란히 백그라운드로 돌았다.
       - name: Wait for integration tests (gatekeeper-variant deployment)
         run: |
           timeout 300 bash -c 'until [ -f /tmp/bg/gatekeeper-variant.rc ]; do sleep 1; done'
