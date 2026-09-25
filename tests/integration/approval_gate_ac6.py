@@ -7,10 +7,7 @@
 다섯 경로를 한 파일에서 태운다 — `resource_patch` · `resource_update(subresource=scale)` ·
 `kind=Secret` 의 `resource_get` · `resource_exec` · `resource_create`. 앞 넷은 게이트가
 승인 전에 읽어 둔 `resourceVersion`/`uid` 를 실행 직전에 재확인하는 공통 경로
-(``internal/mcp/gate.go::confirmTargetUnchanged``)를 타고, **다섯째는 경로가 다르다**:
-생성은 대상을 미리 읽지 않으므로 재확인이 일어나지 않고, 「그 좌표가 비어 있다」는 전제의
-재판정은 apiserver 의 `create` 가 원자적으로 내린다(409). 그래서 create 절은 거부 문면이
-아니라 **409 보고와 승인 context 에 `target resourceVersion` 이 없다는 것**을 단언한다.
+(``internal/mcp/gate.go::confirmTargetUnchanged``)를 타고, 생성만 그 경로를 타지 않는다.
 
 댄스는 늘 같다: 도구 호출을 ``asyncio.create_task`` 로 띄워 PENDING 을 잡고, **승인하기
 전에** kubectl 로 대상을 외부에서 움직인 뒤 승인한다. 그 순서가 이 시나리오 자체다 —
