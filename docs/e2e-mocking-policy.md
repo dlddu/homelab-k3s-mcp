@@ -245,7 +245,7 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 
 | ID | 출처 | 등록일 | 해소 방향 | 소관 | 선행 | 재검토 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `approval-gate-ac5-http-failures` | `tbm_homelab-k3s-mcp-scenario-e2e/rct_20260914-0011` | `2026-09-15` | `real-environment` | `tbm_homelab-k3s-mcp-e2e-mock-policy` | tbm_homelab-k3s-mcp-scenario-e2e: 409·5xx 재현 가능성의 관측 로그 (실물 tests/k8s/kind/gatekeeper-fixture.yaml 은 PR #106 에서 충족) | `2026-10-15` |
+| `approval-gate-ac5-http-failures` | `tbm_homelab-k3s-mcp-scenario-e2e/rct_20260914-0011` | `2026-09-15` | `real-environment` | `tbm_homelab-k3s-mcp-e2e-mock-policy` | 없음 | `2026-10-15` |
 
 <!-- /mock-blocker-원장 -->
 
@@ -263,10 +263,14 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
    착지시켰다. **`approval_gate_ac5.py`는 여전히 없다** — 착지분에 AC5는 포함되지 않았다.
    `internal/gatekeeper/gatekeeper.go::randomExternalID`는 여전히 호출마다 난수 ID를 생성하므로,
    단순히 같은 도구를 두 번 부르는 것으로 409 재현이 된다고 가정하지 않는다.
-2. 그 소관이 실제 승인 클라이언트를 통과하는 409·5xx 경로의 재현 가능성을 조사하고 요청·응답과
+2. ~~그 소관이 실제 승인 클라이언트를 통과하는 409·5xx 경로의 재현 가능성을 조사하고 요청·응답과
    대상 리소스 미변경 증거를 남긴다. 직접 gatekeeper API에 오류를 만든 것만으로 MCP의
    fail-closed 검증을 대신하지 않는다. 인계문에 적힌 「실물로 만들 수 없다」는 말은
-   **검증할 제약**이며 모든 실환경 주입법이 불가능하다는 입증으로 취급하지 않는다.
+   **검증할 제약**이며 모든 실환경 주입법이 불가능하다는 입증으로 취급하지 않는다.~~
+   **충족 (2026-09-26).** 인계문의 「실물로 만들 수 없다」는 **반증됐다** — 아래
+   「2번 관측 로그」. 실물 gatekeeper 가 자기 핸들러로 409·500 을 내고, 그 응답이 실제
+   승인 클라이언트(`internal/gatekeeper.Client.Authorize`)를 통과해 거부로 수렴함을 관측했다.
+   선행 셀은 이로써 `없음` 이 되고 이 행은 **이 모델이 착수할 3번**만 남긴다.
 3. 이 모델이 그 증거를 받아 실환경 대체를 확정한다. 불가능하면 이유·대안·최소 치환 범위와
    `UPS`·`IMG`·`GATE` 요건을 대조해 별도 등재 판단을 한다. 허용 카테고리에 맞지 않는
    편의용 주입 스텁은 등재하지 않는다. 난수 ID를 고정하는 제품 스위치도 이 행이 허용하지 않는다.
@@ -291,6 +295,68 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 > 깬다**(등재 없는 새 모킹). 위 2번을 수행하는 슬라이스는 그 사전 조건 문면을 실물 기반으로
 > 먼저 고치거나, 실물로 409·5xx를 낼 수 없다는 증거를 들고 이 원장으로 돌아와야 한다.
 > 그 문서의 소관은 자매 모델이므로 이 행은 위험만 인계하고 문면을 직접 고치지 않는다.
+>
+> **해소 (2026-09-26)** — 2번을 수행한 슬라이스가 그 사전 조건을 실물 기반으로 고쳤다(단위는
+> `httptest`, E2E 는 실물 + 3번 판정 대기 중인 주입 수단).
+
+**2번 관측 로그 (2026-09-26)** — 3번 판정의 입력이다. **이 절은 등재도 승인도 아니다.**
+
+*gatekeeper 쪽 사실(`dlddu/gatekeeper` @`762fafe`, 픽스처가 핀한 `sha-762fafe` 와 같은 커밋).*
+`POST /api/requests` 의 409 는 `store.isUniqueViolation`(에러 문자열 `UNIQUE constraint failed`)
+에서만 나오고, 그 제약은 `Request_externalId_key` 고유 인덱스뿐이다. 그 밖의 저장소 오류는 전부
+`httpx.InternalError` → 500 이다. 저장소는 SQLite(rollback 저널, `busy_timeout=5000`, 연결 1개)이고
+픽스처에서는 `gatekeeper-pvc` 의 `/app/data/gatekeeper.db` 다. MCP 쪽 `randomExternalID` 는
+16바이트 난수라 MCP 가 스스로 충돌을 만들 수는 없다 — 이 부분의 인계문은 참이다.
+
+*수단.* 실물 DB 파일에 **다른 프로세스가** `BEFORE INSERT` 트리거를 건다. 조건은
+`instr(NEW.context, '<마커>') > 0` 로, `tests/integration/_gatekeeper.py` 의 마커 격리를 그대로
+따르므로 다른 레인의 요청에는 걸리지 않는다. 제품 코드·빌드·배포 env 는 바꾸지 않는다.
+
+- **409** — 트리거가 **같은 `externalId`** 의 그림자 행을 먼저 INSERT 한다. 본 INSERT 는 진짜
+  `UNIQUE constraint failed: Request.externalId` 로 실패하고 실물 핸들러가
+  `409 {"error":"Request with this externalId already exists"}` 를 낸다. 문장 단위 롤백으로
+  그림자 행도 남지 않는다.
+- **5xx(생성)** — 트리거가 `RAISE(ABORT, …)` 한다 → 실물 `InternalError` 500.
+- **5xx(폴링, 선택)** — 생성 뒤 다른 연결이 `BEGIN EXCLUSIVE` 를 `busy_timeout` 보다 오래 쥔다 →
+  단건 조회가 `SQLITE_BUSY` 500. **전역 잠금**이라 병렬 레인 전부를 막으므로 격리 레인 없이는
+  쓰지 않는다. AC5 의 「5xx」 는 생성 경로로 충족된다.
+
+```sql
+-- 409 (마커 한정, 그림자 행은 문장 롤백으로 사라진다)
+CREATE TRIGGER e2e_collide BEFORE INSERT ON "Request"
+WHEN instr(NEW.context, '<marker>') > 0
+BEGIN
+  INSERT INTO "Request"(id, externalId, context, requesterName, status, updatedAt)
+  VALUES (NEW.id || '-shadow', NEW.externalId, 'e2e-shadow', 'e2e-shadow', 'PENDING', NEW.updatedAt);
+END;
+-- 5xx
+CREATE TRIGGER e2e_fail BEFORE INSERT ON "Request"
+WHEN instr(NEW.context, '<marker>') > 0
+BEGIN SELECT RAISE(ABORT, 'e2e injected storage failure'); END;
+```
+
+*관측(로컬).* 같은 커밋의 gatekeeper 백엔드를 빌드해 기동하고, 이 레포의
+`gatekeeper.Client.Authorize` 를 그대로 불렀다. 트리거는 서버가 도는 중에 별도 프로세스(Python
+`sqlite3`)가 걸었고 즉시 반영됐다.
+
+| 경우 | 클라이언트가 본 거부 | gatekeeper 액세스·오류 로그 | 잔여 행 |
+| --- | --- | --- | --- |
+| 409 | `unreachable` · `approval request id collided (409)` | `POST /api/requests - 409` | 0 |
+| 5xx(생성) | `unreachable` · `approval backend returned 500` | `[ERROR] … constraint failed: e2e injected storage failure (1811)` · `- 500` | 0 |
+| 5xx(폴링) | `unreachable` · `… 500 while polling` (requestID 유지) | `[ERROR] GET … database is locked (5) (SQLITE_BUSY)` · 5.0s | — |
+| 격리 대조 | 다른 마커는 `201` 로 생성되고 `timeout` 으로 끝남 | `- 201` | — |
+
+*대상 리소스 미변경에 대해.* 로컬 관측은 클라이언트가 `Decision` 없이 거부를 돌려준다는 데까지다.
+그 거부가 k8s 호출 전에 끊긴다는 것은 `internal/mcp` 디스패처의 구조(게이트 오류는 핸들러 실행
+전에 반환)이고, **클러스터에서 대상 객체가 그대로임을 관측하는 것은 4번의 e2e 몫**이다. kind 에서의
+실행(주입기가 `gatekeeper-pvc` 를 함께 마운트할 수 있는지, uid 1001 로 DB·저널 디렉터리에 쓸 수
+있는지)도 아직 관측하지 않았다 — 4번 슬라이스의 첫 확인 항목이다.
+
+*3번이 판정할 것(사실만 적는다).* 주입은 상류 스텁 서버도 아니고 실서버·픽스처 구성을 낮추는
+스위치도 아니다 — 응답은 실물 핸들러와 실물 고유 인덱스가 만든다. 반면 테스트가 실물 저장소의
+상태(스키마 객체)를 조작한다는 점에서 「데이터 모킹」 불허 조항과의 관계는 이 모델이 판정한다.
+주입기 Pod 이미지는 하네스에 이미 있는 `python:3.12-slim` 이면 족하다(stdlib `sqlite3`).
+난수 ID 를 고정하는 제품 스위치는 필요 없다.
 
 ### 집행 경계
 

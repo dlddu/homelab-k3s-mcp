@@ -105,7 +105,12 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   만료와 클라이언트 마감이 같은 env 에서 파생하므로 클라이언트 에러 문면은 단언하지 않는다
 
 ### 시나리오 5: 모든 실패는 거부로 수렴한다
-- **사전 조건**: 가짜 k8s 서비스(호출 카운터), gatekeeper 스텁을 경로별로 구성
+- **사전 조건**: 단위 테스트는 가짜 k8s 서비스(호출 카운터)와 `httptest.Server` gatekeeper를
+  경로별로 구성한다. E2E는 위 「픽스처」대로 **실물 gatekeeper**를 쓰고 스텁을 두지 않는다 —
+  `REJECTED`·`EXPIRED`·판정 없음은 실물 판정·만료로, 연결 실패와 두 미설정은 배포 env로 만든다.
+  409·5xx는 실물 gatekeeper가 자기 핸들러로 내게 하는 수단이 실측됐고(실물 DB에 마커 한정
+  트리거, `e2e-mocking-policy.md` 차단 원장 `approval-gate-ac5-http-failures` 의 「2번 관측 로그」),
+  그 수단의 허용 여부는 같은 행의 3번 판정을 따른다. k8s 호출 0은 대상 객체의 불변으로 관측한다
 - **실행 단계**: 다음을 각각 재현 — `REJECTED`, `EXPIRED`, 타임아웃 내 판정 없음,
   `externalId` 충돌(409), 5xx, 연결 실패, `GATEKEEPER_BASE_URL` 미설정,
   `GATEKEEPER_API_KEY` 미설정
