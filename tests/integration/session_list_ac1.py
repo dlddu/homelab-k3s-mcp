@@ -18,9 +18,6 @@ from _session_platform import (
     sessions_from,
 )
 
-#: 서로 다른 상태의 세션 둘. AC1이 "세션 2개(서로 다른 상태)"를 명시한다.
-#: snapshot 세션은 파드가 회수된 상태라 ``pod`` 가 없다 — 제어면의 ``Session`` 이
-#: 그 필드를 ``omitempty`` 로 선언하는 이유이고, 그래서 이 둘은 응답 모양까지 다르다.
 ACTIVE_SESSION = session_payload(
     session_id="e2e-ac1-active",
     name="e2e active shell",

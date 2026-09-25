@@ -25,9 +25,6 @@ from _session_platform import live_shell_session
 #: 제어면에 만들 세션 이름. 진단 로그에서 어느 파일의 세션인지 드러나야 한다.
 SESSION_NAME = "e2e write ac1"
 
-#: 주입할 명령. 개행이 있어야 PTY 가 명령을 실행한다 — 도구 설명이 "include a
-#: trailing newline to submit a command" 라고 적은 그대로다.
-#:
 #: 마커는 **명령문 안에 나타나지 않도록** 두 조각으로 갈라 넣는다. PTY 는 타이핑된
 #: 명령을 그대로 되울리므로, 명령문에 마커가 통째로 들어 있으면 「출력에 마커가 있다」는
 #: 단정이 **에코만으로도 성립**해 버린다 — 그러면 이 파일은 「입력이 터미널에 닿았다」를
@@ -36,11 +33,8 @@ SESSION_NAME = "e2e write ac1"
 MARKER = "e2e-write-ac1-executed"
 COMMAND = "printf '%s-%s\\n' e2e-write-ac1 executed\n"
 
-#: 에코 자체의 표지. 「주입한 바이트가 터미널에 닿았다」와 「쉘이 실행했다」를 따로
-#: 관측하기 위한 것이라, 명령문에는 있고 산출물에는 없는 토큰을 고른다.
 ECHOED = "printf"
 
-#: 출력이 누적될 때까지의 폴링 예산. 명령 실행은 write 반환 이후에 일어난다.
 OUTPUT_TIMEOUT = 30.0
 OUTPUT_POLL = 0.5
 

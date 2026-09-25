@@ -27,8 +27,6 @@ from _auth_variant import (
 )
 from _helpers import base_url, open_session, wait_for_healthz
 
-#: 이 변형에는 제어면이 없으므로 어떤 id 도 조회될 수 없다. 거부가 대상 조회보다
-#: 먼저 일어난다는 사실을 드러내려고 실재하지 않는 id 를 고른다.
 UNRESOLVABLE_SESSION_ID = "e2e-read-ac4-unconfigured"
 
 

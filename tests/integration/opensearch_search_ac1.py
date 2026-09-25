@@ -68,8 +68,6 @@ async def test_opensearch_search_ac1_query_matching(session) -> None:
     assert scoped["index"] == index_a, scoped
     assert scoped["hits"][0]["index"] == index_a, scoped
 
-    # The non-matching document is in index_a and searchable, so its absence
-    # from the queries above is the query filtering, not a missing document.
     other = await search_until(
         session,
         other_token,

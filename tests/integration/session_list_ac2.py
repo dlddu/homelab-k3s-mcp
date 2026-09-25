@@ -17,9 +17,6 @@ import asyncio
 from _helpers import base_url, open_session, wait_for_healthz
 from _session_platform import pod_names, seed_sessions, session_payload, sessions_from
 
-#: AC2가 지목하는 구성 — ``snapshot`` 세션이 포함된 재고. idle 세션도 함께 두어
-#: "유휴 세션 목록을 확인하는 것만으로 컴퓨트가 되살아나지 않는다"는 문장의 대상을
-#: 둘 다 덮는다(idle 은 승격, snapshot 은 복원이 각각의 위험이다).
 IDLE_SESSION = session_payload(
     session_id="e2e-ac2-idle",
     name="e2e idle shell",
