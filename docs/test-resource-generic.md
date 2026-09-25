@@ -202,7 +202,8 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   파일은 없고 단언은 새로 저작했다
 
 ### 시나리오 9: 부분 수정과 롤링 재시작
-- **사전 조건**: 동일, `workload-fixture`를 replicas=2로 세팅
+- **사전 조건**: 동일, 이 시나리오 전용 Deployment(`rg-ac9-workload`)를 replicas=2로 새로 세움 —
+  공용 `workload-fixture`는 다른 시나리오가 스펙·어노테이션을 대조하므로 재시작·패치 흔적을 남기지 않는다
 - **실행 단계**: `patchType`을 `merge`·`strategic`·`json`·`apply`로 각각 호출(각 승인) →
   호출 전 스펙 전문을 뜬 뒤 `restartedAt` 어노테이션을 얹는 `strategic` 패치(승인) →
   파드 교체 대기 → 스펙 전문 재대조

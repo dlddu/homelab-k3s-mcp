@@ -2,7 +2,7 @@
 
 검증 시나리오: test-approval-gate.md#시나리오 3
 실행 대상: primary
-병렬 레인: resource-generic
+병렬 레인: gate-screens
 
 Go 단위가 이 계약의 문면을 이미 단언한다 — `internal/mcp/gate_test.go` 의
 `TestApprovedCallReachesKubernetesWithAJudgeableContext` ·
@@ -33,14 +33,11 @@ Go 단위가 이 계약의 문면을 이미 단언한다 — `internal/mcp/gate_
 빠져도 나머지 열이 초록을 만든다. 각 케이스는 자기 verb 의 상세만 단언하고 화면을 `SCREENS`
 에 남기며, 마지막 케이스가 그 열하나를 놓고 공통 계약과 **쌍의 전집**을 한 번에 판정한다.
 
-**레플리카 기준값은 박지 않고 실행 시점에 읽는다.** `replicas: 현재 → 목표` 의 왼쪽은 그
-순간의 클러스터가 정하고, 이 그룹의 다른 파일이 같은 Deployment 를 스케일한다. 기준선을
-`ensure_workload_fixture_baseline()` 으로 되돌린 뒤 **그때 읽은 값**과 대조하는 것이, 숫자를
-박아 두고 남의 실행 순서에 매달리는 것보다 이 단언을 오래 살게 한다.
-
-레인이 `resource-generic` 인 것은 마커 때문이다 — 스케일·재시작 화면은 `workload-fixture` 와
-재시작 어노테이션 키로 집는데, 그 둘은 같은 Deployment 를 스케일·재시작하는
-`resource_generic_ac8.py`·`resource_generic_ac9.py` 의 요청에도 그대로 나온다.
+**스케일·재시작 화면의 대상은 이 파일만 쓰는 Deployment(`DEPLOYMENT`)다.** 공용
+`workload-fixture` 를 쓰면 그것을 스케일하는 `resource_generic_ac8.py` 와 같은 레인에 묶여야
+한다 — 화면의 `replicas: 현재 → 목표` 왼쪽을 읽는 사이 남이 스케일하면 단언이 흔들린다.
+그래도 기준값은 박지 않고 실행 시점에 읽는다: 왼쪽 값은 인자 어디에도 없어 화면이 스스로
+채웠다는 증거가 그 대조뿐이다.
 """
 
 from __future__ import annotations
@@ -57,12 +54,7 @@ from mcp.shared.exceptions import McpError
 
 from _gatekeeper import count_requests, decide, gatekeeper_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
-from _workload import (
-    NAMESPACE,
-    WORKLOAD,
-    ensure_workload_fixture_baseline,
-    kubectl_jsonpath,
-)
+from _workload import NAMESPACE, kubectl_jsonpath
 
 POD = "ag-ac3-target"
 POD_PORT = 80
@@ -76,6 +68,7 @@ COLLECTION = ("ag-ac3-collection-one", "ag-ac3-collection-two")
 COLLECTION_LABEL = "ag-ac3"
 COLLECTION_VALUE = "collection"
 
+DEPLOYMENT = "ag-ac3-workload"
 RESTART_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
 RESTART_STAMP = "ag-ac3-restart-2026-09-20T00:00:00Z"
 
@@ -154,6 +147,26 @@ def _fixtures() -> None:
         _apply(_config_map(name))
     for name in COLLECTION:
         _apply(_config_map(name, {COLLECTION_LABEL: COLLECTION_VALUE}))
+
+    _apply(
+        {
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
+            "metadata": {"name": DEPLOYMENT, "namespace": NAMESPACE},
+            "spec": {
+                "replicas": 1,
+                "selector": {"matchLabels": {"app": DEPLOYMENT}},
+                "template": {
+                    "metadata": {"labels": {"app": DEPLOYMENT}},
+                    "spec": {
+                        "containers": [
+                            {"name": "pause", "image": "registry.k8s.io/pause:3.9"}
+                        ]
+                    },
+                },
+            },
+        }
+    )
 
     _kubectl("delete", "pod", POD, "--ignore-not-found", "--wait=true")
     _apply(
@@ -270,7 +283,7 @@ async def test_update_shows_the_whole_replacement(session, gate: str) -> None:
 
 
 async def test_scale_shows_the_replica_move(session, gate: str) -> None:
-    current = kubectl_jsonpath("{.spec.replicas}")
+    current = kubectl_jsonpath("{.spec.replicas}", f"deploy/{DEPLOYMENT}")
     assert current.isdigit(), f"기준 레플리카를 읽지 못했다: {current!r}"
     context = await _screen(
         session, gate, "resource_update",
@@ -278,12 +291,12 @@ async def test_scale_shows_the_replica_move(session, gate: str) -> None:
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "namespace": NAMESPACE,
-            "name": WORKLOAD,
+            "name": DEPLOYMENT,
             "subresource": "scale",
             "replicas": SCALE_TARGET_REPLICAS,
         },
-        WORKLOAD, "update on deployments/scale",
-        ("apps/v1", "Deployment/scale", NAMESPACE, WORKLOAD),
+        DEPLOYMENT, "update on deployments/scale",
+        ("apps/v1", "Deployment/scale", NAMESPACE, DEPLOYMENT),
     )
     move = REPLICAS_RE.search(context)
     assert move, f"승인 화면에 레플리카 이동 줄이 없다:\n{context}"
@@ -318,7 +331,7 @@ async def test_a_restart_patch_carries_its_body_rather_than_a_verdict(session, g
             "apiVersion": "apps/v1",
             "kind": "Deployment",
             "namespace": NAMESPACE,
-            "name": WORKLOAD,
+            "name": DEPLOYMENT,
             "patchType": "merge",
             "patch": {
                 "spec": {
@@ -329,7 +342,7 @@ async def test_a_restart_patch_carries_its_body_rather_than_a_verdict(session, g
             },
         },
         RESTART_STAMP, "patch on deployments",
-        ("apps/v1", "Deployment", NAMESPACE, WORKLOAD),
+        ("apps/v1", "Deployment", NAMESPACE, DEPLOYMENT),
     )
     # 어노테이션 이름과 값이 **둘 다** 있어야 운영자가 「이건 재시작이구나」를 스스로 읽는다.
     # 서버가 대신 읽어 「재시작」이라고 요약해 주는 화면이었다면 이 둘 중 하나로 족했을 것이다.
@@ -519,7 +532,6 @@ def test_every_screen_names_the_tool_the_pair_the_coordinate_and_the_time() -> N
 
 async def run() -> None:
     url = base_url()
-    ensure_workload_fixture_baseline()
     _fixtures()
     wait_for_healthz(url)
 

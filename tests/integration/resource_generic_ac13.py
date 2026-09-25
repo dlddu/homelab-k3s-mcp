@@ -2,7 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 13
 실행 대상: primary
-병렬 레인: gate-streams
+병렬 레인: gate-tunnels
 
 Go 단위(``internal/mcp/attach_test.go``)가 인자 파싱·쌍·`readSeconds` 상한·stdin 전달·승인
 ``context`` 를 이미 덮는다. 이 파일이 더하는 것은 **실물 kubelet 과 실물 gatekeeper 에서 같은
