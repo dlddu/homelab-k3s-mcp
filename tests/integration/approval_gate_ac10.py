@@ -2,7 +2,7 @@
 
 검증 시나리오: test-approval-gate.md#시나리오 10
 실행 대상: primary
-병렬 레인: gate-objects
+병렬 레인: gate-screens
 
 시나리오가 세는 네 표면과, 토큰이 등장해도 되는 자리 하나(승인받은 정상
 `resource_get` 응답)를 한 번에 잰다.

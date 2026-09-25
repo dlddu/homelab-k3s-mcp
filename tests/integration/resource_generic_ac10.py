@@ -2,7 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 10
 실행 대상: primary
-병렬 레인: gate-objects
+병렬 레인: gate-tunnels
 
 「셀렉터 전용 호출 경로가 존재하지 않아 인자 검증에서 거부됨」과 「subresource
 경로가 없다」는 단위 층이 이미 덮는다(``TestDeleteIsSingleObjectOnly`` — 그

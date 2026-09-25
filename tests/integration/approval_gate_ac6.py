@@ -2,7 +2,7 @@
 
 검증 시나리오: test-approval-gate.md#시나리오 6
 실행 대상: primary
-병렬 레인: gate-objects
+병렬 레인: gate-screens
 
 다섯 경로를 한 파일에서 태운다 — `resource_patch` · `resource_update(subresource=scale)` ·
 `kind=Secret` 의 `resource_get` · `resource_exec` · `resource_create`. 앞 넷은 게이트가

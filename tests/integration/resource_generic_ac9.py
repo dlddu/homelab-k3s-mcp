@@ -2,7 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 9
 실행 대상: primary
-병렬 레인: resource-generic
+병렬 레인: gate-objects
 
 네 patchType 은 각각 별도의 승인을 요구한다 — 내용으로 예외를 주지 않는 것이
 시나리오의 계약이고, 그래서 각 적용 앞에 승인 댄스가 온다. 재시작 패치는
@@ -13,6 +13,11 @@ strategic patch 로 가며, 파드 교체와 spec.replicas 보존은 apiserver �
 
 json patch 의 값은 승인 화면에서 가려진다(AC10 의 마스킹이 json patch 의 값을
 본다) — 그래서 승인 요청 격리 마커는 값이 아니라 **path** 에 둔다.
+
+**대상은 이 파일이 매 실행 새로 세우는 Deployment(`DEPLOYMENT`)다.** 재시작은 파드를 갈아
+끼우고 패치들은 어노테이션을 남기므로, 공용 `workload-fixture` 를 쓰면 그것의 spec·어노테이션을
+대조하는 `resource_generic_ac4.py` 와 같은 레인에 묶여야 한다. 재시작 요청을 대상 이름으로 집는
+것도 그래서다 — 재시작 어노테이션 키는 `approval_gate_ac3.py` 의 재시작 화면에도 나온다.
 """
 
 from __future__ import annotations
@@ -24,8 +29,9 @@ import time
 
 from _gatekeeper import decide, gatekeeper_url, get_request, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
-from _workload import NAMESPACE, WORKLOAD, ensure_workload_fixture_baseline
+from _workload import NAMESPACE
 
+DEPLOYMENT = "rg-ac9-workload"
 BASELINE_REPLICAS = 2
 RESTART_ANNOTATION = "kubectl.kubernetes.io/restartedAt"
 
@@ -47,7 +53,7 @@ def _kubectl(*args: str, check: bool = True) -> str:
 
 
 def _deployment() -> dict:
-    return json.loads(_kubectl("get", "deployment", WORKLOAD, "-o", "json"))
+    return json.loads(_kubectl("get", "deployment", DEPLOYMENT, "-o", "json"))
 
 
 def _resource_version(kind: str, name: str) -> str:
@@ -72,18 +78,31 @@ def _wait_quiet(kind: str, name: str, settle: float = 3.0, timeout: float = 120.
     )
 
 
-def _set_baseline_replicas() -> None:
-    _kubectl("scale", "deployment", WORKLOAD, f"--replicas={BASELINE_REPLICAS}")
-    deadline = time.monotonic() + 120
-    while time.monotonic() < deadline:
-        if _deployment()["spec"]["replicas"] == BASELINE_REPLICAS:
-            return
-        time.sleep(2)
-    raise AssertionError("기준선 레플리카 세팅이 수렴하지 않았다")
+def _fresh_deployment() -> None:
+    """지난 실행의 어노테이션이 남지 않도록 지우고 새로 세운 뒤 파드가 다 설 때까지 기다린다."""
+    _kubectl("delete", "deployment", DEPLOYMENT, "--ignore-not-found", "--wait=true")
+    manifest = {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "metadata": {"name": DEPLOYMENT, "namespace": NAMESPACE},
+        "spec": {
+            "replicas": BASELINE_REPLICAS,
+            "selector": {"matchLabels": {"app": DEPLOYMENT}},
+            "template": {
+                "metadata": {"labels": {"app": DEPLOYMENT}},
+                "spec": {"containers": [{"name": "pause", "image": "registry.k8s.io/pause:3.9"}]},
+            },
+        },
+    }
+    subprocess.run(
+        ["kubectl", "-n", NAMESPACE, "apply", "-f", "-"],
+        input=json.dumps(manifest), text=True, capture_output=True, check=True,
+    )
+    _kubectl("rollout", "status", f"deployment/{DEPLOYMENT}", "--timeout=120s")
 
 
 def _pod_uids() -> set[str]:
-    out = _kubectl("get", "pods", "-l", f"app={WORKLOAD}", "-o", "json")
+    out = _kubectl("get", "pods", "-l", f"app={DEPLOYMENT}", "-o", "json")
     return {item["metadata"]["uid"] for item in json.loads(out)["items"]}
 
 
@@ -108,9 +127,8 @@ async def _approved_patch(session, gate: str, args: dict, marker: str) -> dict:
 
 async def run() -> None:
     url = base_url()
-    ensure_workload_fixture_baseline()
-    _set_baseline_replicas()
-    _wait_quiet("deployment", WORKLOAD)
+    _fresh_deployment()
+    _wait_quiet("deployment", DEPLOYMENT)
     wait_for_healthz(url)
 
     with gatekeeper_url() as gate:
@@ -121,7 +139,7 @@ async def run() -> None:
                 (
                     {
                         "apiVersion": "apps/v1", "kind": "Deployment",
-                        "namespace": NAMESPACE, "name": WORKLOAD,
+                        "namespace": NAMESPACE, "name": DEPLOYMENT,
                         "patchType": "merge",
                         "patch": {"metadata": {"annotations": {MERGE_KEY: "v1"}}},
                     },
@@ -130,7 +148,7 @@ async def run() -> None:
                 (
                     {
                         "apiVersion": "apps/v1", "kind": "Deployment",
-                        "namespace": NAMESPACE, "name": WORKLOAD,
+                        "namespace": NAMESPACE, "name": DEPLOYMENT,
                         "patchType": "strategic",
                         "patch": {"metadata": {"annotations": {STRATEGIC_KEY: "v1"}}},
                     },
@@ -139,7 +157,7 @@ async def run() -> None:
                 (
                     {
                         "apiVersion": "apps/v1", "kind": "Deployment",
-                        "namespace": NAMESPACE, "name": WORKLOAD,
+                        "namespace": NAMESPACE, "name": DEPLOYMENT,
                         "patchType": "json",
                         "patch": [{"op": "add", "path": JSON_PATH, "value": "v1"}],
                     },
@@ -148,7 +166,7 @@ async def run() -> None:
                 (
                     {
                         "apiVersion": "apps/v1", "kind": "Deployment",
-                        "namespace": NAMESPACE, "name": WORKLOAD,
+                        "namespace": NAMESPACE, "name": DEPLOYMENT,
                         "patchType": "apply",
                         "fieldManager": APPLY_FIELD_MANAGER,
                         "patch": {"metadata": {"annotations": {APPLY_KEY: "v1"}}},
@@ -166,7 +184,7 @@ async def run() -> None:
             stamp = str(int(time.time()))
             args = {
                 "apiVersion": "apps/v1", "kind": "Deployment",
-                "namespace": NAMESPACE, "name": WORKLOAD,
+                "namespace": NAMESPACE, "name": DEPLOYMENT,
                 "patchType": "strategic",
                 "patch": {
                     "spec": {
@@ -177,7 +195,7 @@ async def run() -> None:
                 },
             }
             task = asyncio.create_task(session.call_tool("resource_patch", args))
-            row = await wait_for_pending(gate, RESTART_ANNOTATION)
+            row = await wait_for_pending(gate, DEPLOYMENT)
             await decide(gate, row["id"], "APPROVED")
             result = await task
             assert result.isError is False, result

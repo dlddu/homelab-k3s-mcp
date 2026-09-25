@@ -2,7 +2,7 @@
 
 검증 시나리오: test-resource-generic.md#시나리오 14
 실행 대상: primary
-병렬 레인: gate-streams
+병렬 레인: gate-tunnels
 
 Go 단위 다섯(``internal/k8s/port_forward_test.go``)과 셋(``internal/mcp/port_forward_test.go``)이
 이 도구의 계약을 이미 단언한다 — 한 번 쓰고 쓰기 반쪽을 닫는 것, 에러 스트림을 올리는 것,
