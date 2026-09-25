@@ -6,8 +6,7 @@ secret is attached at all, so ``main.go``'s ``build*Service`` helpers each degra
 to ``NewUnavailable("")`` while the server still starts. Sessions therefore carry
 the static key from ``_auth_variant.API_KEY``.
 
-`API_KEY` 는 이 변형을 상대로 도는 모든 파일이 같은 값을 써야 하므로 여기 한 벌만 둔다
-(분할 전에는 `auth.py` 와 `no_config.py` 가 같은 리터럴을 따로 들고 있었다).
+`API_KEY` 는 이 변형을 상대로 도는 모든 파일이 같은 값을 써야 하므로 여기 한 벌만 둔다.
 """
 
 from __future__ import annotations

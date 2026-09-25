@@ -5,20 +5,10 @@
 
 ## 선행 조건을 파일이 스스로 성립시킨다
 
-2026-09-03 분할 전까지 ``workload.py`` 한 파일이 16개 AC를 겸용하며 케이스를 **고정된
-순서**로 불렀다(읽기 전용 조회 → restart → scale(레플리카를 1로 되돌리고 기다린다) →
-그 레플리카를 필요로 하는 logs·pod_describe). 러너가 파일별 프로세스로 돌리므로 그
-순서를 파일 경계 너머로 옮길 수는 없고, 러너의 ``실행 순서:`` 로 고정하는 길은 결합을
-파일 단위로 옮길 뿐 없애지 않는다.
-
-그래서 **픽스처 상태를 필요로 하는 파일이 자기 선행 조건을 스스로 성립시킨다**:
+**픽스처 상태를 필요로 하는 파일이 자기 선행 조건을 스스로 성립시킨다**:
 ``ensure_workload_fixture_baseline()`` 이 ``deploy/workload-fixture`` 를 매니페스트가
 선언한 기준선(Ready 파드 정확히 1개)으로 멱등하게 되돌린다. 그 결과 이 도메인의 파일은
 어느 것도 ``실행 순서:`` 를 선언하지 않는다 — 순서 의존이 남아 있지 않다는 뜻이다.
-
-크래시루프 픽스처 쪽 결합은 처음부터 없었다: ``wait_for_crashloop_restart()`` ·
-``wait_for_crashloop_log_age()`` 가 이미 멱등 폴링이라, 그것을 부르는 파일은 다른 파일이
-무엇을 했는지와 무관하게 자기 전제를 성립시킨다.
 """
 
 from __future__ import annotations
@@ -245,8 +235,7 @@ def ensure_workload_fixture_baseline() -> None:
 
     This is the precondition every file that reads or mutates the fixture opens
     with, so no file depends on the cluster state another file left behind (see the
-    module docstring). Already-at-baseline is the common case and costs two kubectl
-    reads: the scale patch is only issued when ``.spec.replicas`` disagrees.
+    module docstring).
 
     kubectl rather than the ``workload_scale`` tool on purpose — a precondition
     established through the tool under test would make the setup depend on the very
