@@ -11,10 +11,6 @@
 자기 그룹의 배포 하나만으로는 관측할 수 없다. 그래서 필요한 순간에만 짧게 여는 포워드를 쓴다 —
 배포마다 러너 그룹을 하나씩 늘리는 대안은 `ci.yml` 에 스텝을 셋 더 만들고 각 파일을 다른
 그룹으로 흩어 놓는데, 대조하는 파일이 하나라는 사실과 어긋난다.
-
-`port_forward` 자체는 2026-09-04 에 `_helpers.py` 로 옮겼다 — dex 전용이 아니고
-`_session_platform.py` 가 두 번째 소비자가 됐기 때문이다. 여기서 다시 내보내므로
-`platform_auth_safety_ac{2,8}.py` 의 `from _oidc import port_forward` 는 그대로 돈다.
 """
 
 from __future__ import annotations

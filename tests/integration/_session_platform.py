@@ -8,11 +8,8 @@ whether its AC leaves the state store.
 *Seeding* writes a session straight into the control plane's own store. It is
 what session-list/AC1..AC3 use: ``List`` reads only these ConfigMaps and never
 looks at pods, so a seeded session is a complete one as far as listing is
-concerned, and states like ``idle``/``snapshot`` -- reachable in production
-only through the 60-minute idle path or a CRIU checkpoint -- become
-constructible. Seeding the real store is the same move the harness already
-makes for MinIO (the ``minio-seed`` Job), and it leaves the control plane's own
-API, decoding and normalization on the path under test.
+concerned, and it leaves the control plane's own API, decoding and
+normalization on the path under test.
 
 *Creating* goes through the product API and provisions a real data plane pod.
 session-read/AC1 and session-write/AC1 need it: both end in ``agent.Read`` /
