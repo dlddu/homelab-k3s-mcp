@@ -11,7 +11,11 @@ name: Warm CI caches
 #
 # setup-go·setup-python 은 키가 이미 있으면 다시 저장하지 않는다. 그래서 캐시 내용은
 # go.sum·ci.yml(또는 requirements.txt)이 바뀐 뒤 첫 main push 의 것으로 머물고, 그 뒤로 바뀐
-# 이 레포의 패키지만 PR 에서 다시 컴파일된다. 키가 이미 있을 때 이 run 은 복원만 하고 끝난다.
+# 이 레포의 패키지만 PR 에서 다시 컴파일된다. 키가 이미 있을 때 이 run 은 복원만 하고 끝난다 —
+# 저장되지 않을 빌드·테스트는 `cache-hit` 으로 건너뛴다.
+#
+# 워크플로 레벨 `paths:` 를 두지 않는 이유: 키에는 파일 해시뿐 아니라 러너가 고르는 Go·Python
+# 패치 버전도 들어가서, 파일이 그대로여도 키가 바뀔 수 있다. 매 push 에 돌되 적중이면 곧바로 끝난다.
 
 on:
   push:
@@ -36,14 +40,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        id: go
         with:
           go-version: '1.24'
           cache: true
       - name: go vet
+        if: steps.go.outputs.cache-hit != 'true'
         run: go vet ./...
       - name: go build
+        if: steps.go.outputs.cache-hit != 'true'
         run: go build ./...
       - name: go test
+        if: steps.go.outputs.cache-hit != 'true'
         run: go test ./... -v
 
   # ci.yml 의 integration tests 잡: CGO_ENABLED=0 과 go.sum + ci.yml 로 가른 키, 그리고
@@ -57,6 +65,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
+        id: go
         with:
           go-version: '1.24'
           cache: true
@@ -64,11 +73,14 @@ jobs:
             go.sum
             .github/workflows/ci.yml
       - name: Build server binary
+        if: steps.go.outputs.cache-hit != 'true'
         run: go build -ldflags="-s -w" -o /tmp/image-ctx/homelab-k3s-mcp .
       - uses: actions/setup-python@v5
+        id: python
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: tests/integration/requirements.txt
       - name: Install Python integration test deps
+        if: steps.python.outputs.cache-hit != 'true'
         run: pip install -r tests/integration/requirements.txt

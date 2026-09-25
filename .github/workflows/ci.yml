@@ -21,6 +21,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 무거운 두 job(unit tests · integration tests)을 PR 이 실제로 건드린 경로로 거른다.
+  # 워크플로 레벨 `paths:` 를 쓰지 않는 이유: 그러면 `ci passed` 체크 자체가 생기지 않아
+  # 필수 체크가 영원히 pending 이 된다. 그래서 job 레벨 `if:` 로 거르고, ci passed 는
+  # 여기서 「안 돌아도 된다」고 판정한 job 의 skipped 만 통과로 친다. lint 는 docs/ 를 읽는
+  # 검사를 품고 있어 거르지 않는다.
+  #
+  # `app` 은 제외 목록이다 — 이미지·kind 픽스처·통합 테스트에 닿지 않는다고 확인된 경로만
+  # 적고, 나머지(새 디렉터리 포함)는 전부 돌린다.
+  changes:
+    name: changes
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 3
+    outputs:
+      go: ${{ steps.filter.outputs.go }}
+      app: ${{ steps.filter.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      # merge ref 의 첫 부모는 그 시점 main 이라, HEAD^1..HEAD 가 「머지되면 실제로 바뀌는
+      # 파일」이다. diff 가 실패하면 거르지 않고 전부 돌린다.
+      - name: Classify changed files
+        id: filter
+        run: |
+          if ! files=$(git diff --name-only HEAD^1 HEAD); then
+            echo "::warning::변경 파일을 구하지 못했다 — 전부 돌린다."
+            { echo go=true; echo app=true; } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          go=false
+          app=false
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            case "$f" in
+              *.go|go.mod|go.sum|internal/*|.github/workflows/ci.yml) go=true ;;
+            esac
+            case "$f" in
+              docs/*|scripts/*|*.md) ;;
+              .github/workflows/warm-caches.yml) ;;
+              *) app=true ;;
+            esac
+          done <<< "$files"
+          echo "$files"
+          echo "go=$go app=$app"
+          { echo "go=$go"; echo "app=$app"; } >> "$GITHUB_OUTPUT"
+
   lint:
     name: fmt + vet
     runs-on: ubuntu-24.04-arm
@@ -70,6 +117,8 @@ jobs:
 
   unit-tests:
     name: unit tests
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
@@ -82,6 +131,8 @@ jobs:
 
   integration-tests:
     name: integration tests
+    needs: changes
+    if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-24.04-arm
     # 이 잡의 Go 컴파일은 kind 에 올릴 서버 바이너리 하나뿐이고, 그것은 발행 이미지와 같이
     # 정적 링크여야 한다(distroless/static). CGO 설정이 다르면 net 을 거치는 거의 모든
@@ -659,20 +710,29 @@ jobs:
   #
   # `if: always()` 는 빼면 안 된다: 선행 잡이 실패하면 이 잡은 기본적으로 *skipped* 가 되고,
   # GitHub 는 skipped 인 required check 를 통과로 친다 — 게이트가 가장 필요한 순간에 열린다.
-  # 그래서 항상 돌리고, 선행 결과가 전부 success 가 아니면(failure·cancelled·skipped) 실패한다.
+  # 그래서 항상 돌리고, 선행 결과가 success 가 아니면(failure·cancelled) 실패한다.
+  #
+  # skipped 는 SKIP_OK 가 "true" 인 잡에만 허용된다 — changes 가 성공해 「이번 PR 에선 안
+  # 돌아도 된다」고 판정한 경우뿐이다. changes 가 실패하면 출력이 비어 전부 "false" 가 되므로
+  # 걸러진 잡의 skipped 도 실패로 떨어진다. 거르는 잡을 늘리면 여기에도 적을 것.
   ci-passed:
     name: ci passed
     if: always()
-    needs: [lint, unit-tests, integration-tests, image]
+    needs: [changes, lint, unit-tests, integration-tests, image]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 2
     steps:
       - name: Require every upstream job to succeed
         env:
           RESULTS: ${{ toJSON(needs) }}
+          SKIP_OK: >-
+            {"unit-tests": "${{ needs.changes.outputs.go == 'false' }}",
+             "integration-tests": "${{ needs.changes.outputs.app == 'false' }}"}
         run: |
-          echo "$RESULTS" | jq -r 'to_entries[] | "\(.key): \(.value.result)"'
-          if ! echo "$RESULTS" | jq -e 'all(.[]; .result == "success")' >/dev/null; then
-            echo "::error::성공하지 않은 선행 잡이 있다 — 위 목록 참조"
+          echo "$RESULTS" | jq -r --argjson ok "$SKIP_OK" \
+            'to_entries[] | "\(.key): \(.value.result)\(if $ok[.key] == "true" then " (skip 허용)" else "" end)"'
+          if ! echo "$RESULTS" | jq -e --argjson ok "$SKIP_OK" \
+              'all(to_entries[]; .value.result == "success" or (.value.result == "skipped" and $ok[.key] == "true"))' >/dev/null; then
+            echo "::error::통과로 칠 수 없는 선행 잡이 있다 — 위 목록 참조"
             exit 1
           fi

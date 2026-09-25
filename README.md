@@ -25,7 +25,9 @@ commit SHA**. There is no `latest`.
   `image:` line in `k8s/deployment.yaml` on `deploy`. Roll back with a revert PR to `main`.
 - **Tests run on pull requests only.** `.github/workflows/ci.yml` is triggered by
   `pull_request` alone; what lands on `main` has already passed `ci passed`, so a `main`
-  push runs only the image publish + pin above.
+  push runs only the image publish + pin above. A `changes` job skips the unit tests when
+  no Go source changed, and the integration tests when only `docs/`, `scripts/` or
+  Markdown changed; `ci passed` accepts a skip only where `changes` decided it.
 - **Pull requests get a preview environment.** The same image workflow, called from
   `ci.yml`, publishes the PR's head SHA on every PR push. Label a PR `deploy/preview` and flux-cd-apps
   (`apps/homelab-k3s-mcp-preview`) renders a full environment for it at
