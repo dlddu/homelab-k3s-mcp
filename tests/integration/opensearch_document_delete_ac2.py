@@ -3,9 +3,6 @@
 검증 시나리오: test-opensearch-document-delete.md#시나리오 2
 실행 대상: primary
 병렬 레인: aws
-
-부재를 오류가 아닌 결과로 답하는지, 그리고 그 뒤에도 서버가 정상인지(``ping``)를
-함께 본다.
 """
 
 from __future__ import annotations

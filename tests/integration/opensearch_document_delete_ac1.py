@@ -3,8 +3,6 @@
 검증 시나리오: test-opensearch-document-delete.md#시나리오 1
 실행 대상: primary
 병렬 레인: aws
-
-같은 인덱스에 남는 문서를 함께 두어 "지목한 하나만" 사라졌음을 관측한다.
 """
 
 from __future__ import annotations

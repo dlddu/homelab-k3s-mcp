@@ -3,9 +3,6 @@
 검증 시나리오: test-opensearch-document-put.md#시나리오 2
 실행 대상: primary
 병렬 레인: aws
-
-색인 **전** 상태를 먼저 관측해야 "자동 생성"이 성립하므로, 자기 인덱스가 아직
-없다는 것(404 ``index_not_found_exception``)을 선행 단정한다.
 """
 
 from __future__ import annotations

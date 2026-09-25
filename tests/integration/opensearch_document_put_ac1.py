@@ -15,13 +15,6 @@ from _opensearch import hit_ids, index_for, put_doc, search_until, token_for
 
 async def test_opensearch_document_put_ac1_upsert_semantics(session) -> None:
     """AC: opensearch-document-put/AC1 — index a document, and re-putting an id upserts it.
-
-    Walks the AC's verification method clause by clause: the first write of an
-    explicit id reports ``created``; re-putting that id reports ``updated`` and
-    the *new* body is what a later search returns (so the second write replaced
-    the document instead of adding a second one); two id-less writes of the same
-    body come back ``created`` with two different auto-generated ids and leave
-    three documents behind, not two.
     """
     index = index_for("put-ac1")
     token = token_for("putac1")

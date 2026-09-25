@@ -4,9 +4,6 @@
 실행 대상: primary
 추가 인자: trace
 병렬 레인: aws
-
-도구 응답이 아니라 http-trace 프록시의 기록을 읽는다 — 픽스처가 무서명 검색도
-똑같이 답하므로 응답으로는 접근 경로를 구분할 수 없다.
 """
 
 from __future__ import annotations
