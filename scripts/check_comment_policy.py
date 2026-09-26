@@ -13,11 +13,12 @@
 
 클러스터도 서드파티 의존성도 필요 없다(표준 라이브러리 전용) — CI 의 lint 잡에서 돈다.
 
-판정 대상은 **두 표면**이다. 정책의 「지문의 사각지대」 절이 적어 두었듯 줄 주석 지문은 그
-파일이 드는 **언어군의 주석 줄 접두사**에 걸리는 줄만 보는데, Python docstring 본문은 줄
-접두사로 식별되지 않아 그 지문에 잡히지 않는다. 언어군 표를 넓혀도 둘을 함께 재는 길은
-없으므로(파서가 필요하다) **표면을 나란히 두고 각각 재측정한다.** 표면이 갈려 있으므로 줄 주석 원장은 흔들리지 않고,
-docstring 판정은 슬라이스마다 누적할 수 있다.
+판정 대상은 **세 표면**이다. 정책의 「지문의 사각지대」 절이 적어 두었듯 줄 주석 지문은 그
+파일이 드는 **언어군의 주석 줄 접두사**에 걸리는 줄만 보는데, Python docstring 본문(D)과 코드
+뒤에 오는 줄 끝·줄 중간 주석(E)은 줄 접두사로 식별되지 않아 그 지문에 잡히지 않는다. 언어군
+표를 넓혀도 셋을 함께 재는 길은 없으므로(파서와 어휘 분석이 필요하다) **표면을 나란히 두고
+각각 재측정한다.** 표면이 갈려 있으므로 줄 주석 원장은 흔들리지 않고, D·E 판정은 슬라이스마다
+누적할 수 있다.
 
 줄 주석 표면 — 모델 `tbm_homelab-k3s-mcp-comment-redundancy` 의 as-is 지문과 같은 정의:
 
@@ -32,9 +33,11 @@ docstring 판정은 슬라이스마다 누적할 수 있다.
   손으로 적은 잔량 마커가 아니라 **행의 존재 자체**로. 등재됐는데 지금 주석이 0줄인 파일은
   통과시킨다: 판정해서 비운 사실의 기록이라 행에서 지우면 그 이력이 사라진다.
 
-docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본문(빈 줄과 기계가 읽는
-선언 줄은 제외). 모델 as-is 는 **아직 이 표면을 보지 않는다**(bash 스크립트가 파서를 돌리지
-않는다) — 그래서 재감지가 늘어남을 알려주지 못하고, 그 자리를 R8 이 메운다:
+docstring 표면(D) — `ast` 로 뜯은 module·class·function docstring 의 본문(빈 줄과 기계가 읽는
+선언 줄은 제외). 모델 as-is 는 2026-09-26 표면 개정으로 이 표면을 **본다**. 다만 그 지문은
+기계 판독 선언 줄을 빼지 않아 이 게이트보다 262줄 많다 — 내역과 소관은 정책 본문
+`docs/comment-policy/README.md` 의 「지문의 사각지대」가 든다. 어느 쪽이든 새 파일이 조용히
+표면을 넓히는 것은 R8 이 막는다:
 
 * **R5** docstring 원장 행의 범위가 실재하는 `.py` 이고 스캔 범위 안이다.
 * **R6** 각 행의 재측정 줄 수·지문이 등재값과 같다(R2 와 같은 성질).
@@ -66,17 +69,31 @@ docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본�
   `passes/` 파일로 간다. 그 산문이 원장에 쌓이면 모든 PR 이 같은 파일의 같은 구역을 고치고,
   무엇보다 **판정 결과와 그때그때의 서사가 한 파일에서 섞여** 어느 쪽이 사실인지 흐려진다.
 
-통과하면 **두 표면의 현재 인구조사를 출력한다.** 그 수치는 문서 프로즈에 적지 않는다 —
+줄 끝 주석 표면(E) — 코드 뒤에 오는 주석. 느슨한 정규식은 문자열 리터럴 안의 `#`·`//` 를
+함께 집으므로 Python 은 `tokenize`, 나머지는 언어군별 줄 스캐너로 가른다. 모델 as-is 의
+`eol=줄/파일` 과 **같은 규칙**이다(`eol_lines` 의 docstring 참조):
+
+* **R12** 줄 끝 주석 원장 행의 범위가 실재하고, 이 표면이 **보는** 파일이다(R1·R5 와 같은
+  성질). 보지 않는 파일을 등재하면 그 행이 영원히 0줄로 남아 「판정했다」는 거짓이 된다.
+* **R13** 각 행의 재측정 줄 수·지문이 등재값과 같다(R2·R6 과 같은 성질).
+* **R14** 줄 끝 주석 행 사이 이중 등재 금지(R3·R7 과 같은 성질).
+* **R15** 줄 끝 주석 표면의 **범위 불변식**(R4·R8 과 같은 성질·같은 함수).
+
+통과하면 **세 표면의 현재 인구조사를 출력한다.** 그 수치는 문서 프로즈에 적지 않는다 —
 낡는 형태를 없애는 것이 이 게이트의 목적이고, 최신값이 필요하면 여기서 읽는다.
 """
 from __future__ import annotations
 
 import ast
 import hashlib
+import io
+import os
 import pathlib
 import re
 import subprocess
 import sys
+import tokenize
+from collections.abc import Callable
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO_ROOT = HERE.parent
@@ -169,20 +186,18 @@ LANGUAGE_GROUPS = (
 SCOPE_LABEL = "레포 전체 − 제외 세 부류(복원 원본 · 편집 불가 · 주석 문법 없는 데이터·자산)"
 
 # docstring 표면에서만 쓰는 제외 목록. `run_all.py` 가 모듈 docstring 에서 파싱하는 선언
-# 필드들이고, DIRECTIVE_RE 의 `검증 AC:` 와 같은 자리에 있다(그쪽은 두 표면이 공유한다).
-# ⚠️ `검증 시나리오:` 는 여기 있고 DIRECTIVE_RE 에 있지 않다. 2026-09-08 에 e2e 1:1 판정 축이
-# AC → 테스트 시나리오로 옮겨지며 그 선언 필드가 개명됐는데, DIRECTIVE_RE 는 모델
-# tbm_homelab-k3s-mcp-comment-redundancy 의 as-is 버전 스크립트와 **글자 그대로 같아야 하는
-# 넷** 중 하나라 한쪽만 고칠 수 없다. 이 표면(docstring)은 그 모델이 보지 않으므로(위 docstring
-# 표면 설명 참조) 체커 국소인 여기에 두는 것이 두 정의를 갈라지지 않게 하는 유일한 자리다.
-# DIRECTIVE_RE 의 `검증 AC:` 는 이제 어느 표면에도 매칭되지 않는 죽은 패턴이며, 두 정의를 함께
-# 옮기는 정리는 그 모델의 몫이다.
+# 필드들이다. `검증 시나리오:` 가 DIRECTIVE_RE 아래가 아니라 여기 있는 것은 DIRECTIVE_RE 가
+# 모델 tbm_homelab-k3s-mcp-comment-redundancy 의 as-is 버전 스크립트와 **글자 그대로 같아야
+# 하는 넷** 중 하나여서 한쪽만 고칠 수 없기 때문이다(2026-09-08 개명 뒤 그쪽은 죽은 `검증 AC:`
+# 를 들고 있다). 이 목록이 모델 D 지문과 이 게이트가 262줄 갈리는 자리이고, 내역·소관·예상
+# 수렴값은 정책 본문 `docs/comment-policy/README.md` 의 「지문의 사각지대」가 든다.
 DOCSTRING_DECL_RE = re.compile(r"^(검증 시나리오|실행 대상|추가 인자|실행 순서|병렬 레인):")
 
 # 표는 절 제목으로 찾는다. 경계 주석 마커를 두지 않는 것은 그것도 손으로 유지하는 좌표이기
 # 때문이다 — 표가 어느 절에 속하는지는 제목이 이미 말한다.
 LEDGER_SECTION = "## 판정 이력"
 DOC_LEDGER_SECTION = "## docstring 판정 이력"
+EOL_LEDGER_SECTION = "## 줄 끝 주석 판정 이력"
 READING_SECTION = "## 읽는 법"
 
 # 판정 축 주장의 **근거**(R11). 결과 칸이 그 축을 물었다는 토큰을 담고, 그 판정을 어느 지문에서
@@ -371,6 +386,223 @@ def docstring_lines(paths: list[str]) -> list[str]:
     return sorted(hits)
 
 
+EOL_DIRECTIVE_RE = re.compile(DIRECTIVE_RE.pattern.replace(r":#!|", "", 1))
+EOL_TAGS: tuple[str | None, ...] = ("C", "HASH", "DASH", None, None, None)
+EOL_HASH_EXTS = frozenset(
+    ("sh", "bash", "zsh", "fish", "rb", "pl", "r", "yaml", "yml", "toml",
+     "tf", "tfvars", "hcl", "mk", "nix", "awk")
+)
+EOL_MAKE_RE = re.compile(r"^(Makefile|GNUmakefile)$|\.mk$")
+EOL_SUFFIX_RE = re.compile(r"\.(example|sample|template|tmpl|tpl|dist|in|j2)$")
+EOL_OPEN_OK = frozenset(" \t=([{,:")
+
+
+def eol_scanner(rel: str) -> str | None:
+    """이 경로에 붙는 E 스캐너 이름. `None` 이면 **이 표면이 보지 않는 파일**이다.
+
+    멤버십과 스캐너 선택을 한 함수가 답하는 것이 의도다. 「언어군에 들었는가」로만 물으면
+    Dockerfile·`.gitignore`류·`.env`·ini/cfg 처럼 `#` 군이지만 줄 중간 `#` 이 주석이 아니라
+    스캔하지 않는 파일이 「표면 안」으로 읽히고, 원장이 그 파일을 등재하고도 영원히 0줄로
+    남는다 — 묻지 않은 것이 「판정했다」가 되는 자리다. R12·R15 가 이 술어를 쓴다.
+
+    `EOL_TAGS` 는 `LANGUAGE_GROUPS` 와 **같은 순서로 맞선** 태그 목록이고 `None` 은 「그 군은
+    E 를 보지 않는다」다. 두 목록의 길이가 갈리면 뒤쪽 군이 조용히 태그를 잃으므로 함께 고칠 것.
+    """
+    tag = None
+    for (names, _), candidate in zip(LANGUAGE_GROUPS, EOL_TAGS):
+        if names.search(rel):
+            tag = candidate
+            break
+    else:
+        try:
+            head = (REPO_ROOT / rel).read_bytes()[:2]
+        except OSError:
+            return None
+        if head != b"#!":
+            return None
+        tag = "SHEBANG"
+    if tag is None:
+        return None
+    name = EOL_SUFFIX_RE.sub("", os.path.basename(rel))
+    ext = name.rsplit(".", 1)[1].lower() if "." in name else ""
+    if tag == "C":
+        return "slash"
+    if tag == "DASH":
+        return "dash"
+    if ext in ("py", "pyi"):
+        return "python"
+    if tag == "SHEBANG":
+        try:
+            shebang = (REPO_ROOT / rel).read_text(encoding="utf-8").split("\n", 1)[0]
+        except (UnicodeDecodeError, OSError):
+            return None
+        return "python" if "python" in shebang else "hash"
+    if ext in EOL_HASH_EXTS or EOL_MAKE_RE.search(name) or name.startswith("requirements"):
+        return "hash"
+    return None
+
+
+def eol_lines(paths: list[str]) -> list[str]:
+    """`경로:주석` 줄의 정규화·정렬 목록. **코드 뒤에 오는** 주석만 담는다.
+
+    모델 as-is 버전 스크립트의 `eol=` 추출(`DE_PY` 의 스캐너 세 벌)을 그대로 옮긴 것이고,
+    규칙이 갈리면 게이트가 재는 것과 감지가 보는 것이 달라진다. 그래서 파생을 손으로 베끼지
+    않는다 — `EOL_DIRECTIVE_RE` 는 `DIRECTIVE_RE` 에서 shebang 갈래 하나만 떼어 만들고, 버전
+    스크립트도 자기 `DIRECTIVE` 에서 같은 갈래를 떼어 같은 값을 만든다.
+
+    줄머리 주석은 L 몫이라 건너뛴다. 지시자 줄은 버리지만 그 뒤에 붙은 **사유**는 남긴다
+    (지시자 뒤에 공백·마커·공백으로 사유를 덧붙인 꼴) — 사유는 기계가 읽지 않는 사람의
+    문장이다. 지시자 판정은 `경로:본문` 이 아니라 **본문에만** 걸린다. 경로에 지시자 낱말이 든
+    파일이 생기면 그 파일의 줄이 통째로 사라지기 때문이다.
+
+    느슨한 정규식으로 이 표면을 대신할 수 없다 — 문자열 리터럴 안의 `#`·`//` 가 함께 걸린다.
+    그래서 Python 은 `tokenize`, 나머지는 따옴표·블록 주석 상태를 줄을 넘어 따라가는 줄
+    스캐너로 가른다. 파싱에 실패하면 조용히 빠지지 않고 멈춘다 — 표면이 한 파일만큼 작아지면
+    그 줄들이 판정을 받지 않은 채 초록을 얻는다. `go.mod`·`go.work` 의 `// indirect` 는
+    `go mod tidy` 가 쓰고 읽는 표식이라 여기서도 뺀다.
+    """
+    hits: list[str] = []
+
+    def emit(rel: str, text: str) -> None:
+        norm = re.sub(r"\s+", " ", text).strip()
+        if norm and not EOL_DIRECTIVE_RE.search(norm):
+            hits.append(f"{rel}:{norm}")
+
+    def rescue(rel: str, comment: str, tail: str) -> None:
+        """지시자 줄에서 사유 부분만 건져 낸다(없으면 아무것도 내지 않는다)."""
+        if EOL_DIRECTIVE_RE.search(comment):
+            match = re.search(tail, comment[1:])
+            if match:
+                emit(rel, comment[1 + match.start():])
+
+    def scan_python(rel: str, src: str) -> None:
+        """`tokenize` 로 주석 토큰을 뽑고, 그 앞에 코드가 있는 것만 E 로 낸다."""
+        lines = src.splitlines()
+        try:
+            for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+                if tok.type != tokenize.COMMENT:
+                    continue
+                row, col = tok.start
+                if lines[row - 1][:col].strip():
+                    emit(rel, tok.string)
+                else:
+                    rescue(rel, tok.string, r"\s#\s")
+        except (tokenize.TokenError, IndentationError, SyntaxError) as exc:
+            raise SystemExit(f"{rel}: tokenize 실패로 줄 끝 주석 표면을 잴 수 없다 — {exc}")
+
+    def scan_marker(rel: str, src: str, marker: str, make: bool = False) -> None:
+        """`#`·`--` 계열 줄 스캐너.
+
+        `#` 은 앞이 공백일 때만 주석으로 본다(`a#b` 는 주석이 아니다). Makefile 의 `##` 은
+        도움말 생성기가 읽는 표식이라 뺀다. 따옴표는 **열리는 자리**(`EOL_OPEN_OK`)에서만
+        문자열을 시작한 것으로 보는데, 그러지 않으면 `don't` 의 `'` 가 줄 나머지를 삼킨다.
+        """
+        for line in src.splitlines():
+            stripped = line.lstrip()
+            if stripped.startswith(marker):
+                rescue(rel, stripped, r"\s" + re.escape(marker) + r"\s")
+                continue
+            quote = None
+            i = 0
+            while i < len(line):
+                ch = line[i]
+                if quote:
+                    if ch == "\\" and quote == '"':
+                        i += 2
+                        continue
+                    if ch == quote:
+                        quote = None
+                elif ch in "'\"" and (i == 0 or line[i - 1] in EOL_OPEN_OK):
+                    quote = ch
+                elif line.startswith(marker, i) and (marker != "#" or line[i - 1] in " \t"):
+                    comment = line[i:]
+                    if not (make and re.match(r"^##( |$)", comment)):
+                        emit(rel, comment)
+                    break
+                i += 1
+
+    def scan_slash(rel: str, src: str, line_comments: bool) -> None:
+        """C 언어군 줄 스캐너. 문자열(`"` `'` 백틱)과 블록 주석 상태를 줄을 넘어 따라간다.
+
+        `'`·`"` 는 줄 끝에서 닫는 것으로 본다(그 언어들에서 줄을 넘는 것은 백틱뿐이다).
+        `line_comments` 가 거짓이면 `//` 를 주석으로 보지 않는다 — `.css` 가 그 경우이고
+        블록 주석만 센다.
+        """
+        quote = None
+        block = False
+        for line in src.splitlines():
+            stripped = line.lstrip()
+            if quote in ('"', "'"):
+                quote = None
+            lead = not block and quote is None and stripped.startswith(("//", "/*", "*", "{/*"))
+            if lead and stripped.startswith("//"):
+                rescue(rel, stripped[1:], r"\s(--|//)\s")
+            i = 0
+            code = False
+            while i < len(line):
+                ch = line[i]
+                nxt = line[i + 1] if i + 1 < len(line) else ""
+                if block:
+                    if ch == "*" and nxt == "/":
+                        block = False
+                        i += 2
+                        continue
+                    i += 1
+                    continue
+                if quote:
+                    if ch == "\\":
+                        i += 2
+                        continue
+                    if ch == quote:
+                        quote = None
+                    i += 1
+                    continue
+                if ch == "\\":
+                    i += 2
+                    code = True
+                    continue
+                if line_comments and ch == "/" and nxt == "/":
+                    if code and not lead:
+                        emit(rel, line[i:])
+                    break
+                if ch == "/" and nxt == "*":
+                    end = line.find("*/", i + 2)
+                    if code and not lead:
+                        emit(rel, line[i:] if end < 0 else line[i:end + 2])
+                    if end < 0:
+                        block = True
+                        break
+                    i = end + 2
+                    continue
+                if ch in "\"'`":
+                    quote = ch
+                if not ch.isspace() and ch != "{":
+                    code = True
+                i += 1
+
+    for rel in sorted(paths):
+        scanner = eol_scanner(rel)
+        if scanner is None:
+            continue
+        try:
+            src = (REPO_ROOT / rel).read_text(encoding="utf-8")
+        except (UnicodeDecodeError, FileNotFoundError):
+            continue
+        name = EOL_SUFFIX_RE.sub("", os.path.basename(rel))
+        if scanner == "slash":
+            mark = len(hits)
+            scan_slash(rel, src, not name.endswith(".css"))
+            if name in ("go.mod", "go.work"):
+                hits[mark:] = [h for h in hits[mark:] if not h.endswith(":// indirect")]
+        elif scanner == "dash":
+            scan_marker(rel, src, "--")
+        elif scanner == "python":
+            scan_python(rel, src)
+        else:
+            scan_marker(rel, src, "#", make=bool(EOL_MAKE_RE.search(name)))
+    return sorted(hits)
+
+
 def fingerprint(hits: list[str]) -> str:
     return hashlib.sha256("\n".join(hits).encode("utf-8")).hexdigest()
 
@@ -457,12 +689,17 @@ def docstring_census(hits: list[str]) -> str:
     return f"판정 대상 docstring {len(hits)}줄 / {len(files)}파일"
 
 
+def eol_census(hits: list[str]) -> str:
+    files = sorted({h.split(":", 1)[0] for h in hits})
+    return f"판정 대상 줄 끝 주석 {len(hits)}줄 / {len(files)}파일"
+
+
 def check_ledger(
     rows: list[dict],
     in_scope: set[str],
     extract,
     rules: tuple[str, str, str],
-    only_python: bool = False,
+    restrict: tuple[Callable[[str], bool], str] | None = None,
 ) -> int:
     """한 표면의 원장을 R1~R3(줄 주석) / R5~R7(docstring) 로 검사하고 행 합을 돌려준다."""
     existence, remeasure, duplicate = rules
@@ -477,12 +714,8 @@ def check_ledger(
                     f" (범위: {SCOPE_LABEL}). 파일이 사라졌거나 이름이 바뀌었으면"
                     " 그 범위는 다시 판정받아야 한다.",
                 )
-            elif only_python and not rel.endswith(".py"):
-                fail(
-                    existence,
-                    f"{row['date']} 행의 `{rel}` 은 `.py` 가 아니다 —"
-                    " docstring 표면은 Python 파일만 잰다.",
-                )
+            elif restrict is not None and not restrict[0](rel):
+                fail(existence, f"{row['date']} 행의 `{rel}` 은 {restrict[1]}")
 
     seen: dict[str, str] = {}
     for row in rows:
@@ -608,7 +841,7 @@ def check_axis_evidence(rows: list[dict], rule: str, surface: str) -> None:
 def check_structure(text: str) -> None:
     """R10 — 원장에는 표와 「읽는 법」 절만 둔다."""
     allowed_headings = {"# 주석 비중복성 판정 원장", LEDGER_SECTION, DOC_LEDGER_SECTION,
-                        READING_SECTION}
+                        EOL_LEDGER_SECTION, READING_SECTION}
     section = None
     strays: list[str] = []
     for lineno, line in enumerate(text.splitlines(), 1):
@@ -617,7 +850,7 @@ def check_structure(text: str) -> None:
                 fail("R10", f"{LEDGER.name}:{lineno} 원장에 허용되지 않은 절 제목: {line.strip()}")
             section = line.strip()
             continue
-        if section in (LEDGER_SECTION, DOC_LEDGER_SECTION):
+        if section in (LEDGER_SECTION, DOC_LEDGER_SECTION, EOL_LEDGER_SECTION):
             if line.strip() and not line.strip().startswith("|"):
                 strays.append(f"{lineno}: {line.strip()[:60]}")
     if strays:
@@ -639,18 +872,40 @@ def main() -> int:
     text = LEDGER.read_text(encoding="utf-8")
     rows = parse_ledger(text, LEDGER_SECTION)
     doc_rows = parse_ledger(text, DOC_LEDGER_SECTION)
+    eol_rows = parse_ledger(text, EOL_LEDGER_SECTION)
 
     scanned = scan_files()
     in_scope = set(scanned)
     unclassified = unclassified_files(scanned)
     hits = comment_lines(sorted(in_scope))
     doc_hits = docstring_lines(sorted(in_scope))
+    eol_hits = eol_lines(sorted(in_scope))
 
     # R1·R2·R3 — 줄 주석 표면
     ledger_sum = check_ledger(rows, in_scope, comment_lines, ("R1", "R2", "R3"))
     # R5·R6·R7 — docstring 표면
     doc_sum = check_ledger(
-        doc_rows, in_scope, docstring_lines, ("R5", "R6", "R7"), only_python=True
+        doc_rows,
+        in_scope,
+        docstring_lines,
+        ("R5", "R6", "R7"),
+        restrict=(
+            lambda rel: rel.endswith(".py"),
+            "`.py` 가 아니다 — docstring 표면은 Python 파일만 잰다.",
+        ),
+    )
+    # R12·R13·R14 — 줄 끝 주석 표면
+    eol_sum = check_ledger(
+        eol_rows,
+        in_scope,
+        eol_lines,
+        ("R12", "R13", "R14"),
+        restrict=(
+            lambda rel: eol_scanner(rel) is not None,
+            "줄 끝 주석 표면이 보지 않는 언어군이다 —"
+            " MIXED·MARKUP 군과 줄 중간 `#` 이 주석이 아닌 HASH 파일은 이 표면 밖이다"
+            "(README 「지문의 사각지대」).",
+        ),
     )
 
     # R4·R8 — 범위 불변식. 실측은 파일별 줄 수로 잰다(0줄 파일과 범위 밖 파일을 가르기 위해).
@@ -660,12 +915,17 @@ def main() -> int:
     doc_measured = {rel: 0 for rel in in_scope if rel.endswith(".py")}
     for hit in doc_hits:
         doc_measured[hit.split(":", 1)[0]] += 1
+    eol_measured = {rel: 0 for rel in in_scope if eol_scanner(rel) is not None}
+    for hit in eol_hits:
+        eol_measured[hit.split(":", 1)[0]] += 1
     check_scope(rows, measured, "R4", "줄 주석")
     check_scope(doc_rows, doc_measured, "R8", "docstring")
+    check_scope(eol_rows, eol_measured, "R15", "줄 끝 주석")
 
     # R9 — 판정 축 표기
     tally = check_axis(rows, "R9", "줄 주석")
     doc_tally = check_axis(doc_rows, "R9", "docstring")
+    eol_tally = check_axis(eol_rows, "R9", "줄 끝 주석")
 
     # R10 — 원장 구조
     check_structure(text)
@@ -673,21 +933,23 @@ def main() -> int:
     # R11 — 판정 축 주장 ↔ 근거 일치(양방향)
     check_axis_evidence(rows, "R11", "줄 주석")
     check_axis_evidence(doc_rows, "R11", "docstring")
+    check_axis_evidence(eol_rows, "R11", "줄 끝 주석")
 
     if failures:
         for line in failures:
             print(line, file=sys.stderr)
         print(
             f"\nFAIL: {len(failures)}건 — {census(hits, unclassified)}"
-            f" · {docstring_census(doc_hits)}",
+            f" · {docstring_census(doc_hits)} · {eol_census(eol_hits)}",
             file=sys.stderr,
         )
         return 1
 
     share = (tally["lines_done"] * 100.0 / len(hits)) if hits else 0.0
     doc_share = (doc_tally["lines_done"] * 100.0 / len(doc_hits)) if doc_hits else 0.0
+    eol_share = (eol_tally["lines_done"] * 100.0 / len(eol_hits)) if eol_hits else 0.0
     print(
-        f"OK: 규칙 R1~R11 위반 없음 — {census(hits, unclassified)}"
+        f"OK: 규칙 R1~R15 위반 없음 — {census(hits, unclassified)}"
         f" · 원장 {len(rows)}행 / 등재 범위 {ledger_sum}줄"
         f" · 네 경로 판정 완료 {tally['done']}행 {tally['lines_done']}줄({share:.1f}%)"
         f" · 미판정(—) {tally['unjudged']}행"
@@ -713,6 +975,20 @@ def main() -> int:
             f"  {row['axis']:<4}  {' '.join(row['paths'])}"
         )
     print(f"  전체 docstring 지문: {fingerprint(doc_hits)}")
+    print(
+        f"     {eol_census(eol_hits)}"
+        f" · 원장 {len(eol_rows)}행 / 등재 범위 {eol_sum}줄"
+        f" · 네 경로 판정 완료 {eol_tally['done']}행"
+        f" {eol_tally['lines_done']}줄({eol_share:.1f}%)"
+        f" · 미판정(—) {eol_tally['unjudged']}행"
+        f" · 축별 {axis_histogram(eol_tally)}"
+    )
+    for row in eol_rows:
+        print(
+            f"  {row['date']}  {row['lines']:>4}줄  {row['fingerprint']}"
+            f"  {row['axis']:<4}  {' '.join(row['paths'])}"
+        )
+    print(f"  전체 줄 끝 주석 지문: {fingerprint(eol_hits)}")
     return 0
 
 
