@@ -1,0 +1,321 @@
+# Misconfigured-gate SUT variants for test-approval-gate.md#시나리오 5.
+#
+# Three of the scenario's eight failure paths are properties of the SUT's own
+# deployment env rather than of anything gatekeeper does, and env is per
+# deployment (the same reason gatekeeper-variant.yaml exists). They cannot be
+# folded into one deployment and they cannot be produced by mutating an
+# existing one mid-run: approval_gate_ac{2,4,9}.py share the gatekeeper-variant
+# namespace, and restarting it under them would be a cross-file race.
+#
+#  * unreachable  -- GATEKEEPER_BASE_URL points at the container's own discard
+#    port, so the dial is refused immediately and deterministically. A Service
+#    with no endpoints would also refuse, but it would be one more object whose
+#    absence of endpoints is itself something to keep true.
+#  * no-base-url  -- GATEKEEPER_API_KEY set, GATEKEEPER_BASE_URL absent.
+#  * no-api-key   -- GATEKEEPER_BASE_URL set, GATEKEEPER_API_KEY absent.
+#
+# The last two are the halves of gatekeeper.FromEnv()'s two error branches; the
+# server still starts and main.go turns each into gatekeeper.NewUnavailable(err)
+# (main.go 「invalid approval gate config; gated calls will be refused」), which
+# is exactly the AC5 property the scenario asks about. Both refuse WITHOUT
+# calling Describe, so no kubernetes read happens either -- the e2e observes
+# that as the target object staying byte-identical.
+#
+# Unlike the other gate fixtures these carry their env inline: none of the
+# three needs a value CI has to discover at runtime (no seeded user id, no API
+# key that must match gatekeeper's), and a literal is easier to read against
+# the branch of FromEnv it is meant to hit.
+#
+# The dedicated ClusterRoleBinding exists for the same reason the other
+# variants' do: authorization is per ServiceAccount.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-broken
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-k3s-mcp
+  namespace: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-broken
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-k3s-mcp:gate-broken-workloads
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-broken
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: homelab-k3s-mcp
+    namespace: homelab-k3s-mcp-gate-broken
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-gate-unreachable
+  namespace: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-unreachable
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-gate-unreachable
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-gate-unreachable
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # 등재: docs/e2e-mocking-policy.md — 대체 검증은 auth-fixture.yaml(인증을 켠 변형)
+            # mock-exception: GATE — 이 변형의 검증 대상은 게이트 미설정·불통이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
+            - name: MCP_AUTH_DISABLED
+              value: "1"
+            # 연결 실패 경로. 파드 자신의 discard 포트라 아무도 듣지 않아 dial 이 즉시 거부된다 —
+            # 타임아웃을 기다리지 않으므로 이 경로만 초 단위로 결정적이다.
+            - name: GATEKEEPER_BASE_URL
+              value: http://127.0.0.1:9
+            - name: GATEKEEPER_API_KEY
+              value: unreachable-variant-key
+            - name: GATEKEEPER_TIMEOUT_SECONDS
+              value: "5"
+            - name: GATEKEEPER_POLL_INTERVAL_SECONDS
+              value: "1"
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-gate-unreachable
+  namespace: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-unreachable
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-unreachable
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-gate-no-base-url
+  namespace: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # 등재: docs/e2e-mocking-policy.md — 대체 검증은 auth-fixture.yaml(인증을 켠 변형)
+            # mock-exception: GATE — 이 변형의 검증 대상은 게이트 미설정·불통이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
+            - name: MCP_AUTH_DISABLED
+              value: "1"
+            # GATEKEEPER_BASE_URL 미설정 — FromEnv 의 「API_KEY is set but BASE_URL is not」 분기.
+            - name: GATEKEEPER_API_KEY
+              value: no-base-url-variant-key
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-gate-no-base-url
+  namespace: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-gate-no-api-key
+  namespace: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # 등재: docs/e2e-mocking-policy.md — 대체 검증은 auth-fixture.yaml(인증을 켠 변형)
+            # mock-exception: GATE — 이 변형의 검증 대상은 게이트 미설정·불통이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
+            - name: MCP_AUTH_DISABLED
+              value: "1"
+            # GATEKEEPER_API_KEY 미설정 — FromEnv 의 「BASE_URL is set but API_KEY is not」 분기.
+            - name: GATEKEEPER_BASE_URL
+              value: http://gatekeeper.gatekeeper.svc.cluster.local
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-gate-no-api-key
+  namespace: homelab-k3s-mcp-gate-broken
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http

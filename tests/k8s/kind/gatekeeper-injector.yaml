@@ -1,0 +1,329 @@
+# Fault injector for test-approval-gate.md#시나리오 5 (409·5xx), armed per test lane.
+#
+# WHAT THIS IS NOT. It is not a gatekeeper stub and not a fidelity switch. The
+# 409 status/body come from the real gatekeeper's own store.isUniqueViolation
+# (the Request_externalId_key unique index) and the 500 from its own
+# httpx.InternalError. What this pod creates is the *precondition* — a unique
+# collision, a storage abort — never the response. That distinction is the
+# whole basis of the verdict in docs/e2e-mocking-policy.md
+# 「실환경 주입 판정 (3번 결과, 2026-09-26)」, whose conditions C1~C5 this file
+# and tests/integration/approval_gate_ac5.py must both stay inside.
+#
+# WHY A SEPARATE DEPLOYMENT rather than a sidecar on gatekeeper: C3 says the
+# product's code, image, build flags and deployment env do not change, and the
+# smallest way to honour that is to leave gatekeeper-fixture.yaml untouched.
+# The kind cluster is single-node (ci.yml runs `kind create cluster` with no
+# config), and a ReadWriteOnce PVC may be mounted by several pods **on the same
+# node**, so this pod can open the same /app/data/gatekeeper.db the gatekeeper
+# container is serving from. The shape — ConfigMap script + Deployment +
+# Service — is the one gatekeeper-trace already uses in the fixture next door.
+#
+# SQLite concurrency: gatekeeper pins the rollback journal (sha-762fafe) with
+# busy_timeout=5000, so a second writer is a supported configuration; this
+# process only holds the write lock for the few milliseconds a CREATE/DROP
+# TRIGGER takes.
+#
+# uid 1001 matches the gatekeeper container, and fsGroup 1001 matches the
+# fixture's own securityContext — the db file and its journal are written by
+# that uid, so the injector has to be that uid to write them back.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gatekeeper-injector-script
+  namespace: gatekeeper
+data:
+  injector.py: |
+    """Marker-scoped fault injection into the real gatekeeper SQLite store.
+
+    Control API (the e2e reaches it through a port-forward):
+
+      POST /arm    {"mode": "conflict"|"error", "marker": "<unique marker>"}
+      POST /disarm {}
+      GET  /state  -> {"triggers": [...], "shadow_rows": N}
+
+    `arm` installs exactly one BEFORE INSERT trigger whose WHEN clause is
+    `instr(NEW.context, '<marker>') > 0`, i.e. it can only fire for requests
+    whose context carries this lane's marker (C2). Before returning it PROVES
+    the trigger by running a probe INSERT inside a transaction that is always
+    rolled back: if the probe does not fail with the expected error, arming
+    fails loudly instead of letting the e2e assert against a trigger that
+    silently does nothing.
+
+    `disarm` drops the triggers and deletes any shadow rows, and `state`
+    reports both counts so the test can assert residue 0 itself (C4).
+    """
+
+    import json
+    import os
+    import sqlite3
+    import uuid
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    DB_PATH = os.environ.get("GATEKEEPER_DB", "/app/data/gatekeeper.db")
+    SHADOW_NAME = "e2e-shadow"
+    TRIGGERS = ("e2e_collide", "e2e_fail")
+
+    # The columns the shadow row fills. They are the NOT NULL columns without a
+    # default in gatekeeper's Request table at sha-762fafe; `arm` verifies the
+    # shape by probe rather than trusting this list.
+    SHADOW_COLUMNS = ("id", "externalId", "context", "requesterName", "status", "updatedAt")
+
+
+    def connect():
+        conn = sqlite3.connect(DB_PATH, timeout=10.0, isolation_level=None)
+        conn.execute("PRAGMA busy_timeout = 10000")
+        return conn
+
+
+    def drop_triggers(conn):
+        for name in TRIGGERS:
+            conn.execute(f'DROP TRIGGER IF EXISTS "{name}"')
+
+
+    def delete_shadow_rows(conn):
+        cur = conn.execute(
+            'DELETE FROM "Request" WHERE requesterName = ?', (SHADOW_NAME,)
+        )
+        return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
+
+
+    def live_triggers(conn):
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name IN (?, ?)",
+            TRIGGERS,
+        ).fetchall()
+        return sorted(row[0] for row in rows)
+
+
+    def shadow_rows(conn):
+        row = conn.execute(
+            'SELECT COUNT(*) FROM "Request" WHERE requesterName = ?', (SHADOW_NAME,)
+        ).fetchone()
+        return int(row[0])
+
+
+    def create_conflict_trigger(conn, marker):
+        columns = ", ".join(f'"{c}"' for c in SHADOW_COLUMNS)
+        conn.execute(
+            f'''
+            CREATE TRIGGER "e2e_collide" BEFORE INSERT ON "Request"
+            WHEN instr(NEW.context, '{marker}') > 0
+            BEGIN
+              INSERT INTO "Request"({columns})
+              VALUES (NEW.id || '-shadow', NEW."externalId", '{SHADOW_NAME}',
+                      '{SHADOW_NAME}', 'PENDING', NEW."updatedAt");
+            END
+            '''
+        )
+
+
+    def create_error_trigger(conn, marker):
+        conn.execute(
+            f'''
+            CREATE TRIGGER "e2e_fail" BEFORE INSERT ON "Request"
+            WHEN instr(NEW.context, '{marker}') > 0
+            BEGIN
+              SELECT RAISE(ABORT, 'e2e injected storage failure');
+            END
+            '''
+        )
+
+
+    def probe(conn, marker, mode):
+        """Fire the trigger once inside a transaction that is always rolled back.
+
+        Returns the sqlite error message the trigger produced. Raises when the
+        probe insert unexpectedly SUCCEEDS, which would mean the armed trigger
+        cannot fire for this marker and every later assertion would be vacuous.
+        """
+        probe_id = f"e2e-probe-{uuid.uuid4().hex}"
+        columns = ", ".join(f'"{c}"' for c in SHADOW_COLUMNS)
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute(
+                f'INSERT INTO "Request"({columns}) VALUES (?, ?, ?, ?, ?, ?)',
+                (probe_id, probe_id, f"probe {marker}", SHADOW_NAME, "PENDING", 0),
+            )
+        except sqlite3.Error as exc:
+            return str(exc)
+        else:
+            raise RuntimeError(
+                f"probe insert succeeded while {mode!r} was armed for marker "
+                f"{marker!r} — the trigger cannot fire, so the e2e would assert nothing"
+            )
+        finally:
+            conn.execute("ROLLBACK")
+
+
+    def arm(marker, mode):
+        if not marker or "'" in marker:
+            raise ValueError(f"marker must be a non-empty quote-free string, got {marker!r}")
+        if mode not in ("conflict", "error"):
+            raise ValueError(f"mode must be 'conflict' or 'error', got {mode!r}")
+        conn = connect()
+        try:
+            drop_triggers(conn)
+            delete_shadow_rows(conn)
+            if mode == "conflict":
+                create_conflict_trigger(conn, marker)
+                expected = "UNIQUE constraint failed"
+            else:
+                create_error_trigger(conn, marker)
+                expected = "e2e injected storage failure"
+            message = probe(conn, marker, mode)
+            if expected not in message:
+                drop_triggers(conn)
+                raise RuntimeError(
+                    f"probe for {mode!r} failed with {message!r}, which does not contain "
+                    f"{expected!r} — refusing to arm a trigger that produces the wrong error"
+                )
+            # The probe rolled back, but a failed statement inside it may still
+            # have left nothing; assert that explicitly.
+            residue = shadow_rows(conn)
+            if residue:
+                raise RuntimeError(f"probe left {residue} shadow row(s) behind")
+            return {"armed": mode, "marker": marker, "probe_error": message}
+        finally:
+            conn.close()
+
+
+    def disarm():
+        conn = connect()
+        try:
+            drop_triggers(conn)
+            removed = delete_shadow_rows(conn)
+            return {"triggers": live_triggers(conn), "removed_shadow_rows": removed,
+                    "shadow_rows": shadow_rows(conn)}
+        finally:
+            conn.close()
+
+
+    def state():
+        conn = connect()
+        try:
+            return {"triggers": live_triggers(conn), "shadow_rows": shadow_rows(conn),
+                    "db": DB_PATH}
+        finally:
+            conn.close()
+
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def _reply(self, status, payload):
+            body = json.dumps(payload).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def _json_body(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            if not length:
+                return {}
+            return json.loads(self.rfile.read(length) or b"{}")
+
+        def do_GET(self):
+            if self.path != "/state":
+                return self._reply(404, {"error": "not found"})
+            try:
+                self._reply(200, state())
+            except Exception as exc:  # noqa: BLE001 - reported to the caller
+                self._reply(500, {"error": str(exc)})
+
+        def do_POST(self):
+            try:
+                if self.path == "/arm":
+                    body = self._json_body()
+                    self._reply(200, arm(body.get("marker"), body.get("mode")))
+                elif self.path == "/disarm":
+                    self._reply(200, disarm())
+                else:
+                    self._reply(404, {"error": "not found"})
+            except Exception as exc:  # noqa: BLE001 - reported to the caller
+                self._reply(500, {"error": str(exc)})
+
+        def log_message(self, fmt, *args):
+            pass
+
+
+    if __name__ == "__main__":
+        ThreadingHTTPServer(("0.0.0.0", 8082), Handler).serve_forever()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gatekeeper-injector
+  namespace: gatekeeper
+  labels:
+    app: gatekeeper-injector
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  # The PVC is ReadWriteOnce and gatekeeper itself holds it. Recreate keeps a
+  # second injector replica from ever being scheduled while the first drains.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: gatekeeper-injector
+  template:
+    metadata:
+      labels:
+        app: gatekeeper-injector
+    spec:
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      containers:
+        - name: injector
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "/script/injector.py"]
+          ports:
+            - name: control
+              containerPort: 8082
+          volumeMounts:
+            - name: script
+              mountPath: /script
+            - name: data
+              mountPath: /app/data
+          readinessProbe:
+            httpGet:
+              path: /state
+              port: control
+            periodSeconds: 2
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /state
+              port: control
+            periodSeconds: 10
+            failureThreshold: 3
+      volumes:
+        - name: script
+          configMap:
+            name: gatekeeper-injector-script
+        - name: data
+          persistentVolumeClaim:
+            claimName: gatekeeper-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gatekeeper-injector
+  namespace: gatekeeper
+  labels:
+    app: gatekeeper-injector
+spec:
+  type: ClusterIP
+  selector:
+    app: gatekeeper-injector
+  ports:
+    - name: control
+      port: 8082
+      targetPort: control
