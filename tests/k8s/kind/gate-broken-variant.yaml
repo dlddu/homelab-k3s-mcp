@@ -11,15 +11,14 @@
 #    port, so the dial is refused immediately and deterministically. A Service
 #    with no endpoints would also refuse, but it would be one more object whose
 #    absence of endpoints is itself something to keep true.
-#  * no-base-url  -- GATEKEEPER_API_KEY set, GATEKEEPER_BASE_URL absent.
-#  * no-api-key   -- GATEKEEPER_BASE_URL set, GATEKEEPER_API_KEY absent.
 #
-# The last two are the halves of gatekeeper.FromEnv()'s two error branches; the
-# server still starts and main.go turns each into gatekeeper.NewUnavailable(err)
-# (main.go 「invalid approval gate config; gated calls will be refused」), which
-# is exactly the AC5 property the scenario asks about. Both refuse WITHOUT
-# calling Describe, so no kubernetes read happens either -- the e2e observes
-# that as the target object staying byte-identical.
+# The no-base-url and no-api-key variants are the halves of
+# gatekeeper.FromEnv()'s two error branches; the server still starts and main.go
+# turns each into gatekeeper.NewUnavailable(err) (main.go 「invalid approval gate
+# config; gated calls will be refused」), which is exactly the AC5 property the
+# scenario asks about. Both refuse WITHOUT calling Describe, so no kubernetes
+# read happens either -- the e2e observes that as the target object staying
+# byte-identical.
 #
 # Unlike the other gate fixtures these carry their env inline: none of the
 # three needs a value CI has to discover at runtime (no seeded user id, no API
