@@ -77,8 +77,8 @@ class BlockerPolicyTests(unittest.TestCase):
     def test_owner_column_cannot_come_back(self):
         """B4: 해소 주체는 항상 이 모델이라 원장에 소관 칸을 두지 않는다.
 
-        칸이 없으면 남의 모델을 적을 자리도 없다 — 규약을 산문에만 두던 동안, 소관이
-        `tbm_homelab-k3s-mcp-scenario-e2e` 인 행은 게이트를 rc=0 으로 통과했다.
+        규약을 산문에만 두던 동안, 소관이 `tbm_homelab-k3s-mcp-scenario-e2e` 인 행은
+        게이트를 rc=0 으로 통과했다.
         """
         owner_header = HEADER.replace(
             "| 해소 방향 |", "| 해소 방향 | 소관 |"
