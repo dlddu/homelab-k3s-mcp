@@ -25,11 +25,12 @@ docstring 판정은 슬라이스마다 누적할 수 있다.
 * **R2** 각 행의 범위를 **모델 as-is 지문과 동일한 추출·정규화·정렬**로 재측정한 주석 줄 수와
   지문이 등재값과 같다. 다르면 그 범위는 판정 이후 주석이 바뀐 것이므로 재판정 대상이다.
 * **R3** 행 사이에 같은 파일이 두 번 등재되지 않는다(판정 완료량의 이중 계상 방지).
-* **R4** 합계 마커 == 원장 행들의 주석 줄 수 합이고, **합계 + 잔량 마커 == 실측 전체**.
-  잔량은 「아직 판정받지 않은 주석 줄 수」다. 뒤의 절반은 나중에 붙였다 — R1~R3 은 **등재된
-  행의 범위만** 재측정하므로 어느 행에도 없는 파일은 원리적으로 검사 대상이 아니고, 승인 게이트
-  슬라이스가 새 파일 넷으로 주석 192 줄을 들고 들어왔을 때 이 게이트는 rc=0 이었다(판정
-  커버리지 100.0% → 84.3%). 아래 R8 이 docstring 표면에서 막던 것을 줄 주석 표면에서도 막는다.
+* **R4** **범위 불변식** — 주석 줄을 가진 실측 파일은 **정확히 한 행**에 속한다(전수). 어느 행에도
+  없는 파일이 주석을 들고 들어오면 여기서 멈춘다. R1~R3 은 **등재된 행의 범위만** 재측정하므로
+  어느 행에도 없는 파일은 원리적으로 검사 대상이 아니고, 승인 게이트 슬라이스가 새 파일 넷으로
+  주석 192 줄을 들고 들어왔을 때 이 게이트는 rc=0 이었다. 그 자리를 이 규칙이 메운다 —
+  손으로 적은 잔량 마커가 아니라 **행의 존재 자체**로. 등재됐는데 지금 주석이 0줄인 파일은
+  통과시킨다: 판정해서 비운 사실의 기록이라 행에서 지우면 그 이력이 사라진다.
 
 docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본문(빈 줄과 기계가 읽는
 선언 줄은 제외). 모델 as-is 는 **아직 이 표면을 보지 않는다**(bash 스크립트가 파서를 돌리지
@@ -38,65 +39,36 @@ docstring 표면 — `ast` 로 뜯은 module·class·function docstring 의 본�
 * **R5** docstring 원장 행의 범위가 실재하는 `.py` 이고 스캔 범위 안이다.
 * **R6** 각 행의 재측정 줄 수·지문이 등재값과 같다(R2 와 같은 성질).
 * **R7** docstring 행 사이 이중 등재 금지(R3 과 같은 성질).
-* **R8** docstring 합계 마커 == 행 합이고, **합계 + 잔량 마커 == 실측 전체**. 잔량은
-  「아직 판정받지 않은 docstring 줄 수」이며, 새 파일이 docstring 을 들고 들어오면 이 수가
-  움직여 CI 가 멈춘다. 그때 마커를 갱신하는 행위가 곧 **「이만큼은 아직 판정받지 않았다」는
-  명시적 선언**이다 — 사각지대가 조용히 커지는 성질을 없애는 것이 이 규칙의 목적이다.
+* **R8** docstring 표면의 **범위 불변식**(R4 와 같은 성질·같은 함수). 새 파일이 docstring 을 들고
+  들어오면 그 파일의 행이 없어 CI 가 멈춘다. 행을 더하며 판정 축을 `—` 로 두는 행위가 곧
+  **「이만큼은 아직 판정받지 않았다」는 명시적 선언**이다 — 사각지대가 조용히 커지는 성질을
+  없애는 것이 이 규칙의 목적이고, 그 선언의 자리가 공유 마커에서 **자기 파일의 행**으로 옮겨졌다.
 
-위 여덟은 **등재 범위가 변했는지**만 재고 그 판정이 **무엇을 물었는지**는 보지 않아,
-복원 경로 넷 중 어느 축도 묻지 않은 판정이 rc=0 으로 착지한다. R9~R12 가 그 자리를
-**두 축(③④ · ①②) × 두 표면 네 자리 모두에서** 메운다 — 같은 판정을 `check_paths()` 하나로
-돌리고 축별 토큰·앵커와 잔량 마커만 갈라 읽는다:
+위 여덟은 **등재 범위가 변했는지**만 재고 그 판정이 **무엇을 물었는지**는 보지 않는다.
+그 자리는 원장의 `판정 축` 칸이 담고, R9 가 그 칸의 표기를 강제한다:
 
-* **R9** 줄 주석 원장 행이 결과 칸에 `복원경로 ③:` 와 `복원경로 ④:` 를 **둘 다** 담고,
-  그 판정을 **어느 지문에서 내렸는지**를 「복원경로 ③④ 판정 @지문 <12자>」 로 못박되
-  그 지문이 **그 행의 현재 지문 셀과 같을 때만** ③④ 판정 완료로 센다. 그리고
-  **완료 행 수 + 잔량 마커 == 전체 행 수**.
-* **R10** docstring 원장 행에 대한 같은 판정. R9 가 2026-09-20 에 설 때 줄 주석 표면만
-  덮어, docstring 23행 / 1665줄은 ③④ 를 한 번도 묻지 않은 채 **어떤 계기로도 다시 묻게 되지
-  않는** 상태였다 — 줄 주석 쪽 잔량은 `ledger.md` 의 마커가 세고 그 파일은 to-be 지문에
-  들어가 재감지를 열지만, docstring 쪽에는 셀 마커 자체가 없어 **재감지 경로가 0** 이었다.
-  그 표면만 영구 초록이 되는 성질을 없애는 것이 이 규칙의 목적이다.
+* **R9** 모든 행의 `판정 축` 칸이 `—` 이거나 `①②③④` 의 **정규 순서 부분열**이다(`①②`·`③④`·
+  `①②③④` 등). 빈 칸도, 순서가 뒤집힌 표기도, 정의에 없는 기호도 받지 않는다 — 진척을 세는
+  유일한 자리라 표기가 흔들리면 집계가 조용히 갈린다.
 
-  지문에 묶는 것이 이 규칙의 핵심이다. 이 원장의 재판정 관례는 결과 칸을 **덮어쓰지 않고**
-  새 판정을 앞에 붙이며 옛 문면을 「이하 이전 이력 보존」으로 남기는 것이다(2026-09-19 의
-  `resource_proxy` 등록이 두 행에서 실제로 그렇게 했다). 그래서 토큰의 **존재만** 세면
-  어제 59줄에서 내린 ③④ 판정이 오늘 79줄이 된 같은 행을 계속 「판정 완료」로 인증한다 —
-  묻지 않은 20줄이 기계 초록을 얻는다. 지문에 묶으면 재판정이 지문을 움직이는 순간 그 행은
-  자동으로 미판정으로 돌아가고, CI 가 「이 행을 새 내용에서 다시 물어라」를 강제한다.
+  **왜 칸으로 세는가.** 2026-09-26 이전까지 이 자리는 결과 칸의 산문(`복원경로 ③:` 토큰 +
+  지문 앵커)과 손으로 적은 축별 잔량 마커 넷이었다. 그 형태는 두 가지를 낳았다 — ⑴ 모든 PR 이
+  같은 마커 줄을 고쳐 **파일 집합이 서로소인 PR 끼리도 반드시 충돌**했고, 그 충돌을 피하려고
+  판정 슬라이스가 한두 행으로 쪼그라들었다. ⑵ 진척이 산문에 있어 기계가 읽으려면 토큰 매칭에
+  기대야 했고, 토큰은 재판정으로 낡은 판정을 계속 「완료」로 인증했다. 칸은 둘 다 없앤다 —
+  행마다 갈라져 있어 충돌하지 않고, 값이 곧 진척이다.
 
-  **이 수는 단조 감소가 아니다.** 행이 재판정되면 완료가 하나 줄고 잔량이 하나 는다 — 그
-  증가가 곧 「이 행의 새 내용은 아직 ③④ 를 묻지 않았다」는 신호이고, R9 가 지키는 불변식은
-  「줄어들기만 한다」가 아니라 **「판정하지 않은 내용이 판정 완료로 계수되지 않는다」** 다.
+  **미판정(`—`)은 실패가 아니다.** 판정하지 않았다는 사실을 행에 남기는 것은 정상이고, 그 행은
+  다음 판정 슬라이스가 가져간다. 이 게이트가 막는 것은 *묻지 않은 것이 조용히 착지하는 것*
+  하나이지 「아직 묻지 않았다」가 아니다.
 
-  토큰을 맨 글리프(`③`)로 세지 않는 것은 함정 회피다: 이 원장의 판정 산문에는 *제거 유형*을
-  가리키는 ①②③ 이 흔해(「② 문서 재진술」 류) 글리프만 세면 그 열거가 검사를 거짓
-  통과시킨다. 판정의 옳고 그름은 여전히 기계 밖이다.
-
-  **두 표면의 잔량 마커는 갈라 둔다**(`복원경로-잔량` / `docstring-복원경로-잔량`). 한 마커로
-  합치면 어느 표면이 움직였는지가 diff 에서 사라지고, 한쪽의 판정이 다른 쪽의 미판정을
-  가릴 수 있다 — R4 와 R8 을 갈라 둔 것과 같은 이유다.
-
-* **R11** 줄 주석 원장 행의 **복원 경로 ①② 축**에 대한 같은 판정: 결과 칸이 `복원경로 ①:` 와
-  `복원경로 ②:` 를 **둘 다** 담고 「복원경로 ①② 판정 @지문 <12자>」 의 지문이 **그 행의 현재
-  지문과 같을 때만** ①② 판정 완료로 센다. 그리고 **완료 행 수 + 잔량 마커 == 전체 행 수**.
-* **R12** 같은 판정을 docstring 원장에서.
-
-  **왜 축을 갈라 세는가.** R9·R10 이 닫은 것은 ③④ 축 하나이고, ①② 축에는 래칫이 없었다 —
-  그 축의 판정은 **다시 물게 될 계기 없이 낡는다.** 관측된 두 사건이 그 성질이다: docstring
-  원장 행 `#5` 의 보존된 ①② 판정은 「복원 경로 넷 어디에도 없다」고 단정한 여섯 자리 중
-  **넷이 저작 PR 본문에 있었고**, 행 `#6` 의 2026-09-07 ①② 판정은 **다섯 자리 전부에서 어긋난
-  채 18일간 초록으로 통과**했다. 두 경우 모두 ③④ 앵커는 초록이었다 — 한 축의 완료가 다른 축의
-  미판정을 가리므로, 축을 갈라 세지 않으면 이 성질은 게이트 출력에 나타나지 않는다.
-
-  **초기값이 「거의 전부 미판정」인 것은 후퇴가 아니다.** 이 래칫이 서는 시점에 ①② 판정이
-  현재 지문에 묶인 행은 docstring 표면의 한 행뿐이고 나머지는 모두 잔량으로 선언된다. 그 수는
-  줄어든 것이 아니라 **지금까지 세지 않았던 것을 처음 세는 값**이다.
+* **R10** 원장에는 **표와 「읽는 법」 절만** 둔다. 경위·병합 재측정·인계 문단은 그 패스의
+  `passes/` 파일로 간다. 그 산문이 원장에 쌓이면 모든 PR 이 같은 파일의 같은 구역을 고치고,
+  무엇보다 **판정 결과와 그때그때의 서사가 한 파일에서 섞여** 어느 쪽이 사실인지 흐려진다.
 
 통과하면 **두 표면의 현재 인구조사를 출력한다.** 그 수치는 문서 프로즈에 적지 않는다 —
 낡는 형태를 없애는 것이 이 게이트의 목적이고, 최신값이 필요하면 여기서 읽는다.
 """
-
 from __future__ import annotations
 
 import ast
@@ -133,37 +105,30 @@ DIRECTIVE_RE = re.compile(
 # 옮기는 정리는 그 모델의 몫이다.
 DOCSTRING_DECL_RE = re.compile(r"^(검증 시나리오|실행 대상|추가 인자|실행 순서|병렬 레인):")
 
-LEDGER_OPEN = "<!-- 판정-원장 -->"
-LEDGER_CLOSE = "<!-- /판정-원장 -->"
-TOTAL_OPEN = "<!-- 판정-합계 -->"
-TOTAL_CLOSE = "<!-- /판정-합계 -->"
-REMAINING_OPEN = "<!-- 판정-잔량 -->"
-REMAINING_CLOSE = "<!-- /판정-잔량 -->"
-DOC_LEDGER_OPEN = "<!-- docstring-원장 -->"
-DOC_LEDGER_CLOSE = "<!-- /docstring-원장 -->"
-DOC_TOTAL_OPEN = "<!-- docstring-합계 -->"
-DOC_TOTAL_CLOSE = "<!-- /docstring-합계 -->"
-DOC_REMAINING_OPEN = "<!-- docstring-잔량 -->"
-DOC_REMAINING_CLOSE = "<!-- /docstring-잔량 -->"
+# 표는 절 제목으로 찾는다. 경계 주석 마커를 두지 않는 것은 그것도 손으로 유지하는 좌표이기
+# 때문이다 — 표가 어느 절에 속하는지는 제목이 이미 말한다.
+LEDGER_SECTION = "## 판정 이력"
+DOC_LEDGER_SECTION = "## docstring 판정 이력"
+READING_SECTION = "## 읽는 법"
 
-PATHS34_REMAINING_OPEN = "<!-- 복원경로-잔량 -->"
-PATHS34_REMAINING_CLOSE = "<!-- /복원경로-잔량 -->"
-DOC_PATHS34_REMAINING_OPEN = "<!-- docstring-복원경로-잔량 -->"
-DOC_PATHS34_REMAINING_CLOSE = "<!-- /docstring-복원경로-잔량 -->"
-PATHS12_REMAINING_OPEN = "<!-- 복원경로①②-잔량 -->"
-PATHS12_REMAINING_CLOSE = "<!-- /복원경로①②-잔량 -->"
-DOC_PATHS12_REMAINING_OPEN = "<!-- docstring-복원경로①②-잔량 -->"
-DOC_PATHS12_REMAINING_CLOSE = "<!-- /docstring-복원경로①②-잔량 -->"
+# 판정 축 주장의 **근거**(R11). 결과 칸이 그 축을 물었다는 토큰을 담고, 그 판정을 어느 지문에서
+# 내렸는지를 앵커로 못박는다. 축 칸이 진실이지만, 그 진실이 손으로 고쳐 쓰이면 묻지 않은 것이
+# 「완료」가 된다 — 앵커를 현재 지문에 묶어 두는 것이 재판정으로 낡은 판정을 자동으로 떨어뜨린다.
+AXIS_EVIDENCE = {
+    "①②": (("복원경로 ①:", "복원경로 ②:"), re.compile(r"복원경로 ①② 판정 @지문 `([0-9a-f]{12})`")),
+    "③④": (("복원경로 ③:", "복원경로 ④:"), re.compile(r"복원경로 ③④ 판정 @지문 `([0-9a-f]{12})`")),
+}
 
-# 결과 칸이 ③④ 를 물었다고 주장하려면 이 둘을 모두 담아야 한다(가독 근거).
-PATHS34_TOKENS = ("복원경로 ③:", "복원경로 ④:")
-# 그리고 그 판정이 어느 지문에서 나왔는지를 못박아야 한다(기계 근거).
-PATHS34_ANCHOR_RE = re.compile(r"복원경로 ③④ 판정 @지문 `([0-9a-f]{12})`")
-PATHS12_TOKENS = ("복원경로 ①:", "복원경로 ②:")
-PATHS12_ANCHOR_RE = re.compile(r"복원경로 ①② 판정 @지문 `([0-9a-f]{12})`")
+# 판정 축 칸의 유효 표기: `—`(미판정) 또는 ①②③④ 의 정규 순서 부분열.
+AXES = "①②③④"
+VALID_AXES = {"—"} | {
+    "".join(AXES[i] for i in range(4) if mask >> i & 1)
+    for mask in range(1, 16)
+}
 
 BACKTICKED_RE = re.compile(r"`([^`]+)`")
 FINGERPRINT_LEN = 12
+
 
 failures: list[str] = []
 
@@ -252,53 +217,58 @@ def fingerprint(hits: list[str]) -> str:
     return hashlib.sha256("\n".join(hits).encode("utf-8")).hexdigest()
 
 
-def marked_block(text: str, open_marker: str, close_marker: str) -> str:
-    """마커 사이 본문. 정규식 끝 앵커(`$`)로 뜯지 않는다 — 멀티라인에서 줄 끝에도 붙어
-    표가 조용히 0행으로 파싱되고, 0행은 '위반 0' 으로 보여 초록으로 새어 나간다."""
-    if open_marker not in text or close_marker not in text:
-        raise SystemExit(f"{LEDGER.name}: 마커({open_marker} … )를 찾지 못했다.")
-    return text.split(open_marker, 1)[1].split(close_marker, 1)[0]
-
-
-def parse_ledger(text: str, open_marker: str, close_marker: str) -> list[dict]:
-    """판정 이력 표를 행 목록으로. 헤더 행과 구분선은 버린다."""
-    rows: list[dict] = []
-    lines = [ln.strip() for ln in marked_block(text, open_marker, close_marker).splitlines()]
-    table = [ln for ln in lines if ln.startswith("|") and ln.endswith("|")]
+def section_table(text: str, heading: str) -> list[str]:
+    """한 절(`## ...`) 안의 첫 표에서 데이터 행만 돌려준다."""
+    try:
+        start = text.index(heading) + len(heading)
+    except ValueError:
+        raise SystemExit(f"{LEDGER.name}: 「{heading}」 절을 찾지 못했다.")
+    rest = text[start:]
+    nxt = rest.find("\n## ")
+    body = rest if nxt < 0 else rest[:nxt]
+    table = [ln.strip() for ln in body.splitlines() if ln.strip().startswith("|")]
+    out = []
     for index, line in enumerate(table):
         cells = [c.strip() for c in line.strip("|").split("|")]
         if all(set(c) <= set("-: ") and c for c in cells):
             continue  # 구분선
         if index + 1 < len(table):
-            nxt = [c.strip() for c in table[index + 1].strip("|").split("|")]
-            if nxt and all(set(c) <= set("-: ") and c for c in nxt):
+            nxt_cells = [c.strip() for c in table[index + 1].strip("|").split("|")]
+            if nxt_cells and all(set(c) <= set("-: ") and c for c in nxt_cells):
                 continue  # 구분선 바로 앞 = 헤더
-        if len(cells) != 5:
-            raise SystemExit(f"{LEDGER.name}: 판정 이력 행의 열 수가 5가 아니다 -> {line}")
+        out.append(line)
+    return out
+
+
+def parse_ledger(text: str, heading: str) -> list[dict]:
+    """판정 이력 표를 행 목록으로. 헤더 행과 구분선은 버린다."""
+    rows: list[dict] = []
+    for line in section_table(text, heading):
+        cells = [c.strip() for c in line.strip("|").split("|")]
+        if len(cells) != 6:
+            raise SystemExit(
+                f"{LEDGER.name}: 판정 이력 행의 열 수가 6(판정일·범위·줄 수·지문·판정 축·결과)이"
+                f" 아니다 -> {line}"
+            )
         count = cells[2].strip("`")
         if not count.isdigit():
             raise SystemExit(f"{LEDGER.name}: 주석 줄 수가 정수가 아니다 ({count!r}).")
+        paths = [m.group(1) for m in BACKTICKED_RE.finditer(cells[1])]
         rows.append(
             {
-                # 같은 날 두 범위를 판정하는 일이 흔하므로 날짜만으로는 행을 못 가리킨다.
-                "date": f"{cells[0]}(#{len(rows) + 1})",
-                "paths": [m.group(1) for m in BACKTICKED_RE.finditer(cells[1])],
+                # 행은 순번이 아니라 범위로 가리킨다(행 순서는 첫 파일 경로 사전순).
+                "date": f"{cells[0]}({paths[0] if paths else '빈 범위'})",
+                "paths": paths,
                 "lines": int(count),
                 "fingerprint": cells[3].strip("`"),
-                "result": cells[4],
+                "axis": cells[4],
+                "result": cells[5],
                 "row": line,
             }
         )
     if not rows:
-        raise SystemExit(f"{LEDGER.name}: 판정 이력에서 행을 하나도 읽지 못했다(파싱 실패).")
+        raise SystemExit(f"{LEDGER.name}: 「{heading}」 에서 행을 하나도 읽지 못했다(파싱 실패).")
     return rows
-
-
-def parse_total(text: str, open_marker: str, close_marker: str) -> int:
-    raw = marked_block(text, open_marker, close_marker).strip()
-    if not raw.isdigit():
-        raise SystemExit(f"{LEDGER.name}: {open_marker} 의 값이 정수가 아니다 ({raw!r}).")
-    return int(raw)
 
 
 def census(hits: list[str]) -> str:
@@ -380,56 +350,122 @@ def check_ledger(
     return sum(row["lines"] for row in rows)
 
 
-def check_paths(
+def check_scope(
     rows: list[dict],
-    remaining: int,
+    measured: dict[str, int],
     rule: str,
     surface: str,
-    axis: str,
-    tokens: tuple[str, ...],
-    anchor_re: re.Pattern[str],
-) -> int:
-    """한 표면·한 축의 복원 경로 판정 래칫(R9~R12)을 검사하고 완료 행 수를 돌려준다.
+) -> None:
+    """범위 불변식(R4·R8) — 주석을 가진 실측 파일은 정확히 한 행에 속한다.
 
-    네 자리가 **같은 함수**를 쓰는 것이 의도다. R9 가 줄 주석 쪽에 먼저 섰을 때 docstring
-    쪽에는 같은 규칙이 없었고, 그 비대칭은 문서로는 보이지 않았다 — 게이트 출력에 항이
-    없다는 사실만으로는 「그 표면은 면제」인지 「아직 안 세웠다」인지 갈리지 않는다. 규칙을
-    함수로 공유하면 한쪽만 느슨해지는 경로가 코드에서 사라진다. 축을 인자로 받는 것도 같은
-    근거다 — ③④ 에만 래칫이 서 있던 동안 ①② 축의 판정은 낡아도 초록이었다.
+    두 표면이 **같은 함수**를 쓰는 것이 의도다. 규칙을 복사해 두 벌로 두면 한쪽만 조용히
+    느슨해지는 경로가 남는다 — ③④ 래칫이 한 표면에만 서 있던 동안이 정확히 그 상태였다.
     """
-    done = 0
-    stale: list[str] = []
+    registered = {rel for row in rows for rel in row["paths"]}
+    missing = sorted(rel for rel, n in measured.items() if n > 0 and rel not in registered)
+    if missing:
+        fail(
+            rule,
+            f"{surface} 표면에서 어느 원장 행에도 없는 파일이 주석을 들고 있다"
+            f" {len(missing)}개: {', '.join(missing[:8])}"
+            f"{' …' if len(missing) > 8 else ''}."
+            " 그 파일의 행을 더하고 판정 축을 `—` 로 둘 것 — 「아직 판정하지 않았다」를"
+            " diff 에 남기는 것이 옛 잔량 마커의 자리를 대신한다.",
+        )
+    # 등재됐는데 실측에 없는 파일은 **주석 0줄임을 증명**해야 통과한다. 판정해서 비운 파일을
+    # 행에 남기는 것은 이력이지만, 스캔 범위에서 사라진 파일이 조용히 남는 것은 낡음이다.
+    ghosts = sorted(rel for rel in registered if rel not in measured)
+    if ghosts:
+        fail(
+            rule,
+            f"{surface} 표면의 원장이 스캔 범위 밖 파일을 등재하고 있다"
+            f" {len(ghosts)}개: {', '.join(ghosts[:8])}"
+            f"{' …' if len(ghosts) > 8 else ''}. 파일이 사라졌거나 이름이 바뀌었으면"
+            " 그 범위는 다시 판정받아야 한다.",
+        )
+
+
+def check_axis(rows: list[dict], rule: str, surface: str) -> dict[str, int]:
+    """R9 — 판정 축 칸의 표기를 강제하고 축별 집계를 돌려준다."""
+    bad = [f"{row['date']}: {row['axis']!r}" for row in rows if row["axis"] not in VALID_AXES]
+    if bad:
+        fail(
+            rule,
+            f"{surface} 표면에 판정 축 표기가 유효하지 않은 행 {len(bad)}개:"
+            f" {', '.join(bad[:6])}{' …' if len(bad) > 6 else ''}."
+            " 값은 `—`(미판정) 이거나 `①②③④` 의 정규 순서 부분열이어야 한다.",
+        )
+    tally = {"done": 0, "unjudged": 0, "lines_done": 0, "hist": {}}
     for row in rows:
-        result = row["result"]
-        anchored = set(anchor_re.findall(result))
-        has_prose = all(token in result for token in tokens)
-        if has_prose and row["fingerprint"] in anchored:
-            done += 1
-        elif anchored or has_prose:
-            # 그 축을 물은 흔적은 있는데 현재 지문에 묶인 판정이 아니다 = 재판정으로 낡았다.
-            stale.append(f"{row['fingerprint']}({' '.join(row['paths'][:2])})")
+        tally["hist"][row["axis"]] = tally["hist"].get(row["axis"], 0) + 1
+        if row["axis"] == AXES:
+            tally["done"] += 1
+            tally["lines_done"] += row["lines"]
+        if row["axis"] == "—":
+            tally["unjudged"] += 1
+    return tally
 
-    if stale:
+
+def axis_histogram(tally: dict) -> str:
+    """축별 행 수를 한 줄로. 이전 형식의 「축별 잔량 마커」가 읽히던 자리를 대신한다."""
+    order = sorted(tally["hist"], key=lambda a: (a == "—", -len(a), a))
+    return " · ".join(f"{a} {tally['hist'][a]}행" for a in order)
+
+
+def check_axis_evidence(rows: list[dict], rule: str, surface: str) -> None:
+    """R11 — 판정 축 칸이 결과 칸의 **현재 지문에 묶인 근거**와 정확히 일치한다.
+
+    양방향인 것이 요점이다. ⑴ 근거 없이 축을 적으면 묻지 않은 것이 완료로 계수되고,
+    ⑵ 근거가 있는데 축을 비우면 진척이 집계에서 사라진다. 그리고 앵커가 **그 행의 현재
+    지문**에 묶이므로, 재판정으로 주석이 바뀐 행은 축이 자동으로 낡는다 — 이 원장의 재판정
+    관례가 결과 칸을 덮어쓰지 않고 옛 문면을 접미사로 남기는 것이라, 토큰의 *존재만* 세면
+    어제 59줄에서 내린 판정이 오늘 79줄이 된 같은 행을 계속 인증한다.
+    """
+    problems: list[str] = []
+    for row in rows:
+        backed = ""
+        for axis, (tokens, anchor_re) in AXIS_EVIDENCE.items():
+            has_prose = all(token in row["result"] for token in tokens)
+            anchored = row["fingerprint"] in set(anchor_re.findall(row["result"]))
+            if has_prose and anchored:
+                backed += axis
+        backed = "".join(a for a in AXES if a in backed) or "—"
+        if backed != row["axis"]:
+            problems.append(f"{row['date']} 칸 `{row['axis']}` != 근거 `{backed}`")
+    if problems:
         fail(
             rule,
-            f"{surface} 표면에서 {axis} 판정이 현재 지문에 묶여 있지 않은 행"
-            f" {len(stale)}개: {', '.join(stale)}."
-            f" 그 행은 판정 이후 주석이 바뀌었다 — 새 내용에 대해 {axis} 를 다시 묻고"
-            f" 「복원경로 {axis} 판정 @지문 <현재 지문>」 으로 못박거나, 잔량 마커를 올려"
-            " 「이 행의 새 내용은 아직 묻지 않았다」를 diff 에 남길 것.",
+            f"{surface} 표면에 판정 축 칸과 근거가 어긋난 행 {len(problems)}개:"
+            f" {'; '.join(problems[:5])}{' …' if len(problems) > 5 else ''}."
+            " 축을 적으려면 결과 칸이 그 축의 판정을 담고 「복원경로 <축> 판정 @지문"
+            " <그 행의 현재 지문>」 으로 못박아야 한다. 재판정으로 지문이 움직였으면 그 축은"
+            " 낡은 것이므로 칸을 `—` 로 되돌리고 새 내용을 다시 물을 것.",
         )
 
-    if done + remaining != len(rows):
+
+def check_structure(text: str) -> None:
+    """R10 — 원장에는 표와 「읽는 법」 절만 둔다."""
+    allowed_headings = {"# 주석 비중복성 판정 원장", LEDGER_SECTION, DOC_LEDGER_SECTION,
+                        READING_SECTION}
+    section = None
+    strays: list[str] = []
+    for lineno, line in enumerate(text.splitlines(), 1):
+        if line.startswith("#"):
+            if line.strip() not in allowed_headings:
+                fail("R10", f"{LEDGER.name}:{lineno} 원장에 허용되지 않은 절 제목: {line.strip()}")
+            section = line.strip()
+            continue
+        if section in (LEDGER_SECTION, DOC_LEDGER_SECTION):
+            if line.strip() and not line.strip().startswith("|"):
+                strays.append(f"{lineno}: {line.strip()[:60]}")
+    if strays:
         fail(
-            rule,
-            f"{surface} 표면의 {axis} 판정 완료 {done}행 + 잔량 {remaining}행 !="
-            f" 원장 전체 {len(rows)}행. 행을 더하면서 결과 칸에"
-            f" `{tokens[0]}`·`{tokens[1]}` 와 현재 지문 앵커를 적지"
-            f" 않았다면 잔량 마커를 올려 「이 행은 복원 경로 {axis} 를 아직 묻지 않았다」를"
-            " diff 에 남길 것. 이 수는 단조 감소가 아니다 — 재판정은 그 행을 미판정으로"
-            " 되돌리고, 그 증가가 곧 「새 내용은 아직 묻지 않았다」는 신호다.",
+            "R10",
+            f"{LEDGER.name} 의 판정 이력 절에 표 아닌 산문이 있다 {len(strays)}줄:"
+            f" {' / '.join(strays[:4])}{' …' if len(strays) > 4 else ''}."
+            " 경위·병합 재측정·인계 문단은 그 패스의 `passes/` 파일로 옮길 것"
+            " — 원장에는 표와 「읽는 법」만 둔다.",
         )
-    return done
 
 
 def main() -> int:
@@ -439,88 +475,40 @@ def main() -> int:
             return 1
 
     text = LEDGER.read_text(encoding="utf-8")
-    rows = parse_ledger(text, LEDGER_OPEN, LEDGER_CLOSE)
-    total = parse_total(text, TOTAL_OPEN, TOTAL_CLOSE)
-    remaining = parse_total(text, REMAINING_OPEN, REMAINING_CLOSE)
-    doc_rows = parse_ledger(text, DOC_LEDGER_OPEN, DOC_LEDGER_CLOSE)
-    doc_total = parse_total(text, DOC_TOTAL_OPEN, DOC_TOTAL_CLOSE)
-    doc_remaining = parse_total(text, DOC_REMAINING_OPEN, DOC_REMAINING_CLOSE)
-    paths34_remaining = parse_total(
-        text, PATHS34_REMAINING_OPEN, PATHS34_REMAINING_CLOSE
-    )
-    doc_paths34_remaining = parse_total(
-        text, DOC_PATHS34_REMAINING_OPEN, DOC_PATHS34_REMAINING_CLOSE
-    )
-    paths12_remaining = parse_total(
-        text, PATHS12_REMAINING_OPEN, PATHS12_REMAINING_CLOSE
-    )
-    doc_paths12_remaining = parse_total(
-        text, DOC_PATHS12_REMAINING_OPEN, DOC_PATHS12_REMAINING_CLOSE
-    )
+    rows = parse_ledger(text, LEDGER_SECTION)
+    doc_rows = parse_ledger(text, DOC_LEDGER_SECTION)
 
     in_scope = set(scan_files())
     hits = comment_lines(sorted(in_scope))
+    doc_hits = docstring_lines(sorted(in_scope))
 
     # R1·R2·R3 — 줄 주석 표면
     ledger_sum = check_ledger(rows, in_scope, comment_lines, ("R1", "R2", "R3"))
-
-    # R4 — 합계 미러(양방향) + 미판정 잔량
-    if total != ledger_sum:
-        fail(
-            "R4",
-            f"판정 합계 {total} != 원장 행 줄 수 합 {ledger_sum}."
-            " 범위를 더하거나 빼면 같은 PR 에서 합계도 움직여야 한다.",
-        )
-    if total + remaining != len(hits):
-        fail(
-            "R4",
-            f"판정 합계 {total} + 잔량 {remaining} != 실측 전체 {len(hits)}."
-            " 어느 원장 행에도 없는 파일이 주석을 들고 들어왔거나 사라졌다 — 그 범위를"
-            " 판정해 행으로 등재하거나, 잔량 마커를 움직여 「이만큼은 아직 판정받지"
-            " 않았다」를 diff 에 남길 것.",
-        )
-
     # R5·R6·R7 — docstring 표면
     doc_sum = check_ledger(
         doc_rows, in_scope, docstring_lines, ("R5", "R6", "R7"), only_python=True
     )
 
-    doc_hits = docstring_lines(sorted(in_scope))
+    # R4·R8 — 범위 불변식. 실측은 파일별 줄 수로 잰다(0줄 파일과 범위 밖 파일을 가르기 위해).
+    measured = {rel: 0 for rel in in_scope}
+    for hit in hits:
+        measured[hit.split(":", 1)[0]] += 1
+    doc_measured = {rel: 0 for rel in in_scope if rel.endswith(".py")}
+    for hit in doc_hits:
+        doc_measured[hit.split(":", 1)[0]] += 1
+    check_scope(rows, measured, "R4", "줄 주석")
+    check_scope(doc_rows, doc_measured, "R8", "docstring")
 
-    # R8 — docstring 합계 미러 + 미판정 잔량
-    if doc_total != doc_sum:
-        fail(
-            "R8",
-            f"docstring 합계 {doc_total} != docstring 원장 행 줄 수 합 {doc_sum}."
-            " 범위를 더하거나 빼면 같은 PR 에서 합계도 움직여야 한다.",
-        )
-    if doc_total + doc_remaining != len(doc_hits):
-        fail(
-            "R8",
-            f"docstring 합계 {doc_total} + 잔량 {doc_remaining} != 실측 전체"
-            f" {len(doc_hits)}. docstring 이 늘거나 줄면 같은 PR 에서 잔량도 움직여야"
-            " 한다 — 잔량 갱신은 「이만큼은 아직 판정받지 않았다」는 선언이다.",
-        )
+    # R9 — 판정 축 표기
+    tally = check_axis(rows, "R9", "줄 주석")
+    doc_tally = check_axis(doc_rows, "R9", "docstring")
 
-    # R9 — 줄 주석 표면의 복원 경로 ③④ 판정 래칫(지문에 묶인다)
-    paths34_done = check_paths(
-        rows, paths34_remaining, "R9", "줄 주석", "③④", PATHS34_TOKENS,
-        PATHS34_ANCHOR_RE,
-    )
-    # R10 — 같은 판정을 docstring 표면에서. 한 함수를 공유하는 것이 「두 표면이 같은 엄격도로
-    # 재어진다」의 유일한 기계 근거다 — 갈라 쓰면 한쪽만 조용히 느슨해진다.
-    doc_paths34_done = check_paths(
-        doc_rows, doc_paths34_remaining, "R10", "docstring", "③④", PATHS34_TOKENS,
-        PATHS34_ANCHOR_RE,
-    )
-    paths12_done = check_paths(
-        rows, paths12_remaining, "R11", "줄 주석", "①②", PATHS12_TOKENS,
-        PATHS12_ANCHOR_RE,
-    )
-    doc_paths12_done = check_paths(
-        doc_rows, doc_paths12_remaining, "R12", "docstring", "①②", PATHS12_TOKENS,
-        PATHS12_ANCHOR_RE,
-    )
+    # R10 — 원장 구조
+    check_structure(text)
+
+    # R11 — 판정 축 주장 ↔ 근거 일치(양방향)
+    check_axis_evidence(rows, "R11", "줄 주석")
+    check_axis_evidence(doc_rows, "R11", "docstring")
 
     if failures:
         for line in failures:
@@ -531,34 +519,33 @@ def main() -> int:
         )
         return 1
 
-    share = (ledger_sum * 100.0 / len(hits)) if hits else 0.0
-    doc_share = (doc_sum * 100.0 / len(doc_hits)) if doc_hits else 0.0
+    share = (tally["lines_done"] * 100.0 / len(hits)) if hits else 0.0
+    doc_share = (doc_tally["lines_done"] * 100.0 / len(doc_hits)) if doc_hits else 0.0
     print(
-        f"OK: 규칙 R1~R12 위반 없음 — {census(hits)}"
-        f" · 판정 완료 {ledger_sum}줄({share:.1f}%) / 등재 범위 {len(rows)}"
-        f" · 미판정 잔량 {remaining}줄"
-        f" · 복원경로 ③④ 판정 {paths34_done}/{len(rows)}행(잔량 {paths34_remaining})"
-        f" · 복원경로 ①② 판정 {paths12_done}/{len(rows)}행(잔량 {paths12_remaining})"
+        f"OK: 규칙 R1~R11 위반 없음 — {census(hits)}"
+        f" · 원장 {len(rows)}행 / 등재 범위 {ledger_sum}줄"
+        f" · 네 경로 판정 완료 {tally['done']}행 {tally['lines_done']}줄({share:.1f}%)"
+        f" · 미판정(—) {tally['unjudged']}행"
+        f" · 축별 {axis_histogram(tally)}"
     )
     for row in rows:
         print(
             f"  {row['date']}  {row['lines']:>4}줄  {row['fingerprint']}"
-            f"  {' '.join(row['paths'])}"
+            f"  {row['axis']:<4}  {' '.join(row['paths'])}"
         )
     print(f"  전체 지문: {fingerprint(hits)}")
     print(
         f"     {docstring_census(doc_hits)}"
-        f" · 판정 완료 {doc_sum}줄({doc_share:.1f}%) / 등재 범위 {len(doc_rows)}"
-        f" · 미판정 잔량 {doc_remaining}줄"
-        f" · 복원경로 ③④ 판정 {doc_paths34_done}/{len(doc_rows)}행"
-        f"(잔량 {doc_paths34_remaining})"
-        f" · 복원경로 ①② 판정 {doc_paths12_done}/{len(doc_rows)}행"
-        f"(잔량 {doc_paths12_remaining})"
+        f" · 원장 {len(doc_rows)}행 / 등재 범위 {doc_sum}줄"
+        f" · 네 경로 판정 완료 {doc_tally['done']}행"
+        f" {doc_tally['lines_done']}줄({doc_share:.1f}%)"
+        f" · 미판정(—) {doc_tally['unjudged']}행"
+        f" · 축별 {axis_histogram(doc_tally)}"
     )
     for row in doc_rows:
         print(
             f"  {row['date']}  {row['lines']:>4}줄  {row['fingerprint']}"
-            f"  {' '.join(row['paths'])}"
+            f"  {row['axis']:<4}  {' '.join(row['paths'])}"
         )
     print(f"  전체 docstring 지문: {fingerprint(doc_hits)}")
     return 0
