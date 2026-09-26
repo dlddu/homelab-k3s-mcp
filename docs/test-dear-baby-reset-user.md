@@ -17,8 +17,14 @@
 - **자동화**: Go 단위 `mcp_test.go::TestDearBabyResetDispatchesWithDefaults`,
   `TestDearBabyResetReportsNonZeroExit`. 통합
   `dear_baby_reset_user_ac1.py::test_dear_baby_reset_user_ac1_reset_execution`(success / failure path).
-  **단, 온보딩 필드 초기화 자체는 e2e에서 관측하지 않는다** — kind 픽스처의 `/reset-user`는
-  busybox 스텁 스크립트라 뒤에 DB가 없다(필드 단위 효과는 실제 백엔드 이미지 + 시드 DB 필요).
+  **단, 온보딩 필드의 값 자체는 이 e2e가 단정하지 않는다** — 픽스처는 2026-09-26(#237)부터
+  busybox 스텁이 아니라 sha 핀 실 백엔드 + 기동 시 마이그레이션·시드가 도는 SQLite
+  (`tests/k8s/kind/dear-baby.yaml`)이므로 필드 초기화는 실제로 일어나며, 성공
+  (`user@example.com`)·미발견(`missing@example.com`) 두 경로가 그 DB를 실제로 읽는다는 것까지는
+  단정한다. 필드 값과 "레코드는 보존된다"를 읽으려면 DB를 열어야 하는데 그 이미지에는 바이너리가
+  `/dear-baby-backend`·`/reset-user` 둘뿐이고 셸도 sqlite 클라이언트도 없어 `pods/exec`로는
+  읽히지 않는다 — `resource_proxy`로 앱 HTTP API(로그인 → 온보딩 조회)를 경유하는 별도 시나리오가
+  선결이다.
 
 ### 시나리오 2: 대상 지정(이메일 필수, 셀렉터/컨테이너 기본·재정의)
 - **사전 조건**: 동일
