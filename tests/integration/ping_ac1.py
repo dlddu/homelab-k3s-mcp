@@ -2,9 +2,6 @@
 
 검증 시나리오: test-ping.md#시나리오 1
 실행 대상: primary
-
-배포 서버를 상대로 돈다 — ``internal/server/mcp_test.go`` 의 in-process 단언
-(``TestPingToolReturnsPong``)을 배포 e2e 계층으로 승격한 것이다.
 """
 
 from __future__ import annotations
