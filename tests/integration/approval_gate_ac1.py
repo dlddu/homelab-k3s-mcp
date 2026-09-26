@@ -46,7 +46,13 @@ import time
 from mcp.shared.exceptions import McpError
 
 from _auth_variant import API_KEY
-from _gatekeeper import count_requests, gatekeeper_url, get_request, wait_for_pending
+from _gatekeeper import (
+    _ephemeral_port,
+    count_requests,
+    gatekeeper_url,
+    get_request,
+    wait_for_pending,
+)
 from _helpers import base_url, open_session, port_forward, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -55,10 +61,6 @@ VARIANT_DEPLOYMENT = "homelab-k3s-mcp-gate-refusal"
 VARIANT_SERVICE = VARIANT_DEPLOYMENT
 UNDECLARED_DEPLOYMENT = "homelab-k3s-mcp-undeclared-tool"
 UNDECLARED_SELECTOR = f"app.kubernetes.io/name={UNDECLARED_DEPLOYMENT}"
-
-#: ci.yml 의 그룹 포워드(8080·8088·8089·8090·8092·8093)와 `_gatekeeper` 의 8095·8096,
-#: 그리고 이 파일과 겹쳐 도는 레인들이 여는 18080-18085 를 피한다.
-VARIANT_LOCAL_PORT = 18086
 
 #: 변형 배포의 `GATEKEEPER_TIMEOUT_SECONDS`(gate-refusal-variant.yaml)와, 거부가 그것을
 #: 실제로 기다렸는지 가르는 하한. 최초 응답만 보고 끝낸 구현은 즉시 돌아온다.
@@ -664,7 +666,7 @@ async def run() -> None:
 
     print("--- approval-gate/시나리오 1 (승인 부재 거부 · 실행 호출 0) ---")
     with gatekeeper_url() as gate, port_forward(
-        VARIANT_NAMESPACE, VARIANT_SERVICE, 80, VARIANT_LOCAL_PORT, ready_path="/healthz"
+        VARIANT_NAMESPACE, VARIANT_SERVICE, 80, _ephemeral_port(), ready_path="/healthz"
     ) as url:
         wait_for_healthz(url)
         try:
