@@ -10,8 +10,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// parseExecTarget reads AC12's one shape: one pod coordinate, one command
-// array, an optional container. Both sides run it, for the reason
+// parseExecTarget reads AC12's one shape. Both sides run it, for the reason
 // parseUpdateTarget states: authorize runs before the handler, so a call the
 // handler would reject has already cost an approval request by then, and pair
 // resolution is the only thing that runs earlier.
@@ -65,10 +64,9 @@ func parseExecTarget(obj map[string]any) (k8s.ExecRef, []string, *string, *rpcEr
 }
 
 // execPairs is genericPairs("create") with AC12's own argument checks run
-// first, for the reason updatePairs states. The pair the call exercises is
-// create on ⟨pods plural⟩/exec — exec is a verb the call performs on the pod,
-// so the resource name hangs the subresource off the coordinate the way
-// dear_baby_reset_user's declaration spells it.
+// first, for the reason updatePairs states. exec is a verb the call performs on
+// the pod, so the resource name hangs the subresource off the coordinate the
+// way dear_baby_reset_user's declaration spells it.
 func execPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
@@ -92,10 +90,7 @@ func execPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 	}
 }
 
-// resourceExec runs one command in one named pod after the approval. The
-// approval screen already carries the command verbatim (AC3), and AC6's
-// re-read ties the approval to the pod's uid — a pod recreated under the same
-// name is refused before anything runs.
+// resourceExec runs one command in one named pod after the approval.
 func (h *Handler) resourceExec(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {

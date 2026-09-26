@@ -8,29 +8,16 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// metadataAccept asks the apiserver for PartialObjectMetadata — metadata cut
-// server-side, with the object's own body never put on the wire
-// (prd-approval-gate AC11).
-//
-// The parameters are derived rather than typed out for the reason tableAccept
-// records. What is different here is the cost of getting them wrong: there the
-// fallback yields an empty table, here it yields a whole Secret read before
-// anyone approved reading it, which is the exact failure AC11 exists to stop.
-//
-// So this header, unlike tableAccept, offers no `application/json` alongside.
-// Listing the fallback is what lets a mismatch be answered rather than refused;
+// metadataAccept, unlike tableAccept, offers no `application/json` alongside:
 // with only this media type an unservable parameter comes back 406, which is a
-// failed read instead of a leaked one. readTargetState checks the response kind
-// as well, because a server that answers a whole object anyway has to hit
-// something.
+// failed read instead of a leaked one.
 var metadataAccept = fmt.Sprintf(
 	"application/json;as=PartialObjectMetadata;v=%s;g=%s",
 	metav1.SchemeGroupVersion.Version, metav1.SchemeGroupVersion.Group,
 )
 
 // partialObjectMetadataKind is the kind a PartialObjectMetadata response
-// declares. An ordinary object declares its own kind instead, which is what
-// separates "the header was honoured" from "the header was ignored".
+// declares.
 const partialObjectMetadataKind = "PartialObjectMetadata"
 
 // TargetRef addresses the object the gate reads on its own behalf before it
@@ -42,36 +29,25 @@ type TargetRef struct {
 	Name       string
 
 	// Subresource is carried for the audit trail and for the caller's own
-	// bookkeeping; the read itself always addresses the object, because the two
-	// facts the gate needs (resourceVersion, spec.replicas) live there and
-	// AC11's declared pair is `get on ⟨kind⟩` rather than on a subresource.
+	// bookkeeping; the read itself always addresses the object.
 	Subresource string
 
-	// MetadataOnly restricts the read to PartialObjectMetadata. The caller sets
-	// it for a sensitive kind: reading a Secret whole to learn its
-	// resourceVersion would put the value in this process before anyone
-	// approved it, and a rejection after that point has prevented nothing.
+	// MetadataOnly restricts the read to PartialObjectMetadata.
 	MetadataOnly bool
 }
 
-// TargetState is what the gate learns about the target. It is deliberately
-// narrow — the gate needs enough to describe the change and to notice the
-// object moving underneath the approval, and nothing beyond that has a reason
-// to be here.
+// TargetState is what the gate learns about the target.
 type TargetState struct {
-	// ResourceVersion is the precondition of AC6: the same value read again at
-	// execution time means nobody changed the object while the operator looked
-	// at it.
+	// ResourceVersion is the precondition of AC6.
 	ResourceVersion string
 
-	// UID distinguishes a recreated object from the one that was approved. A
-	// pod with the same name is a different pod (AC6).
+	// UID distinguishes a recreated object from the one that was approved (AC6).
 	UID string
 
-	// Replicas is spec.replicas when the object carries one, for the "current →
-	// target" of AC3. A PartialObjectMetadata response has no spec, so this is
-	// nil for sensitive kinds — which is correct rather than unfortunate: no
-	// sensitive kind has replicas.
+	// Replicas is spec.replicas when the object carries one. A
+	// PartialObjectMetadata response has no spec, so this is nil for sensitive
+	// kinds — which is correct rather than unfortunate: no sensitive kind has
+	// replicas.
 	Replicas *int64
 }
 
@@ -99,9 +75,7 @@ func (u *UnavailableTargetReader) ReadTarget(context.Context, TargetRef) (*Targe
 	return nil, unavailableErr(u.reason)
 }
 
-// ReadTarget reads the object a gated call names. *KubeService implements both
-// this and Service; that one object can do both jobs does not make them one
-// permission, which is why they are separate interfaces.
+// ReadTarget reads the object a gated call names.
 func (s *KubeService) ReadTarget(ctx context.Context, ref TargetRef) (*TargetState, error) {
 	if ref.Name == "" {
 		return nil, apiErrorf("a gated call needs a named object before it can be approved; got none for %s", ref.Kind)
@@ -133,8 +107,7 @@ func (s *KubeService) ReadTarget(ctx context.Context, ref TargetRef) (*TargetSta
 	return readTargetState(raw, ref)
 }
 
-// readTargetState decodes what the apiserver sent and, for a sensitive kind,
-// refuses anything that is not the representation that was asked for.
+// readTargetState decodes what the apiserver sent.
 //
 // The decode is by hand rather than into a typed object because the two shapes
 // this has to accept — PartialObjectMetadata and an arbitrary kind's whole body

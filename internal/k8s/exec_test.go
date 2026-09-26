@@ -10,8 +10,7 @@ import (
 )
 
 // AC12's caps: a capped stream keeps what fits, marks itself full and stops
-// listening — a response that ends early without saying so would read like
-// the command said less than it did.
+// listening.
 func TestLimitedWriterCaps(t *testing.T) {
 	t.Run("under the cap it is a plain buffer", func(t *testing.T) {
 		w := &limitedWriter{limit: 10}

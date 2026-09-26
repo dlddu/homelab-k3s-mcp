@@ -16,10 +16,8 @@ const (
 	logsMaxTailLines     int64 = 5000
 )
 
-// getSubresources are the read-only subresources resource_get serves (AC5).
 var getSubresources = map[string]bool{"log": true, "scale": true, "status": true}
 
-// coordinate is the apiVersion+kind pair every generic tool starts from.
 type coordinate struct {
 	apiVersion string
 	kind       string
@@ -130,9 +128,6 @@ func (h *Handler) resourceWatch(ctx context.Context, raw json.RawMessage) (any, 
 		if n < 1 {
 			return nil, errf(-32602, "watchSeconds must be >= 1")
 		}
-		// Refused rather than clamped, the same as AC3's limit and AC5's
-		// tailLines: a window quietly shortened leaves the caller believing
-		// they watched for as long as they asked.
 		if n > k8s.WatchMaxSeconds {
 			return nil, errf(-32602, "watchSeconds must be <= %d", k8s.WatchMaxSeconds)
 		}
@@ -310,9 +305,7 @@ func (h *Handler) resourceUpdate(ctx context.Context, raw json.RawMessage) (any,
 	}, nil
 }
 
-// parseUpdateTarget reads which of AC8's two shapes a call is — a whole-object
-// replacement, or a replica count on the scale subresource — and reports the
-// bounds the scale half holds: replicas is an integer in [0, MaxInt32].
+// parseUpdateTarget reads which of AC8's two shapes a call is.
 //
 // One function rather than a copy on each side, because both sides run it: the
 // gate runs it before an approval request exists (updatePairs says why it
@@ -526,8 +519,7 @@ func deletionText(result *k8s.ResourceResult, name string, grace *int64) string 
 	return b.String()
 }
 
-// parseDeleteTarget reads AC10's one shape — a single object, optionally with a
-// grace period — and refuses every argument that would make it a selection.
+// parseDeleteTarget reads AC10's arguments.
 //
 // Both sides run it, for the reasons parseUpdateTarget and deletePairs set out.
 //
@@ -566,9 +558,7 @@ func parseDeleteTarget(obj map[string]any) (string, *int64, *rpcErr) {
 	return *name, grace, nil
 }
 
-// rawPatchBody lifts the patch out of the raw arguments untouched. A JSON patch
-// is an array and the other three are objects, so the field is taken as raw
-// JSON and handed on as-is.
+// rawPatchBody lifts the patch out of the raw arguments untouched.
 func rawPatchBody(raw json.RawMessage) []byte {
 	var args struct {
 		Patch json.RawMessage `json:"patch"`
@@ -583,7 +573,6 @@ func rawPatchBody(raw json.RawMessage) []byte {
 	return body
 }
 
-// parseLogOptions carries workload_logs' bounds over unchanged (AC5).
 func parseLogOptions(obj map[string]any) (k8s.LogOptions, *rpcErr) {
 	previous, _, rerr := boolArg(obj, "previous")
 	if rerr != nil {
@@ -632,9 +621,6 @@ func parseLogOptions(obj map[string]any) (k8s.LogOptions, *rpcErr) {
 }
 
 // renderWatch prints one line per event rather than the objects themselves.
-// The objects are in structuredContent whole; repeating them here would put a
-// hundred manifests where the caller is trying to read what changed, which is
-// the flooding AC6's ceiling exists to prevent.
 func renderWatch(result *k8s.WatchResult, seconds int64) string {
 	if len(result.Events) == 0 {
 		return fmt.Sprintf("(no events in %ds)", seconds)
@@ -657,8 +643,7 @@ func renderWatch(result *k8s.WatchResult, seconds int64) string {
 	return b.String()
 }
 
-// watchEventName names the object an event carries the way kubectl does,
-// falling back to the bare name for cluster-scoped kinds.
+// watchEventName names the object an event carries the way kubectl does.
 func watchEventName(object map[string]any) string {
 	metadata, _ := object["metadata"].(map[string]any)
 	name, _ := metadata["name"].(string)
@@ -671,17 +656,13 @@ func watchEventName(object map[string]any) string {
 	return name
 }
 
-// watchEventResourceVersion lifts the resume point out of the event. AC6 lets a
-// caller pass resourceVersion back in, and the object already carries the value
-// to pass — surfacing it here is reading the object out loud rather than adding
-// a field of this server's own.
+// watchEventResourceVersion lifts the resume point out of the event.
 func watchEventResourceVersion(object map[string]any) string {
 	metadata, _ := object["metadata"].(map[string]any)
 	rv, _ := metadata["resourceVersion"].(string)
 	return rv
 }
 
-// renderTable prints the apiserver's columns the way kubectl does (AC3).
 func renderTable(result *k8s.ListResult, limit int64) string {
 	if len(result.Rows) == 0 {
 		return "(no resources found)"

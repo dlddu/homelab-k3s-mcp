@@ -8,9 +8,7 @@ import (
 )
 
 // TestProxyVerbFollowsTheMethod is the mapping AC15 makes the whole tool hang
-// on, asserted here rather than only at the tool layer because both layers read
-// it: the gate names a pair from it before the cluster is touched, and a 403 is
-// worded from it afterwards. A second copy is what this test exists to prevent.
+// on. A second copy is what this test exists to prevent.
 func TestProxyVerbFollowsTheMethod(t *testing.T) {
 	for method, want := range map[string]string{
 		"GET": "get", "POST": "create", "PUT": "update",
@@ -31,8 +29,7 @@ func TestProxyVerbFollowsTheMethod(t *testing.T) {
 // TestSplitProxyPathKeepsTheQuery covers the difference between reaching
 // kubelet's /exec with a command and asking it for a file named "?command=id".
 // rest.Request escapes a suffix segment, so the query has to be handed over as
-// parameters rather than as part of the path — scenario 15 reaches
-// /exec/⟨ns⟩/⟨pod⟩/⟨c⟩?command=id, which is exactly that case.
+// parameters rather than as part of the path.
 func TestSplitProxyPathKeepsTheQuery(t *testing.T) {
 	cases := []struct {
 		path     string
@@ -98,9 +95,9 @@ func TestProxyOutcomeReportsItsEncoding(t *testing.T) {
 	}
 }
 
-// TestProxyOutcomeMarksACutBody is the cap's half of the same contract: an
-// answer that ended because it hit 256 KiB has to say so, because a follow-mode
-// endpoint's first 256 KiB looks exactly like a complete short answer.
+// TestProxyOutcomeMarksACutBody is the cap's half of the same contract: a
+// follow-mode endpoint's first 256 KiB looks exactly like a complete short
+// answer.
 func TestProxyOutcomeMarksACutBody(t *testing.T) {
 	body := &limitedWriter{limit: 8}
 	body.Write([]byte("0123456789"))

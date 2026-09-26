@@ -20,17 +20,10 @@ import (
 const secretTokenInFixture = "unique-token-the-gate-must-not-read"
 
 // metadataNegotiatingServer stands in for an apiserver at the one point AC11
-// turns on: it reads the Accept parameters the way the real one does and answers
-// PartialObjectMetadata only when they name a representation it serves.
+// turns on.
 //
 // `honor` false is the server that does not — and the branch it takes is the
-// documented hazard rather than an error. AC11 spells it out: "버전·그룹
-// 파라미터가 어긋나도 apiserver 는 오류를 주지 않고 전체 객체로 답한다". So the
-// wrong branch answers a whole Secret, with its value in it, and the test asserts
-// the read is refused rather than that the request failed. A fake that returned
-// 406 here would be testing a server that does not exist, and a fake that fed
-// this package a PartialObjectMetadata it wrote itself could not see the
-// mismatch at all — which is the trap tableAccept already documents.
+// documented hazard rather than an error.
 func metadataNegotiatingServer(t *testing.T, honor bool) *httptest.Server {
 	t.Helper()
 	const metadata = `{"kind":"PartialObjectMetadata","apiVersion":"meta.k8s.io/v1",` +
@@ -49,8 +42,7 @@ func metadataNegotiatingServer(t *testing.T, honor bool) *httptest.Server {
 	}))
 }
 
-// acceptsPartialObjectMetadata matches the way the apiserver does: on the
-// parameter values, not on the string containing the right words.
+// acceptsPartialObjectMetadata matches the way the apiserver does.
 func acceptsPartialObjectMetadata(accept string) bool {
 	for _, media := range strings.Split(accept, ",") {
 		params := strings.Split(strings.TrimSpace(media), ";")
@@ -82,13 +74,7 @@ func targetServiceAgainst(host string) *KubeService {
 func namespaceOf(s string) *string { return &s }
 
 // AC11: the gate's read of a sensitive kind goes out as PartialObjectMetadata
-// and comes back without the value, and a server that answers otherwise is
-// refused rather than accepted.
-//
-// The negative half carries the AC. A fallback to the whole object would mean
-// the value is in this process before anyone approved reading it, and from that
-// point a rejection has prevented nothing — so "refused" and not "used anyway"
-// is the entire property.
+// and comes back without the value.
 func TestPreconditionUsesPartialObjectMetadataForGatedKinds(t *testing.T) {
 	t.Run("honoured", func(t *testing.T) {
 		server := metadataNegotiatingServer(t, true)
@@ -138,11 +124,6 @@ func TestPreconditionUsesPartialObjectMetadataForGatedKinds(t *testing.T) {
 	})
 }
 
-// The Accept header has to be one the apiserver actually matches, and the
-// parameters come from metav1 so a hand-typed version cannot drift from it. This
-// asserts the value rather than the shape for the reason AC11 gives: a mismatch
-// is answered, not rejected, so "it mentions PartialObjectMetadata" would hold
-// for a header that leaks every Secret it reads.
 func TestMetadataAcceptIsDerivedAndOffersNoWholeObjectFallback(t *testing.T) {
 	want := "application/json;as=PartialObjectMetadata;v=" +
 		metav1.SchemeGroupVersion.Version + ";g=" + metav1.SchemeGroupVersion.Group
@@ -158,8 +139,7 @@ func TestMetadataAcceptIsDerivedAndOffersNoWholeObjectFallback(t *testing.T) {
 }
 
 // An ordinary kind is read whole, because the reason for cutting the body away
-// is the value in it and a Deployment has none. The current replica count is the
-// thing AC3 needs from here.
+// is the value in it and a Deployment has none.
 func TestReadTargetOfAnOrdinaryKindCarriesTheReplicaCount(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Accept"); strings.Contains(got, partialObjectMetadataKind) {
@@ -207,9 +187,7 @@ func TestReadTargetRefusesABodyWithNoResourceVersion(t *testing.T) {
 	}
 }
 
-// A gated call with no named object cannot be described, and AC3 would rather
-// refuse than put an approval request on screen that does not say what it is
-// approving. The refusal comes before any request goes out.
+// The refusal comes before any request goes out.
 func TestReadTargetRefusesAnUnnamedObject(t *testing.T) {
 	reached := false
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))
