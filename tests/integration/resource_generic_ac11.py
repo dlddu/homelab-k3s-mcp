@@ -4,37 +4,14 @@
 실행 대상: primary
 병렬 레인: gate-streams
 
-Go 단위 ``internal/mcp/resource_test.go::TestExecStreamsAndCaps`` 가 인자 전달과 상한
-표기를 이미 단언한다. 이 파일이 재는 것은 **실물 kubelet 왕복**이다 — SPDY 스트림이
-실제로 두 갈래로 갈라져 오는지, 다중 컨테이너 파드에서 `container` 를 빼면 **apiserver
-자신이** 후보 이름을 실어 거절하는지, 그리고 끝없이 뱉는 명령이 바이트 상한에서 잘리고
-그 사실이 응답에 표시되는지.
-
-대상은 기존 픽스처 ``tests/k8s/kind/resource-generic-fixture.yaml`` 의
-`resource-generic-multi` 파드다(컨테이너 `chatty`=busybox · `quiet`=pause).
-
-`resource_exec` 은 **언제나** 승인을 거치므로 모든 케이스가 승인 댄스를 탄다. 컨테이너
-누락 케이스도 마찬가지다 — 그 거절은 인자 검증이 아니라 승인 뒤 kubelet 이 내는
-답이기 때문이다(그것이 「후보 이름이 제시된다」는 기대의 출처다).
-
-**픽스처 파드는 기다려서 집는다** — 직전 판이 한 번에 집으려다 CI 에서 결정적으로 깨진
-자리이고, 깨진 이유는 둘이다. ⑴ **레이블이 갈라져 있다**: `app.kubernetes.io/name` 은
+**픽스처 파드는 기다려서 집는다.** `app.kubernetes.io/name` 은
 `resource-generic-fixture.yaml` 이 **Deployment 메타데이터**에만 다는 값이고 파드 템플릿이
 다는 것은 `app` 하나다. 파드를 그 이름으로 찾으면 클러스터가 아무리 건강해도 목록은
-**항상 비어** 있다(직전 판의 실패는 타이밍이 아니라 이것이었다 — 기다리기만 더했다면
-대기 시간을 다 쓰고 같은 자리에서 깨졌을 것이다). ⑵ **CI 에 이 픽스처의 롤아웃 대기가
-없다**: `ci.yml` 은 `resource-generic-fixture.yaml` 을 apply 만 하고 `rollout status` 는
-`workload-fixture` 에만 건다. 그래서 파드가 스케줄되기 전에 이 파일이 시작될 수 있다.
-자매 파일 `resource_generic_ac5.py` 가 같은 워크로드를 자기 사전 조건 루프로 기다려
-통과하는 것이 그 선례다.
+**항상 비어** 있다.
 
 같은 파드를 `resource_generic_ac5.py`(`resource-generic` 레인)도 읽지만 레인을 갈라도 되는
 것은, 그 파일이 재는 컨테이너 로그에 exec 스트림의 출력이 실리지 않기 때문이다. 이 파일이
 `chatty` 의 **로그에** 무언가를 남기는 명령을 쓰게 되면 두 파일을 한 레인으로 모은다.
-
-**아래 두 단언은 #137 이 닫은 두 자리의 회귀 방지선이다** — `echo` 왕복의 `isError: false ·
-exitCode: 0`, 그리고 `yes` 왕복이 **에러 텍스트가 아니라 구조화 응답**으로 싣는
-`stdoutTruncated`.
 
 ⚠️ `yes` 왕복에 `isError` 를 단언하지 않는 것은 의도다 — 잘린 스트림은 종료 코드를 보고한
 적이 없어 `success` 가 거짓이고 핸들러의 `isError` 는 `!success` 다. 이 렌즈가 재는 것은

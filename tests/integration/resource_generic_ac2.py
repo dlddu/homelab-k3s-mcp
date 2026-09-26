@@ -4,13 +4,8 @@
 실행 대상: primary
 병렬 레인: resource-generic
 
-크기 비교는 **같은 직렬화 규칙**(`separators` 고정) 으로 재서 인코딩 차이가 비율에 섞이지
-않게 했다. 비율 하한은 `MIN_SHRINK_FACTOR` 하나로 모아 두었다 — `managedFields` 때문에
-실제 비율은 한 자릿수 후반 이상이 나오지만, 픽스처가 늘거나 줄어도 「현저히」가 무너지지
-않는 선을 고른다.
-
-행의 모든 칸이 스칼라인지(= 중첩 객체가 실려 오지 않았는지)와 `managedFields` 문자열이
-응답 어디에도 없는지를 함께 본다.
+`managedFields` 때문에 실제 비율은 한 자릿수 후반 이상이 나오지만, 픽스처가 늘거나 줄어도
+「현저히」가 무너지지 않는 선을 고른다.
 """
 
 from __future__ import annotations
