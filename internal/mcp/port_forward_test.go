@@ -11,9 +11,7 @@ import (
 
 // TestPortForwardMakesOneRoundTrip covers the half of scenario 14 that does not
 // need a cluster: what the tool hands down, what pair it spends, and what it
-// gives back. The other half — that the tunnel is really gone afterwards, so a
-// second round trip cannot ride the same approval — is only observable against a
-// real apiserver, and is the integration case's to prove.
+// gives back.
 func TestPortForwardMakesOneRoundTrip(t *testing.T) {
 	t.Run("hands the coordinate, the port and the payload to the cluster", func(t *testing.T) {
 		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}

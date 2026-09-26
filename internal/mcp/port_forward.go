@@ -149,11 +149,7 @@ func portForwardPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 	}
 }
 
-// resourcePortForward makes the single round trip after the approval. The approval
-// screen already carries the port and the payload verbatim (AC3, which AC14 names
-// precisely because this tool reaches ports a network policy closed), and AC6's
-// re-read ties the approval to the pod's uid, so a pod recreated under the same
-// name is refused before anything is sent.
+// resourcePortForward makes the single round trip after the approval.
 func (h *Handler) resourcePortForward(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
