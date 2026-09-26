@@ -10,9 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
@@ -198,14 +195,13 @@ func proxyPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 		if rerr != nil {
 			return nil, errors.New(rerr.message)
 		}
-		gv, err := schema.ParseGroupVersion(args.ref.APIVersion)
+		resource, err := resourceName(args.ref.APIVersion, args.ref.Kind, "proxy")
 		if err != nil {
-			return nil, fmt.Errorf("apiVersion %q is not a group/version", args.ref.APIVersion)
+			return nil, err
 		}
-		plural, _ := meta.UnsafeGuessKindToResource(gv.WithKind(args.ref.Kind))
 		return []gatekeeper.Pair{{
 			Verb:     k8s.ProxyVerbForMethod(args.method),
-			Resource: plural.Resource + "/proxy",
+			Resource: resource,
 		}}, nil
 	}
 }

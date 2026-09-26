@@ -60,7 +60,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 				"processed_by_id", d.ProcessedByID, "auto_approved", d.AutoApproved)
 			executed = append(executed, d)
 			noteGate(ctx, d)
-			result, callErr := entry.handle(h, ctx, doc.raw)
+			result, callErr := h.invoke(ctx, name, entry, doc.raw)
 			if callErr != nil {
 				failure = callErr.message
 			} else if m, ok := result.(map[string]any); !ok {

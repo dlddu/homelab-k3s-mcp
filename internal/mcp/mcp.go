@@ -406,7 +406,7 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 		ctx = context.WithValue(ctx, approvedTargetKey{}, *approved)
 	}
 
-	result, rerr = entry.handle(h, ctx, rawArgs)
+	result, rerr = h.invoke(ctx, name, entry, rawArgs)
 	if rerr != nil {
 		return nil, rerr
 	}

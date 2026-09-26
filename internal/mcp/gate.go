@@ -11,9 +11,6 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/meta"
-	"k8s.io/apimachinery/pkg/runtime/schema"
-
 	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
@@ -343,14 +340,10 @@ func genericPairs(verb string) func(json.RawMessage) ([]gatekeeper.Pair, error) 
 		if apiVersion == "" || kind == "" {
 			return nil, fmt.Errorf("apiVersion and kind are required before this call can be judged")
 		}
-		gv, err := schema.ParseGroupVersion(apiVersion)
+		sub, _ := obj["subresource"].(string)
+		resource, err := resourceName(apiVersion, kind, sub)
 		if err != nil {
-			return nil, fmt.Errorf("apiVersion %q is not a group/version", apiVersion)
-		}
-		plural, _ := meta.UnsafeGuessKindToResource(gv.WithKind(kind))
-		resource := plural.Resource
-		if sub, _ := obj["subresource"].(string); sub != "" {
-			resource += "/" + sub
+			return nil, err
 		}
 		return []gatekeeper.Pair{{Verb: verb, Resource: resource}}, nil
 	}

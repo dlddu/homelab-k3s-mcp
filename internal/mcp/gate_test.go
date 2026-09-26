@@ -682,13 +682,19 @@ func TestUngatedReadsStillRunWhileTheGateRefuses(t *testing.T) {
 	registry := map[string]toolEntry{
 		"lister": {
 			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "list", Resource: "deployments"}}},
-			handle: reachesKubernetes,
+			handle: exercisesPair("apps/v1", "Deployment", "list"),
 		},
 		"getter": {
 			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "get", Resource: "pods"}}},
+			handle: exercisesPair("v1", "Pod", "get"),
+		},
+		"platform": {
+			decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+				kind:   discoveryOnly,
+				reason: "asks which kinds are served and nothing else",
+			}},
 			handle: reachesKubernetes,
 		},
-		"platform": {handle: reachesKubernetes},
 	}
 	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), registry)
 
@@ -708,7 +714,7 @@ func TestSensitiveReadsAreGated(t *testing.T) {
 	registry := map[string]toolEntry{
 		"secret_get":   {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "get", Resource: "secrets"}}}, handle: reachesKubernetes},
 		"secret_watch": {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "watch", Resource: "secrets"}}}, handle: reachesKubernetes},
-		"pod_watch":    {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "watch", Resource: "pods"}}}, handle: reachesKubernetes},
+		"pod_watch":    {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "watch", Resource: "pods"}}}, handle: exercisesPair("v1", "Pod", "watch")},
 	}
 	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), registry)
 
@@ -732,7 +738,7 @@ func TestApprovedCallReachesKubernetesWithAJudgeableContext(t *testing.T) {
 	registry := map[string]toolEntry{
 		"writer": {
 			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "patch", Resource: "deployments"}}},
-			handle: reachesKubernetes,
+			handle: exercisesPair("apps/v1", "Deployment", "patch"),
 		},
 	}
 	h, fake := testHandler(t, gate, registry)
@@ -761,7 +767,7 @@ func TestApprovalCannotBeSpentTwice(t *testing.T) {
 	registry := map[string]toolEntry{
 		"writer": {
 			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "delete", Resource: "deployments"}}},
-			handle: reachesKubernetes,
+			handle: exercisesPair("apps/v1", "Deployment", "delete"),
 		},
 	}
 	h, fake := testHandler(t, gate, registry)
@@ -788,7 +794,7 @@ func TestGatedCallsAreAudited(t *testing.T) {
 	registry := map[string]toolEntry{
 		"writer": {
 			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "patch", Resource: "deployments"}}},
-			handle: reachesKubernetes,
+			handle: exercisesPair("apps/v1", "Deployment", "patch"),
 		},
 	}
 
@@ -821,7 +827,7 @@ func TestAutoApprovalIsVisibleInTheToolResponse(t *testing.T) {
 	registry := map[string]toolEntry{
 		"writer": {
 			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "patch", Resource: "deployments"}}},
-			handle: reachesKubernetes,
+			handle: exercisesPair("apps/v1", "Deployment", "patch"),
 		},
 	}
 	h, _ := testHandler(t, gate, registry)
@@ -1261,7 +1267,7 @@ func TestGatedReadWithNoDeclaredTargetIsDescribedFromItsArguments(t *testing.T) 
 	registry := map[string]toolEntry{
 		"watcher": {
 			decl:   toolDeclaration{resolve: genericPairs("watch")},
-			handle: reachesKubernetes,
+			handle: exercisesPair("v1", "Secret", "watch"),
 		},
 	}
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
