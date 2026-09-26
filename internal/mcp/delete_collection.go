@@ -144,7 +144,7 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 		"auto_approved", decision.AutoApproved,
 	)
 
-	result, rerr := entry.handle(h, ctx, raw)
+	result, rerr := h.invoke(ctx, name, entry, raw)
 	if rerr != nil {
 		return nil, rerr
 	}
