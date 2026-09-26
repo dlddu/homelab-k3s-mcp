@@ -23,7 +23,14 @@ as-is 지문 범위와 정확히 같다. `internal/` 의 Go 단위 테스트(htt
   예외는 그 계층이 가리는 성질을 되찾는 수단과 **함께만** 존재할 수 있다.
 * **R6** 등재 상한 == 허용목록 행 수(양방향). 예외를 늘리려면 같은 PR 에서 상한을 명시적으로
   올려야 하고, 예외가 사라지면 같이 내려야 한다.
-* **B2** 차단 원장의 출처·해소 방향·소관·선행·재검토 시점은 기계 판독 가능한 셀이다.
+* **R7** 두 마커 블록 **밖**의 산문은 등재 수·상한을 숫자로 말하지 않는다. 정책 문서는
+  「개수를 말하는 곳은 허용목록 표와 상한 두 곳뿐이라 산문이 낡아 조용히 어긋날 수 없다」고
+  보증하는데, 그 전제는 R6 이 재지 않는다 — 실제로 상한을 `5`→`4` 로 내린 PR 이 같은 문서의
+  개수 산문 네 자리 중 하나만 고쳤고, 나머지 셋은 거짓이 된 채 네 게이트를 전부 통과했다.
+  숫자를 마커 안에만 두면 낡을 자리 자체가 없어진다. 보관 기록은 절대 수치 대신 델타로
+  적는다(「그 슬라이스는 행을 늘리지 않았다」).
+* **B2** 차단 원장의 출처·해소 방향·선행·재검토 시점은 기계 판독 가능한 셀이고, **소관 칸은
+  두지 않는다** — 해소 주체는 항상 이 모델이라 적을 자리를 없애는 것이 그 규약(B4)의 집행이다.
   외부 인계 누락(B1)과 이력·사건의 실제 해소 여부(B3)는 reconciler 판정으로 남는다.
 
 허용목록이 실측과 다르면 실패하므로, 모킹을 더하거나 지운 PR 은 **같은 PR 에서** 정책 문서를
@@ -52,7 +59,7 @@ CAP_OPEN = "<!-- mock-exception-상한 -->"
 CAP_CLOSE = "<!-- /mock-exception-상한 -->"
 BLOCKERS_OPEN = "<!-- mock-blocker-원장 -->"
 BLOCKERS_CLOSE = "<!-- /mock-blocker-원장 -->"
-BLOCKER_COLUMNS = ("ID", "출처", "등록일", "해소 방향", "소관", "선행", "재검토")
+BLOCKER_COLUMNS = ("ID", "출처", "등록일", "해소 방향", "선행", "재검토")
 MODEL_PATTERN = r"tbm_[a-z0-9][a-z0-9_-]*"
 TASK_PATTERN = MODEL_PATTERN + r"/rct_[a-z0-9][a-z0-9_-]*"
 
@@ -153,6 +160,58 @@ def next_content_line(lines: list[str], index: int) -> str | None:
     return None
 
 
+COUNT_WORD_RE = re.compile(r"등재|상한|허용목록")
+COUNTED_RE = re.compile(r"(?<![0-9A-Za-z_#.\-/])[0-9]{1,3}\s*[행건개](?![0-9A-Za-z_])")
+BARE_COUNT_RE = re.compile(
+    r"^[^.()`·,/\n]{0,12}?(?<![0-9A-Za-z_#.\-/])[0-9]{1,3}(?![0-9A-Za-z_.\-/])"
+)
+COUNT_WINDOW = 40
+
+
+def prose_outside_markers(text: str) -> str:
+    """마커 블록(허용목록 표·상한 값·차단 원장)을 도려낸 나머지 산문.
+
+    도려내는 것이지 잘라내는 것이 아니다 — 블록을 같은 길이의 공백으로 덮어 줄 번호와
+    문장 경계를 보존한다. 잘라내면 표의 마지막 낱말과 다음 문단의 숫자가 한 창 안에
+    들어와 없는 위반이 생기고, 보고하는 줄 번호도 원문과 어긋난다.
+    """
+    out = list(text)
+    for open_marker, close_marker in (
+        (LEDGER_OPEN, LEDGER_CLOSE),
+        (CAP_OPEN, CAP_CLOSE),
+        (BLOCKERS_OPEN, BLOCKERS_CLOSE),
+    ):
+        start = text.find(open_marker)
+        end = text.find(close_marker)
+        if start == -1 or end == -1 or end < start:
+            continue
+        for index in range(start, end + len(close_marker)):
+            if out[index] != "\n":
+                out[index] = " "
+    return "".join(out)
+
+
+def find_prose_counts(text: str) -> list[tuple[int, str]]:
+    """산문이 등재 수·상한을 숫자로 말하는 자리를 (줄 번호, 발췌)로 모은다.
+
+    두 정규식으로 가른다. 세는 말이 붙은 수(`5행`·`4건`)는 창 안 어디에 있든 개수
+    주장이다(`COUNTED_RE`). 세는 말이 없는 맨 수는 개수 주장일 수도 아닐 수도 있어
+    (`등재 5`·`상한은 그대로 5다` ↔ `불변식 1`·`위 2번`·`MCP_AUTH_DISABLED=1`),
+    거리와 문장 경계로 가른다(`BARE_COUNT_RE`) — 개수 주장은 세는 말 바로 뒤에
+    조사·부사만 끼고 붙지, 괄호·마침표·역따옴표를 건너뛰지 않는다.
+    """
+    prose = prose_outside_markers(text)
+    hits = []
+    for word in COUNT_WORD_RE.finditer(prose):
+        window = prose[word.end() : word.end() + COUNT_WINDOW].split("\n\n")[0]
+        number = COUNTED_RE.search(window) or BARE_COUNT_RE.match(window)
+        if not number:
+            continue
+        line = prose.count("\n", 0, word.start()) + 1
+        hits.append((line, " ".join((word.group() + window[: number.end()]).split())))
+    return hits
+
+
 def parse_blockers(text: str) -> list[dict[str, str]]:
     if text.count(BLOCKERS_OPEN) != 1 or text.count(BLOCKERS_CLOSE) != 1:
         raise ValueError("차단 원장 마커는 시작·끝 각각 하나가 필요하다.")
@@ -167,7 +226,7 @@ def parse_blockers(text: str) -> list[dict[str, str]]:
             raise ValueError("차단 원장 마커 안에는 표만 둘 수 있다.")
         cells = [cell.strip().strip("`").strip() for cell in line[1:-1].split("|")]
         if len(cells) != len(BLOCKER_COLUMNS):
-            raise ValueError("차단 원장 행은 7개 열이어야 한다.")
+            raise ValueError(f"차단 원장 행은 {len(BLOCKER_COLUMNS)}개 열이어야 한다.")
         table.append(cells)
     if len(table) < 2 or tuple(table[0]) != BLOCKER_COLUMNS:
         raise ValueError("차단 원장 헤더가 없거나 열 이름·순서가 다르다.")
@@ -188,8 +247,6 @@ def parse_blockers(text: str) -> list[dict[str, str]]:
             raise ValueError(f"{identifier}: 출처는 모델/task ID 또는 policy:#앵커여야 한다.")
         if row["해소 방향"] not in {"real-environment", "exception-registration"}:
             raise ValueError(f"{identifier}: 해소 방향이 허용 값이 아니다.")
-        if not re.fullmatch(MODEL_PATTERN, row["소관"]):
-            raise ValueError(f"{identifier}: 소관은 받는 모델 ID여야 한다.")
         try:
             registered = datetime.date.fromisoformat(row["등록일"])
         except ValueError as exc:
@@ -265,6 +322,14 @@ def main() -> int:
             "R6",
             f"등재 상한 {cap} != 허용목록 행 수 {len(rows)}."
             " 예외를 늘리려면 같은 PR 에서 상한을 올리고, 예외가 사라지면 같이 내릴 것.",
+        )
+
+    for line_number, excerpt in find_prose_counts(text):
+        fail(
+            "R7",
+            f"{POLICY.relative_to(REPO_ROOT)}:{line_number} 산문이 개수를 말한다:"
+            f" {excerpt!r}. 개수를 말하는 자리는 허용목록 표와 상한 마커 두 곳뿐이다"
+            " — 보관 기록은 절대 수치 대신 델타로 적을 것.",
         )
 
     # 스캔 — 실재하는 모킹 토큰과 표기 주석
@@ -360,7 +425,7 @@ def main() -> int:
         return 1
 
     print(
-        f"OK: 규칙 R1~R6 위반 없음 — 등재 {len(rows)}(상한 {cap}) · 모킹 지점 {site_count} ·"
+        f"OK: 규칙 R1~R7 위반 없음 — 등재 {len(rows)}(상한 {cap}) · 모킹 지점 {site_count} ·"
         f" 실재 토큰 {len(found_ids)} · 표기 주석 {len(annotations)} · 미등재 0 · 고아 0"
     )
     for row in rows:
@@ -368,7 +433,7 @@ def main() -> int:
         print(f"  {row['category']:<4} {row['id']:<24} 대체 검증: {alternative}")
     print(f"OK: B2 차단 원장 {len(blockers)}행 완비 (등재 상한과 별도; B1·B3는 reconciler 판정)")
     for row in blockers:
-        print(f"  {row['ID']}: 소관={row['소관']} · 선행={row['선행']} · 재검토={row['재검토']}")
+        print(f"  {row['ID']}: 선행={row['선행']} · 재검토={row['재검토']}")
     return 0
 
 
