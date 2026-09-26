@@ -10,9 +10,7 @@ import (
 
 // TestAttachJoinsTheRunningProcess covers the half of scenario 13 that does not
 // need a cluster: what the tool hands down, what pair it spends, and what it
-// gives back. The other half — that the output came from the existing process
-// rather than a new one — is only observable against a real pod, and is the
-// integration case's to prove.
+// gives back.
 func TestAttachJoinsTheRunningProcess(t *testing.T) {
 	t.Run("hands the coordinate, the container and the window to the cluster", func(t *testing.T) {
 		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}

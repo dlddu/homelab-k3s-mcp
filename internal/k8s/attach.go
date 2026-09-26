@@ -24,9 +24,7 @@ const (
 
 // AttachResource joins the streams of the process already running in one named
 // pod's container, collects whatever it says for readSeconds, and returns it
-// (prd-resource-generic AC13). Unlike ExecResource it starts nothing: there is
-// no command, no exit code, and the process keeps running after the window
-// closes.
+// (prd-resource-generic AC13).
 //
 // stdin, when given, is written once right after attaching — and then the read
 // half stays open for the rest of the window, which is what attachStdinReader

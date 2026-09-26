@@ -96,9 +96,6 @@ func parseAttachTarget(obj map[string]any) (attachArgs, *rpcErr) {
 // first, for the reason execPairs states. The pair the call exercises is
 // create on ⟨pods plural⟩/attach — attaching is something the call does to the
 // pod, so the resource name hangs the subresource off the coordinate.
-//
-// The pair is the same grade as exec's on purpose: AC13 says so, because a pod
-// whose PID 1 is an interactive shell cannot tell the two apart.
 func attachPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
@@ -122,10 +119,7 @@ func attachPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 	}
 }
 
-// resourceAttach joins one named pod's streams after the approval. The approval
-// screen already carries the stdin payload verbatim (AC3) — it is an argument
-// like any other — and AC6's re-read ties the approval to the pod's uid, so a
-// pod recreated under the same name is refused before anything is written.
+// resourceAttach joins one named pod's streams after the approval.
 func (h *Handler) resourceAttach(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
