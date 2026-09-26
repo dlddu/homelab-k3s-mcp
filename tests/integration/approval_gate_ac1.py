@@ -4,10 +4,6 @@
 실행 대상: primary
 병렬 레인: gate-refusal
 
-세 갈래를 한 파일이 진다. (a) 쓰기 게이트 표의 모든 도구와 민감 종류의 읽기가 **판정 없이**
-거부되고 그 도구의 실행 호출이 남긴 것이 0 이다. (b) 같은 조건에서 비게이트 호출은 승인 요청
-없이 정상 수행된다. (c) 자기가 행사할 쌍을 선언하지 않은 도구를 등록한 기동 변형은 뜨지 않는다.
-
 **이 파일은 러너가 건네는 배포를 쓰지 않는다.** (a) 는 「승인받지 못한 채
 `GATEKEEPER_TIMEOUT_SECONDS` 가 지난다」를 열네 번 관측하는데, primary 의 기본 타임아웃은
 300 초라 그 열넷이 한 시간을 넘는다. 타임아웃은 env 라 배포당이므로, 5 초짜리 배포를
@@ -27,13 +23,6 @@
 
 민감 읽기(`kind=Secret` 의 `get`·`watch`)는 흔적을 남기지 않는 호출이라 그 둘만은 거부와
 만료 기록이 증거의 전부다. 값이 새지 않는지는 이 시나리오가 아니라 시나리오 10 이 잰다.
-
-(c) 는 `tests/k8s/kind/gate-refusal-variant.yaml` 의 둘째 배포다. 등록 표와 광고면이 둘 다
-컴파일 시점 상수라 env 나 매니페스트로는 그 변형을 만들 수 없어, `e2e_undeclared_tool` 빌드
-태그로 세운 별도 이미지가 그 변형의 유일한 형태다(`internal/mcp/undeclared_tool_probe.go`).
-관측은 `platform_auth_safety_ac8.py` 의 (d) 와 같다 — 파드가 Ready 가 되지 못하고
-`lastState.terminated` 와 로그가 남는다. 같은 네임스페이스·같은 시크릿을 쓰는 (a) 의 배포가
-정상이라는 것이 「죽은 이유가 태그다」의 대조군이다.
 """
 
 from __future__ import annotations

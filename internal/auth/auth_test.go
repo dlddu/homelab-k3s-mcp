@@ -234,7 +234,7 @@ func TestFromEnvRequiresIssuerWhenOAuthRequested(t *testing.T) {
 	t.Setenv("MCP_AUTH_DISABLED", "0")
 	t.Setenv("MCP_API_KEYS", "")
 	t.Setenv("MCP_OAUTH_ISSUER", "")
-	t.Setenv("MCP_OAUTH_AUDIENCE", "homelab-k3s-mcp") // OAuth partially requested
+	t.Setenv("MCP_OAUTH_AUDIENCE", "homelab-k3s-mcp")
 	t.Setenv("MCP_OAUTH_RESOURCE", "")
 
 	if _, err := FromEnv(context.Background()); err == nil {
@@ -361,7 +361,7 @@ func TestRequireBearerRejectsUnknownKeyInKeyOnlyMode(t *testing.T) {
 // A structurally valid JWT presented in API-key-only mode must be rejected
 // (401), never triggering a JWKS fetch against the unconfigured OAuth client.
 func TestRequireBearerRejectsJWTInKeyOnlyMode(t *testing.T) {
-	cfg := &Config{apiKeys: []string{"automation-key"}} // no OAuth configured
+	cfg := &Config{apiKeys: []string{"automation-key"}}
 
 	key := newRSAKey(t)
 	token := signJWT(t, key, "some-kid", "https://issuer.example.test", "homelab-k3s-mcp")

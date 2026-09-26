@@ -233,7 +233,7 @@ data:
                     response_body = response.read()
                     status = response.status
                     response_headers = response.getheaders()
-                except Exception as exc:  # upstream unreachable / protocol error
+                except Exception as exc:
                     log(f"{upstream_name} {self.command} {self.path} failed: {exc}")
                     self.send_response_only(502)
                     self.send_header("Content-Length", "0")

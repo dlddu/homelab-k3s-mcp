@@ -376,7 +376,7 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 	}
 	record.Tool = name
 
-	args := params // arguments are re-decoded per tool from the raw params
+	args := params
 	rawArgs := extractArguments(args)
 
 	entry, ok := h.registry[name]
