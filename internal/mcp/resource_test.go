@@ -79,8 +79,7 @@ func TestPatchTypes(t *testing.T) {
 	}
 }
 
-// AC9. The integration suite owns the half this level cannot see; what is left
-// here is its complement — the assertion that would have to fail first for the
+// AC9. What is left here is the assertion that would have to fail first for the
 // replaced pods to be carrying anything the caller did not send.
 func TestRestartPatchTouchesOnlyAnnotation(t *testing.T) {
 	h, fake := approvingHandler(t)
@@ -195,9 +194,8 @@ func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
 // AC8. The accepted values and the refused ones share a test because the tool's
 // bounds are one statement: 0 is a replica count and -1 is not.
 //
-// The refusals assert the gate was never called, which is the half scenario 8
-// spells out — "승인 요청조차 만들지 않음" (updatePairs). The set that gets this
-// treatment is exactly the set scenario 8 names; a missing `name` is still
+// The refusals assert the gate was never called (updatePairs). The set that gets
+// that treatment is exactly the set scenario 8 names; a missing `name` is still
 // refused in the handler, the way resource_patch refuses it.
 func TestUpdateScaleBounds(t *testing.T) {
 	for _, replicas := range []int64{3, 0, 1} {
@@ -269,8 +267,7 @@ func TestUpdateScaleBounds(t *testing.T) {
 // contract is one statement: it removes the object you named, and it has no way
 // to say "the ones matching this".
 //
-// Every refusal also asserts the gate was never called — the half scenario 10
-// spells out as "인자 검증에서 거부됨" (deletePairs).
+// Every refusal also asserts the gate was never called (deletePairs).
 func TestDeleteIsSingleObjectOnly(t *testing.T) {
 	t.Run("named object", func(t *testing.T) {
 		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
@@ -408,9 +405,7 @@ func TestUpdateReplacesWithTheCallersManifest(t *testing.T) {
 	}
 }
 
-// AC6. The window is the one bound this level owns whole — how long the
-// apiserver is asked to push for, and what happens to a value past the
-// ceiling. The refusals share the table with the accepted values on purpose:
+// AC6. The refusals share the table with the accepted values on purpose:
 // "61 is refused" only means something beside "60 is not".
 func TestWatchWindowBounds(t *testing.T) {
 	accepted := []struct {
@@ -481,10 +476,8 @@ func TestWatchCarriesTheResumePoint(t *testing.T) {
 	}
 }
 
-// AC6/AC16/AC17. A watch of a sensitive kind is gated for the reason a get is:
-// the stream hands over the whole object. The ordinary kind is in the same
-// test because "Secret is refused" is only an assertion about the gate if
-// something else is not.
+// AC6/AC16/AC17. The ordinary kind is in the same test because "Secret is
+// refused" is only an assertion about the gate if something else is not.
 func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
 	secret := `{"apiVersion":"v1","kind":"Secret","namespace":"ops"}`
 	ordinary := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops"}`
@@ -533,9 +526,7 @@ func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
 	})
 }
 
-// AC12: exec runs one command in one named pod and answers with stdout and
-// stderr separated, the refusals that arguments can see happen before an
-// approval is spent, and a response the caps cut says so.
+// AC12.
 func TestExecStreamsAndCaps(t *testing.T) {
 	t.Run("runs and hands the pod, the container and the command to the cluster", func(t *testing.T) {
 		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
@@ -639,8 +630,7 @@ func TestExecStreamsAndCaps(t *testing.T) {
 	}
 }
 
-// The exec refusal AC6 names is a pod recreated under the same name; the shared
-// table over every gated tool carries the case.
+// The shared table over every gated tool carries the exec case (AC6).
 func TestExecContextCarriesTheCommand(t *testing.T) {
 	reader := newStateReader()
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
