@@ -9,9 +9,8 @@
 # 「실환경 주입 판정 (3번 결과, 2026-09-26)」, whose conditions C1~C5 this file
 # and tests/integration/approval_gate_ac5.py must both stay inside.
 #
-# WHY A SEPARATE DEPLOYMENT rather than a sidecar on gatekeeper: C3 says the
-# product's code, image, build flags and deployment env do not change, and the
-# smallest way to honour that is to leave gatekeeper-fixture.yaml untouched.
+# WHY A SEPARATE DEPLOYMENT rather than a sidecar on gatekeeper: the smallest
+# way to honour C3 is to leave gatekeeper-fixture.yaml untouched.
 # The kind cluster is single-node (ci.yml runs `kind create cluster` with no
 # config), and a ReadWriteOnce PVC may be mounted by several pods **on the same
 # node**, so this pod can open the same /app/data/gatekeeper.db the gatekeeper
