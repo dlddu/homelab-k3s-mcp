@@ -48,8 +48,12 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   (b)는 승인 요청 없이 정상 수행된다. (c)는 기동이 실패한다.
   미등록 도구의 unknown-tool 오류나 잘못된 인자·좌표로 인한 거부는 (a)의 게이트 통과 증거가 아니다.
 - **검증 AC**: AC1, AC5
-- **자동화**: (미작성) — 통합 `approval_gate_ac1.py`는 전체 도구 행렬과 실물 gatekeeper가
-  준비된 뒤 작성한다. 현재 단위 근거는 `internal/mcp/gate_test.go`의
+- **자동화**: `tests/integration/approval_gate_ac1.py` — 승인 타임아웃 5초짜리 배포 변형
+  (`tests/k8s/kind/gate-refusal-variant.yaml`)에서 (a)의 열세 호출을 판정 없이 만료시키고
+  각 도구가 남겼을 흔적이 없음을 세며, (b)의 네 호출이 승인 요청 없이 수행되는 것을 잰다.
+  (c)는 같은 파일의 둘째 배포 — `e2e_undeclared_tool` 빌드 태그로 선언 없는 도구를 끼운
+  이미지가 기동을 거부하고 파드가 Ready가 되지 못하는 것을 관측한다.
+  단위 근거는 여전히 `internal/mcp/gate_test.go`의
   `TestGatedCallIsRefusedBeforeKubernetes`, `TestExecSubresourceIsGated`,
   `TestUngatedReadsStillRunWhileTheGateRefuses`, `TestSensitiveReadsAreGated`,
   `TestOrdinaryReadsAndSecretListsStayUngated`, `TestValidateRegistryRejectsMismatches`다.
