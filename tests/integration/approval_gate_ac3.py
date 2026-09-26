@@ -4,23 +4,11 @@
 실행 대상: primary
 병렬 레인: gate-screens
 
-Go 단위가 이 계약의 문면을 이미 단언한다 — `internal/mcp/gate_test.go` 의
-`TestApprovedCallReachesKubernetesWithAJudgeableContext` ·
-`TestContextIncludesCurrentAndTargetReplicas` ·
-`TestUnresolvableTargetIsRejectedBeforeRequest`, `internal/mcp/delete_collection_test.go` 의
-`TestCollectionContextCarriesCountAndNames`. 그 전부가 **가짜 게이트**를 상대로 돈다 —
-화면을 만드는 함수의 반환값을 그 자리에서 읽으므로, 만들어진 화면과 **gatekeeper 가 실제로
-받아 사람에게 내건 화면**이 갈라져도 초록이다. 이 파일이 재는 것이 그 갈라짐이다: 여기서
-읽는 `context` 는 kind 에 뜬 실물 gatekeeper 의 요청 레코드에서 되가져온 것이고, 그래서
-직렬화·전송·저장을 통과한 뒤에도 상세가 남아 있는지를 말한다.
-
-**열한 호출은 「게이트 대상 verb 각각」의 실측 전개다.** 쌍으로 세면 열하나 —
-`create on configmaps` · `update on configmaps` · `update on deployments/scale` ·
-`patch on configmaps` · `patch on deployments` · `delete on configmaps` ·
-`deletecollection on configmaps` · `create on pods/{exec,attach,portforward,proxy}`. 스케일과
-재시작 어노테이션 패치를 각각 전체 교체·일반 패치와 따로 세우는 것은 시나리오가 그 둘을 **별도
-상세**로 지목하기 때문이다(레플리카 이동, 그리고 재시작이라는 것을 운영자가 **스스로** 읽어낼 수
-있을 만큼의 본문).
+시나리오의 단위 근거는 전부 **가짜 게이트**를 상대로 돈다 — 화면을 만드는 함수의 반환값을
+그 자리에서 읽으므로, 만들어진 화면과 **gatekeeper 가 실제로 받아 사람에게 내건 화면**이
+갈라져도 초록이다. 이 파일이 재는 것이 그 갈라짐이다: 여기서 읽는 `context` 는 kind 에 뜬
+실물 gatekeeper 의 요청 레코드에서 되가져온 것이고, 그래서 직렬화·전송·저장을 통과한 뒤에도
+상세가 남아 있는지를 말한다.
 
 **판정은 전부 거부(REJECTED)다.** 이 시나리오가 재는 것은 화면이지 호출의 효과가 아니고,
 승인해 버리면 이 파일 하나가 픽스처를 열한 번 바꿔 같은 네임스페이스를 읽는 다른 파일의

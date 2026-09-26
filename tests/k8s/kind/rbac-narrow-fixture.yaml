@@ -1,9 +1,8 @@
 # Narrow-RBAC SUT variant for test-resource-generic.md#시나리오 18
 # (resource_generic_ac18.py).
 #
-# The scenario's precondition is a kind the server's RBAC does not grant, and
-# no deployment in this harness can produce one: k8s/rbac.yaml binds the
-# primary's ServiceAccount to cluster-admin (2026-09-14 revision), and every
+# No deployment in this harness can produce the scenario's precondition:
+# k8s/rbac.yaml binds the primary's ServiceAccount to cluster-admin, and every
 # other variant (auth-fixture, oidc-fixture, gatekeeper-variant) binds its own
 # SA to the same cluster-admin. Narrowing k8s/rbac.yaml itself is an
 # operational-manifest change, outside the e2e lens; so the missing grant is
@@ -11,36 +10,16 @@
 #
 # This variant differs from the primary in exactly one respect that the
 # scenario observes: the ClusterRoleBinding's roleRef names the ClusterRole
-# below instead of cluster-admin. That role is shaped by the approval gate's
-# own read path, not by taste:
-#
-# * get/list/watch on the core, apps and rbac groups -- prd-approval-gate AC11
-#   reads the target object on the server's own permission BEFORE it asks
-#   for approval (internal/mcp/gate.go readGateTarget) and once more after it
-#   (confirmTargetUnchanged). Without `get` on clusterroles the call would be
-#   refused at that pre-read, before any approval request exists, and the
-#   scenario's "승인을 받은 뒤 ... resource_patch" would never be reached. The
-#   scenario's (verb, resource) pair is therefore (patch, clusterroles): the
-#   kind is readable, the verb is what is missing.
-# * patch on configmaps -- the one write grant, the e2e's positive control on
-#   THIS deployment.
-# * nothing at all on networking.k8s.io -- a kind with no grant of any verb,
-#   which is what the precondition says literally. There the pre-read itself
-#   is refused and the e2e asserts that no approval request was created.
-#
-# Widening any rule of this role (in particular granting `patch` on
-# clusterroles, or any verb on networkpolicies) turns resource_generic_ac18.py
-# red on purpose.
+# below instead of cluster-admin. Widening any rule of that role (in particular
+# granting `patch` on clusterroles, or any verb on networkpolicies) turns
+# resource_generic_ac18.py red on purpose.
 #
 # Auth stays ON (MCP_API_KEYS, the throwaway key of auth-fixture.yaml), like
 # commit-status-variant.yaml, so this file adds no GATE entry to
 # docs/e2e-mocking-policy.md. The gate secret ci.yml creates in this namespace
 # carries the primary's values (direct gatekeeper URL, API key, no
 # GATEKEEPER_USER_ID): the e2e decides its approvals by hand, so the 300 s
-# default timeout applies and no auto-response mode can engage. There is no
-# dedicated run_all.py group -- resource_generic_ac18.py runs in the primary
-# group and reaches this Service through its own port-forward, the way
-# github_commit_status_ac4.py reaches its variant.
+# default timeout applies and no auto-response mode can engage.
 apiVersion: v1
 kind: Namespace
 metadata:

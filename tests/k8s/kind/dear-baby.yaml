@@ -58,10 +58,7 @@ spec:
     - port: 6379
       targetPort: redis
 ---
-# 실 dear-baby 백엔드. 여기에 있던 busybox + /reset-user 스텁은 2026-09-26 에
-# docs/e2e-mocking-policy.md 의 IMG 등재와 함께 사라졌다 — 이미지가 공개 패키지이고
-# 그 안에 실 /reset-user 가 있으며 뒤에 필요한 것이 SQLite 파일 하나였기 때문이다.
-# 아래 값들이 그 대체를 서게 하는 것이고, 각각 없으면 조용히 깨지는 것이 다르다:
+# 아래 값들이 없으면 각각 다르게 조용히 깨진다:
 #   * 이미지는 sha 태그로 핀한다(운영이 핀한 그 태그다). :latest 는 dear-baby 레포의
 #     머지가 덮어써서 스키마와 CLI 출력 문면이 이 레포의 단정 밑에서 움직인다.
 #     이 index 는 arm64 단독이라 러너가 arm 이어야 한다(ci.yml 은 ubuntu-24.04-arm).
