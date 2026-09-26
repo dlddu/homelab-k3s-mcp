@@ -193,9 +193,7 @@ type Client struct {
 
 // FromEnv builds a Client from SESSION_PLATFORM_ENDPOINT, the control plane's
 // base URL (in production the cluster-internal
-// http://control-plane.session-platform.svc.cluster.local). It returns
-// (nil, nil) when the variable is unset, signalling that the session platform
-// integration is simply not configured.
+// http://control-plane.session-platform.svc.cluster.local).
 func FromEnv() (*Client, error) {
 	endpoint := strings.TrimSpace(os.Getenv("SESSION_PLATFORM_ENDPOINT"))
 	if endpoint == "" {

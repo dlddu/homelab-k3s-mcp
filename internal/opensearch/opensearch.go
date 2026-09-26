@@ -159,9 +159,7 @@ type Client struct {
 	http     doer
 }
 
-// FromEnv builds a Client from the OPENSEARCH_* environment variables. It
-// returns (nil, nil) when OPENSEARCH_ENDPOINT is unset, signalling that the
-// integration is simply not configured (as opposed to misconfigured).
+// FromEnv builds a Client from the OPENSEARCH_* environment variables.
 //
 // OPENSEARCH_REGION sets the AWS region when the default chain does not
 // provide one (it also determines the SigV4 signing region). When
