@@ -21,7 +21,7 @@ DEFAULT_SELECTOR = "app=dear-baby"
 
 DEFAULT_CONTAINER = "backend"
 
-POD_PREFIX = "dear-baby-fixture-"
+POD_PREFIX = "dear-baby-"
 
 
 async def test_dear_baby_reset_user_ac2_explicit_target(session) -> None:
