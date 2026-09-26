@@ -264,10 +264,17 @@ jobs:
           # the read-time EXPIRED evaluation happens.
           echo "GATEKEEPER_E2E_API_KEY=$GK_KEY" >> "$GITHUB_ENV"
 
+      # approval_gate_ac5.py 의 409·5xx 주입기. gatekeeper 와 같은 PVC 를 마운트해
+      # 실물 SQLite 에 마커 한정 트리거를 걸었다 걷는다(docs/e2e-mocking-policy.md
+      # 「실환경 주입 판정」의 C1~C5). gatekeeper 배포 자체는 건드리지 않는다.
+      - name: Deploy gatekeeper injector
+        run: kubectl apply -f tests/k8s/kind/gatekeeper-injector.yaml
+
       - name: Wait for gatekeeper fixture rollout
         run: |
           kubectl -n gatekeeper rollout status deploy/gatekeeper --timeout=300s
           kubectl -n gatekeeper rollout status deploy/gatekeeper-trace --timeout=180s
+          kubectl -n gatekeeper rollout status deploy/gatekeeper-injector --timeout=180s
 
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
@@ -429,6 +436,13 @@ jobs:
       - name: Apply rbac-narrow fixture
         run: kubectl apply -f tests/k8s/kind/rbac-narrow-fixture.yaml
 
+      # Same image, three broken gate configurations — the only deployments
+      # where approval_gate_ac5.py can observe a dial failure and the two
+      # FromEnv misconfiguration branches. env is per deployment, so these
+      # cannot be folded into an existing variant.
+      - name: Apply gate-broken variants
+        run: kubectl apply -f tests/k8s/kind/gate-broken-variant.yaml
+
       # The session pod image, preloaded into the kind node. The control plane
       # gives a session pod two minutes to report Ready and that budget covers
       # the image pull, so a ~268 MiB cold pull inside it is the difference
@@ -507,6 +521,13 @@ jobs:
 
       - name: Wait for rbac-narrow rollout
         run: kubectl -n homelab-k3s-mcp-rbac-narrow rollout status deploy/homelab-k3s-mcp-rbac-narrow --timeout=120s
+
+      - name: Wait for gate-broken variant rollouts
+        run: |
+          for d in gate-unreachable gate-no-base-url gate-no-api-key; do
+            kubectl -n homelab-k3s-mcp-gate-broken \
+              rollout status "deploy/homelab-k3s-mcp-$d" --timeout=120s
+          done
 
       # Ready before the primary group runs: session_list_ac{1,2}.py seed and
       # read this control plane. The image is pulled from GHCR (not kind-loaded),

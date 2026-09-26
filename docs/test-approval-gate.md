@@ -110,7 +110,8 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `REJECTED`·`EXPIRED`·판정 없음은 실물 판정·만료로, 연결 실패와 두 미설정은 배포 env로 만든다.
   409·5xx는 실물 gatekeeper가 자기 핸들러로 내게 하는 수단이 실측됐고(실물 DB에 마커 한정
   트리거, `e2e-mocking-policy.md` 차단 원장 `approval-gate-ac5-http-failures` 의 「2번 관측 로그」),
-  그 수단의 허용 여부는 같은 행의 3번 판정을 따른다. k8s 호출 0은 대상 객체의 불변으로 관측한다
+  그 수단은 같은 행의 3번 판정이 조건 C1~C5 안에서 허용했다(2026-09-26). k8s 호출 0은 대상
+  객체의 불변으로 관측한다
 - **실행 단계**: 다음을 각각 재현 — `REJECTED`, `EXPIRED`, 타임아웃 내 판정 없음,
   `externalId` 충돌(409), 5xx, 연결 실패, `GATEKEEPER_BASE_URL` 미설정,
   `GATEKEEPER_API_KEY` 미설정
@@ -118,8 +119,14 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `resource_list`와 비게이트 종류의 `resource_get`은 정상 동작. 반대로 **변경은 전부
   멈춘다** — 승인 경로가 죽었는데 변경이 나가면 게이트가 있으나 마나이므로 의도된 동작이다
 - **검증 AC**: AC5
-- **자동화**: (미작성) — 계획: Go 단위 `gatekeeper_test.go::TestFailClosedPaths`(표 기반 8 케이스),
-  `TestReadsSurviveGatekeeperOutage`, `TestAllWritesStopOnGatekeeperOutage`. 통합 `approval_gate_ac5.py`
+- **자동화**: 통합 `tests/integration/approval_gate_ac5.py` — 여덟 경로와 읽기 대조군을 실물
+  gatekeeper 에서 잰다. `REJECTED`·만료·판정 없음은 실물 판정과 만료로, 409·5xx 는
+  `docs/e2e-mocking-policy.md` 의 「실환경 주입 판정」이 조건 C1~C5 안에서 허용한 마커 한정
+  `BEFORE INSERT` 주입으로, 연결 실패와 두 미설정은 `tests/k8s/kind/gate-broken-variant.yaml` 의
+  전용 배포로 만든다. 만료와 「판정 없음」은 이 배포에서 같은 env 에서 파생해 같은 순간에 닫히므로
+  기록 쪽 얼굴(EXPIRED 전이)과 클라이언트 쪽 얼굴(타임아웃을 기다린 뒤의 거부)로 갈라 잰다.
+  Go 단위는 아직 없다 — 계획: `gatekeeper_test.go::TestFailClosedPaths`(표 기반 8 케이스),
+  `TestReadsSurviveGatekeeperOutage`, `TestAllWritesStopOnGatekeeperOutage`
 
 ### 시나리오 6: 승인한 상태와 실행할 상태가 같아야 한다
 - **사전 조건**: kind 실물 gatekeeper + 테스트 Deployment

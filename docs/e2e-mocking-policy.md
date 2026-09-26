@@ -245,7 +245,6 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 
 | ID | 출처 | 등록일 | 해소 방향 | 소관 | 선행 | 재검토 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `approval-gate-ac5-http-failures` | `tbm_homelab-k3s-mcp-scenario-e2e/rct_20260914-0011` | `2026-09-15` | `real-environment` | `tbm_homelab-k3s-mcp-scenario-e2e` | 없음 | `2026-10-15` |
 
 <!-- /mock-blocker-원장 -->
 
@@ -280,10 +279,32 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
    **허용목록에 행을 늘리지 않고 등재 상한도 그대로 5**다. 단 무조건 허용이 아니라 그 절의 조건
    C1~C5 안에서만이며, 난수 ID 고정 같은 제품 개작은 여전히 불허다. 이로써 이 행에 남은 것은
    4번뿐이라 **`소관` 셀을 `tbm_homelab-k3s-mcp-scenario-e2e` 로 넘겼다** — 행과 재검토 날짜는 유지한다.
-4. `tbm_homelab-k3s-mcp-scenario-e2e`가 [시나리오 5](test-approval-gate.md)의 여덟 경로와
+4. ~~`tbm_homelab-k3s-mcp-scenario-e2e`가 [시나리오 5](test-approval-gate.md)의 여덟 경로와
    읽기 대조군을 완성한다. 실제 대체물 또는 승인된 등재와 검증 증거가 착지한 뒤에만 이 행을
    해소하며, 행 삭제 PR에 그 근거를 연결한다. 주입을 쓰는 경우 아래 「실환경 주입 판정」의
-   조건 C1~C5를 만족하는 범위에서만 쓴다.
+   조건 C1~C5를 만족하는 범위에서만 쓴다.~~
+   **충족 (2026-09-26, `tbm_homelab-k3s-mcp-scenario-e2e/rct_20260926-0001`) — 이 행은 해소됐고
+   위 표에서 뺐다.** B3가 요구하는 해소 증거는 셋이다:
+
+   - **대체물이 실재한다**: `tests/integration/approval_gate_ac5.py` 가 여덟 경로
+     (`REJECTED`·만료·판정 없음·409·5xx·연결 실패·`GATEKEEPER_BASE_URL` 미설정·
+     `GATEKEEPER_API_KEY` 미설정)와 읽기 대조군을 덮는다. 주입기는
+     `tests/k8s/kind/gatekeeper-injector.yaml`, 미설정·불통 배포는
+     `tests/k8s/kind/gate-broken-variant.yaml` 이다.
+   - **등재를 늘리지 않았다**: 허용목록은 5행 그대로다(`scripts/check_mock_policy.py` 의
+     「등재 5(상한 5)」). 3번 판정대로 주입은 이 정책이 세는 모킹이 아니므로 등재 대상이 아니다.
+   - **C1~C5 안에 있다**: C1 응답은 실물 핸들러·실물 고유 인덱스가 만든다(테스트는 409·500 을
+     *관측*할 뿐 문자열을 짓지 않는다) · C2 트리거 WHEN 절은
+     `instr(NEW.context, '<대상 이름>') > 0` 이고 폴링 `BEGIN EXCLUSIVE` 는 쓰지 않았다 ·
+     C3 제품 경로(`internal/`·`cmd/`·`main.go`·`k8s/`)와 `gatekeeper-fixture.yaml` 접촉 0줄 ·
+     C4 주입기가 arm 때 프로브로 트리거 발화를 확인하고 테스트가 케이스마다·실행 끝에
+     `triggers: [] · shadow_rows: 0` 을 스스로 단언한다 · C5 거부가 대상 ConfigMap 을 바꾸지
+     않았음을 여덟 경우 모두 클러스터에서 읽어 확인한다.
+
+   「2번 관측 로그」가 4번의 첫 확인 항목으로 넘긴 미관측 사항(주입기가 `gatekeeper-pvc` 를
+   함께 마운트할 수 있는가, uid 1001 로 DB·저널에 쓸 수 있는가)은 이 슬라이스가 닫았다 — kind 는
+   단일 노드라 ReadWriteOnce PVC 를 같은 노드의 두 파드가 함께 마운트하고, 주입기는 픽스처와
+   같은 uid·fsGroup 1001 로 돈다.
 
 실물 픽스처가 먼저 착지하면 그때 재검토하고, 아직 없더라도 표의 날짜에 다시 본다.
 이 원장을 받는 슬라이스는 E2E 구현 대기 행을 해제하거나 새 모킹을 승인하지 않는다.
