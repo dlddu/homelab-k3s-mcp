@@ -109,9 +109,7 @@ type Client struct {
 	statusContextPrefixes []string
 }
 
-// FromEnv builds a Client from the GITHUB_APP_* environment variables. It
-// returns (nil, nil) when GITHUB_APP_CLIENT_ID is unset, signalling that the
-// GitHub integration is simply not configured (as opposed to misconfigured).
+// FromEnv builds a Client from the GITHUB_APP_* environment variables.
 func FromEnv() (*Client, error) {
 	clientID := os.Getenv("GITHUB_APP_CLIENT_ID")
 	if clientID == "" {
