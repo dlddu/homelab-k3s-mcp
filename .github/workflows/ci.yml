@@ -21,7 +21,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # 무거운 두 job(unit tests · integration tests)을 PR 이 실제로 건드린 경로로 거른다.
+  # 무거운 job(unit tests · integration tests · image)을 PR 이 실제로 건드린 경로로 거른다.
   # 워크플로 레벨 `paths:` 를 쓰지 않는 이유: 그러면 `ci passed` 체크 자체가 생기지 않아
   # 필수 체크가 영원히 pending 이 된다. 그래서 job 레벨 `if:` 로 거르고, ci passed 는
   # 여기서 「안 돌아도 된다」고 판정한 job 의 skipped 만 통과로 친다. lint 는 docs/ 를 읽는
@@ -29,6 +29,10 @@ jobs:
   #
   # `app` 은 제외 목록이다 — 이미지·kind 픽스처·통합 테스트에 닿지 않는다고 확인된 경로만
   # 적고, 나머지(새 디렉터리 포함)는 전부 돌린다.
+  #
+  # `image` 는 docker-build-push.yaml 의 main push `paths:` 와 같은 제외 목록이다(발행 이미지
+  # 내용이 바뀌는가). 한쪽만 고치면 PR 과 main 의 판정이 갈린다 — 두 파일을 같이 고칠 것.
+  # 차이는 ci.yml 하나다: 호출 배선(`image` 잡)이 여기 있어 PR 에서는 검증 대상이다.
   changes:
     name: changes
     runs-on: ubuntu-24.04-arm
@@ -36,6 +40,7 @@ jobs:
     outputs:
       go: ${{ steps.filter.outputs.go }}
       app: ${{ steps.filter.outputs.app }}
+      image: ${{ steps.filter.outputs.image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,11 +53,12 @@ jobs:
         run: |
           if ! files=$(git diff --name-only HEAD^1 HEAD); then
             echo "::warning::변경 파일을 구하지 못했다 — 전부 돌린다."
-            { echo go=true; echo app=true; } >> "$GITHUB_OUTPUT"
+            { echo go=true; echo app=true; echo image=true; } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           go=false
           app=false
+          image=false
           while IFS= read -r f; do
             [ -n "$f" ] || continue
             case "$f" in
@@ -63,10 +69,15 @@ jobs:
               .github/workflows/warm-caches.yml) ;;
               *) app=true ;;
             esac
+            case "$f" in
+              .github/workflows/docker-build-push.yaml|.github/workflows/ci.yml) image=true ;;
+              docs/*|scripts/*|tests/*|*.md|*_test.go|.gitignore|.github/*) ;;
+              *) image=true ;;
+            esac
           done <<< "$files"
           echo "$files"
-          echo "go=$go app=$app"
-          { echo "go=$go"; echo "app=$app"; } >> "$GITHUB_OUTPUT"
+          echo "go=$go app=$app image=$image"
+          { echo "go=$go"; echo "app=$app"; echo "image=$image"; } >> "$GITHUB_OUTPUT"
 
   lint:
     name: fmt + vet
@@ -714,12 +725,22 @@ jobs:
           kubectl -n homelab-k3s-mcp-oauth logs -l app.kubernetes.io/name=homelab-k3s-mcp-no-auth --tail=200 --previous || true
 
   # PR head SHA 이미지 발행(프리뷰 환경이 그 태그를 쓴다). 발행이 실패하면 `ci passed` 가
-  # 실패하도록 여기서 부른다. 테스트를 기다리지 않는 것은 의도적이다 — 문서만 고친 PR 도
-  # `deploy/preview` 라벨이 붙으면 그 SHA 에 이미지가 있어야 한다.
+  # 실패하도록 여기서 부른다. 테스트는 기다리지 않는다 — 프리뷰는 테스트와 별개로 뜬다.
+  #
+  # 발행 이미지 내용에 닿지 않는 PR(changes 의 `image`)은 건너뛴다. 단 `deploy/preview`
+  # 라벨이 이미 붙어 있으면 돌린다 — 프리뷰가 head SHA 태그를 pull 하므로 없으면 ImagePullBackOff
+  # 다. 라벨 판정은 이 run 을 연 이벤트 시점의 것이고 ci.yml 은 `labeled` 에 걸려 있지 않다.
+  # 그래서 문서만 고친 PR 에 라벨을 *나중에* 붙이면 그 SHA 에는 이미지가 없다(re-run 도
+  # 같은 페이로드를 본다) — 새 커밋을 올리면 이 조건으로 발행된다.
+  #
   # docker-build-push.yaml 의 pin 잡이 contents: write 를 선언하므로 호출하는 쪽도 그만큼
   # 허용해야 워크플로가 유효하다. pin 자체는 PR 에서 조건상 skip 된다.
   image:
     name: image
+    needs: changes
+    if: >-
+      needs.changes.outputs.image == 'true' ||
+      contains(github.event.pull_request.labels.*.name, 'deploy/preview')
     permissions:
       contents: write
       packages: write
@@ -748,7 +769,8 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
           SKIP_OK: >-
             {"unit-tests": "${{ needs.changes.outputs.go == 'false' }}",
-             "integration-tests": "${{ needs.changes.outputs.app == 'false' }}"}
+             "integration-tests": "${{ needs.changes.outputs.app == 'false' }}",
+             "image": "${{ needs.changes.outputs.image == 'false' }}"}
         run: |
           echo "$RESULTS" | jq -r --argjson ok "$SKIP_OK" \
             'to_entries[] | "\(.key): \(.value.result)\(if $ok[.key] == "true" then " (skip 허용)" else "" end)"'
