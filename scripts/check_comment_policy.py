@@ -13,10 +13,10 @@
 
 클러스터도 서드파티 의존성도 필요 없다(표준 라이브러리 전용) — CI 의 lint 잡에서 돈다.
 
-판정 대상은 **두 표면**이다. 정책의 「지문의 사각지대」 절이 적어 두었듯 줄 주석 지문은
-`^\\s*(//|#)` 에 걸리는 줄만 보는데, Python docstring 본문은 줄 접두사로 식별되지 않아
-그 지문에 잡히지 않는다. 하나의 정규식을 넓혀 둘을 함께 재는 길은 없으므로(파서가 필요하다)
-**표면을 나란히 두고 각각 재측정한다.** 표면이 갈려 있으므로 줄 주석 원장은 흔들리지 않고,
+판정 대상은 **두 표면**이다. 정책의 「지문의 사각지대」 절이 적어 두었듯 줄 주석 지문은 그
+파일이 드는 **언어군의 주석 줄 접두사**에 걸리는 줄만 보는데, Python docstring 본문은 줄
+접두사로 식별되지 않아 그 지문에 잡히지 않는다. 언어군 표를 넓혀도 둘을 함께 재는 길은
+없으므로(파서가 필요하다) **표면을 나란히 두고 각각 재측정한다.** 표면이 갈려 있으므로 줄 주석 원장은 흔들리지 않고,
 docstring 판정은 슬라이스마다 누적할 수 있다.
 
 줄 주석 표면 — 모델 `tbm_homelab-k3s-mcp-comment-redundancy` 의 as-is 지문과 같은 정의:
@@ -84,15 +84,89 @@ POLICY_DIR = REPO_ROOT / "docs" / "comment-policy"
 POLICY_README = POLICY_DIR / "README.md"
 LEDGER = POLICY_DIR / "ledger.md"
 
-# 아래 넷은 모델 tbm_homelab-k3s-mcp-comment-redundancy 의 as-is 버전 스크립트와 글자 그대로
-# 같은 정의다. 하나라도 갈리면 이 게이트가 강제하는 지문이 모델이 관측하는 지문과 다른 것을
-# 재므로, 고칠 때는 모델 정의와 함께 고칠 것.
-SCAN_PATHSPECS = ("main.go", "internal", "tests", "scripts")
-SCAN_EXCLUDE_RE = re.compile(r"(^|/)(\.venv|vendor|node_modules)/|\.pb\.go$")
-COMMENT_RE = re.compile(r"^\s*(//|#)")
-DIRECTIVE_RE = re.compile(
-    r"//go:|nolint|#!|# ?noqa|# ?type:|# ?pragma|검증 AC:|mock-exception:"
+# 아래 정의들은 모델 tbm_homelab-k3s-mcp-comment-redundancy 의 as-is 버전 스크립트와 글자
+# 그대로 같은 정의다. 하나라도 갈리면 이 게이트가 강제하는 지문이 모델이 관측하는 지문과 다른
+# 것을 재므로, 고칠 때는 모델 정의와 함께 고칠 것. 재현이 맞다는 것은 **바이트 일치**로
+# 확인한다 — 같은 트리에서 이 게이트의 인구조사와 모델 지문 스크립트의 `lines=/files=/
+# unclassified=` 가 어긋나면 그중 하나가 틀린 것이다.
+#
+# 범위는 포함 목록이 아니라 「레포 전체 − 제외」다(2026-09-26 범위 개정). 포함 목록이던 동안
+# 이 게이트는 `.github/`·`k8s/`·`Dockerfile` 의 주석 375줄을 **아예 보지 않으면서 rc=0** 이었다
+# — 범위 밖 파일은 R1~R3 의 재측정 대상이 아니고 R4 의 실측 집합에도 없어서, 초록이 「정합」이
+# 아니라 「측정되지 않음」을 뜻하는 상태가 됐다. 포함 목록의 값은 등록 시점의 판단인데 레포는
+# 계속 자라므로, 목록을 늘리는 사람이 없으면 사각지대는 조용히 커진다.
+
+# 제외 부류 ① 복원 원본(저장소 문서는 판정의 기준이지 대상이 아니다) · ② 편집 불가(벤더·
+# 의존성·빌드 산출물·락 파일).
+FIXED_EXCLUDE_RE = re.compile(
+    r"^docs/|\.md$"
+    r"|(^|/)(vendor|node_modules|dist|build|target|\.venv|venv|__pycache__|\.next|coverage)/"
+    r"|(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|go\.sum|uv\.lock|poetry\.lock"
+    r"|Cargo\.lock|Pipfile\.lock)$"
 )
+# 레포 고유 제외는 모델이 아니라 정책 본문의 이 블록에 둔다 — 그래야 정책 문서를 고치는 대상
+# 레포 PR 하나로 범위가 수렴하고, 모델을 건드리러 control plane 까지 가지 않는다.
+SCOPE_EXCLUDE_FENCE = "comment-scope-exclude"
+# ② 의 나머지 절반: 경로가 아니라 **머리의 생성 표식**으로 가리는 산출물.
+GENERATED_RE = re.compile(r"DO NOT EDIT|@generated")
+GENERATED_HEAD_LINES = 5
+
+DIRECTIVE_RE = re.compile(
+    r":#!|//go:|nolint|eslint-|@ts-|prettier-ignore|/// <reference|istanbul ignore"
+    r"|c8 ignore|# ?noqa|# ?type:|# ?pragma|# ?pylint:|# ?fmt:|shellcheck |# ?syntax="
+    r"|yaml-language-server:|검증 AC:|mock-exception:"
+)
+
+# LC_ALL=C 의 `[[:space:]]` 에서 줄바꿈을 뺀 것. `\s` 를 쓰면 유니코드 공백까지 걸려 모델의
+# ERE 보다 넓어진다 — 넓은 쪽이 안전해 보이지만 두 정의가 갈리는 것 자체가 이 파일이 막으려는
+# 실패다.
+_INDENT = r"[ \t\v\f\r]*"
+# 견본 접미사는 떼고 본 확장자로 가른다(`secret.yaml.example` → `#` 언어군).
+_SUFFIX = r"(\.(example|sample|template|tmpl|tpl|dist|in|j2))?$"
+# 파일명 ERE → 주석 줄 ERE. 한 파일은 **위에서부터 처음 맞는 군 하나**에 든다(순서가 규칙의
+# 일부다 — `requirements.txt` 는 `#` 군에 들어야 하고, 아래 NONE 군의 `\.txt` 에 먼저 걸리면
+# 주석이 통째로 사라진다). 주석 줄 ERE 가 None 인 군은 **주석 문법이 없는 데이터·자산**이라
+# 스캔하지 않는다(제외 부류 ③).
+LANGUAGE_GROUPS = (
+    (
+        re.compile(
+            r"\.(go|rs|java|kt|kts|scala|groovy|gradle|swift|c|h|cc|cpp|hpp|cs|m|js|jsx"
+            r"|mjs|cjs|ts|tsx|mts|cts|css|scss|less|proto|jsonc)"
+            + _SUFFIX
+            + r"|(^|/)(go\.mod|go\.work|tsconfig[^/]*\.json|jsconfig[^/]*\.json"
+            r"|\.devcontainer/[^/]*\.json)$"
+        ),
+        re.compile(_INDENT + r"(//|/\*|\*([ \t]|$)|\{/\*)"),
+    ),
+    (
+        re.compile(
+            r"\.(py|pyi|rb|sh|bash|zsh|fish|pl|r|ya?ml|toml|tf|tfvars|hcl|cfg|conf|ini"
+            r"|mk|dockerfile|nix|awk|sed)"
+            + _SUFFIX
+            + r"|(^|/)(Makefile|GNUmakefile|Dockerfile[^/]*|Containerfile|Caddyfile"
+            r"|\.gitignore|\.dockerignore|\.gitattributes|\.helmignore|\.editorconfig"
+            r"|\.env[^/]*|CODEOWNERS|requirements[^/]*\.txt)$"
+        ),
+        re.compile(_INDENT + r"#"),
+    ),
+    (re.compile(r"\.(sql|lua|hs|elm|ada|adb)" + _SUFFIX), re.compile(_INDENT + r"--")),
+    (
+        re.compile(r"\.(html?|vue|svelte|astro)" + _SUFFIX),
+        re.compile(_INDENT + r"(<!--|//|/\*|\*([ \t]|$)|\{/\*)"),
+    ),
+    (re.compile(r"\.(xml|svg|xhtml|plist|xsd|xsl)" + _SUFFIX), re.compile(_INDENT + r"<!--")),
+    (
+        re.compile(
+            r"\.(json|jsonl|ndjson|csv|tsv|txt|avsc|snap|golden|pem|crt|key|pub|patch"
+            r"|diff|log|lock|sum|mod|map|http)"
+            + _SUFFIX
+            + r"|(^|/)(LICENSE[^/]*|NOTICE|AUTHORS|\.nvmrc|\.node-version|\.python-version"
+            r"|\.tool-versions|\.gitkeep|py\.typed)$"
+        ),
+        None,
+    ),
+)
+SCOPE_LABEL = "레포 전체 − 제외 세 부류(복원 원본 · 편집 불가 · 주석 문법 없는 데이터·자산)"
 
 # docstring 표면에서만 쓰는 제외 목록. `run_all.py` 가 모듈 docstring 에서 파싱하는 선언
 # 필드들이고, DIRECTIVE_RE 의 `검증 AC:` 와 같은 자리에 있다(그쪽은 두 표면이 공유한다).
@@ -137,22 +211,103 @@ def fail(rule: str, message: str) -> None:
     failures.append(f"[{rule}] {message}")
 
 
+def repo_exclude_res() -> list[str]:
+    """정책 본문의 `comment-scope-exclude` 블록(한 줄에 ERE 하나). 없으면 빈 목록.
+
+    블록 안에 설명을 적을 수 없다는 점이 중요하다 — **비지 않은 모든 줄이 ERE** 로 읽히므로
+    주석처럼 보이는 한 줄이 곧 범위를 깎는 패턴이 된다. 그래서 부류(①②③)는 블록 밖 산문에
+    적는다. ERE 가 깨졌으면 빈 범위로 조용히 뭉개지 않고 멈춘다.
+    """
+    fence = f"```{SCOPE_EXCLUDE_FENCE}"
+    text = POLICY_README.read_text(encoding="utf-8")
+    out: list[str] = []
+    inside = False
+    for line in text.splitlines():
+        if not inside:
+            if line.strip() == fence:
+                inside = True
+            continue
+        if line.startswith("```"):
+            break
+        if line.strip():
+            out.append(line)
+    for pattern in out:
+        try:
+            re.compile(pattern)
+        except re.error as exc:
+            raise SystemExit(
+                f"{POLICY_README.name} 의 {SCOPE_EXCLUDE_FENCE} 블록에 깨진 ERE 가 있다"
+                f" — {pattern!r}: {exc}"
+            )
+    return out
+
+
+def language_pattern(rel: str) -> re.Pattern[str] | None:
+    """이 경로가 드는 언어군의 주석 줄 ERE. 데이터·자산 군이면 None.
+
+    분류 자체에 실패하면(확장자로 못 가르고 shebang 도 없다) `KeyError` 대신 예외를 올리지
+    않는다 — 미분류는 **실패가 아니라 관측 대상**이고, 모델 지문은 그 경로를 지문에 넣어
+    재감지를 돌린다. 이 게이트도 같은 자리를 인구조사에 인쇄한다.
+    """
+    for names, comment in LANGUAGE_GROUPS:
+        if names.search(rel):
+            return comment
+    try:
+        head = (REPO_ROOT / rel).read_bytes()[:2]
+    except OSError:
+        return None
+    if head == b"#!":
+        return LANGUAGE_GROUPS[1][1]
+    return None
+
+
+def is_scannable(rel: str) -> bool:
+    """텍스트이고 생성 산출물이 아닌가(제외 부류 ② 의 나머지 절반)."""
+    try:
+        raw = (REPO_ROOT / rel).read_bytes()
+    except OSError:
+        return False
+    if b"\0" in raw:
+        return False
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return not GENERATED_RE.search("\n".join(text.splitlines()[:GENERATED_HEAD_LINES]))
+
+
 def scan_files() -> list[str]:
-    """모델 as-is 지문과 동일한 스캔 범위(레포 상대 경로, 정렬)."""
+    """모델 as-is 지문과 동일한 스캔 범위(레포 상대 경로, 정렬).
+
+    포함 목록이 아니라 「레포 전체 − 제외」다. 새 디렉터리는 등록 없이 자동으로 범위에 든다.
+    """
     out = subprocess.run(
-        ["git", "ls-files", "--", *SCAN_PATHSPECS],
+        ["git", "ls-files"],
         cwd=REPO_ROOT,
         capture_output=True,
         text=True,
         check=True,
     ).stdout
-    paths = [ln for ln in out.splitlines() if ln and not SCAN_EXCLUDE_RE.search(ln)]
+    exclude = [FIXED_EXCLUDE_RE.pattern] + repo_exclude_res()
+    exclude_re = re.compile("|".join(exclude))
+    paths = [ln for ln in out.splitlines() if ln and not exclude_re.search(ln)]
+    paths = [rel for rel in paths if is_scannable(rel)]
     if not paths:
         raise SystemExit(
             "스캔 범위가 비어 있다 — git ls-files 가 아무 파일도 돌려주지 않았다. "
             "레포 루트에서 실행 중인지 확인할 것."
         )
     return sorted(paths)
+
+
+def unclassified_files(paths: list[str]) -> list[str]:
+    """어느 언어군에도 들지 않은 파일. 해소는 정책 본문의 제외 블록이나 템플릿 언어군이다."""
+    return sorted(
+        rel
+        for rel in paths
+        if language_pattern(rel) is None
+        and not any(names.search(rel) for names, comment in LANGUAGE_GROUPS if comment is None)
+    )
 
 
 def comment_lines(paths: list[str]) -> list[str]:
@@ -162,12 +317,15 @@ def comment_lines(paths: list[str]) -> list[str]:
     """
     hits: list[str] = []
     for rel in sorted(paths):
+        pattern = language_pattern(rel)
+        if pattern is None:
+            continue
         try:
             text = (REPO_ROOT / rel).read_text(encoding="utf-8")
         except (UnicodeDecodeError, FileNotFoundError):
             continue
         for line in text.splitlines():
-            if not COMMENT_RE.match(line):
+            if not pattern.match(line):
                 continue
             entry = f"{rel}:{line}"
             if DIRECTIVE_RE.search(entry):
@@ -271,7 +429,7 @@ def parse_ledger(text: str, heading: str) -> list[dict]:
     return rows
 
 
-def census(hits: list[str]) -> str:
+def census(hits: list[str], unclassified: list[str]) -> str:
     files = sorted({h.split(":", 1)[0] for h in hits})
     buckets = {"Go 소스": 0, "Go 테스트": 0, "YAML": 0, "Python": 0, "기타": 0}
     for hit in hits:
@@ -287,7 +445,11 @@ def census(hits: list[str]) -> str:
         else:
             buckets["기타"] += 1
     breakdown = " · ".join(f"{k} {v}" for k, v in buckets.items() if v)
-    return f"판정 대상 주석 {len(hits)}줄 / {len(files)}파일 ({breakdown})"
+    return (
+        f"판정 대상 주석 {len(hits)}줄 / {len(files)}파일 ({breakdown})"
+        f" · 미분류 {len(unclassified)}"
+        + (f" [{', '.join(unclassified[:5])}]" if unclassified else "")
+    )
 
 
 def docstring_census(hits: list[str]) -> str:
@@ -312,8 +474,8 @@ def check_ledger(
                 fail(
                     existence,
                     f"{row['date']} 행의 `{rel}` 이 정책 스캔 범위에 없다"
-                    f" (범위: {' · '.join(SCAN_PATHSPECS)}). 파일이 사라졌거나 이름이"
-                    " 바뀌었으면 그 범위는 다시 판정받아야 한다.",
+                    f" (범위: {SCOPE_LABEL}). 파일이 사라졌거나 이름이 바뀌었으면"
+                    " 그 범위는 다시 판정받아야 한다.",
                 )
             elif only_python and not rel.endswith(".py"):
                 fail(
@@ -478,7 +640,9 @@ def main() -> int:
     rows = parse_ledger(text, LEDGER_SECTION)
     doc_rows = parse_ledger(text, DOC_LEDGER_SECTION)
 
-    in_scope = set(scan_files())
+    scanned = scan_files()
+    in_scope = set(scanned)
+    unclassified = unclassified_files(scanned)
     hits = comment_lines(sorted(in_scope))
     doc_hits = docstring_lines(sorted(in_scope))
 
@@ -514,7 +678,8 @@ def main() -> int:
         for line in failures:
             print(line, file=sys.stderr)
         print(
-            f"\nFAIL: {len(failures)}건 — {census(hits)} · {docstring_census(doc_hits)}",
+            f"\nFAIL: {len(failures)}건 — {census(hits, unclassified)}"
+            f" · {docstring_census(doc_hits)}",
             file=sys.stderr,
         )
         return 1
@@ -522,7 +687,7 @@ def main() -> int:
     share = (tally["lines_done"] * 100.0 / len(hits)) if hits else 0.0
     doc_share = (doc_tally["lines_done"] * 100.0 / len(doc_hits)) if doc_hits else 0.0
     print(
-        f"OK: 규칙 R1~R11 위반 없음 — {census(hits)}"
+        f"OK: 규칙 R1~R11 위반 없음 — {census(hits, unclassified)}"
         f" · 원장 {len(rows)}행 / 등재 범위 {ledger_sum}줄"
         f" · 네 경로 판정 완료 {tally['done']}행 {tally['lines_done']}줄({share:.1f}%)"
         f" · 미판정(—) {tally['unjudged']}행"
