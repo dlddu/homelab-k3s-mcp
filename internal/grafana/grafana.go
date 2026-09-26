@@ -109,11 +109,7 @@ type Client struct {
 	http         *http.Client
 }
 
-// FromEnv builds a Client from the GRAFANA_* environment variables. It returns
-// (nil, nil) when GRAFANA_ISSUER_TOKEN is unset, signalling that the Grafana
-// integration is simply not configured. When the issuer token is set but a
-// required companion variable is missing, it returns an error (a
-// misconfiguration) rather than silently dropping it.
+// FromEnv builds a Client from the GRAFANA_* environment variables.
 func FromEnv() (*Client, error) {
 	issuerToken := os.Getenv("GRAFANA_ISSUER_TOKEN")
 	if issuerToken == "" {
@@ -163,8 +159,7 @@ func FromEnv() (*Client, error) {
 	}, nil
 }
 
-// CreateToken mints a fresh token under the configured access policy that
-// expires one hour from now and returns it alongside the static query config.
+// CreateToken mints a fresh token under the configured access policy.
 func (c *Client) CreateToken(ctx context.Context) (*Credentials, error) {
 	name := tokenName()
 	expiresAt := time.Now().Add(tokenTTL).UTC().Format(time.RFC3339)
