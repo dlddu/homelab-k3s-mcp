@@ -31,9 +31,16 @@ var gatedVerbs = map[string]bool{
 // toolDeclaration is one row of the (verb, resource[/subresource]) table AC1
 // requires every tool to publish.
 type toolDeclaration struct {
-	// pairs is what this tool exercises against the apiserver. Empty means the
-	// tool touches no kubernetes resource at all (the platform integrations).
+	// pairs is what this tool exercises against the apiserver. Empty on its own
+	// says nothing: a tool that reaches no resource says so in
+	// noResourcePermission, and one that says neither fails startup (AC1).
 	pairs []gatekeeper.Pair
+
+	// noResourcePermission is AC1's ⑵ — the explicit statement, with its
+	// reason, that this tool exercises no (verb, resource) permission. Exactly
+	// one of it and a pair declaration is set; validateDeclarations refuses a
+	// registry where any tool has both or neither.
+	noResourcePermission *noResourcePermission
 
 	// resolve derives the pair from one call's own arguments, for the generic
 	// tools whose resource is an argument rather than a constant. A static table
@@ -98,14 +105,20 @@ const (
 // to guarantee that is to make it impossible to register one without the other.
 var toolRegistry = map[string]toolEntry{
 	"ping": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "answers from a constant; reaches no backend at all",
+		}},
 		handle: func(*Handler, context.Context, json.RawMessage) (any, *rpcErr) {
 			return toolText("pong", false), nil
 		},
 	},
 
 	"api_resources": {
-		// Discovery is not a resource permission, so this tool declares no pair
-		// (prd-resource-generic AC20).
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   discoveryOnly,
+			reason: "discovery is not a resource permission (prd-resource-generic AC20)",
+		}},
 		handle: func(h *Handler, ctx context.Context, _ json.RawMessage) (any, *rpcErr) {
 			return h.apiResources(ctx)
 		},
@@ -191,25 +204,79 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).dearBabyResetUser,
 	},
 
-	"github_app_installation_token": {handle: (*Handler).githubAppInstallationToken},
-	"github_commit_status_create":   {handle: (*Handler).githubCommitStatusCreate},
-	"opensearch_search":             {handle: (*Handler).opensearchSearch},
-	"opensearch_document_put":       {handle: (*Handler).opensearchDocumentPut},
-	"opensearch_document_delete":    {handle: (*Handler).opensearchDocumentDelete},
-	"session_read":                  {handle: (*Handler).sessionRead},
-	"session_write":                 {handle: (*Handler).sessionWrite},
+	"github_app_installation_token": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "mints a GitHub installation token; reaches GitHub, never the apiserver",
+		}},
+		handle: (*Handler).githubAppInstallationToken,
+	},
+	"github_commit_status_create": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "writes a GitHub commit status; reaches GitHub, never the apiserver",
+		}},
+		handle: (*Handler).githubCommitStatusCreate,
+	},
+	"opensearch_search": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "queries OpenSearch; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).opensearchSearch,
+	},
+	"opensearch_document_put": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "writes an OpenSearch document; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).opensearchDocumentPut,
+	},
+	"opensearch_document_delete": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "deletes an OpenSearch document; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).opensearchDocumentDelete,
+	},
+	"session_read": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "reads through the session platform API; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).sessionRead,
+	},
+	"session_write": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "writes through the session platform API; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).sessionWrite,
+	},
 
 	"aws_config_get": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "returns AWS config; reaches AWS, never the apiserver",
+		}},
 		handle: func(h *Handler, ctx context.Context, _ json.RawMessage) (any, *rpcErr) {
 			return h.awsConfigGet(ctx)
 		},
 	},
 	"grafana_token": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "mints a Grafana Cloud token; reaches Grafana, never the apiserver",
+		}},
 		handle: func(h *Handler, ctx context.Context, _ json.RawMessage) (any, *rpcErr) {
 			return h.grafanaToken(ctx)
 		},
 	},
 	"session_list": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "lists sessions through the session platform API; reaches no kubernetes resource",
+		}},
 		handle: func(h *Handler, ctx context.Context, _ json.RawMessage) (any, *rpcErr) {
 			return h.sessionList(ctx)
 		},
@@ -412,9 +479,12 @@ func resourceIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
 }
 
 // validateRegistry checks that the dispatchable tools and the advertised tools
-// are the same set. tools/list is what a client believes it may call, so a name
-// in one and not the other is either a tool nobody can reach or a tool nobody
-// declared — and an undeclared tool is exactly the hole AC1 closes.
+// are the same set, and that every dispatchable tool has declared what it
+// exercises. tools/list is what a client believes it may call, so a name in one
+// and not the other is either a tool nobody can reach or a tool nobody
+// declared — and an undeclared tool is exactly the hole AC1 closes. Names
+// matching is not enough for that: a name can be on both sides with no pairs
+// behind it, so validateDeclarations runs here too.
 func validateRegistry(registered map[string]toolEntry, advertised []string) error {
 	adv := make(map[string]bool, len(advertised))
 	for _, name := range advertised {
@@ -447,6 +517,7 @@ func validateRegistry(registered map[string]toolEntry, advertised []string) erro
 			problems = append(problems, fmt.Sprintf("%s has no handler", name))
 		}
 	}
+	problems = append(problems, validateDeclarations(registered)...)
 	if len(problems) == 0 {
 		return nil
 	}

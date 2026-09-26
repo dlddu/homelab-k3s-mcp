@@ -553,6 +553,45 @@ func TestValidateRegistryRejectsMismatches(t *testing.T) {
 			advertised: []string{"resource_delete"},
 			want:       "has no handler",
 		},
+		{
+			// AC1's ⑴: an empty declaration is not a marker.
+			name:       "neither pairs nor marker",
+			registered: map[string]toolEntry{"quiet_tool": {handle: reachesKubernetes}},
+			advertised: []string{"quiet_tool"},
+			want:       "an empty declaration is not a marker",
+		},
+		{
+			name: "both pairs and marker",
+			registered: map[string]toolEntry{"loud_tool": {
+				decl: toolDeclaration{
+					pairs:                []gatekeeper.Pair{{Verb: "get", Resource: "pods"}},
+					noResourcePermission: &noResourcePermission{kind: touchesNothing, reason: "contradicts the pair above"},
+				},
+				handle: reachesKubernetes,
+			}},
+			advertised: []string{"loud_tool"},
+			want:       "AC1 asks for exactly one",
+		},
+		{
+			// The marker carries a reason because AC1 asks for one; a bare
+			// claim is the same silence in a different shape.
+			name: "marker without a reason",
+			registered: map[string]toolEntry{"terse_tool": {
+				decl:   toolDeclaration{noResourcePermission: &noResourcePermission{kind: touchesNothing}},
+				handle: reachesKubernetes,
+			}},
+			advertised: []string{"terse_tool"},
+			want:       "without saying why",
+		},
+		{
+			name: "marker of an unknown kind",
+			registered: map[string]toolEntry{"odd_tool": {
+				decl:   toolDeclaration{noResourcePermission: &noResourcePermission{kind: "whatever", reason: "not one of the two"}},
+				handle: reachesKubernetes,
+			}},
+			advertised: []string{"odd_tool"},
+			want:       "unknown kind",
+		},
 	}
 
 	for _, tc := range cases {
@@ -567,8 +606,30 @@ func TestValidateRegistryRejectsMismatches(t *testing.T) {
 		})
 	}
 
-	if err := validateRegistry(map[string]toolEntry{"ping": {handle: reachesKubernetes}}, []string{"ping"}); err != nil {
+	consistent := map[string]toolEntry{"ping": {
+		decl:   toolDeclaration{noResourcePermission: &noResourcePermission{kind: touchesNothing, reason: "answers from a constant"}},
+		handle: reachesKubernetes,
+	}}
+	if err := validateRegistry(consistent, []string{"ping"}); err != nil {
 		t.Errorf("validateRegistry() on a consistent pair = %v, want nil", err)
+	}
+}
+
+// AC1: every shipped tool is on one side of the declaration line — a pair it
+// exercises, or a marker saying it exercises none. The production registry is
+// the set this has to hold for; a count here would go stale, so this asserts
+// the property on every entry instead.
+func TestProductionRegistryDeclaresEveryTool(t *testing.T) {
+	for name, entry := range toolRegistry {
+		d := entry.decl
+		declaresPairs := len(d.pairs) > 0 || d.resolve != nil
+		marked := d.noResourcePermission != nil
+		if declaresPairs == marked {
+			t.Errorf("%s: declaresPairs=%v marked=%v, want exactly one", name, declaresPairs, marked)
+		}
+		if marked && d.noResourcePermission.reason == "" {
+			t.Errorf("%s: no-resource-permission marker carries no reason", name)
+		}
 	}
 }
 
