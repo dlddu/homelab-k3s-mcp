@@ -56,10 +56,6 @@ func isError(result any) bool {
 	return m["isError"] == true
 }
 
-// AC1 (call time), the case its verification method names: a tool that
-// declares pair A and exercises pair B is refused even with an approval in
-// hand, the kubernetes call count stays 0, and the tool call ends in failure.
-//
 // The approval is the point of the "even with" — the startup half cannot see
 // this at all, and the gate happily approves A because A is what the
 // declaration says. Only the client the handler is handed can tell that B is
@@ -93,9 +89,6 @@ func TestDeclaredPairIsTheOnlyOneExercised(t *testing.T) {
 	}
 }
 
-// AC1's ⑵ at call time: a marker says the tool exercises no resource
-// permission, and the client it gets has to make that true. discoveryOnly is
-// the one marker that still permits something, and it permits only discovery.
 func TestMarkerToolsAreConfinedToWhatTheMarkerAllows(t *testing.T) {
 	discoveryMarker := &noResourcePermission{kind: discoveryOnly, reason: "discovery is not a resource permission"}
 	nothingMarker := &noResourcePermission{kind: touchesNothing, reason: "reaches no backend at all"}
@@ -131,12 +124,6 @@ func TestMarkerToolsAreConfinedToWhatTheMarkerAllows(t *testing.T) {
 	}
 }
 
-// AC1's last verification sentence: "각 도구의 정상 호출이 호출 제한에 걸리지
-// 않는다(선언이 실제 행사와 같다)". Every shipped tool that may touch the
-// cluster is driven through the real dispatcher here, and reaching the fake is
-// the assertion — a declaration that named the wrong pair would refuse the call
-// before the fake saw it.
-//
 // The coverage check at the end is what keeps this honest as tools are added: a
 // new tool that declares pairs, or one marked discovery-only, has to appear in
 // the table, so "we forgot to check this one" fails the build instead of
@@ -191,7 +178,7 @@ metadata:
 	for name, entry := range toolRegistry {
 		marker := entry.decl.noResourcePermission
 		if marker != nil && marker.kind == touchesNothing {
-			continue // reaches no kubernetes resource, so there is nothing to confine
+			continue
 		}
 		if !covered[name] {
 			t.Errorf("%s may touch the cluster but no case checks that its declaration matches what it exercises", name)

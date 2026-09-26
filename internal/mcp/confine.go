@@ -40,12 +40,6 @@ func resourceName(apiVersion, kind, subresource string) (string, error) {
 // forget to. Every path that reaches a handler goes through this function, and
 // a handler only ever sees the confined client, because it is handed a copy of
 // the Handler whose k8s field is the confined one.
-//
-// gateReader and gateCollectionReader are deliberately copied untouched. Their
-// scope comes from AC11's own table rather than from the tool's declaration
-// (AC1 says so in as many words), and confining them to the tool's pairs would
-// stop the gate reading the object it has to describe before anyone has
-// approved anything.
 func (h *Handler) invoke(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (any, *rpcErr) {
 	confined, err := confine(h.k8s, name, entry.decl, rawArgs)
 	if err != nil {
@@ -60,9 +54,7 @@ func (h *Handler) invoke(ctx context.Context, name string, entry toolEntry, rawA
 //
 // A declaration resolved per call rather than per tool is the point: the
 // generic tools name their kind in the arguments, so "what this tool may do"
-// is only answerable once there is a call. A marker tool (AC1's ⑵) gets a
-// client that permits what the marker's kind permits and nothing else —
-// discovery for discoveryOnly, nothing at all for touchesNothing.
+// is only answerable once there is a call.
 func confine(inner k8s.Service, tool string, d toolDeclaration, rawArgs json.RawMessage) (k8s.Service, error) {
 	if marker := d.noResourcePermission; marker != nil {
 		return &confinedService{
@@ -93,21 +85,12 @@ type confinedService struct {
 	inner k8s.Service
 	tool  string
 
-	// allowed is the pair set of this call. It is nil for a marker tool, which
-	// is the same thing as empty: a marker says the tool exercises no resource
-	// permission, so no pair can be in the set.
-	allowed map[gatekeeper.Pair]bool
-
-	// discovery is the one thing a marker can still permit — AC1 carves
-	// discovery out of "resource permission" by name, so discoveryOnly has to
-	// pass APIResources while touchesNothing does not.
+	allowed   map[gatekeeper.Pair]bool
 	discovery bool
 }
 
 var _ k8s.Service = (*confinedService)(nil)
 
-// permit is the check every coordinate-addressed method runs: name the pair
-// this request would exercise, then refuse unless the call declared it.
 func (c *confinedService) permit(verb, apiVersion, kind, subresource string) error {
 	resource, err := resourceName(apiVersion, kind, subresource)
 	if err != nil {

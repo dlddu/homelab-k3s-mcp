@@ -1,16 +1,11 @@
 //go:build e2e_undeclared_tool
 
-// The startup variant for test-approval-gate.md#시나리오 1 (c). This file is
-// compiled only under the e2e_undeclared_tool build tag.
+// The startup variant for test-approval-gate.md#시나리오 1 (c).
 //
-// (c) asks for a deployment that registers a tool which declares none of the
-// (verb, resource) pairs it exercises, and asserts that such a deployment does
-// not come up. The registry and the advertised list are both compile-time
-// constants, so no env knob or manifest edit can produce that variant — the
-// only place it can exist is behind a build tag. The default build (`go build
-// ./...`, the Dockerfile's runtime stage, the published image) never sees this
-// file, so the shipped binary's tool surface is unchanged; what the tag adds is
-// a way to *exercise* the startup check that already ships, not a way around it.
+// The default build (`go build ./...`, the Dockerfile's runtime stage, the
+// published image) never sees this file, so the shipped binary's tool surface
+// is unchanged; what the tag adds is a way to *exercise* the startup check that
+// already ships, not a way around it.
 //
 // The tool is advertised as well as registered on purpose. validateRegistry
 // reports every problem it finds, so a tool that were registered without being
