@@ -25,14 +25,9 @@ MINT_PATH = f"/app/installations/{EXPECTED_INSTALLATION_ID}/access_tokens"
 INSTALLATION_PATH = f"/app/installations/{EXPECTED_INSTALLATION_ID}"
 REVOKE_PATH = "/installation/token"
 
-# The admin surface of tests/k8s/kind/github-mock.yaml. It is reached directly
-# rather than through _helpers because this is the only file that drives the
-# mock's knobs; the http-trace proxy in front of MinIO/OpenSearch is the shared
-# case and lives there.
+# Reached directly rather than through _helpers: this is the only file that
+# drives the mock's knobs (/_admin/config).
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
-
-# AC5 is mostly a claim about requests that must NOT happen, so the upstream
-# request log — not the returned token — is what decides these cases.
 
 
 def reset_mock(**config: Any) -> None:
@@ -46,7 +41,6 @@ def reset_mock(**config: Any) -> None:
 
 
 def recorded(method: str, path: str) -> list[dict[str, Any]]:
-    """Return the requests the mock recorded for ``method`` ``path``."""
     response = httpx.get(f"{MOCK_URL}/_admin/requests", timeout=10.0)
     response.raise_for_status()
     return [
@@ -67,8 +61,7 @@ def refusal_text(result) -> str:
 async def test_ac5_explicit_statuses_write_is_refused(session: ClientSession) -> None:
     """AC5 ① — an explicit ``statuses: write`` never reaches the mint call.
 
-    Both shapes the scenario names are checked: ``statuses`` alone and
-    ``statuses`` riding along with an unrelated permission. The refusal has to
+    The refusal has to
     name ``github_commit_status_create`` because that is where the capability
     moved; a bare "not allowed" would leave the caller with no next step. Zero
     recorded mint requests is the load-bearing half — a server that asked for
@@ -101,12 +94,10 @@ async def test_ac5_statuses_read_is_issued(session: ClientSession) -> None:
 async def test_ac5_default_downgrades_statuses_to_read(session: ClientSession) -> None:
     """AC5 ③ — with no arguments the installation grant is downgraded, not copied.
 
-    The mock is put in the state the scenario describes: the installation
-    genuinely holds ``statuses: write``. The assertion is on the *request body*
+    The assertion is on the *request body*
     the server sent, because "the token happens to come back with read" would
     also hold for a server that forwarded the write scope and got lucky with the
-    upstream's response. ``permissions`` must be present and explicit — omitting
-    the key would let GitHub apply the full installation grant.
+    upstream's response.
     """
     reset_mock(installation_permissions={"statuses": "write"})
     result = await session.call_tool("github_app_installation_token", {})
@@ -124,11 +115,7 @@ async def test_ac5_default_downgrades_statuses_to_read(session: ClientSession) -
 
 
 async def test_ac5_unreadable_installation_refuses(session: ClientSession) -> None:
-    """AC5 ④ — if the installation grant cannot be read, nothing is minted.
-
-    The downgrade needs to know what the installation holds. When that lookup
-    fails the safe move is to refuse, not to fall back to an unscoped mint.
-    """
+    """AC5 ④ — if the installation grant cannot be read, nothing is minted."""
     reset_mock(installation_status=500)
     result = await session.call_tool("github_app_installation_token", {})
     text = refusal_text(result)
