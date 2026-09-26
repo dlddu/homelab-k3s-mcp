@@ -19,7 +19,7 @@ DEFAULT_SELECTOR = "app=dear-baby"
 
 DEFAULT_CONTAINER = "backend"
 
-POD_PREFIX = "dear-baby-fixture-"
+POD_PREFIX = "dear-baby-"
 
 
 async def test_dear_baby_reset_user_ac1_reset_execution(session) -> None:
@@ -37,7 +37,7 @@ async def test_dear_baby_reset_user_ac1_reset_execution(session) -> None:
     pod = payload.pop("pod")
     stdout = payload.pop("stdout")
     assert pod.startswith(POD_PREFIX), pod
-    assert "reset user for user@example.com" in stdout, stdout
+    assert "reset user user@example.com" in stdout, stdout
     assert payload == {
         "namespace": NAMESPACE,
         "email": "user@example.com",

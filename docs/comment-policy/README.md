@@ -71,7 +71,7 @@
 | --- | --- |
 | `검증 AC:` | `tests/integration/run_all.py`가 모듈 docstring에서 파싱하고, `tests/integration/check_ac_mapping.py`가 AC↔E2E 1:1을 검사한다 |
 | `# mock-exception:` | `scripts/check_mock_policy.py`가 `docs/e2e-mocking-policy.md`의 허용목록과 대조한다 |
-| `#!` (shebang) | 인터프리터. 대부분 파일 첫 줄이고, `tests/k8s/kind/dear-baby-fixture.yaml`에는 임베드된 스크립트의 것이 하나 있다 |
+| `#!` (shebang) | 인터프리터. 파일 첫 줄에도, 매니페스트에 임베드된 스크립트 안에도 있을 수 있다 |
 | `# noqa` | 린터. `tests/k8s/kind/http-trace.yaml`의 임베드 Python에 붙어 있다 |
 | `//go:` · `nolint` | Go 툴체인. 지금은 쓰이지 않지만 생기는 즉시 제외 대상이다 |
 
