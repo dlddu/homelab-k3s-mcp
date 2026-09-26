@@ -9,11 +9,9 @@ Go 단위가 이 계약의 조각들을 이미 단언한다 — ``internal/mcp/r
 실제로 표에 실려 나오는지도, 실물 apiserver 가 이 SA 에게 ``watch`` 를 주는지도 그 층에서는
 관측되지 않는다. 이 파일이 재는 것이 그 자리다.
 
-**실행 대상이 ``gatekeeper-variant`` 인 이유는 (b) 하나다.** 시나리오는 ``RESOURCE_GATED_KINDS``
-에 픽스처 CRD 를 더한 뒤 그 종류로 ``resource_get`` 을 부르라고 한다. 이 env 는 **배포당**이라
-primary 를 상대로는 세울 수 없고, 반대로 primary 에 세우면 같은 CRD 를 읽는
-``resource_generic_ac1.py`` 의 전제가 흔들린다. 그래서 이미 서 있는 이 변형
-(``tests/k8s/kind/gatekeeper-variant.yaml``)의 env 한 줄로 세웠다. 이 변형의 SA 는 primary 와
+**primary 에 (b) 의 env 를 세울 수 없는 두 번째 이유.** ``RESOURCE_GATED_KINDS`` 를 primary 에
+세우면 같은 픽스처 CRD 를 읽는 ``resource_generic_ac1.py`` 의 전제가 흔들린다. 그래서 이미 서
+있는 이 변형(``tests/k8s/kind/gatekeeper-variant.yaml``)의 env 한 줄로 세웠다. 이 변형의 SA 는 primary 와
 **같은** ``cluster-admin`` 바인딩이므로(``k8s/rbac.yaml``, 2026-09-14 개정), (d) 의 「``watch``
 는 이제 부여되어 403 이 아니다」도 운영과 같은 권한 위에서 관측된다.
 
@@ -26,24 +24,13 @@ primary 를 상대로는 세울 수 없고, 반대로 primary 에 세우면 같�
 마커를 담은 것**이다(``_refuse``). 둘 다 필요하다: 이 게이트는 배포 넷이 공유해 같은 문자열을 담은
 남의 옛 기록이 있을 수 있고, primary 그룹이 이 그룹과 겹쳐 돌아 그사이 남이 거부한 기록도 생긴다.
 
-**「k8s 호출 카운트 0」 절에 대하여.** 시나리오는 미승인 거부에서 k8s 호출이 0 이기를 요구한다.
-호출 수 자체는 SUT 안의 사실이라 e2e 가 셀 수 없고(그 자리는 Go 단위의 몫이다), apiserver 감사
-프록시는 이 하네스에 없다 — ``docs/doc-tracker/2026-09.md`` 의 ⏳ 표가
-``test-approval-gate.md#시나리오 11`` 행에서 그 부재를 이미 못박고 있다. 그래서 이 파일은
-``resource_generic_ac16.py`` 가 같은 자리에서 쓴 독법을 따라 **밖에서 관측 가능한 등가물**을
-단언한다: 거부된 호출은 **어떤 응답에도 토큰을 싣지 않았고**, 승인 화면에도 값이 아니라 **경로**
-만 실리며, 대상은 그대로 남아 있다. 「호출은 갔지만 아무 값도 오지 않았다」와 「호출이 가지
-않았다」를 이 층에서 가를 수 없다는 사실을 숨기지 않으려고 여기 적는다.
-
 **토큰은 픽스처가 박는 상수다.** 시나리오가 말하는 「고유 난수」의 요점은 매 실행 새로 뽑히는
 것이 아니라 **그 문자열이 이 레포의 다른 어디에도 없어서**, 어떤 응답에서 발견되면 그것이 이
 Secret 에서 새어 나온 것이라고 단정할 수 있다는 데 있다. ``resource_generic_ac16.py`` 의
 ``TOKEN`` 과 같은 방식이다.
 
-**대상 Secret 과 서빙 파드는 이 파일이 스스로 세운다.** 자매
-``resource_generic_ac15.py``·``approval_gate_ac3.py`` 가 파드를 세우는 방식 그대로이고, 러너가
-파일을 자동 발견하므로 ``ci.yml`` 배선은 늘지 않는다. 이미지는 이미 클러스터에 있는
-``busybox:1.36`` 이라 새 pull 도 없다. 파드의 문서 루트를 Secret 마운트로 두면 ``exec`` 의
+**이 파일이 스스로 세우는 대상의 모양.** 이미지는 이미 클러스터에 있는
+``busybox:1.36`` 이라 새 pull 이 없다. 파드의 문서 루트를 Secret 마운트로 두면 ``exec`` 의
 ``cat``, ``port_forward`` 의 ``GET``, ``proxy`` 의 경로가 **같은 값**을 가리켜, 넷이 다 막혀야
 한다는 주장이 한 대상 위에서 성립한다.
 

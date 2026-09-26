@@ -1,20 +1,8 @@
 # Prefix-less deployment variant for test-github-commit-status.md#시나리오 4 (b).
 #
-# The scenario's (b) branch asks for a deployment whose GitHub App is configured
-# but GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES is NOT set, so that every context is
-# refused fail-closed. No other variant can stand in for it:
-#
-# * the primary kind deployment sets the prefix (the kind overlay pins
-#   homelab-k3s-mcp/ over the production value review/), which is what (a)
-#   needs;
-# * auth-fixture.yaml attaches no credential secret at all, so there the call
-#   is refused earlier, as "github app unavailable", before the prefix check
-#   runs — an assertion on "tool error + zero upstream requests" would pass
-#   there vacuously without ever exercising the prefix guard.
-#
-# This variant therefore differs from the primary in exactly one respect: the
-# GitHub App secret ci.yml creates in this namespace carries the same client
-# id, installation id, API base URL and private key as the primary's, minus the
+# Differs from the primary in exactly one respect: the GitHub App secret ci.yml
+# creates in this namespace carries the same client id, installation id, API base
+# URL and private key as the primary's, minus the
 # GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES key, and no env line supplies one either.
 # Adding that env (or that key to the secret) turns
 # tests/integration/github_commit_status_ac4.py red on purpose.
@@ -23,9 +11,7 @@
 # than relaxed with MCP_AUTH_DISABLED, so this file adds no GATE entry to
 # docs/e2e-mocking-policy.md. Kubernetes is switched off like the auth variant
 # does: it reads an in-cluster ServiceAccount, not a secret, and nothing here
-# needs it. There is no dedicated run_all.py group — github_commit_status_ac4.py
-# runs in the primary group and reaches this Service through its own
-# port-forward, the way platform_auth_safety_ac8.py reaches the OAuth variants.
+# needs it.
 apiVersion: v1
 kind: Namespace
 metadata:
