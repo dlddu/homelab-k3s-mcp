@@ -50,21 +50,13 @@ spec:
           type: RuntimeDefault
       containers:
         - name: server
-          # ⚙️ 운영 값은 **deploy 브랜치**의 이 줄이다. docker-build-push.yaml 의 `pin`
-          # job 이 main 푸시마다 그 커밋 SHA 로 이 줄을 고친 커밋을 deploy 로 발행하고,
-          # Flux 는 deploy 를 추적한다. main 에 남은 값은 deploy 방식 전환 직전의 마지막
-          # 고정값일 뿐 운영과 무관하다. 손으로 고칠 일은 없다(롤백은 main 에 revert PR).
+          # ⚙️ 운영 값은 **deploy 브랜치**의 이 줄이다. 손으로 고칠 일은 없다(롤백은 main 에 revert PR).
           # 불변 태그라 imagePullPolicy 는 기본값(IfNotPresent)이 그대로 옳다.
           image: ghcr.io/dlddu/homelab-k3s-mcp:dc86afb92bc6a06c3c6f3912e9e38d07388ebd5c
           ports:
             - name: http
               containerPort: 3000
               protocol: TCP
-            # 📈 메트릭 노출 포트(prd-metrics AC5). /mcp 와 **다른 리스너**다 — 인그레스
-            # (flux-cd-apps 의 IngressRoute)는 Service 의 `http` 포트만 가리키므로 이 포트는
-            # 클러스터 밖에 나가지 않고, 이 리스너의 mux 에는 `/metrics` 한 경로뿐이라 여기로
-            # 도구를 실행하거나 리소스를 읽을 길이 없다. 수집기 등록은 관측 스택 쪽이다
-            # (Alloy 의 `prometheus.scrape` 블록 — 이 포트 이름 `metrics` 로 고른다).
             - name: metrics
               containerPort: 9090
               protocol: TCP
@@ -75,16 +67,10 @@ spec:
               value: 0.0.0.0:9090
             - name: LOG_LEVEL
               value: info
-            # Base URL of the session-platform control plane for the session_*
-            # tools. Cluster-internal and not a credential, so it is a plain env
-            # value rather than a Secret.
             - name: SESSION_PLATFORM_ENDPOINT
               value: http://control-plane.session-platform.svc.cluster.local
-            # github_commit_status_create 가 쓸 수 있는 context 네임스페이스
-            # (prd-github-commit-status AC4). 자격증명이 아니라 정책이라 Secret 이
-            # 아닌 평문 env 이고, 여기 있는 값이 운영의 단일 출처다 —
-            # homelab-k3s-mcp-github-app Secret 에 같은 키가 있어도 env 가 이긴다.
-            # 비우거나 지우면 모든 호출이 거부된다(fail-closed).
+            # 여기 있는 값이 운영의 단일 출처다 — homelab-k3s-mcp-github-app Secret 에
+            # 같은 키가 있어도 env 가 이긴다.
             - name: GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES
               value: review/
           envFrom:
@@ -92,34 +78,17 @@ spec:
                 name: homelab-k3s-mcp-oauth
             - secretRef:
                 name: homelab-k3s-mcp-github-app
-            # AWS_CONFIG_S3_BUCKET, AWS_CONFIG_S3_KEY, AWS_CONFIG_ROLE_ARN and
-            # the optional AWS_CONFIG_* overrides for the aws_config_get tool.
             - secretRef:
                 name: homelab-k3s-mcp-aws-config
-            # GRAFANA_ISSUER_TOKEN, GRAFANA_READ_POLICY_ID, GRAFANA_REGION,
-            # GRAFANA_METRICS_URL/USER, GRAFANA_LOGS_URL/USER and the optional
-            # GRAFANA_API_URL override for the grafana_token tool.
             - secretRef:
                 name: homelab-k3s-mcp-grafana
-            # OPENSEARCH_ENDPOINT, OPENSEARCH_ROLE_ARN, OPENSEARCH_REGION and
-            # the optional OPENSEARCH_* overrides for the opensearch_* tools.
             - secretRef:
                 name: homelab-k3s-mcp-opensearch
-            # GATEKEEPER_BASE_URL and GATEKEEPER_API_KEY for the approval gate,
-            # plus the optional GATEKEEPER_USER_ID (push notifications) and the
-            # timeout/poll overrides. Optional because an unconfigured gate
-            # already fails closed — it refuses gated calls instead of taking
-            # the whole endpoint down — so a missing secret degrades one
-            # boundary rather than crashlooping, and the flux-cd-apps side that
-            # creates it can land in either order.
+            # Optional because an unconfigured gate already fails closed, so a
+            # missing secret degrades one boundary rather than crashlooping.
             - secretRef:
                 name: homelab-k3s-mcp-gatekeeper
                 optional: true
-            # MCP_API_KEYS: comma-separated static bearer keys that let
-            # non-interactive clients authenticate to /mcp without the OAuth
-            # flow. Optional so OAuth-only (and MCP_AUTH_DISABLED) deployments
-            # need not provide the secret; when used it is created out-of-band
-            # like the other credential secrets and never committed.
             - secretRef:
                 name: homelab-k3s-mcp-api-keys
                 optional: true

@@ -1,39 +1,15 @@
 name: Build and Push Docker Image to GHCR
 
-# 런타임 이미지를 GitHub Container Registry 에 **커밋 SHA 태그 하나로만** 발행하고,
-# main 푸시에서는 그 SHA 로 k8s/deployment.yaml 을 고친 커밋을 `deploy` 브랜치로
-# 발행해 운영이 가리키는 이미지를 고정한다(`pin` job). Flux 는 main 이 아니라 deploy 를
-# 추적한다 — main 은 ruleset 으로 보호되어 봇이 되커밋할 수 없다.
+# `latest` 는 더 이상 만들지 않는다. 만들면 안 되는 쪽에 가깝다.
+# 태그가 불변이므로 imagePullPolicy 도 기본값(IfNotPresent)이 그대로 옳다.
 #
-#   ghcr.io/dlddu/homelab-k3s-mcp:<sha>
+# PR 경로(workflow_call)는 ci.yml 의 changes 잡의 `image` 출력이 아래 `paths:` 와 같은
+# 제외 목록이다. 제외 목록을 고치면 두 곳을 같이 고칠 것.
 #
-# `latest` 는 더 이상 만들지 않는다. 만들면 안 되는 쪽에 가깝다 — 이 워크플로 이전의
-# ci.yml `docker` 잡은 브랜치 조건이 없어 **PR 빌드도 `latest` 를 덮어썼고**, 운영
-# Deployment 가 그 `:latest` 를 가리키고 있었다. 즉 머지되지 않은 코드가 다음 pull 에
-# 운영으로 들어갈 수 있었고, 실제로 발행된 `latest` 의 digest 는 main HEAD 의 SHA 태그와
-# 달랐다. 이제 운영이 어느 커밋을 돌리는지는 deploy 브랜치의 k8s/deployment.yaml(과 그 끝
-# 커밋의 Source-Commit 트레일러)만 보면 되고,
-# PR 프리뷰 환경(flux-cd-apps 의 apps/homelab-k3s-mcp-preview)은 같은 규칙으로 PR head
-# SHA 태그를 그대로 가져다 쓴다. 태그가 불변이므로 imagePullPolicy 도 기본값
-# (IfNotPresent)이 그대로 옳다.
-#
-# ci.yml 의 통합 테스트는 검증용으로 이미지를 *빌드만* 한다(kind 에 load 한다).
-# 실제로 pull 가능한 태그를 발행하는 것은 이 워크플로다.
-#
-# PR 경로(workflow_call)의 경로 판정은 호출하는 ci.yml 의 `image` 잡이 한다 — changes 잡의
-# `image` 출력이 아래 `paths:` 와 같은 제외 목록이다. 걸러진 PR 의 head SHA 에는 이미지가
-# 없어 프리뷰도 뜨지 않는다. 제외 목록을 고치면 두 곳을 같이 고칠 것.
-#
-# main push 에는 경로 조건을 건다. 서버 바이너리(Go 소스)와 운영 매니페스트(k8s/)에 닿지
-# 않는 머지는 새 SHA 태그만 만들어 운영 파드를 재시작시킬 뿐이라 건너뛴다. 건너뛴 커밋은
-# deploy 브랜치에 반영되지 않는다 — 운영 커밋은 deploy 끝 커밋의 Source-Commit 트레일러가
-# 말한다. 제외 목록 방식이라 새 디렉터리는 기본으로 돈다. 제외를 늘리려면 바이너리(go:embed
-# 포함)와 Flux 가 그 경로를 읽지 않는지 먼저 확인할 것.
+# 제외를 늘리려면 바이너리(go:embed 포함)와 Flux 가 그 경로를 읽지 않는지 먼저 확인할 것.
 
-# 트리거: main push 는 여기서 단독으로 받는다(발행 + pin, 테스트는 PR 에서 이미 통과).
-# PR 은 ci.yml 의 `image` 잡이 workflow_call 로 부르므로 발행 실패가 단일 필수 체크
-# `ci passed` 를 실패시킨다. 호출된 워크플로도 호출자의 github 컨텍스트를 보므로 아래
-# event/ref 조건은 어느 쪽이든 똑같이 동작한다. workflow_dispatch 는 단독 실행용이다.
+# 호출된 워크플로도 호출자의 github 컨텍스트를 보므로 아래 event/ref 조건은 어느 쪽이든
+# 똑같이 동작한다.
 on:
   push:
     branches: [main]

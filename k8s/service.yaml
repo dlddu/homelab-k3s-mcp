@@ -17,8 +17,6 @@ spec:
       port: 80
       targetPort: http
       protocol: TCP
-    # 메트릭 리스너(prd-metrics AC5). 인그레스는 위 `http` 만 가리킨다 — 이 포트는 클러스터
-    # 안(스크레이퍼 · e2e 포트포워드)에서만 닿는다.
     - name: metrics
       port: 9090
       targetPort: metrics
