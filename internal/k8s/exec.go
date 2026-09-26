@@ -15,9 +15,9 @@ import (
 )
 
 // streamMaxOutputBytes caps each of stdout and stderr at the source, before a
-// response is built (prd-resource-generic AC12, and AC13 for the same reason).
-// `yes` never ends on its own, so a cap that only stopped buffering would leave
-// the call hanging until the time cap — the byte cap has to stop the reader too.
+// response is built. `yes` never ends on its own, so a cap that only stopped
+// buffering would leave the call hanging until the time cap — the byte cap has
+// to stop the reader too.
 const streamMaxOutputBytes = 256 * 1024
 
 // execMaxDuration is AC12's running-time cap. A command may outlive it in the
@@ -26,9 +26,8 @@ const execMaxDuration = 30 * time.Second
 
 // limitedWriter copies into a bounded buffer and, once the cap is hit, keeps
 // draining its input while marking itself full — the stream must be drained
-// (its transport would wedge otherwise) but nothing past the cap is kept. The
-// boolean travels beside the text so a response can say "this was cut" rather
-// than silently shortening it, and onFull stops listening (AC12).
+// (its transport would wedge otherwise) but nothing past the cap is kept, and
+// onFull stops listening (AC12).
 type limitedWriter struct {
 	limit  int
 	buf    bytes.Buffer
@@ -92,10 +91,9 @@ func (s *KubeService) streamSubresourceServed(ctx context.Context, gvr schema.Gr
 }
 
 // ExecResource runs command inside one named pod (the exec subresource) and
-// returns its stdout and stderr separately. It is the coordinate-addressed
-// half of exec; ExecInPod is the selector-addressed variant the exempt tool
-// uses. The kind must serve an exec subresource — discovery answers that, not
-// permission.
+// returns its stdout and stderr separately. ExecInPod is the
+// selector-addressed variant the exempt tool uses. The kind must serve an exec
+// subresource — discovery answers that, not permission.
 func (s *KubeService) ExecResource(ctx context.Context, ref ExecRef, container *string, command []string) (*ExecOutcome, error) {
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
 	if err != nil {

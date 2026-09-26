@@ -11,12 +11,11 @@ import (
 )
 
 // TestProxyAllPathsGated is the half of scenario 15 that does not need a
-// cluster, and the half the other tools' tests do not have to cover: that the
-// verb follows the method, and that *every* method is gated. The second is the
-// one this package could get wrong silently — gatedVerbs judges by verb, and a
-// GET's verb is "get", which is exactly the verb the read gate lets through
-// unless the target is a sensitive kind. A proxy GET is not a read of an
-// object; it is an arbitrary request to whatever that object serves.
+// cluster. That *every* method is gated is the one this package could get wrong
+// silently — gatedVerbs judges by verb, and a GET's verb is "get", which is
+// exactly the verb the read gate lets through unless the target is a sensitive
+// kind. A proxy GET is not a read of an object; it is an arbitrary request to
+// whatever that object serves.
 func TestProxyAllPathsGated(t *testing.T) {
 	methods := []struct {
 		method string
@@ -130,11 +129,7 @@ func TestProxyAllPathsGated(t *testing.T) {
 	})
 }
 
-// TestProxyKubeletHighPowerPathFlagged is AC3's side of scenario 15, and the
-// reason AC15 names AC3 at all: /healthz and /exec on a node arrive wearing the
-// same pair, so the pair on the approval screen cannot tell an operator which
-// one they are being asked about. The path can, and the marking is what makes
-// them notice it. AC3 says mark, not block — so the call still runs.
+// TestProxyKubeletHighPowerPathFlagged is AC3's side of scenario 15.
 func TestProxyKubeletHighPowerPathFlagged(t *testing.T) {
 	t.Run("a node exec path is marked and still runs", func(t *testing.T) {
 		reader := newStateReader()

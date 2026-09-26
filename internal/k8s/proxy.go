@@ -17,27 +17,19 @@ import (
 )
 
 // ProxyDefaultReadSeconds and ProxyMaxReadSeconds bound the half of this call
-// nothing else bounds. The three other stream tools cap a window because a
-// command or a port never has to stop talking; proxy caps one because the
-// endpoint it reaches may be a log follower that is *designed* not to
-// (`/containerLogs?follow=true` is reachable, by AC15's choice not to keep a
-// path allowlist). They are exported for the reason PortForwardDefaultReadSeconds
-// is: the tool layer refuses an out-of-range window before the cluster is
-// reached, and a second copy of the numbers is a second place for them to drift.
+// nothing else bounds. They are exported for the reason
+// PortForwardDefaultReadSeconds is: a second copy of the numbers is a second
+// place for them to drift.
 const (
 	ProxyDefaultReadSeconds = 10
 	ProxyMaxReadSeconds     = 30
 )
 
-// proxyKinds are the three kinds AC15 names. Nothing beside it filters paths,
-// and that absence is the contract rather than an omission.
+// proxyKinds are the three kinds AC15 names.
 var proxyKinds = map[string]bool{"pods": true, "services": true, "nodes": true}
 
 // ProxyResource reaches one object's HTTP endpoint through the apiserver's proxy
-// subresource (prd-resource-generic AC15). The verb it exercises follows the HTTP
-// method, and the path travels verbatim — including kubelet's high-power
-// endpoints on nodes/proxy, which the gate marks rather than blocks
-// (prd-approval-gate AC3).
+// subresource (prd-resource-generic AC15).
 //
 // The round trip is made over the rest config's own transport rather than
 // through rest.Request's Do or Stream, and the reason is that neither of those
@@ -208,11 +200,8 @@ func apiserverRefusal(resp *http.Response, body []byte, verb, resource string) e
 }
 
 // newProxyOutcome decides how the answer travels, for the reason
-// newPortForwardOutcome does: a proxy reaches whatever the object serves, and
-// plenty of that is not UTF-8 (`/metrics` is, a container's gzip is not). Go's
-// JSON encoder replaces invalid bytes with U+FFFD without saying so, so valid
-// UTF-8 travels as itself, anything else travels base64-encoded, and the
-// response says which.
+// newPortForwardOutcome does: Go's JSON encoder replaces invalid bytes with
+// U+FFFD without saying so.
 func newProxyOutcome(ref ProxyRef, method, path string, status int, body *limitedWriter, readSeconds int) *ProxyOutcome {
 	raw := body.Bytes()
 	outcome := &ProxyOutcome{

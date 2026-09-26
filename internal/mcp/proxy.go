@@ -14,8 +14,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// proxyArgs is AC15's one shape: an object coordinate, the HTTP method, the
-// path to reach, and the bytes to send.
 type proxyArgs struct {
 	ref         k8s.ProxyRef
 	method      string
@@ -181,10 +179,9 @@ func parseProxyBody(obj map[string]any) ([]byte, *rpcErr) {
 // proxyPairs reports the single pair this call exercises, which is the one
 // place in the registry where the verb comes out of the arguments rather than
 // being fixed by the tool. genericPairs cannot be reused for it: that helper
-// takes its verb as a constant, and AC15's whole point is that the verb follows
-// the HTTP method. The resource name is apimachinery's guess from the kind, for
-// the reason genericPairs states — the gate has to reach its verdict before the
-// apiserver is touched.
+// takes its verb as a constant. The resource name is apimachinery's guess from
+// the kind, for the reason genericPairs states — the gate has to reach its
+// verdict before the apiserver is touched.
 func proxyPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
