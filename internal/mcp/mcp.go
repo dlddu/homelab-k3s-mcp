@@ -30,8 +30,7 @@ const (
 	dearBabyDefaultContainer = "backend"
 	dearBabyResetBin         = "/reset-user"
 
-	// defaultSensitiveKind mirrors RESOURCE_GATED_KINDS' default: reading a
-	// Secret is gated even though reads otherwise are not.
+	// defaultSensitiveKind mirrors RESOURCE_GATED_KINDS' default.
 	defaultSensitiveKind = "v1/Secret"
 )
 
@@ -44,20 +43,16 @@ type Handler struct {
 	opensearch      opensearch.Service
 	sessionPlatform sessionplatform.Service
 
-	// gate holds gated calls until a human decides. It is never nil: an
-	// unconfigured deployment gets a gate that refuses, because "no approval
-	// backend" has to mean "no state changes", not "no approvals needed".
+	// gate holds gated calls until a human decides. It is never nil — an
+	// unconfigured deployment gets a gate that refuses (prd-approval-gate AC5).
 	gate gatekeeper.Gate
 
-	// gateReader is how the gate reads a target on its own behalf before the
-	// verdict exists (prd-approval-gate AC11). A separate field from k8s above
-	// because it is a separate permission; k8s.TargetReader holds the reason.
-	// Never nil — a deployment without a cluster client gets one that refuses.
+	// gateReader is the gate's own read surface (prd-approval-gate AC11);
+	// k8s.TargetReader holds why it is separate. Never nil — a deployment without
+	// a cluster client gets one that refuses.
 	gateReader k8s.TargetReader
 
-	// gateCollectionReader is the plural of gateReader: the `list on ⟨kind⟩`
-	// half of AC11's table. A separate field for the same reason gateReader is
-	// one; k8s.CollectionTargetReader holds it. Never nil.
+	// gateCollectionReader is the plural of gateReader. Never nil.
 	gateCollectionReader k8s.CollectionTargetReader
 
 	sensitiveKinds []string
@@ -76,8 +71,7 @@ type Handler struct {
 // Option customises a Handler at construction.
 type Option func(*Handler)
 
-// WithGate installs the approval gate. Without it a Handler refuses every gated
-// call (prd-approval-gate AC5).
+// WithGate installs the approval gate.
 func WithGate(gate gatekeeper.Gate, sensitiveKinds []string) Option {
 	return func(h *Handler) {
 		if gate != nil {
@@ -200,9 +194,8 @@ func (e *rpcErr) reasonOf() eventlog.Reason {
 	return eventlog.ReasonGateUnconfigured
 }
 
-// afterVerdict marks a refusal that came after the gate had approved: the
-// approval was spent already (AC7), or the target moved under it (AC6). The
-// record keeps the backend's verdict and says the gate layer withheld the
+// afterVerdict marks a refusal that came after the gate had approved (AC6, AC7).
+// The record keeps the backend's verdict and says the gate layer withheld the
 // approval anyway — that is the case Reason and Gate.Decision differ for.
 func (e *rpcErr) afterVerdict(decision *gatekeeper.Decision) *rpcErr {
 	e.reason = eventlog.ReasonGateRejected
@@ -241,8 +234,7 @@ func gateRefusal(err error) *rpcErr {
 	return e
 }
 
-// gateOf renders an approval for the record (AC2's request id and AC9's
-// auto-approval notice, as fields).
+// gateOf renders an approval for the record (prd-event-log AC2).
 func gateOf(decision *gatekeeper.Decision) eventlog.Gate {
 	if decision == nil {
 		return eventlog.Gate{}
@@ -267,8 +259,7 @@ type callNote struct {
 
 	// gateWait is the time the gate held this call, summed over every
 	// Authorize a batch makes (prd-metrics AC3). askGate adds to it; the
-	// dispatcher subtracts it from the call's own duration so a human's
-	// deliberation never reads as tool latency.
+	// dispatcher subtracts it from the call's own duration.
 	gateWait time.Duration
 }
 
@@ -284,8 +275,6 @@ func noteGate(ctx context.Context, decision *gatekeeper.Decision) {
 	if note := noteFrom(ctx); note != nil {
 		g := gateOf(decision)
 		if note.gate.RequestID != "" {
-			// A batch spends one approval per document; the record names
-			// them all, in order.
 			g.RequestID = note.gate.RequestID + "," + g.RequestID
 			g.AutoApproved = note.gate.AutoApproved && g.AutoApproved
 		}
@@ -459,9 +448,8 @@ func outcome(result any, rerr *rpcErr, note *callNote) (eventlog.Result, eventlo
 	return eventlog.ResultSuccess, "", note.gate
 }
 
-// recordTarget reads the four coordinate fields off a generic tool's
-// arguments, and only those four (AC3): the rest of the arguments — a
-// manifest, a patch, an exec command, a proxy body — never reach the record.
+// recordTarget reads the four coordinate fields off a generic tool's arguments,
+// and only those four (prd-event-log AC1, AC3).
 func recordTarget(rawArgs json.RawMessage) eventlog.Target {
 	obj, ok := decodeObject(rawArgs)
 	if !ok {
@@ -480,7 +468,6 @@ func recordTarget(rawArgs json.RawMessage) eventlog.Target {
 }
 
 // extractArguments pulls the "arguments" field out of the raw tools/call params.
-// A missing field yields a null RawMessage.
 func extractArguments(params json.RawMessage) json.RawMessage {
 	var p struct {
 		Arguments json.RawMessage `json:"arguments"`
@@ -645,9 +632,8 @@ func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
 	}, nil
 }
 
-// sessionList enumerates the control plane's sessions. An empty inventory is a
-// successful empty list, not an error, so a caller can tell "no sessions" from
-// "the control plane is unreachable".
+// sessionList enumerates the control plane's sessions. The empty list is what
+// lets a caller tell "no sessions" from "the control plane is unreachable".
 func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 	sessions, err := h.sessionPlatform.ListSessions(ctx)
 	if err != nil {
@@ -679,11 +665,7 @@ func sessionFields(s sessionplatform.Session) map[string]any {
 	return fields
 }
 
-// sessionRead reads one session's accumulated output from a byte cursor. Unlike
-// sessionList this is not a passive call: the control plane activates the target
-// first, so the result carries both the branch it took and the session as it
-// stands afterwards. A caller that reads a snapshotted session has just brought
-// its pod back, and must be able to see that from the response alone.
+// sessionRead reads one session's accumulated output from a byte cursor.
 func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
@@ -694,7 +676,6 @@ func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *r
 		return nil, errf(-32602, "id is required")
 	}
 
-	// offset is optional and defaults to 0, "everything since session start".
 	var offset int64
 	if ov, present := obj["offset"]; present && ov != nil {
 		oi, ok := intValue(ov)
@@ -723,11 +704,7 @@ func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *r
 // sessionWrite injects input into one session's workload. Both arguments are
 // validated here so that a malformed call is refused before any request is
 // issued — the same structural guarantee sessionRead makes for a bad cursor:
-// nothing was sent, so the session cannot have been touched. That matters more
-// for a write, whose mere arrival activates the target and can restore a
-// snapshot. The result deliberately carries no output: the control plane returns
-// on acceptance, and whatever the workload produces is recovered with
-// session_read.
+// nothing was sent, so the session cannot have been touched.
 func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
