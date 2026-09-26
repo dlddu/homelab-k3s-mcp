@@ -10,8 +10,8 @@
 ### 시나리오 1: 리셋 성공/실패 exec
 - **사전 조건**: `dear-baby-test`에 dear-baby 백엔드 픽스처 파드 실행 중
 - **실행 단계**: (a) 존재하는 이메일로 호출, (b) 존재하지 않는 이메일로 호출
-- **기대 결과**: (a) 대상 파드(`dear-baby-fixture-*`)에서 `/reset-user` exec, exitCode=0,
-  stdout에 "reset user for ...", success=true. (b) exitCode=1, stderr "no user found",
+- **기대 결과**: (a) 대상 파드(`dear-baby-*`)에서 `/reset-user` exec, exitCode=0,
+  stdout에 "reset user <email>", success=true. (b) exitCode=1, stderr "no user found",
   success=false(도구 에러).
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestDearBabyResetDispatchesWithDefaults`,

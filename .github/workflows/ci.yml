@@ -428,7 +428,7 @@ jobs:
           kubectl apply -f tests/k8s/kind/resource-generic-samples.yaml
 
       - name: Apply dear-baby exec fixture
-        run: kubectl apply -f tests/k8s/kind/dear-baby-fixture.yaml
+        run: kubectl apply -f tests/k8s/kind/dear-baby.yaml
 
       - name: Apply auth-variant fixture
         run: kubectl apply -f tests/k8s/kind/auth-fixture.yaml
@@ -518,8 +518,11 @@ jobs:
       - name: Wait for fixture rollout
         run: kubectl -n workload-test rollout status deploy/workload-fixture --timeout=120s
 
-      - name: Wait for dear-baby fixture rollout
-        run: kubectl -n dear-baby-test rollout status deploy/dear-baby-fixture --timeout=120s
+      - name: Wait for dear-baby redis rollout
+        run: kubectl -n dear-baby-test rollout status deploy/redis --timeout=120s
+
+      - name: Wait for dear-baby backend rollout
+        run: kubectl -n dear-baby-test rollout status deploy/dear-baby --timeout=180s
 
       - name: Wait for auth-variant rollout
         run: kubectl -n homelab-k3s-mcp-auth rollout status deploy/homelab-k3s-mcp-auth --timeout=120s
@@ -673,8 +676,9 @@ jobs:
           kubectl -n workload-test get all -o wide || true
           kubectl -n workload-test describe deploy/workload-fixture || true
           kubectl -n dear-baby-test get all -o wide || true
-          kubectl -n dear-baby-test describe deploy/dear-baby-fixture || true
-          kubectl -n dear-baby-test logs deploy/dear-baby-fixture --tail=200 || true
+          kubectl -n dear-baby-test describe deploy/dear-baby || true
+          kubectl -n dear-baby-test logs deploy/dear-baby --tail=200 || true
+          kubectl -n dear-baby-test logs deploy/redis --tail=50 || true
           kubectl -n gatekeeper get all -o wide || true
           kubectl -n gatekeeper describe deploy/gatekeeper || true
           kubectl -n gatekeeper logs deploy/gatekeeper --tail=200 || true

@@ -80,13 +80,12 @@
 | --- | --- | --- | --- |
 | `github-mock` | `UPS` | `tests/k8s/kind/github-mock.yaml` | — |
 | `grafana-mock` | `UPS` | `tests/k8s/kind/grafana-mock.yaml` | — |
-| `dear-baby-fixture` | `IMG` | `tests/k8s/kind/dear-baby-fixture.yaml` | — |
 | `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/gatekeeper-variant.yaml` · `tests/k8s/kind/gate-broken-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
 | `DISABLE_SECURITY_PLUGIN` | `GATE` | `tests/k8s/kind/opensearch.yaml` | `tests/k8s/kind/http-trace.yaml` |
 
 <!-- /mock-exception-원장 -->
 
-등재 상한: <!-- mock-exception-상한 -->5<!-- /mock-exception-상한 -->
+등재 상한: <!-- mock-exception-상한 -->4<!-- /mock-exception-상한 -->
 
 상한은 허용목록의 행 수와 **정확히 같아야** 한다(체커 R6, 양방향). 예외를 늘리려면 같은 PR에서
 이 숫자를 명시적으로 올려야 하고, 예외가 사라지면 같이 내려야 한다 — 예외는 늘지 않는 방향으로만
@@ -144,18 +143,34 @@ App의 private key·installation id가 필요하다. CI 클러스터 안에 GitH
 
 **소멸 조건**: Grafana Cloud를 CI에서 안전하게 호출할 수 있게 되면 소멸한다.
 
-### `dear-baby-fixture` — `IMG`
+### 해소된 등재 — `dear-baby-fixture` (`IMG`, 2026-09-26 삭제)
 
-**대상**: dear-baby 백엔드 파드. `dear_baby_reset_user` 도구는 그 파드에 `exec`로
-`/reset-user <email>`을 실행한다.
+기록으로만 남긴다. 이 자리에는 busybox 파드에 `/reset-user` 스텁 스크립트를 심은
+`tests/k8s/kind/dear-baby-fixture.yaml` 이 `IMG` 로 등재돼 있었고, 사유는 「실 dear-baby 백엔드
+이미지는 비공개라 CI에서 당길 수 없고, 뒤에 데이터베이스도 필요하다」, 소멸 조건은 「이미지를 CI에서
+당길 수 있게 되면」이었다. **소멸 조건은 이미 도래해 있었고 사유 두 절은 실측으로 반증됐다**
+(`tbm_homelab-k3s-mcp-e2e-mock-policy/rct_20260926-0004`):
 
-**실환경 불가 사유**: 실 dear-baby 백엔드 이미지는 비공개라 CI에서 당길 수 없고, 뒤에 데이터베이스도
-필요하다. 픽스처는 busybox에 실 CLI의 성공/미발견 종료코드를 흉내 내는 스텁 스크립트를 심어,
-도구가 실제로 쓰는 경로(Kubernetes `pods/exec` 스트림)는 **실물 그대로** 굴린다 — 치환된 것은
-파드 안의 실행 파일 한 개뿐이다.
+- **이미지는 공개 패키지다.** 자격증명 없이 받은 익명 토큰으로 `ghcr.io/dlddu/dear-baby` 의
+  태그 목록과 매니페스트·레이어를 그대로 받았다(대조군으로 없는 이름은 `DENIED` 를 돌려준다).
+  이 레포는 이미 같은 org 의 실 이미지 셋을 당기고 있고 `imagePullSecrets` 는 0건이다.
+- **그 이미지가 실 CLI 를 담고 있다.** 운영이 핀한 태그의 arm64 레이어에 `/reset-user` 가
+  실재한다. 이 레포 CI 러너가 arm 이라 플랫폼도 맞는다.
+- **「뒤에 필요한 데이터베이스」는 SQLite 파일 하나다.** `/reset-user` 의 기본 `DATABASE_URL` 이
+  `file:/data/dear-baby.db` 이고, 서버가 기동할 때 마이그레이션을 돌린 뒤 `TEST_USER_EMAIL` /
+  `TEST_USER_PASSWORD` 로 사용자 행을 멱등 시드한다 — 시나리오 1 이 리셋하는 그 사용자다.
 
-**소멸 조건**: dear-baby 이미지를 CI에서 당길 수 있게 되면(공개되거나 pull 자격증명이 생기면)
-실 이미지로 대체해야 한다.
+즉 남아 있던 것은 *불가능*이 아니라 *미비*였고, 이 정책의 「실환경으로 준비 가능하면 어떤 카테고리도
+쓸 수 없다」가 등재를 금지한다. 대체물은 `tests/k8s/kind/dear-baby.yaml` — 같은 네임스페이스에
+운영과 같은 이미지·같은 redis 를 세우고, 도구는 스텁이 아니라 **실 `/reset-user` 바이너리**를
+exec 한다. e2e 단정은 성공 출력 한 줄만 실 CLI 의 문면(`reset user <email>`)으로 바뀌었고
+미발견 경로는 무수정으로 통과한다.
+
+**이 해소가 등재를 늘리지 않았다는 것**: 새 픽스처의 redis·backend 는 둘 다 실 구현체라
+이 문서가 세는 두 부류(상류 스텁 서버 · 충실도 저하 스위치) 어느 쪽도 아니다. 기동을 통과시키는
+`AWS_REGION`·`AWS_S3_BUCKET` 더미 값은 이 e2e 가 밟는 경로(`pods/exec`)에 얹힌 스위치가 아니고
+그 클라이언트는 생성만 되므로(assume-role 미설정) 치환이 아니다 — `gatekeeper-variant` 의
+VAPID 더미와 같은 판정이다.
 
 ### `MCP_AUTH_DISABLED` — `GATE`
 
@@ -294,6 +309,8 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
      `tests/k8s/kind/gate-broken-variant.yaml` 이다.
    - **등재를 늘리지 않았다**: 허용목록은 5행 그대로다(`scripts/check_mock_policy.py` 의
      「등재 5(상한 5)」). 3번 판정대로 주입은 이 정책이 세는 모킹이 아니므로 등재 대상이 아니다.
+     ⚠️ 그 뒤 2026-09-26 의 `dear-baby-fixture` 해소로 허용목록은 4행이 됐다 — 위 문장은
+     *그 슬라이스가 행을 늘리지 않았다*는 기록이고 현재 값이 아니다.
    - **C1~C5 안에 있다**: C1 응답은 실물 핸들러·실물 고유 인덱스가 만든다(테스트는 409·500 을
      *관측*할 뿐 문자열을 짓지 않는다) · C2 트리거 WHEN 절은
      `instr(NEW.context, '<대상 이름>') > 0` 이고 폴링 `BEGIN EXCLUSIVE` 는 쓰지 않았다 ·

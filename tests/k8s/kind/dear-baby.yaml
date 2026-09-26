@@ -1,0 +1,146 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dear-baby-test
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# 실 redis. dear_baby_reset_user 가 밟는 경로(pods/exec)와는 무관하지만 백엔드의
+# 기동 조건이다 — 서버는 REDIS_URL 이 비면 멈추고, 이어서 Ping 에 5초로 fail-fast 하므로
+# redis 가 없으면 파드가 Running 이 되지 못하고 도구의 파드 선택이 "no Running pod
+# matched" 로 떨어진다. 운영과 같은 이미지·같은 Service 이름이라 재배선이 없다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: dear-baby-test
+  labels:
+    app.kubernetes.io/name: redis
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:7-alpine
+          ports:
+            - containerPort: 6379
+              name: redis
+          readinessProbe:
+            exec:
+              command: ["redis-cli", "ping"]
+            initialDelaySeconds: 1
+            periodSeconds: 3
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: dear-baby-test
+spec:
+  selector:
+    app: redis
+  ports:
+    - port: 6379
+      targetPort: redis
+---
+# 실 dear-baby 백엔드. 여기에 있던 busybox + /reset-user 스텁은 2026-09-26 에
+# docs/e2e-mocking-policy.md 의 IMG 등재와 함께 사라졌다 — 이미지가 공개 패키지이고
+# 그 안에 실 /reset-user 가 있으며 뒤에 필요한 것이 SQLite 파일 하나였기 때문이다.
+# 아래 값들이 그 대체를 서게 하는 것이고, 각각 없으면 조용히 깨지는 것이 다르다:
+#   * 이미지는 sha 태그로 핀한다(운영이 핀한 그 태그다). :latest 는 dear-baby 레포의
+#     머지가 덮어써서 스키마와 CLI 출력 문면이 이 레포의 단정 밑에서 움직인다.
+#     이 index 는 arm64 단독이라 러너가 arm 이어야 한다(ci.yml 은 ubuntu-24.04-arm).
+#   * TEST_USER_EMAIL/PASSWORD — 서버가 기동할 때 마이그레이션을 돌리고 이 두 값으로
+#     users+onboarding 행을 멱등 시드한다. AC1 이 리셋하는 사용자가 여기서 생기므로,
+#     지우면 성공 경로가 미발견 경로로 바뀐다. 이메일은 그 spec 이 보내는 값과 같아야 한다.
+#   * AWS_REGION/AWS_S3_BUCKET — 서버가 이 둘의 부재에 fail-fast 한다. ASSUME_ROLE 이
+#     비어 있으면 S3 클라이언트는 생성만 되고 네트워크를 쓰지 않으므로, 이 값들은 기동을
+#     통과시키는 설정이지 치환이 아니다(gatekeeper-variant 의 VAPID 더미와 같은 형).
+#   * busy_timeout — /reset-user 는 서버와 같은 DB 파일을 여는 두 번째 프로세스다.
+#     journal_mode=delete 에서 쓰기 잠금이 겹칠 수 있어 기다리게 한다. 운영 DSN 에 더한
+#     유일한 차이이고, 나머지 pragma 는 운영과 같다.
+#   * emptyDir + fsGroup 65532 — DB 는 롤아웃마다 새로 만들어지는 것이 맞다(마이그레이션과
+#     시드가 매번 돈다). 이미지의 nonroot 는 uid/gid 65532 이므로 그 그룹이 아니면
+#     /data 에 SQLite 파일을 만들지 못한다.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dear-baby
+  namespace: dear-baby-test
+  labels:
+    app.kubernetes.io/name: dear-baby
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dear-baby
+  template:
+    metadata:
+      labels:
+        app: dear-baby
+    spec:
+      securityContext:
+        fsGroup: 65532
+      containers:
+        - name: backend
+          image: ghcr.io/dlddu/dear-baby:4569b0bb3a889dbdfa5197741571dc26dc626607
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: PORT
+              value: "8080"
+            - name: DATABASE_URL
+              value: "file:/data/dear-baby.db?_pragma=foreign_keys(1)&_pragma=journal_mode(delete)&_pragma=synchronous(FULL)&_pragma=busy_timeout(5000)"
+            - name: REDIS_URL
+              value: redis://redis:6379
+            - name: AWS_REGION
+              value: ap-northeast-2
+            - name: AWS_S3_BUCKET
+              value: dear-baby-test-unused
+            - name: TEST_USER_EMAIL
+              value: user@example.com
+            - name: TEST_USER_PASSWORD
+              value: dear-baby-e2e-not-a-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 20
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          volumeMounts:
+            - mountPath: /data
+              name: data
+          resources:
+            requests:
+              cpu: 20m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: data
+          emptyDir: {}
