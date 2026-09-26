@@ -39,9 +39,7 @@ const (
 	ListDefaultLimit int64 = 100
 	ListMaxLimit     int64 = 500
 
-	// WatchDefaultSeconds and WatchMaxSeconds are AC6's window. The tool layer
-	// refuses a value above the ceiling rather than clamping it, the way AC3
-	// treats limit.
+	// WatchDefaultSeconds and WatchMaxSeconds are AC6's window.
 	WatchDefaultSeconds int64 = 10
 	WatchMaxSeconds     int64 = 60
 
@@ -49,10 +47,9 @@ const (
 	WatchMaxEvents = 100
 )
 
-// patchTypes are AC9's four names and the media types the apiserver knows them
-// by. The names are the tool's vocabulary rather than the wire strings because
-// the wire strings are content types, and an argument that has to be spelled
-// "application/strategic-merge-patch+json" is an argument nobody gets right.
+// patchTypes keys AC9's names by the tool's own vocabulary rather than the wire
+// strings, because the wire strings are content types and an argument that has to
+// be spelled "application/strategic-merge-patch+json" is one nobody gets right.
 var patchTypes = map[string]types.PatchType{
 	"merge":     types.MergePatchType,
 	"strategic": types.StrategicMergePatchType,
@@ -174,10 +171,7 @@ type PatchRef struct {
 	ApprovedUID             string
 }
 
-// DeleteRef addresses the single object to remove (AC10). There is no selector
-// field, and that absence is the contract rather than an omission: selecting a
-// set is the deletecollection verb, so a caller who wants one cannot express it
-// through this type.
+// DeleteRef addresses the single object to remove (AC10).
 type DeleteRef struct {
 	APIVersion         string
 	Kind               string
@@ -260,10 +254,9 @@ func (s *KubeService) restMapper(refresh bool) (meta.RESTMapper, error) {
 	return s.mappers.mapper, nil
 }
 
-// resolve turns apiVersion+kind into a resource path. A kind the cluster does
-// not serve is refused with candidates rather than guessed at — a guessed path
-// produces a 404 that reads like "the object is gone" instead of "that kind
-// does not exist here" (AC20).
+// resolve turns apiVersion+kind into a resource path. Guessing one produces a
+// 404 that reads like "the object is gone" instead of "that kind does not exist
+// here" — that reading is why AC20 refuses instead.
 func (s *KubeService) resolve(ctx context.Context, apiVersion, kind string) (resolved, error) {
 	gv, err := schema.ParseGroupVersion(apiVersion)
 	if err != nil {
@@ -451,9 +444,6 @@ func (s *KubeService) ListResources(ctx context.Context, q ListQuery) (*ListResu
 	if err := json.Unmarshal(raw, &table); err != nil {
 		return nil, APIError(fmt.Sprintf("apiserver returned a list this server cannot render as a table: %v", err))
 	}
-	// An ordinary list decodes into this struct without error and leaves every
-	// field zero, so the only thing separating "the namespace is empty" from
-	// "the table was never negotiated" is the kind the body declares.
 	if table.Kind != "Table" {
 		return nil, apiErrorf(
 			"apiserver answered %s %s instead of a Table; this server renders only the "+
@@ -764,13 +754,10 @@ func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*Resou
 	}, nil
 }
 
-// requireSubresource asks discovery whether the cluster serves
-// <resource>/<sub>, so that AC8's DaemonSet is refused for not having replicas
-// rather than for a 404. The apiserver cannot make that distinction for us —
-// a PUT to daemonsets/<name>/scale and a PUT to a deleted deployment's scale
-// are the same status code, and the second reading is the one an operator acts
-// on. Discovery is not a resource permission (AC20), so asking costs this tool
-// no second verb.
+// requireSubresource asks discovery whether the cluster serves <resource>/<sub>.
+// The apiserver cannot make AC8's distinction for us — a PUT to
+// daemonsets/<name>/scale and a PUT to a deleted deployment's scale are the same
+// status code, and the second reading is the one an operator acts on.
 func (s *KubeService) requireSubresource(ctx context.Context, gvr schema.GroupVersionResource, sub, kind string) error {
 	dc, err := s.discoveryClient()
 	if err != nil {
@@ -952,8 +939,7 @@ func (s *KubeService) APIResources(ctx context.Context) ([]APIResource, error) {
 	return out, nil
 }
 
-// apiCallError converts a 403 into a statement about this server's grant rather
-// than passing the apiserver's wording through (AC18).
+// apiCallError converts a 403 the way AC18 asks.
 func (s *KubeService) apiCallError(err error, verb, resource string) error {
 	if apierrors.IsForbidden(err) {
 		return apiErrorf(
@@ -971,7 +957,6 @@ func subresourcePath(resource, subresource string) string {
 	return resource + "/" + subresource
 }
 
-// stripNoise removes the two fields AC4 names as noise.
 func stripNoise(object map[string]any) {
 	metadata, ok := object["metadata"].(map[string]any)
 	if !ok {

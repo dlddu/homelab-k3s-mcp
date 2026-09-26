@@ -11,10 +11,9 @@ import (
 
 const collectionArgs = `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","labelSelector":"app=api"}`
 
-// AC11: "셀렉터가 0건을 가리키면 승인 요청을 만들지 않고 그대로 알린다". Both halves
-// are asserted, because either one alone is the wrong behaviour: an approval
-// request for nothing wastes an operator's attention, and a deletecollection
-// that ran without one is a gated verb reaching the cluster unjudged.
+// Both halves are asserted, because either one alone is the wrong behaviour: an
+// approval request for nothing wastes an operator's attention, and a
+// deletecollection that ran without one is a gated verb reaching the cluster unjudged.
 func TestEmptySelectionAsksNobodyAndDeletesNothing(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
 	empty := newCollectionReader()
@@ -39,9 +38,8 @@ func TestEmptySelectionAsksNobodyAndDeletesNothing(t *testing.T) {
 	}
 }
 
-// AC3's deletecollection row: the count and the names are what the operator is
-// judging. A context that named the selector but not its members would be
-// asking someone to approve a number they cannot see.
+// A context that named the selector but not its members would be asking someone
+// to approve a number they cannot see.
 func TestCollectionContextCarriesCountAndNames(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerListing(t, gate, toolRegistry, newStateReader(),
@@ -58,9 +56,8 @@ func TestCollectionContextCarriesCountAndNames(t *testing.T) {
 	}
 }
 
-// AC3: "많으면 앞 20개와 총 개수". The cap is on the names, never on the count —
-// an operator who sees 20 names and no total has been told the selection is
-// smaller than it is.
+// The cap is on the names, never on the count — an operator who sees 20 names
+// and no total has been told the selection is smaller than it is.
 func TestCollectionContextTruncatesNamesButNotTheCount(t *testing.T) {
 	names := make([]string, 0, 25)
 	for i := 0; i < 25; i++ {
@@ -87,9 +84,8 @@ func TestCollectionContextTruncatesNamesButNotTheCount(t *testing.T) {
 	}
 }
 
-// AC11's verification method: "승인과 실행 사이에 대상이 늘면 실행이 거부된다"
-// (prd-approval-gate AC6). The operator approved a list of names, so a list
-// with a different name on it is a different approval.
+// The operator approved a list of names, so a list with a different name on it
+// is a different approval.
 func TestCollectionThatGrewAfterApprovalIsRefused(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
 	lister := newCollectionReader("api-1", "api-2")
@@ -109,10 +105,9 @@ func TestCollectionThatGrewAfterApprovalIsRefused(t *testing.T) {
 	}
 }
 
-// AC11: namespace is required, and the refusal has to come before the approval
-// request. A missing namespace is not a narrower call than an approved one —
-// the apiserver reads an absent namespace on a collection delete as every
-// namespace, so this is the widest deletion the tool could make.
+// A missing namespace is not a narrower call than an approved one — the
+// apiserver reads an absent namespace on a collection delete as every namespace,
+// so this is the widest deletion the tool could make.
 func TestCollectionWithoutNamespaceIsRefusedBeforeAnyApproval(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
 	h, fake, lister := testHandlerListing(t, gate, toolRegistry, newStateReader(), newCollectionReader())

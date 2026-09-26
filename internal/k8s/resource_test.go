@@ -17,7 +17,6 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-// AC4: the two fields that dominate an object's size go, and nothing else does.
 // The negative half is the point — a stripper that also took spec or status
 // would be indistinguishable from this one on a smoke test.
 func TestStripNoiseRemovesOnlyTheNoise(t *testing.T) {
@@ -80,9 +79,7 @@ func TestStripNoiseToleratesObjectsWithoutMetadata(t *testing.T) {
 	}
 }
 
-// AC18: a 403 is reported as this server's missing grant, naming the pair —
-// not passed through as the apiserver's own wording, which reads like a
-// transient failure worth retrying. AC18 names no file now; neither may this.
+// AC18 names no file now; neither may this.
 func TestForbiddenBecomesAGrantStatement(t *testing.T) {
 	forbidden := apierrors.NewForbidden(
 		schema.GroupResource{Group: "", Resource: "secrets"},
@@ -131,10 +128,7 @@ func TestSubresourcePathJoinsOnlyWhenThereIsOne(t *testing.T) {
 // tableNegotiatingServer stands in for an apiserver at the one point that
 // matters here: it reads the Accept parameters the way the real one does and
 // answers a Table only when they name a representation it serves. `honor` false
-// is the older apiserver that has no Table for this resource at all. Neither
-// branch ever errors — the fallback to the ordinary list is the documented
-// behaviour of offering plain application/json alongside, and it is what makes
-// a wrong parameter look like an empty result rather than a failed call.
+// is the older apiserver that has no Table for this resource at all.
 func tableNegotiatingServer(t *testing.T, honor bool) *httptest.Server {
 	t.Helper()
 	const table = `{"kind":"Table","apiVersion":"meta.k8s.io/v1",` +
@@ -181,11 +175,6 @@ func serviceAgainst(host string) *KubeService {
 	return service
 }
 
-// The header this package sends has to be one the apiserver actually matches.
-// Asserting its shape ("starts with as=Table", "mentions meta.k8s.io") is what
-// the first version of this test did, and it held for a header carrying v=1 —
-// a version no apiserver serves — for as long as nothing put the string in
-// front of a server that negotiates.
 func TestListResourcesGetsTheTableFromAServerThatNegotiates(t *testing.T) {
 	server := tableNegotiatingServer(t, true)
 	defer server.Close()
@@ -208,9 +197,6 @@ func TestListResourcesGetsTheTableFromAServerThatNegotiates(t *testing.T) {
 	}
 }
 
-// The negative half is the point. A decoder that shrugs at a non-Table body
-// reports an empty table, which reads as "there is nothing there" — the one
-// answer a list must never invent.
 func TestListResourcesRefusesABodyThatIsNotATable(t *testing.T) {
 	server := tableNegotiatingServer(t, false)
 	defer server.Close()
@@ -237,9 +223,8 @@ func servedKinds() []APIResource {
 	}
 }
 
-// AC20: the refusal carries candidates. The middle-of-the-word typo is the case
-// the scenario names and the one containment alone never answered, so each row
-// here is a shape of wrongness rather than a repetition of the same one.
+// The middle-of-the-word typo is the one containment alone never answered, so
+// each row here is a shape of wrongness rather than a repetition of the same one.
 func TestUnknownKindSuggestsCandidates(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -310,12 +295,10 @@ func TestSimilarKindsDoNotRepeatALabel(t *testing.T) {
 	}
 }
 
-// AC9: each name the tool accepts has to reach the apiserver as the content
-// type that means what the name says. The media types are asserted by value
-// rather than by round-tripping the constants — a mapping that sent "merge" as
-// a strategic patch would be self-consistent and still apply the wrong
-// semantics to a list field, which is the same class of error the Accept
-// header's v=1 was.
+// The media types are asserted by value rather than by round-tripping the
+// constants — a mapping that sent "merge" as a strategic patch would be
+// self-consistent and still apply the wrong semantics to a list field, which is
+// the same class of error the Accept header's v=1 was.
 func TestPatchTypesMapToApiserverMediaTypes(t *testing.T) {
 	want := map[string]string{
 		"merge":     "application/merge-patch+json",
@@ -344,8 +327,7 @@ func TestPatchTypesMapToApiserverMediaTypes(t *testing.T) {
 }
 
 // discoveryServer answers the one group-version endpoint requireSubresource
-// reads. apps/v1 is the honest case: the apiserver serves deployments/scale and
-// does not serve daemonsets/scale, which is the whole of AC8's DaemonSet rule.
+// reads, with apps/v1 as the honest case.
 func discoveryServer(t *testing.T) *httptest.Server {
 	t.Helper()
 	const resources = `{"kind":"APIResourceList","apiVersion":"v1","groupVersion":"apps/v1","resources":[` +
@@ -363,10 +345,9 @@ func discoveryServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-// AC8: a kind with no replicas is refused for having no replicas. The negative
-// half carries the criterion — the refusal an operator acts on is the one that
-// says which of "no permission", "no object" and "no such thing" it was, and a
-// bare PUT would have produced the same 404 for all three.
+// The negative half carries the criterion — the refusal an operator acts on is
+// the one that says which of "no permission", "no object" and "no such thing" it
+// was, and a bare PUT would have produced the same 404 for all three.
 func TestUpdateScaleRejectsReplicalessKind(t *testing.T) {
 	server := discoveryServer(t)
 	defer server.Close()

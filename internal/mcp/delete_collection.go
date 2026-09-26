@@ -12,14 +12,11 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// contextNameLimit is how many target names the approval screen carries in
-// full (prd-approval-gate AC3). Past it the count does the work the names were
-// there for: an operator judging whether 900 is the number they meant is not
-// reading 900 lines to decide.
+// contextNameLimit is where the count starts doing the work the names were there
+// for: an operator judging whether 900 is the number they meant is not reading
+// 900 lines to decide (prd-approval-gate AC3).
 const contextNameLimit = 20
 
-// deleteCollectionSelection is what AC11's arguments amount to: a namespace
-// and two selectors.
 type deleteCollectionSelection struct {
 	namespace     string
 	labelSelector string
@@ -27,10 +24,8 @@ type deleteCollectionSelection struct {
 	grace         *int64
 }
 
-// parseDeleteCollectionTarget reads AC11's one shape and refuses every
-// argument that would make it something else.
-//
-// Both sides run it, for the reason parseDeleteTarget sets out.
+// parseDeleteCollectionTarget is run by both sides, for the reason
+// parseDeleteTarget sets out.
 //
 // The namespace check is the one that matters, because a missing namespace
 // does not fail safe: the apiserver reads an empty one on a collection delete
@@ -75,7 +70,6 @@ func parseDeleteCollectionTarget(obj map[string]any) (deleteCollectionSelection,
 	return sel, nil
 }
 
-// callDeleteCollection is the gate path for a selection rather than an object.
 func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry toolEntry, raw json.RawMessage) (any, *rpcErr) {
 	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, raw)
 	if err != nil {
@@ -87,8 +81,6 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 
 	ref, err := entry.decl.collectionTarget(raw)
 	if err != nil {
-		// AC3's closing clause: no approval request is made for a call whose
-		// target cannot be named.
 		return nil, errf(-32602, "%s", err.Error())
 	}
 
@@ -151,8 +143,7 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 	return annotateAutoApproval(result, decision), nil
 }
 
-// confirmCollectionUnchanged re-reads the selection and refuses when it is not
-// the one that was approved (prd-approval-gate AC6).
+// confirmCollectionUnchanged re-reads the selection (prd-approval-gate AC6).
 //
 // Growth is the case AC11 names, but shrinkage and replacement are refused on
 // the same footing: a list with different names on it is a different approval.
@@ -202,8 +193,7 @@ func sameTargets(approved, current []k8s.CollectionTarget) bool {
 	return true
 }
 
-// collectionApprovalContext renders what the operator sees for a collection
-// delete: AC3's deletecollection row.
+// collectionApprovalContext renders what the operator sees for a collection delete.
 func collectionApprovalContext(
 	name string,
 	gated []gatekeeper.Pair,
