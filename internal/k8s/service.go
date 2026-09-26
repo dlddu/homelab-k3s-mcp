@@ -4,8 +4,7 @@ import "context"
 
 // Service is the kubernetes-facing surface the MCP tools depend on.
 type Service interface {
-	// APIResources reports the kinds the cluster actually serves, which is what
-	// the other two methods resolve a coordinate against.
+	// APIResources reports the kinds the cluster actually serves.
 	APIResources(ctx context.Context) ([]APIResource, error)
 
 	ListResources(ctx context.Context, query ListQuery) (*ListResult, error)
@@ -35,8 +34,7 @@ type Service interface {
 	ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*ExecOutcome, error)
 
 	// ExecResource is the coordinate-addressed half of exec
-	// (prd-resource-generic AC12): one named pod, one command array, stdout and
-	// stderr returned separately under AC12's byte and time caps.
+	// (prd-resource-generic AC12).
 	ExecResource(ctx context.Context, ref ExecRef, container *string, command []string) (*ExecOutcome, error)
 
 	// AttachResource joins the streams of the process already running in one
