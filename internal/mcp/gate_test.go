@@ -633,7 +633,6 @@ func TestProductionRegistryDeclaresEveryTool(t *testing.T) {
 	}
 }
 
-// AC1/AC5: a state-changing call with no approval never reaches the cluster.
 func TestGatedCallIsRefusedBeforeKubernetes(t *testing.T) {
 	for _, verb := range []string{"create", "update", "patch", "delete", "deletecollection"} {
 		t.Run(verb, func(t *testing.T) {
@@ -708,8 +707,6 @@ func TestUngatedReadsStillRunWhileTheGateRefuses(t *testing.T) {
 	}
 }
 
-// AC1: a sensitive kind is the one case where a read is gated — a Secret's
-// value leaves the cluster whether it was fetched or streamed.
 func TestSensitiveReadsAreGated(t *testing.T) {
 	registry := map[string]toolEntry{
 		"secret_get":   {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "get", Resource: "secrets"}}}, handle: reachesKubernetes},
@@ -760,8 +757,6 @@ func TestApprovedCallReachesKubernetesWithAJudgeableContext(t *testing.T) {
 	}
 }
 
-// AC7: the dispatcher spends the approval, so handing back the same decision
-// twice cannot buy a second call.
 func TestApprovalCannotBeSpentTwice(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
 	registry := map[string]toolEntry{
@@ -783,8 +778,6 @@ func TestApprovalCannotBeSpentTwice(t *testing.T) {
 	}
 }
 
-// AC8: an executed gated call leaves a record carrying the request id and who
-// decided it; a refused one records why.
 func TestGatedCallsAreAudited(t *testing.T) {
 	var buf bytes.Buffer
 	previous := slog.Default()
@@ -820,8 +813,6 @@ func TestGatedCallsAreAudited(t *testing.T) {
 	}
 }
 
-// AC9: an auto-approved execution says so in its own answer, not only in a log
-// the caller never reads.
 func TestAutoApprovalIsVisibleInTheToolResponse(t *testing.T) {
 	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1", AutoApproved: true}}
 	registry := map[string]toolEntry{
@@ -906,9 +897,6 @@ func TestSensitiveGenericReadIsRefusedBeforeKubernetes(t *testing.T) {
 	}
 }
 
-// AC16: the additions stop at the read half of sensitive kinds. Ordinary kinds
-// read ungated, and list stays outside the gate for every kind because the
-// table is rendered server-side and carries no values (AC17).
 func TestOrdinaryReadsAndSecretListsStayUngated(t *testing.T) {
 	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
 
@@ -1113,9 +1101,6 @@ func TestExecutionProceedsWhenTheTargetIsUnchanged(t *testing.T) {
 	}
 }
 
-// AC11's exception is chosen by the kind and not by the verb: a Secret read
-// whole to learn its resourceVersion has leaked the value whether the call that
-// prompted the read was a get or a patch.
 func TestGateReadsSensitiveKindsAsMetadataOnly(t *testing.T) {
 	for _, tc := range []struct {
 		name         string

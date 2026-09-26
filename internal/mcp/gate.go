@@ -15,8 +15,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// gatedVerbs are the RBAC verbs that change cluster state, gated without
-// exception and judged by the verb alone (prd-approval-gate AC1).
 var gatedVerbs = map[string]bool{
 	"create":           true,
 	"update":           true,
@@ -25,18 +23,9 @@ var gatedVerbs = map[string]bool{
 	"deletecollection": true,
 }
 
-// toolDeclaration is one row of the (verb, resource[/subresource]) table AC1
-// requires every tool to publish.
 type toolDeclaration struct {
-	// pairs is what this tool exercises against the apiserver. Empty on its own
-	// says nothing: a tool that reaches no resource says so in
-	// noResourcePermission, and one that says neither fails startup (AC1).
 	pairs []gatekeeper.Pair
 
-	// noResourcePermission is AC1's ⑵ — the explicit statement, with its
-	// reason, that this tool exercises no (verb, resource) permission. Exactly
-	// one of it and a pair declaration is set; validateDeclarations refuses a
-	// registry where any tool has both or neither.
 	noResourcePermission *noResourcePermission
 
 	// resolve derives the pair from one call's own arguments, for the generic
@@ -436,9 +425,6 @@ func genericCollectionTarget() func(json.RawMessage) (*k8s.CollectionTargetRef, 
 	}
 }
 
-// readIsSensitive decides the read half of the gate: get and watch are gated
-// only when the target is a sensitive kind, because a stream hands over the
-// whole object exactly as a get does.
 func readIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
 	if p.Verb != "get" && p.Verb != "watch" {
 		return false
@@ -518,9 +504,6 @@ func validateRegistry(registered map[string]toolEntry, advertised []string) erro
 	return fmt.Errorf("tool registry is inconsistent: %s", strings.Join(problems, "; "))
 }
 
-// Validate reports whether the tool registry and the advertised tools/list
-// agree. main calls it before listening so a mismatch stops the process rather
-// than shipping a tool whose pairs nobody declared (AC1).
 // ToolNames is the dispatchable tool set, sorted. It is what the metrics of
 // prd-metrics enumerate the tool label from (AC1: every registered tool is
 // a series from the start, AC4: nothing else ever is), so it reads the same
@@ -534,6 +517,9 @@ func ToolNames() []string {
 	return names
 }
 
+// Validate reports whether the tool registry and the advertised tools/list
+// agree. main calls it before listening so a mismatch stops the process rather
+// than shipping a tool whose pairs nobody declared (AC1).
 func Validate() error {
 	advertised, err := advertisedToolNames()
 	if err != nil {
@@ -589,12 +575,6 @@ const gateTargetKind = "⟨kind⟩"
 
 // GatePairs reports the kubernetes permissions the gate exercises on its own
 // behalf, before any verdict exists (prd-approval-gate AC11).
-//
-// AC19 of prd-resource-generic used to compare this against rbac.yaml and is
-// now a결번, so nothing machine-checks the list any more. It is still published
-// because the question it answers — what does the gate read before it asks
-// anyone — is one a reviewer has to be able to answer without reading this
-// file, and main prints it at startup beside Exemptions.
 func GatePairs() []gatekeeper.Pair {
 	return []gatekeeper.Pair{
 		{Verb: "get", Resource: gateTargetKind},
