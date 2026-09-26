@@ -43,18 +43,20 @@ import time
 from mcp.shared.exceptions import McpError
 
 from _gatekeeper import (
-    INJECT_CONFLICT,
-    INJECT_ERROR,
     count_requests,
     create_records,
     decide,
     gatekeeper_url,
     get_request,
+    trace_url,
+    wait_for_pending,
+)
+from _injector import (
+    INJECT_CONFLICT,
+    INJECT_ERROR,
     injected,
     injector_state,
     injector_url,
-    trace_url,
-    wait_for_pending,
 )
 from _helpers import base_url, open_session, port_forward, wait_for_healthz
 
