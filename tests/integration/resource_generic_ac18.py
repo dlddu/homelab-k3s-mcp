@@ -4,18 +4,11 @@
 실행 대상: primary
 병렬 레인: gate-objects
 
-Go 단위 ``internal/k8s/resource_test.go::TestForbiddenBecomesAGrantStatement`` 가 번역
-함수 하나를 가짜 403 으로 단언한다. 실물 apiserver 가 이 SA 에게 실제로 403 을 주는 것,
-그 403 이 **승인이 이미 소비된 뒤에** 오는 것, 그리고 게이트 자신의 사전 읽기(AC11)가
-같은 번역을 지나는 것은 그 층에서 관측되지 않는다 — 이 파일이 재는 것이 그 자리다.
-
-One file, one deployment that is not the one the runner hands it: every SUT in
-this harness is cluster-admin, so the 403 exists only on the narrow-RBAC
-variant reached through this file's own port-forward. Which grants that
-variant has, which it withholds and why the gate's pre-read shapes them is in
-the header of tests/k8s/kind/rbac-narrow-fixture.yaml; this file depends on
-three facts from it: clusterroles are readable but not patchable, configmaps
-are patchable, networkpolicies are not even readable.
+The 403 exists only on the narrow-RBAC variant. Which grants that variant has,
+which it withholds and why the gate's pre-read shapes them is in the header of
+tests/k8s/kind/rbac-narrow-fixture.yaml; this file depends on three facts from
+it: clusterroles are readable but not patchable, configmaps are patchable,
+networkpolicies are not even readable.
 
 (c) is the positive control on the same deployment — the same dance and the
 same code path succeed where the grant exists. Without it (a) could not be
@@ -129,11 +122,9 @@ async def test_resource_generic_ac18_missing_verb_is_named_after_approval(
 ) -> None:
     """AC: resource-generic/AC18 (a)
 
-    Reading the ClusterRole first is not decoration: it shows the kind is
-    inside this server's grant, so the pair the refusal names is a verb that
-    is missing, not a kind. The gatekeeper record reading APPROVED afterwards
-    is what places the 403 after the approval rather than in front of it —
-    the pre-read path of (b) would have left no record at all.
+    The gatekeeper record reading APPROVED afterwards is what places the 403
+    after the approval rather than in front of it — the pre-read path of (b)
+    would have left no record at all.
     """
     readable = await session.call_tool(
         "resource_get",
@@ -157,13 +148,7 @@ async def test_resource_generic_ac18_missing_verb_is_named_after_approval(
 async def test_resource_generic_ac18_granted_pair_goes_through(
     session: ClientSession, gate: str
 ) -> None:
-    """AC: resource-generic/AC18 (c) — positive control
-
-    Same deployment, same ServiceAccount, same approval dance, same
-    resource_patch code path; the one difference from (a) is that this pair
-    is granted. Must be observed on the variant, not the primary — a success
-    on the primary would say nothing about this SA.
-    """
+    """AC: resource-generic/AC18 (c) — positive control"""
     _kubectl(
         "-n", VARIANT_NAMESPACE, "create", "configmap", CONTROL_CONFIGMAP,
         "--from-literal=purpose=rg-ac18-control",
@@ -184,10 +169,7 @@ async def test_resource_generic_ac18_ungranted_kind_is_refused_before_approval(
 ) -> None:
     """AC: resource-generic/AC18 (b)
 
-    A kind with no grant of any verb never reaches the gatekeeper: the gate's
-    own pre-read (AC11) is what the apiserver refuses, the refusal comes back
-    as a JSON-RPC error rather than a tool result, and it is still the
-    translated pair — for the verb that was actually refused, get. The
+    The refusal comes back as a JSON-RPC error rather than a tool result. The
     request-id set difference is the observation that nothing was asked of a
     human; a marker search would pass vacuously here because there is no
     record to search. The difference is narrowed to requests naming the

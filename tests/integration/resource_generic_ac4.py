@@ -4,19 +4,10 @@
 실행 대상: primary
 병렬 레인: resource-generic
 
-`workload-fixture` 로 족한 것은 CI 가 `kubectl apply -f tests/k8s/kind/test-deployment.yaml`
-로 세워 잡음 두 필드가 다 붙기 때문이다.
-
-「나머지 `spec`/`status` 는 온전」은 포함 관계가 아니라 **등가**로 잰다: `spec` 은 원본과
-완전히 같아야 하고, `metadata` 의 키 집합은 원본에서 **그 둘만** 뺀 것과 같아야 한다.
-포함으로 재면 과잉 제거(잡음 아닌 필드까지 걷어낸 경우)가 통과한다. 값 비교에서
-`resourceVersion` 처럼 흔들리는 필드를 피하려고 metadata 는 키 집합으로 보고,
-`annotations` 만 값까지 대조한다 — 「그 어노테이션 하나만 빠졌다」가 이 시나리오의 요지라서다.
-
-`name` 누락 케이스는 도구가 **k8s 에 닿기 전에** 인자 검증으로 거부하므로 도구 결과가 아니라
-`McpError`(-32602) 로 온다. 메시지가 `resource_list` 를 가리키는지까지 보는 이유는, 시나리오가
-요구하는 것이 거부 자체가 아니라 **대상 해석 경로가 존재하지 않는다**는 사실과 그 안내이기
-때문이다(셀렉터를 여기서 풀면 list verb 를 행사하게 되어 verb 1:1 이 깨진다).
+「나머지 `spec`/`status` 는 온전」은 포함 관계가 아니라 **등가**로 잰다. 포함으로 재면 과잉
+제거(잡음 아닌 필드까지 걷어낸 경우)가 통과한다. 값 비교에서 `resourceVersion` 처럼 흔들리는
+필드를 피하려고 metadata 는 키 집합으로 보고, `annotations` 만 값까지 대조한다 — 「그 어노테이션
+하나만 빠졌다」가 이 시나리오의 요지라서다.
 """
 
 from __future__ import annotations
@@ -121,7 +112,6 @@ async def test_resource_generic_ac4_get_strips_only_the_noise(
     }
     expected_keys = set(raw_metadata) - {"managedFields"}
     if not expected_annotations:
-        # 어노테이션이 last-applied 뿐이었으면 빈 맵을 남기지 않고 키째 지운다.
         expected_keys.discard("annotations")
         assert "annotations" not in metadata, (
             f"비워진 annotations 맵이 남아 있다: {metadata.get('annotations')}"
