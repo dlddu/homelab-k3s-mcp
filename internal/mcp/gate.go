@@ -542,6 +542,8 @@ func Validate() error {
 	return validateRegistry(toolRegistry, advertised)
 }
 
+var extraAdvertisedTools []string
+
 func advertisedToolNames() ([]string, error) {
 	var doc struct {
 		Tools []struct {
@@ -551,10 +553,11 @@ func advertisedToolNames() ([]string, error) {
 	if err := json.Unmarshal([]byte(toolsListJSON), &doc); err != nil {
 		return nil, fmt.Errorf("tools/list payload is not valid JSON: %w", err)
 	}
-	names := make([]string, 0, len(doc.Tools))
+	names := make([]string, 0, len(doc.Tools)+len(extraAdvertisedTools))
 	for _, t := range doc.Tools {
 		names = append(names, t.Name)
 	}
+	names = append(names, extraAdvertisedTools...)
 	return names, nil
 }
 

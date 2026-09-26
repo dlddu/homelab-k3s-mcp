@@ -1,0 +1,255 @@
+# Approval-refusal SUT variants for test-approval-gate.md#시나리오 1
+# (approval_gate_ac1.py). Two deployments that no existing variant can stand in
+# for, for two unrelated reasons.
+#
+#  * homelab-k3s-mcp-gate-refusal -- (a) and (b). The scenario asks that gated
+#    calls be left unapproved until GATEKEEPER_TIMEOUT_SECONDS expires, and the
+#    primary's 300 s default would make one file spend over an hour waiting. The
+#    timeout is env, so it is per deployment; five seconds is long enough that a
+#    verdict could arrive if anything were answering and short enough that
+#    fourteen calls fit in a lane. The gate secret ci.yml creates here carries no
+#    GATEKEEPER_USER_ID on purpose -- with no assignee, gatekeeper's auto-response
+#    mode cannot engage and nobody decides, which is what "자동 응답을 끄고
+#    판정하지 않는다" asks for.
+#
+#  * homelab-k3s-mcp-undeclared-tool -- (c). It runs the e2e_undeclared_tool
+#    build of the same source (internal/mcp/undeclared_tool_probe.go), whose
+#    registry carries a tool with no (verb, resource) declaration, and it is
+#    MEANT NEVER TO BECOME READY: mcp.Validate() refuses and main exits 1, so the
+#    pod crashloops. ci.yml deliberately does not wait on its rollout, for the
+#    same reason it skips homelab-k3s-mcp-no-auth (platform-auth-safety/AC8 (d)).
+#    The registry and the advertised list are compile-time constants, so this
+#    variant cannot be produced by env or by editing a manifest -- a separate
+#    image is the only form it has.
+#
+# Auth stays ON in both (MCP_API_KEYS, the throwaway key of auth-fixture.yaml),
+# like rbac-narrow-fixture.yaml and commit-status-variant.yaml, so this file adds
+# no GATE entry to docs/e2e-mocking-policy.md.
+#
+# The dedicated ServiceAccount and ClusterRoleBinding exist for the same reason
+# the other variants' do: authorization is per ServiceAccount.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-gate-refusal
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-k3s-mcp
+  namespace: homelab-k3s-mcp-gate-refusal
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-k3s-mcp:gate-refusal-workloads
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: homelab-k3s-mcp
+    namespace: homelab-k3s-mcp-gate-refusal
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-gate-refusal
+  namespace: homelab-k3s-mcp-gate-refusal
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # Same throwaway CI key as tests/k8s/kind/auth-fixture.yaml, so the
+            # e2e can reuse _auth_variant.API_KEY.
+            - name: MCP_API_KEYS
+              value: ci-e2e-key
+            # env wins over envFrom for the same key, which is what makes the
+            # short wait a property of this deployment rather than of the
+            # secret ci.yml shares with the other variants.
+            - name: GATEKEEPER_TIMEOUT_SECONDS
+              value: "5"
+          envFrom:
+            # Created by ci.yml's "Seed the gatekeeper e2e user" step for THIS
+            # namespace: the direct gatekeeper URL and API key, and no
+            # GATEKEEPER_USER_ID.
+            - secretRef:
+                name: homelab-k3s-mcp-gatekeeper
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 30
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-gate-refusal
+  namespace: homelab-k3s-mcp-gate-refusal
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-refusal
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-undeclared-tool
+  namespace: homelab-k3s-mcp-gate-refusal
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-undeclared-tool
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-undeclared-tool
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-undeclared-tool
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      automountServiceAccountToken: true
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: server
+          # The e2e_undeclared_tool build. Everything else about this pod is the
+          # gate-refusal deployment above; the image is the whole variant.
+          image: homelab-k3s-mcp:ci-undeclared
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # Auth has to be CONFIGURED, not merely permissive: auth.FromEnv
+            # runs before mcp.Validate() in main, and a deployment with no
+            # credential path at all exits there instead (that is what
+            # platform-auth-safety/AC8 (d) observes). The refusal this variant
+            # exists to show is the later one, so this key is what keeps the
+            # process alive long enough to reach it.
+            - name: MCP_API_KEYS
+              value: ci-e2e-key
+          envFrom:
+            - secretRef:
+                name: homelab-k3s-mcp-gatekeeper
+          # No probes. The container never listens, and a startupProbe would
+          # only add its own failure reason on top of the exit this variant is
+          # meant to show.
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL

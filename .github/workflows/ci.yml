@@ -217,11 +217,22 @@ jobs:
         run: |
           mkdir -p /tmp/image-ctx
           go build -ldflags="-s -w" -o /tmp/image-ctx/homelab-k3s-mcp .
+          # The e2e_undeclared_tool build for test-approval-gate.md#시나리오 1 (c)
+          # (tests/k8s/kind/gate-refusal-variant.yaml). Same source, one extra
+          # file behind a build tag, so it reuses this job's Go build cache and
+          # only the packages that file touches recompile. The tag exists only
+          # here and in internal/mcp/undeclared_tool_probe.go; the published
+          # image is still the untagged build above.
+          mkdir -p /tmp/image-ctx-undeclared
+          go build -tags e2e_undeclared_tool -ldflags="-s -w" \
+            -o /tmp/image-ctx-undeclared/homelab-k3s-mcp .
 
       - name: Build image
         run: |
           docker build --target runtime-prebuilt -f Dockerfile \
             -t homelab-k3s-mcp:ci /tmp/image-ctx
+          docker build --target runtime-prebuilt -f Dockerfile \
+            -t homelab-k3s-mcp:ci-undeclared /tmp/image-ctx-undeclared
 
       - name: Wait for kind cluster
         run: |
@@ -230,7 +241,9 @@ jobs:
           exit "$(cat /tmp/bg/kind-create.rc)"
 
       - name: Load image into kind
-        run: kind load docker-image homelab-k3s-mcp:ci --name homelab-k3s-mcp
+        run: |
+          kind load docker-image homelab-k3s-mcp:ci --name homelab-k3s-mcp
+          kind load docker-image homelab-k3s-mcp:ci-undeclared --name homelab-k3s-mcp
 
       - name: Deploy github-mock fixture
         run: kubectl apply -f tests/k8s/kind/github-mock.yaml
@@ -409,6 +422,19 @@ jobs:
             --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
             --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
             --dry-run=client -o yaml | kubectl apply -f -
+          # The approval-refusal variants (tests/k8s/kind/gate-refusal-variant.yaml)
+          # take the same values, and deliberately NO GATEKEEPER_USER_ID: with no
+          # assignee nobody decides, which is the precondition
+          # test-approval-gate.md#시나리오 1 asks for. The short
+          # GATEKEEPER_TIMEOUT_SECONDS is in the deployment's own env, because it
+          # is what separates those two deployments from this secret's readers.
+          kubectl create namespace homelab-k3s-mcp-gate-refusal \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp-gate-refusal create secret generic homelab-k3s-mcp-gatekeeper \
+            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
+            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
+            --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
@@ -453,6 +479,13 @@ jobs:
       # cannot be folded into an existing variant.
       - name: Apply gate-broken variants
         run: kubectl apply -f tests/k8s/kind/gate-broken-variant.yaml
+
+      # Same image with a five-second approval timeout, plus the
+      # e2e_undeclared_tool image — the only deployments where
+      # approval_gate_ac1.py can watch an approval wait expire and a registry
+      # with an undeclared tool refuse to start.
+      - name: Apply gate-refusal variants
+        run: kubectl apply -f tests/k8s/kind/gate-refusal-variant.yaml
 
       # The session pod image, preloaded into the kind node. The control plane
       # gives a session pod two minutes to report Ready and that budget covers
@@ -535,6 +568,13 @@ jobs:
 
       - name: Wait for rbac-narrow rollout
         run: kubectl -n homelab-k3s-mcp-rbac-narrow rollout status deploy/homelab-k3s-mcp-rbac-narrow --timeout=120s
+
+      # Deliberately no wait for deploy/homelab-k3s-mcp-undeclared-tool in the
+      # same namespace: that variant registers a tool with no declaration and is
+      # *supposed* to crashloop (test-approval-gate.md#시나리오 1 (c)), the same
+      # reason deploy/homelab-k3s-mcp-no-auth is skipped below.
+      - name: Wait for gate-refusal rollout
+        run: kubectl -n homelab-k3s-mcp-gate-refusal rollout status deploy/homelab-k3s-mcp-gate-refusal --timeout=120s
 
       - name: Wait for gate-broken variant rollouts
         run: |
@@ -686,6 +726,12 @@ jobs:
           kubectl -n homelab-k3s-mcp-gatekeeper-variant logs deploy/homelab-k3s-mcp-gatekeeper-variant --tail=200 || true
           kubectl -n homelab-k3s-mcp-rbac-narrow get all -o wide || true
           kubectl -n homelab-k3s-mcp-rbac-narrow logs deploy/homelab-k3s-mcp-rbac-narrow --tail=200 || true
+          kubectl -n homelab-k3s-mcp-gate-refusal get all -o wide || true
+          kubectl -n homelab-k3s-mcp-gate-refusal logs deploy/homelab-k3s-mcp-gate-refusal --tail=200 || true
+          # 기동 실패가 의도인 변형(시나리오 1 (c)). 백오프 중이면 현재 인스턴스에 로그가 없다.
+          kubectl -n homelab-k3s-mcp-gate-refusal describe deploy/homelab-k3s-mcp-undeclared-tool || true
+          kubectl -n homelab-k3s-mcp-gate-refusal logs -l app.kubernetes.io/name=homelab-k3s-mcp-undeclared-tool --tail=200 || true
+          kubectl -n homelab-k3s-mcp-gate-refusal logs -l app.kubernetes.io/name=homelab-k3s-mcp-undeclared-tool --tail=200 --previous || true
           kubectl -n github-mock get all -o wide || true
           kubectl -n github-mock describe deploy/github-mock || true
           kubectl -n github-mock logs deploy/github-mock --tail=200 || true
