@@ -14,8 +14,6 @@ from mcp import ClientSession
 from _helpers import base_url, open_session, parse_env_resource, wait_for_healthz
 
 
-# The query-config values the same fixture sets, echoed back in the .env so the
-# caller can authenticate without looking anything else up.
 EXPECTED_QUERY_CONFIG = {
     "GRAFANA_METRICS_URL": "https://prometheus-prod-ci.grafana.net/api/prom",
     "GRAFANA_METRICS_USER": "111111",
@@ -25,7 +23,6 @@ EXPECTED_QUERY_CONFIG = {
 
 
 def parse_env_pairs(env_text: str) -> dict[str, str]:
-    """Parse the KEY=VALUE lines of an .env payload, ignoring comments."""
     pairs = {}
     for line in env_text.splitlines():
         if line.startswith("#") or "=" not in line:
@@ -37,13 +34,6 @@ def parse_env_pairs(env_text: str) -> dict[str, str]:
 
 async def test_grafana_token_ac2_ready_to_use_env(session: ClientSession) -> None:
     """AC: grafana-token/AC2 — the response is immediately usable for querying.
-
-    The AC's verification method is that the returned URL/USER/TOKEN combination
-    authenticates a metrics or logs query with no further lookups, so this
-    asserts the payload carries a complete Basic-auth pair for both datasources:
-    the metrics and logs endpoints with their instance-id usernames (echoed from
-    server configuration), plus the single shared token that acts as the
-    password for both. The payload is the text/plain .env the AC specifies.
 
     Issuing a real query against Grafana Cloud is out of reach of the kind
     fixture, so completeness of the credential set is what is asserted, not a
@@ -61,7 +51,6 @@ async def test_grafana_token_ac2_ready_to_use_env(session: ClientSession) -> Non
         assert pairs.get(key) == expected, (
             f"{key} = {pairs.get(key)!r}, expected {expected!r} in:\n{env_text}"
         )
-    # The shared Basic-auth password for both *_USER values above.
     assert pairs.get("GRAFANA_TOKEN", "").startswith("glc_mock_"), env_text
 
 

@@ -15,12 +15,7 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 
 async def test_platform_auth_safety_ac7_api_key(url: str) -> None:
-    """AC: platform-auth-safety/AC7
-
-    A request bearing an unknown key is rejected 401 (``invalid_token``); a
-    request bearing the configured static key authorizes and reaches the MCP
-    handler, so tools/list succeeds. No response leaks the key value.
-    """
+    """AC: platform-auth-safety/AC7"""
     print("--- api key auth: unknown key rejected (AC: platform-auth-safety/AC7) ---")
     bad = httpx.post(
         f"{url}/mcp",

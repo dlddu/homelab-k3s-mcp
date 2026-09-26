@@ -20,16 +20,6 @@ async def test_platform_auth_safety_ac5_graceful_degradation(
 ) -> None:
     """AC: platform-auth-safety/AC5 — the server runs with integrations unset.
 
-    This is the only deployment in the suite where the AC's premise holds. The
-    primary kind deployment wires up every credential secret, so a healthy
-    tools/list there says nothing about degradation; this variant attaches none
-    of them (GITHUB_APP_CLIENT_ID / AWS_CONFIG_S3_BUCKET / GRAFANA_ISSUER_TOKEN /
-    OPENSEARCH_ENDPOINT all unset), which is exactly the "자격증명 env를 비운 채
-    기동" the verification method describes.
-
-    Asserts both halves of that method against this pod: the server is up and
-    answering its liveness probe, and tools/list still returns the complete tool
-    surface — including every tool whose backing integration is unavailable.
     Unconfigured integrations degrade the tools' *results* (the per-tool cases
     below assert that), never the server's ability to start and advertise them.
     """

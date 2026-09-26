@@ -17,11 +17,7 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 
 async def test_aws_config_get_ac3_unconfigured_refusal(session: ClientSession) -> None:
-    """AC: aws-config-get/AC3
-
-    With AWS_CONFIG_S3_BUCKET unset, aws_config_get returns the unavailable
-    error instead of crashing, and the server keeps serving other tools.
-    """
+    """AC: aws-config-get/AC3"""
     await assert_unavailable_refusal(session, "aws_config_get", {}, AWS_REFUSAL)
 
 

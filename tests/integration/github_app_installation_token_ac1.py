@@ -24,17 +24,13 @@ async def test_github_app_installation_token_ac1_short_lived_token(
 ) -> None:
     """AC: github-app-installation-token/AC1 — a short-lived installation token.
 
-    Drives the whole exchange the AC describes against the deployed server: it
-    signs an App JWT with the configured private key and posts it to the mock's
-    ``/app/installations/<id>/access_tokens``. The returned token
-    ``ghs_mock_<installation id>`` is proof the exchange actually happened and
-    was authenticated (the mock 401s a request without a Bearer JWT and 400s one
-    missing the GitHub API version / Accept headers), and the payload is the
-    .env form the AC requires, carrying the expiry and scope comments.
+    The returned token ``ghs_mock_<installation id>`` is proof the exchange
+    actually happened and was authenticated (the mock 401s a request without a
+    Bearer JWT and 400s one missing the GitHub API version / Accept headers), and
+    the payload is the .env form the AC requires, carrying the expiry and scope
+    comments.
 
-    The "~1 hour" half of the criterion is not asserted here: the mock returns a
-    fixed far-future ``expires_at`` (2099-01-01), so no real TTL is observable at
-    this layer. The server-side clock is covered by the Go unit tests in
+    The server-side clock is covered by the Go unit tests in
     ``internal/github``; this case asserts the expiry comment is present and
     carries the value the token endpoint returned.
     """

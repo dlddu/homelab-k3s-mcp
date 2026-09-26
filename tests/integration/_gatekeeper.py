@@ -1,10 +1,5 @@
 """승인 게이트 e2e 가 게이트 상대를 조작하는 공유 헬퍼.
 
-kind 에 뜬 실물 gatekeeper(``tests/k8s/kind/gatekeeper-fixture.yaml``)와 그 앞의
-기록 프록시를 포트포워드로 닿게 한다. 사람 조작을 대신하는 승인·거절은 시나리오
-문서의 픽스처 절이 정한 방법 — forward-auth 헤더(``Remote-User``)를 실어
-``PATCH /api/requests/{id}/approve|reject`` 를 호출하는 것 — 이다.
-
 게이트 대상 도구 호출은 승인이 떨어질 때까지 **블록**한다. 그래서 모든 댄스는
 ``asyncio.create_task`` 로 도구 호출을 띄워 놓고 ``wait_for_pending`` 으로 생성된
 승인 요청을 찾아 판정을 내리는 순서로 간다. 요청 격리는 context 안에 들어가는
@@ -220,7 +215,6 @@ def create_records(url: str) -> list[dict]:
 def poll_count(url: str, request_id: str) -> int:
     """프록시가 본 특정 요청 id 의 폴링(GET) 횟수.
 
-    시나리오 4 의 「폴링을 끊고 최초 응답만 본 구현은 통과하지 못함」을 잰다 —
     클라이언트가 실제로 몇 번이고 조회했는지는 upstream 도 gatekeeper 기록에도
     남지 않고 이 기록에만 남는다.
     """

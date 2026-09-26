@@ -24,18 +24,8 @@ async def test_github_app_installation_token_ac4_private_key_not_exposed(
 ) -> None:
     """AC: github-app-installation-token/AC4 — the App private key is not exposed.
 
-    The private key is the server-only credential the whole tool exists to keep
-    server-side; what may cross the wire is the expiring installation token and
-    nothing else. This scans the *entire* serialized tool result (content blocks
-    and structured payload alike, not just the .env text) for any trace of key
-    material: PEM armour, the PKCS#1/PKCS#8 body markers, and the name of the env
-    var that holds it. Also asserts the signed App JWT itself does not ride along
-    in the response — it is a bearer credential for the App, not for the caller.
-
-    The key bytes themselves are generated per CI run (``openssl genrsa`` in the
-    "Create test GitHub App secret" step), so the test cannot compare against a
-    known value; the armour markers are what make any leak of a PEM-encoded key
-    detectable regardless of its content.
+    Also asserts the signed App JWT itself does not ride along in the response —
+    it is a bearer credential for the App, not for the caller.
     """
     result = await session.call_tool("github_app_installation_token", {})
     assert result.isError is False, result

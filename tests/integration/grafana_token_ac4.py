@@ -23,14 +23,7 @@ ISSUER_TOKEN = "glsa_mock_issuer"
 async def test_grafana_token_ac4_issuer_token_not_exposed(
     session: ClientSession,
 ) -> None:
-    """AC: grafana-token/AC4 — the server-only issuer token is not exposed.
-
-    Issues a grafana_token and asserts the response .env payload carries only the
-    short-lived read token (GRAFANA_TOKEN=glc_mock_...) and never the issuer
-    credential: neither the GRAFANA_ISSUER_TOKEN key, its configured value, nor
-    the Grafana service-account token prefix (glsa_) appears in the output. This
-    promotes the "발급자 토큰 비노출" guarantee to the deployed-server e2e layer.
-    """
+    """AC: grafana-token/AC4 — the server-only issuer token is not exposed."""
     result = await session.call_tool("grafana_token", {})
     assert result.isError is False, result
     assert result.structuredContent is None, result.structuredContent

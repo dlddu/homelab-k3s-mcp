@@ -28,21 +28,7 @@ TTL_UPPER = timedelta(minutes=70)
 async def test_grafana_token_ac1_read_only_short_lived(
     session: ClientSession,
 ) -> None:
-    """AC: grafana-token/AC1 — a read-only token with a ~1 hour lifetime.
-
-    The server fixes both the scope and the TTL: it mints against the configured
-    read access policy (GRAFANA_READ_POLICY_ID) and asks for an expiry one hour
-    out, and the mock echoes back the ``expiresAt`` it was handed. That makes the
-    lifetime genuinely observable at this layer, unlike the GitHub mock's fixed
-    stub expiry — so this parses the ``# token expires <RFC3339>`` comment and
-    asserts it lands in a 50-70 minute window from now.
-
-    Read-only scope is asserted as far as the deployed surface allows: the tool
-    takes no scope input at all (the policy id is server-side configuration), and
-    what comes back is the minted policy token ``glc_mock_...``. Which grants
-    that policy actually carries is Grafana Cloud's side of the contract and is
-    not reachable from the mock.
-    """
+    """AC: grafana-token/AC1 — a read-only token with a ~1 hour lifetime."""
     result = await session.call_tool("grafana_token", {})
     assert result.isError is False, result
 

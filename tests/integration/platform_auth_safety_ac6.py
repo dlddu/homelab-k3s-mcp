@@ -15,12 +15,8 @@ from _helpers import base_url, get_json, wait_for_healthz
 def test_platform_auth_safety_ac6_health_readiness(url: str) -> None:
     """AC: platform-auth-safety/AC6 — liveness and readiness probes report state.
 
-    Asserts the two probe paths the orchestrator is pointed at (see the
-    livenessProbe/readinessProbe/startupProbe in k8s/deployment.yaml) answer 200
-    with their own status vocabulary on a healthy server: ``/healthz`` reports
-    ``status=ok`` (liveness) and ``/readyz`` reports ``status=ready``
-    (readiness). ``get_json`` raises on any non-2xx, so a probe path that
-    disappeared or started erroring fails here.
+    ``get_json`` raises on any non-2xx, so a probe path that disappeared or
+    started erroring fails here.
 
     The unhealthy side of the criterion ("비정상 상태를 올바르게 반영") is not
     asserted: the deployed server offers no e2e-reachable way to force itself
