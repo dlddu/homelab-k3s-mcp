@@ -81,7 +81,7 @@
 | `github-mock` | `UPS` | `tests/k8s/kind/github-mock.yaml` | — |
 | `grafana-mock` | `UPS` | `tests/k8s/kind/grafana-mock.yaml` | — |
 | `dear-baby-fixture` | `IMG` | `tests/k8s/kind/dear-baby-fixture.yaml` | — |
-| `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/gatekeeper-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
+| `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/gatekeeper-variant.yaml` · `tests/k8s/kind/gate-broken-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
 | `DISABLE_SECURITY_PLUGIN` | `GATE` | `tests/k8s/kind/opensearch.yaml` | `tests/k8s/kind/http-trace.yaml` |
 
 <!-- /mock-exception-원장 -->
@@ -160,14 +160,15 @@ App의 private key·installation id가 필요하다. CI 클러스터 안에 GitH
 ### `MCP_AUTH_DISABLED` — `GATE`
 
 **대상**: 인증이 검증 대상이 아닌 e2e를 태우는 **배포들**의 인증 게이트. 커버하는 것은 이
-등재가 선언한 두 지점이 넣는 `MCP_AUTH_DISABLED=1`이다.
+등재가 선언한 세 지점이 넣는 `MCP_AUTH_DISABLED=1`이다.
 
 | 지점 | 무엇을 태우는가 |
 | --- | --- |
 | `tests/k8s/kind/kustomization.yaml` | 기본 kind 배포. kind 오버레이의 configMapGenerator가 넣는다. |
 | `tests/k8s/kind/gatekeeper-variant.yaml` | 승인 게이트 e2e 전용 배포 변형(`approval_gate_ac{2,4,9}.py`). Deployment의 `env`가 직접 넣는다 — env는 배포당이라 기본 배포의 값을 물려받을 수 없다. |
+| `tests/k8s/kind/gate-broken-variant.yaml` | 승인 게이트 **오구성** e2e 전용 배포 변형 **셋**(`approval_gate_ac5.py`의 연결 실패 · `GATEKEEPER_BASE_URL` 미설정 · `GATEKEEPER_API_KEY` 미설정 경로). 검증 대상은 `gatekeeper.FromEnv()`의 오구성 분기이지 인증이 아니다. 세 Deployment의 `env`가 각각 직접 넣는다 — 같은 이유로 하나로 접을 수 없다. |
 
-두 지점은 **같은 완화**(`:ci` 이미지의 인증 게이트를 내린다)이고 같은 대체 검증을 공유하므로 한
+세 지점은 **같은 완화**(`:ci` 이미지의 인증 게이트를 내린다)이고 같은 대체 검증을 공유하므로 한
 행으로 등재한다. 배포가 늘었다고 예외가 는 것이 아니다 — 등재 행 수와 상한은 그대로 5다.
 
 **실환경 불가 사유**: 인증을 켜면 모든 도구 호출에 유효한 자격증명이 필요해져, **인증이 검증
@@ -180,7 +181,7 @@ App의 private key·installation id가 필요하다. CI 클러스터 안에 GitH
 "미설정 시 graceful 거부"를 관측한다. 즉 게이트를 켠 검증이 실재하므로 이 완화는 어떤 AC도
 가리지 않는다.
 
-이 대체 검증은 **두 지점 모두에 유효하다.** 게이트를 내려 가려지는 성질은 「이 `:ci` 이미지가
+이 대체 검증은 **세 지점 모두에 유효하다.** 게이트를 내려 가려지는 성질은 「이 `:ci` 이미지가
 자격증명 없는/잘못된 요청을 거부하는가」이고, 그것은 **이미지의 성질**이지 배포 변형의 성질이
 아니다 — `internal/server/server.go`의 같은 코드 경로가 모든 변형에서 돈다. 따라서 게이트를 켠
 배포가 **하나라도** 실재하면 그 성질은 되찾아지며, 변형마다 auth 픽스처를 복제할 필요가 없다.
