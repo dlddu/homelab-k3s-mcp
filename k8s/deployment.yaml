@@ -52,7 +52,7 @@ spec:
         - name: server
           # ⚙️ 운영 값은 **deploy 브랜치**의 이 줄이다. 손으로 고칠 일은 없다(롤백은 main 에 revert PR).
           # 불변 태그라 imagePullPolicy 는 기본값(IfNotPresent)이 그대로 옳다.
-          image: ghcr.io/dlddu/homelab-k3s-mcp:dc86afb92bc6a06c3c6f3912e9e38d07388ebd5c
+          image: ghcr.io/dlddu/homelab-k3s-mcp:0744553d8179b8fd661a9589199841ca61ff643d
           ports:
             - name: http
               containerPort: 3000
