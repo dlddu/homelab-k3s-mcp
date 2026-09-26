@@ -101,9 +101,7 @@ type Client struct {
 	key    string
 }
 
-// FromEnv builds a Client from the AWS_CONFIG_* environment variables. It
-// returns (nil, nil) when AWS_CONFIG_S3_BUCKET is unset, signalling that the
-// integration is simply not configured (as opposed to misconfigured).
+// FromEnv builds a Client from the AWS_CONFIG_* environment variables.
 //
 // When AWS_CONFIG_S3_ENDPOINT is set, both the STS and S3 calls are routed to
 // that endpoint with path-style S3 addressing.
