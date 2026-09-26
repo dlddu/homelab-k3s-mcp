@@ -16,13 +16,7 @@ from _helpers import base_url, wait_for_healthz
 
 
 async def test_platform_auth_safety_ac1_gate(url: str) -> None:
-    """AC: platform-auth-safety/AC1
-
-    An unauthenticated POST /mcp is rejected 401 before reaching the MCP
-    handler. In API-key-only mode the challenge body is the bare error code
-    ``missing_token`` (the resource_metadata form of WWW-Authenticate is only
-    emitted when OAuth is also configured).
-    """
+    """AC: platform-auth-safety/AC1"""
     print("--- auth gate: unauthenticated /mcp (AC: platform-auth-safety/AC1) ---")
     response = httpx.post(
         f"{url}/mcp",

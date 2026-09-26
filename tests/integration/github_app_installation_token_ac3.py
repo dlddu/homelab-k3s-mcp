@@ -21,8 +21,7 @@ async def test_github_app_installation_token_ac3_unconfigured_refusal(
 ) -> None:
     """AC: github-app-installation-token/AC3
 
-    With GITHUB_APP_CLIENT_ID unset, token issuance returns the unavailable
-    error. Arguments are well-formed so the refusal comes from the missing
+    Arguments are well-formed so the refusal comes from the missing
     configuration rather than from argument validation.
     """
     await assert_unavailable_refusal(

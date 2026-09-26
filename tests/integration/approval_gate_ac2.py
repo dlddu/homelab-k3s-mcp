@@ -3,9 +3,7 @@
 검증 시나리오: test-approval-gate.md#시나리오 2
 실행 대상: gatekeeper-variant
 
-시나리오가 요구하는 관측은 create **요청**의 내용이다 — x-api-key 헤더 존재,
-externalId·context·requesterName·timeoutSeconds, GATEKEEPER_USER_ID 설정 시의
-userId, 그리고 서로 다른 대상에 대한 두 호출의 externalId 가 서로 다르다는 것.
+시나리오가 요구하는 관측은 create **요청**의 내용이다.
 이것들은 upstream(gatekeeper)의 응답과 기록 어디에도 온전히 남지 않는다 — 응답
 레코드에는 userId 필드가 없다. 그래서 이 파일은 SUT 를 기록 프록시
 (gatekeeper-trace) 뒤에 두는 변형 배포에서만 돈다. 프록시는 모킹이 아니라
@@ -37,7 +35,6 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
 
-#: 두 호출의 대상. 시나리오가 「서로 다른 대상으로 2회」를 요구하므로 이름이 두 개다.
 TARGET_ONE = "gk-ac2-target-one"
 TARGET_TWO = "gk-ac2-target-two"
 

@@ -3,9 +3,6 @@
 검증 시나리오: test-aws-config-get.md#시나리오 1
 실행 대상: primary
 병렬 레인: aws
-
-서버에 고정된 버킷/키의 내용과 메타데이터를 읽는다(픽스처는
-``tests/k8s/kind/minio.yaml`` 의 minio-seed Job 이 올린 객체).
 """
 
 from __future__ import annotations
@@ -20,12 +17,10 @@ from _aws_config import ETAG_PATTERN, EXPECTED_BUCKET, EXPECTED_CONTENT, EXPECTE
 async def test_aws_config_get_ac1_fixed_object(session) -> None:
     """AC: aws-config-get/AC1 — the server-pinned object comes back with its metadata.
 
-    Asserts every field the AC names: the content of the pinned bucket/key plus
-    size, content type, ETag and last-modified. ``size`` is checked against the
-    byte length of the content actually returned (not a constant), the ETag has
-    to be the quote-stripped digest shape the tool promises, and last-modified
-    has to parse as an instant that is not in the future — a passed-through
-    placeholder string would fail all three.
+    ``size`` is checked against the byte length of the content actually returned
+    (not a constant), the ETag has to be the quote-stripped digest shape the tool
+    promises, and last-modified has to parse as an instant that is not in the
+    future — a passed-through placeholder string would fail all three.
     """
     result = await session.call_tool("aws_config_get", {})
     assert result.isError is False, result

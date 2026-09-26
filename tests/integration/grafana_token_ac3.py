@@ -17,11 +17,7 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 
 async def test_grafana_token_ac3_unconfigured_refusal(session: ClientSession) -> None:
-    """AC: grafana-token/AC3
-
-    With GRAFANA_ISSUER_TOKEN unset, grafana_token returns the unavailable
-    error rather than minting or leaking anything.
-    """
+    """AC: grafana-token/AC3"""
     await assert_unavailable_refusal(session, "grafana_token", {}, GRAFANA_REFUSAL)
 
 

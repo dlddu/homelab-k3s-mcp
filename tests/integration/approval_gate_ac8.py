@@ -4,9 +4,7 @@
 실행 대상: primary
 병렬 레인: gate-screens
 
-시나리오가 요구하는 것은 요청 id·externalId·도구·동사·대상 좌표가 로그에 남는
-것, 승인 실행에 processedById, 거부에 사유가 함께 남는 것이다. 이 로그는 SUT 파드
-stdout 의 slog 라인이라 gatekeeper 기록이 아니라 kubectl logs 로 잰다 — 요청
+요청
 id 와 external_id 는 gatekeeper 레코드와 대조해 같은 값임까지 확인한다(로그 한
 줄이 어느 승인 요청의 것인지 대조 없이는 알 수 없다).
 

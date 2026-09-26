@@ -7,10 +7,6 @@ AC 의 검증 방법은 네 구성을 **각각** 요구한다 — (a) API 키만
 (b) OAuth 만 → 디스커버리 제공, (c) 둘 다 → 둘 다 동작, (d) 둘 다 미설정 + `MCP_AUTH_DISABLED`
 도 미설정 → 기동 실패. 그래서 이 파일은 **네 배포를 대조하는 것 자체**가 검증이며, 자기 그룹의
 배포 하나만으로는 AC 를 관측할 수 없다.
-
-env 게이팅 자체는 `internal/auth/auth_test.go` 의 `FromEnv` 단위 테스트가 이미 4조합을 덮는다.
-여기서 더해지는 것은 그것이 **배포된 서버의 라우팅과 기동 여부로 실제로 나타나는가**다 —
-단위 테스트는 `App` 이 라우트를 걸지 않는 것까지만 보고, 파드가 뜨지 않는 것은 보지 못한다.
 """
 
 from __future__ import annotations
@@ -121,9 +117,7 @@ async def test_platform_auth_safety_ac8_a_api_keys_only(url: str) -> None:
 
     (a) API 키만 설정 → **인증은 활성이고 디스커버리는 제공되지 않는다.**
 
-    두 관측이 함께여야 (a) 다. 401 은 게이트가 서 있음을 보이고, 그 챌린지에
-    `resource_metadata` 가 **없다**는 것과 디스커버리 라우트가 404 라는 것이 「광고할 발급자가
-    없으므로 엔드포인트를 제공하지 않는다」를 보인다. 아래 (c) 가 같은 두 자리에서 정반대를
+    두 관측이 함께여야 (a) 다. 아래 (c) 가 같은 두 자리에서 정반대를
     관측하므로, 이 단정은 "그냥 아무것도 없는 서버"와 구분된다.
     """
     print("--- config (a) api keys only (AC: platform-auth-safety/AC8) ---")
@@ -183,8 +177,7 @@ async def test_platform_auth_safety_ac8_c_both_paths() -> None:
 
     (c) 둘 다 설정 → **둘 다 동작한다.**
 
-    API 키 경로는 그 키로 `tools/list` 가 인가되는 것으로, OAuth 경로는 디스커버리가 제공되고
-    챌린지가 그것을 광고하는 것으로 관측한다. 이 배포의 키는 auth-variant 의 키와 **다른
+    이 배포의 키는 auth-variant 의 키와 **다른
     값**이라(`_oidc.API_KEY` vs `_auth_variant.API_KEY`), 두 배포가 서로의 자격증명으로 통과할
     수 없다.
     """
@@ -226,9 +219,7 @@ async def test_platform_auth_safety_ac8_d_neither_refuses_to_start() -> None:
 
     (d) 둘 다 미설정 + `MCP_AUTH_DISABLED` 도 미설정 → **기동 실패**(무방비 노출 차단).
 
-    이것이 AC 의 안전 절이고, 라우팅이 아니라 프로세스 수명으로만 나타난다 — `auth.FromEnv` 가
-    「어느 자격증명 경로도 구성되지 않았다」로 오류를 내고 `main.go` 가 `os.Exit(1)` 하므로,
-    파드는 Ready 가 되지 않고 재시작을 반복한다. 종료 코드와 로그를 함께 보는 이유는, 어떤
+    종료 코드와 로그를 함께 보는 이유는, 어떤
     이유로든 죽기만 하면 통과하는 단정이 되지 않게 하기 위해서다.
 
     이 관측은 `platform_auth_safety_ac2.py` 가 「OAuth 배포가 Available 하다 ⇒ 기동 시 OIDC

@@ -3,16 +3,8 @@
 검증 시나리오: test-approval-gate.md#시나리오 4
 실행 대상: gatekeeper-variant
 
-(a) 승인 댄스: 도구 호출이 블록한 채 승인 요청을 만들고, (e2e 의) 폴링이 PENDING
-전이를 보고, 승인 뒤 실행이 이어진다. 클라이언트 자신이 폴링했다는 증거는
-upstream 기록에 남지 않으므로 기록 프록시의 GET 카운트로 잰다 — 「폴링을 끊고
-최초 응답만 본 구현은 이 시나리오를 통과하지 못함」의 관측면이다.
-
 (b) 만료: 아무 판정도 하지 않으면 gatekeeper 는 **조회 시점에** 만료를 평가한다.
-만료 순간 폴링이 EXPIRED 상태 문자열을 보는 것은 이 배포에서 관측 불가다 —
-클라이언트의 폴링 마감과 gatekeeper 의 만료가 같은 env
-(GATEKEEPER_TIMEOUT_SECONDS)에서 파생해 정확히 같은 순간에 닫히고, 둘 중 무엇이
-이기는지는 타이머 경주라 단언의 재료가 아니다. 그래서 만료는 세 가지로 잰다:
+만료는 세 가지로 잰다:
 ⑴ 거부가 만료 근처(≥ 타임아웃)에 온다 — 최초 응답만 보고 끝낸 구현이라면
 즉시 거부했을 것이다 ⑵ e2e 의 조회로 기록이 EXPIRED 로 전이된다 — 만료 평가가
 조회 시점임이 실물에서만 관측되는 부분이다 ⑶ 프록시 기록에 폴링이 여러 번
@@ -116,9 +108,6 @@ async def test_expired_verdict_is_observed(session, gate, trace) -> None:
 
     거부는 도구 결과가 아니라 JSON-RPC 에러로 온다(`internal/mcp/gate.go` 의
     `errf(-32603)`), 그래서 `McpError` 로 잡는다. 그 **문면은 단정하지 않는다** —
-    클라이언트의 폴링 마감과 gatekeeper 의 만료가 같은 `GATEKEEPER_TIMEOUT_SECONDS`
-    에서 파생해 어느 쪽이 먼저 닫는지가 타이 레이스이고, 그에 따라
-    「approval expired」 와 「no approval within …」 가 갈린다. 둘 다 정당한 거부라
     아래의 지연·기록·폴링 수가 이 절의 계약을 진다.
     """
     started = time.monotonic()

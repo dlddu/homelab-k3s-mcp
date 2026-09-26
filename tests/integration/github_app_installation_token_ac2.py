@@ -22,19 +22,7 @@ EXPECTED_INSTALLATION_ID = "67890"
 async def test_github_app_installation_token_ac2_scope_restriction(
     session: ClientSession,
 ) -> None:
-    """AC: github-app-installation-token/AC2 — requested scope narrows the token.
-
-    Asserts both branches the AC names. Unscoped: with neither ``repositories``
-    nor ``permissions`` the token is issued for the whole installation
-    (``Repository selection: all``) with the installation's default permissions.
-    Scoped: passing one repository and ``contents=read`` narrows the issued
-    token to that subset (``Repository selection: selected`` and
-    ``Permissions: contents=read`` — the default ``metadata=read`` is gone).
-
-    The AC's "설치 범위를 벗어난 요청은 거부된다" clause is GitHub-side behaviour;
-    the mock echoes whatever scope it is handed, so rejection of an
-    out-of-installation repository is not observable against this fixture.
-    """
+    """AC: github-app-installation-token/AC2 — requested scope narrows the token."""
     unscoped = await session.call_tool("github_app_installation_token", {})
     assert unscoped.isError is False, unscoped
     env_text, _ = parse_env_resource(unscoped)

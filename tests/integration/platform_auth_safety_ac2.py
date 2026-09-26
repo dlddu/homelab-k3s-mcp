@@ -3,11 +3,6 @@
 검증 시나리오: test-platform-auth-safety.md#시나리오 2
 실행 대상: oauth-variant
 
-`실행 대상: oauth-variant` 는 `tests/k8s/kind/oidc-fixture.yaml` 의 `homelab-k3s-mcp-oauth`
-배포다 — `MCP_OAUTH_*` 가 설정된 유일한 배포 종류이고, 디스커버리 문서는 OAuth 가 구성된
-경우에만 라우팅된다(`internal/server/server.go`). 주 배포는 `MCP_AUTH_DISABLED=1` 이고
-auth-variant 는 API 키 전용이라, 이 AC 는 두 곳 어디에서도 관측되지 않는다.
-
 사슬의 각 칸이 앞 칸이 준 값으로만 이어지므로, 중간의 한 칸이 낡으면 그 자리에서 끊긴다.
 """
 
@@ -46,9 +41,6 @@ async def test_platform_auth_safety_ac2_challenge_advertises_metadata(
 ) -> None:
     """AC: platform-auth-safety/AC2
 
-    자동 구성의 **진입점**은 401 이다. OAuth 가 구성된 배포에서 인증 없는 `/mcp` 는
-    `WWW-Authenticate` 에 `resource_metadata` 를 실어, 클라이언트가 어디로 가서 인증을
-    구성해야 하는지 알려 준다(`internal/auth/auth.go::unauthorized` 의 OAuth 분기).
     API 키 전용 배포에서는 이 파라미터가 없으며, 그 대조는
     `platform_auth_safety_ac8.py` 가 맡는다.
     """
@@ -68,12 +60,7 @@ async def test_platform_auth_safety_ac2_challenge_advertises_metadata(
 
 
 async def test_platform_auth_safety_ac2_protected_resource_metadata(url: str) -> None:
-    """AC: platform-auth-safety/AC2
-
-    챌린지가 가리킨 문서가 **발급자와 리소스를 반환한다**. 세 필드를 배포된 구성과 정확히
-    대조하는 것이 요점이다 — `MCP_OAUTH_RESOURCE` 를 audience 와 다른 값으로 배포해 두었으므로,
-    `resource` 가 audience 로 돌아오면(= `configureOAuth` 의 폴백이 잘못 탔으면) 여기서 걸린다.
-    """
+    """AC: platform-auth-safety/AC2"""
     print("--- discovery: protected resource metadata (AC: platform-auth-safety/AC2) ---")
     metadata = protected_resource_metadata(url)
 
@@ -99,7 +86,6 @@ async def test_platform_auth_safety_ac2_protected_resource_metadata(url: str) ->
 async def test_platform_auth_safety_ac2_issuer_discovery_loads_jwks(url: str) -> None:
     """AC: platform-auth-safety/AC2
 
-    사슬의 마지막 칸: 메타데이터가 지목한 발급자의 **OIDC 디스커버리로 JWKS 에 닿는다.**
     발급자 주소는 위 문서에서 읽은 값을 그대로 쓰고, 키 집합 주소는 발급자의
     `openid-configuration` 이 준 `jwks_uri` 를 그대로 쓴다 — 어느 것도 이 파일에 하드코딩된
     경로가 아니다. 여기까지 걸리면 「표준 클라이언트가 이 문서로 인증을 자동 구성할 수 있다」가

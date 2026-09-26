@@ -4,15 +4,9 @@
 실행 대상: primary
 병렬 레인: resource-generic
 
-거부 셋은 두 층으로 갈린다. 음수·누락은 **승인 요청조차 만들기 전에** 거부된다
-(인자 검증이 게이트보다 앞서다 — gate.go::updatePairs →
-resource.go::parseUpdateTarget) — 그래서 「새 PENDING 요청 0건」을 나란히 단언해
-거부가 어느 층에서 일어났는지를 고정한다. 반면 DaemonSet 의 레플리카 부재 거부는
-승인 뒤 k8s 층에서 일어난다 — 좌표 해석은 좌표 자체만으로는 알 수 없는 사실을
-묻는다. 승인을 받고 나서야 보이는 거부를 승인 없이 흉내 내면 반쪽 단정이다.
-
-3·0·1 의 레플리카 수렴과 파드 기동은 apiserver 의 거동이라 단위 층이 볼 수 없는
-부분이다 — status 를 폴링해 잰다.
+DaemonSet 의 레플리카 부재 거부는 승인 뒤 k8s 층에서 일어난다 — 좌표 해석은
+좌표 자체만으로는 알 수 없는 사실을 묻는다. 승인을 받고 나서야 보이는 거부를
+승인 없이 흉내 내면 반쪽 단정이다.
 """
 
 from __future__ import annotations
@@ -35,7 +29,6 @@ from _workload import (
 
 SCALE_ANNO = "gk-ac8-marker"
 
-#: DaemonSet 거부의 사유. 권한이나 존재 여부가 아니라 레플리카 부재여야 한다 —
 #: `internal/k8s/resource.go::scaleTargetRefFor` 가 고정하는 문면의 앵커다.
 REPLICA_LESS_REASON = "has no replicas"
 
