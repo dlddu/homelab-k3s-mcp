@@ -20,9 +20,9 @@ name: Build and Push Docker Image to GHCR
 # ci.yml 의 통합 테스트는 검증용으로 이미지를 *빌드만* 한다(kind 에 load 한다).
 # 실제로 pull 가능한 태그를 발행하는 것은 이 워크플로다.
 #
-# PR 경로(workflow_call)에 경로 필터를 두지 않는 것은 의도적이다: 프리뷰는 PR head SHA
-# 태그를 참조하므로, 문서만 고친 PR 에 `deploy/preview` 라벨이 붙어도 그 SHA 에 이미지가
-# 있어야 환경이 뜬다. 소스가 그대로면 buildx 의 gha 캐시가 통째로 히트하니 비용은 크지 않다.
+# PR 경로(workflow_call)의 경로 판정은 호출하는 ci.yml 의 `image` 잡이 한다 — changes 잡의
+# `image` 출력이 아래 `paths:` 와 같은 제외 목록이다. 걸러진 PR 의 head SHA 에는 이미지가
+# 없어 프리뷰도 뜨지 않는다. 제외 목록을 고치면 두 곳을 같이 고칠 것.
 #
 # main push 에는 경로 조건을 건다. 서버 바이너리(Go 소스)와 운영 매니페스트(k8s/)에 닿지
 # 않는 머지는 새 SHA 태그만 만들어 운영 파드를 재시작시킬 뿐이라 건너뛴다. 건너뛴 커밋은
