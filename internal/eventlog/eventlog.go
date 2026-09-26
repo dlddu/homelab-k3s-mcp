@@ -95,10 +95,7 @@ const (
 // than absent"), and a list here cannot drift from the constants above.
 var Results = []Result{ResultSuccess, ResultRefused, ResultError}
 
-// Reason is why a refused call was refused (AC2, AC4). The eight values are
-// prd-metrics AC2's, verbatim: that AC is the single source of the set, and
-// the two layers have to split refusals the same way or a refusal rate seen
-// in the metrics cannot be followed into the records.
+// Reason is why a refused call was refused (AC2, AC4).
 type Reason string
 
 const (
