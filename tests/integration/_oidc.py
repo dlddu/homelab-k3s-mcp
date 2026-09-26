@@ -70,7 +70,6 @@ def mcp_request() -> dict:
 
 
 def kubectl(*args: str) -> str:
-    """`kubectl <args>` 의 stdout. 실패하면 stderr 를 그대로 들고 예외를 던진다."""
     proc = subprocess.run(
         ["kubectl", *args], capture_output=True, text=True, timeout=60
     )
@@ -81,7 +80,6 @@ def kubectl(*args: str) -> str:
 
 
 def available_replicas(namespace: str, deployment: str) -> int:
-    """Deployment 의 `.status.availableReplicas` (미설정이면 0)."""
     raw = kubectl(
         "-n",
         namespace,
@@ -101,7 +99,6 @@ def assert_deployment_available(namespace: str, deployment: str) -> None:
 
 
 def protected_resource_metadata(url: str) -> dict:
-    """`GET <url>/.well-known/oauth-protected-resource` 를 200 으로 읽어 돌려준다."""
     response = httpx.get(f"{url}{PROTECTED_RESOURCE_PATH}", timeout=5.0)
     assert response.status_code == 200, (
         f"{url}{PROTECTED_RESOURCE_PATH} returned {response.status_code}, expected 200"
@@ -110,7 +107,6 @@ def protected_resource_metadata(url: str) -> dict:
 
 
 def unauthenticated_challenge(url: str) -> tuple[httpx.Response, str]:
-    """인증 없는 `POST <url>/mcp` 의 401 응답과 그 `WWW-Authenticate` 챌린지."""
     response = httpx.post(
         f"{url}/mcp",
         json=mcp_request(),

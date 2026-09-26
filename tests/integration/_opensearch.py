@@ -27,13 +27,11 @@ REGION = "us-east-1"
 # (internal/opensearch/opensearch.go).
 SIGNING_SERVICE = "aoss"
 
-# Fresh per process: every AC 파일이 자기 값을 뽑으므로 인덱스·질의 토큰이 파일
-# 사이에서도 겹치지 않고, 따뜻한 픽스처에 대한 재실행도 묵은 문서를 보지 않는다.
+# 따뜻한 픽스처에 대한 재실행도 묵은 문서를 보지 않는다.
 RUN_ID = uuid.uuid4().hex[:8]
 SEARCH_DEADLINE_SECONDS = 60.0
 
 def index_for(case: str) -> str:
-    """Index owned by one case: never written to by any other case or run."""
     return f"ci-{case}-{RUN_ID}"
 
 def token_for(case: str) -> str:
@@ -73,7 +71,6 @@ async def search(session, query, index=None, size=None):
     return structured(await session.call_tool("opensearch_search", args))
 
 async def search_until(session, query, predicate, description, index=None, size=None):
-    """Poll search until predicate(hits) holds (documents surface on refresh)."""
     deadline = time.monotonic() + SEARCH_DEADLINE_SECONDS
     last = None
     while time.monotonic() < deadline:

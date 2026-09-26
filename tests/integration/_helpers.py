@@ -68,25 +68,18 @@ EXPECTED_TOOLS = {
 
 
 def base_url() -> str:
-    """Return the MCP base URL from argv[1] or ``MCP_BASE_URL``."""
     if len(sys.argv) > 1 and sys.argv[1]:
         return sys.argv[1].rstrip("/")
     return os.environ.get("MCP_BASE_URL", "http://127.0.0.1:8080").rstrip("/")
 
 
 def trace_url() -> str:
-    """Return the http-trace admin URL from argv[2] or ``MCP_TRACE_URL``.
-
-    Only the tests that assert an access path need this; the fixture is
-    ``tests/k8s/kind/http-trace.yaml``.
-    """
     if len(sys.argv) > 2 and sys.argv[2]:
         return sys.argv[2].rstrip("/")
     return os.environ.get("MCP_TRACE_URL", "http://127.0.0.1:8090").rstrip("/")
 
 
 def wait_for_healthz(url: str, timeout: float = 30.0) -> None:
-    """Block until ``GET <url>/healthz`` responds 200, then return."""
     deadline = time.monotonic() + timeout
     last_exc: Exception | None = None
     while time.monotonic() < deadline:
@@ -110,7 +103,6 @@ def get_json(url: str, path: str) -> dict[str, Any]:
 
 
 def parse_env_resource(result) -> tuple[str, str]:
-    """Extract (env_text, mime_type) from a tool result's embedded resource."""
     assert result.content, result
     block = result.content[0]
     assert block.type == "resource", block
@@ -122,11 +114,6 @@ def parse_env_resource(result) -> tuple[str, str]:
 async def open_session(
     url: str, headers: dict[str, str] | None = None
 ) -> AsyncIterator[ClientSession]:
-    """Open an MCP ClientSession against ``<url>/mcp`` (skips initialize).
-
-    ``headers`` are attached to every HTTP request the transport makes, letting
-    auth-gated deployments be exercised with an ``Authorization`` header.
-    """
     mcp_url = f"{url}/mcp"
     async with streamablehttp_client(mcp_url, headers=headers) as (read, write, _):
         async with ClientSession(read, write) as session:
@@ -345,9 +332,6 @@ def assert_assumed_role_access(
     }
     assert issued_keys, f"AssumeRole for {role_arn} returned no key id: {assumed}"
 
-    # The base credential's only job is to assume the role. Observing it on the
-    # STS call (and, below, never on the data-plane call) is what makes
-    # "정적 키 미사용" an observation rather than a claim.
     for sts_call in assumed:
         assert sts_call["sigv4"] is not None, (
             f"the AssumeRole call for {role_arn} was not signed at all: {sts_call}"
