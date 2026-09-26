@@ -727,20 +727,16 @@ jobs:
   # PR head SHA 이미지 발행(프리뷰 환경이 그 태그를 쓴다). 발행이 실패하면 `ci passed` 가
   # 실패하도록 여기서 부른다. 테스트는 기다리지 않는다 — 프리뷰는 테스트와 별개로 뜬다.
   #
-  # 발행 이미지 내용에 닿지 않는 PR(changes 의 `image`)은 건너뛴다. 단 `deploy/preview`
-  # 라벨이 이미 붙어 있으면 돌린다 — 프리뷰가 head SHA 태그를 pull 하므로 없으면 ImagePullBackOff
-  # 다. 라벨 판정은 이 run 을 연 이벤트 시점의 것이고 ci.yml 은 `labeled` 에 걸려 있지 않다.
-  # 그래서 문서만 고친 PR 에 라벨을 *나중에* 붙이면 그 SHA 에는 이미지가 없다(re-run 도
-  # 같은 페이로드를 본다) — 새 커밋을 올리면 이 조건으로 발행된다.
+  # 발행 이미지 내용에 닿지 않는 PR(changes 의 `image`)은 건너뛴다. 그런 PR 의 head SHA 에는
+  # 이미지가 없으므로 `deploy/preview` 라벨을 붙여도 프리뷰는 ImagePullBackOff 로 뜨지 않는다 —
+  # 이미지가 main 과 같아 프리뷰로 볼 것이 없으니 의도된 결과다.
   #
   # docker-build-push.yaml 의 pin 잡이 contents: write 를 선언하므로 호출하는 쪽도 그만큼
   # 허용해야 워크플로가 유효하다. pin 자체는 PR 에서 조건상 skip 된다.
   image:
     name: image
     needs: changes
-    if: >-
-      needs.changes.outputs.image == 'true' ||
-      contains(github.event.pull_request.labels.*.name, 'deploy/preview')
+    if: needs.changes.outputs.image == 'true'
     permissions:
       contents: write
       packages: write

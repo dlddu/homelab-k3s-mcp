@@ -21,8 +21,8 @@ name: Build and Push Docker Image to GHCR
 # 실제로 pull 가능한 태그를 발행하는 것은 이 워크플로다.
 #
 # PR 경로(workflow_call)의 경로 판정은 호출하는 ci.yml 의 `image` 잡이 한다 — changes 잡의
-# `image` 출력이 아래 `paths:` 와 같은 제외 목록이고, `deploy/preview` 라벨이 붙은 PR 은
-# 예외로 돌린다(프리뷰가 head SHA 태그를 pull 한다). 제외 목록을 고치면 두 곳을 같이 고칠 것.
+# `image` 출력이 아래 `paths:` 와 같은 제외 목록이다. 걸러진 PR 의 head SHA 에는 이미지가
+# 없어 프리뷰도 뜨지 않는다. 제외 목록을 고치면 두 곳을 같이 고칠 것.
 #
 # main push 에는 경로 조건을 건다. 서버 바이너리(Go 소스)와 운영 매니페스트(k8s/)에 닿지
 # 않는 머지는 새 SHA 태그만 만들어 운영 파드를 재시작시킬 뿐이라 건너뛴다. 건너뛴 커밋은

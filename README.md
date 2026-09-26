@@ -35,9 +35,9 @@ commit SHA**. There is no `latest`.
   `main` path filter; `ci passed` accepts a skip only where `changes` decided it.
 - **Pull requests get a preview environment.** The same image workflow, called from
   `ci.yml`, publishes the PR's head SHA on PR pushes that touch the image (the same
-  exclusions as the `main` path filter above), or on any push while the PR already carries
-  `deploy/preview` — labelling a docs-only PR afterwards needs one more push before its head
-  SHA has an image. Label a PR `deploy/preview` and flux-cd-apps
+  exclusions as the `main` path filter above). A PR that does not touch the image has no
+  image at its head SHA, so `deploy/preview` brings no environment up for it. Label a PR
+  `deploy/preview` and flux-cd-apps
   (`apps/homelab-k3s-mcp-preview`) renders a full environment for it at
   `homelab-k3s-mcp-pr-<number>.<private domain>`, pinned to that head SHA. Removing
   the label, closing, or merging the PR tears the environment down. Previews carry a
