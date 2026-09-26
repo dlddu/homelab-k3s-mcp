@@ -54,11 +54,7 @@ func main() {
 		}
 	}
 
-	// The tool registry is checked before anything is served. A tool that is
-	// advertised without a declaration of the RBAC pairs it exercises would let
-	// the approval gate judge on a table that does not describe reality, and
-	// that mismatch passes silently at runtime — so it stops the process here
-	// instead (prd-approval-gate AC1).
+	// prd-approval-gate AC1.
 	if err := mcp.Validate(); err != nil {
 		slog.Error("refusing to start", "error", err)
 		os.Exit(1)
@@ -66,10 +62,7 @@ func main() {
 	for tool, reason := range mcp.Exemptions() {
 		slog.Warn("tool exercises a gated verb but runs outside the approval gate", "tool", tool, "reason", reason)
 	}
-	// AC11 asks that the permissions the gate exercises on its own behalf be
-	// declared. Nothing compares them against rbac.yaml any more (AC19 is a
-	// 결번), so the declaration earns its keep by being printed: "what does the
-	// gate read before it asks anyone" is answerable from the startup log.
+	// prd-approval-gate AC11.
 	slog.Info("approval gate exercises these pairs before any verdict", "pairs", gatePairsText())
 
 	k8sSvc := buildK8sService()
@@ -107,9 +100,7 @@ func main() {
 	if metricsSrv != nil {
 		go func() {
 			slog.Info("metrics listening", "addr", metricsSrv.Addr)
-			// Not os.Exit: a metrics port that cannot be bound loses the
-			// exposition and nothing else (prd-metrics AC5 — the collector's
-			// absence never reaches /mcp).
+			// Not os.Exit, unlike the MCP listener above (prd-metrics AC5).
 			if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				slog.Error("metrics listener failed; the exposition is off, /mcp is unaffected", "error", err)
 			}
@@ -129,11 +120,8 @@ func main() {
 	}
 }
 
-// buildMetrics derives prd-metrics' surface from the one record stream both
-// layers emit (its "표면 개요": same derivation point as the event log). The
-// counters always exist — counting is not what AC5 lets a deployment turn
-// off, exposure is (buildMetricsServer) — and the sink they hang on is the
-// log line first, so a metrics failure could never cost a record.
+// buildMetrics hangs the counters on the log line first, so a metrics failure
+// could never cost a record.
 func buildMetrics() (*metrics.Metrics, eventlog.Sink) {
 	surface, err := metrics.New(mcp.ToolNames())
 	if err != nil {
@@ -143,9 +131,7 @@ func buildMetrics() (*metrics.Metrics, eventlog.Sink) {
 	return surface, eventlog.Fanout{eventlog.Log{}, surface}
 }
 
-// buildMetricsServer is the metrics listener (prd-metrics AC5): its own port
-// so the ingress, which fronts LISTEN_ADDR only, never sees it. METRICS_DISABLED
-// turns the exposure off; METRICS_LISTEN_ADDR moves it. nil means no listener.
+// buildMetricsServer is the metrics listener (prd-metrics AC5).
 func buildMetricsServer(surface *metrics.Metrics) *http.Server {
 	if disabled := os.Getenv("METRICS_DISABLED"); disabled == "1" || disabled == "true" {
 		slog.Warn("METRICS_DISABLED is set: metrics are counted but not exposed")
@@ -236,11 +222,7 @@ func buildSessionPlatformService() sessionplatform.Service {
 	return client
 }
 
-// buildGate wires the approval gate. An unconfigured gate is not a startup
-// error: the server's degradation rule is that a missing integration disables
-// its own tools and nothing else. Here that "its own tools" happens to be every
-// gated call, which is the intended shape — if the approval path is down,
-// changing the cluster should stop (prd-approval-gate AC5).
+// buildGate wires the approval gate (prd-approval-gate AC5).
 func buildGate() (gatekeeper.Gate, []string) {
 	cfg, err := gatekeeper.FromEnv()
 	if err != nil {
@@ -263,9 +245,7 @@ func buildGate() (gatekeeper.Gate, []string) {
 // buildGateReader gives the gate its own kubernetes read surface (AC11).
 //
 // One object satisfies both interfaces when the client is up; why they are two
-// interfaces is on k8s.TargetReader. A service that is not a reader (the
-// Unavailable stand-in) yields a reader that refuses, so gated calls are
-// declined rather than described from nothing.
+// interfaces is on k8s.TargetReader.
 func buildGateReader(svc k8s.Service) k8s.TargetReader {
 	reader, ok := svc.(k8s.TargetReader)
 	if !ok {
