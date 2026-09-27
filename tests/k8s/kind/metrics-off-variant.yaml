@@ -1,4 +1,3 @@
-# METRICS_DISABLED=1 변형 — tests/integration/metrics_ac5_boundary.py 가 apply 하고 finally 에서 네임스페이스째 지운다.
 # ci.yml 의 상시 픽스처로 올리지 말 것: 파일이 거두는 배포라 상시 apply 와는 삭제·재적용이 경주한다.
 # MCP_API_KEYS 는 tests/integration/_auth_variant.py 의 API_KEY 와 같아야 한다.
 apiVersion: v1

@@ -82,9 +82,6 @@ func histogramCount(t *testing.T, m *Metrics, name, labels string) uint64 {
 	return s.GetHistogram().GetSampleCount()
 }
 
-// AC1: every registered tool × result is a series from the start, at 0 —
-// absence and zero are distinguishable — and a call moves exactly the
-// series its result names.
 func TestCallsAreCountedPerToolAndResultWithUncalledToolsAtZero(t *testing.T) {
 	m := newTest(t)
 	calls := family(t, m, "mcp_tool_calls_total")
@@ -112,10 +109,6 @@ func TestCallsAreCountedPerToolAndResultWithUncalledToolsAtZero(t *testing.T) {
 	}
 }
 
-// AC2: refusals are split by reason, every reason is a series from the
-// start, and sum(refusals_total) == calls_total{result="refused"} holds
-// across the whole closed set because the record layer has no reason
-// outside it.
 func TestRefusalsAreCountedPerReasonAndSumToRefusedCalls(t *testing.T) {
 	m := newTest(t)
 	ctx := context.Background()
@@ -140,9 +133,6 @@ func TestRefusalsAreCountedPerReasonAndSumToRefusedCalls(t *testing.T) {
 	}
 }
 
-// AC3: the two histograms are separate — a long gate wait lands in
-// mcp_gate_wait_seconds under its verdict and does not stretch
-// mcp_tool_duration_seconds, and a refused call observes no duration at all.
 func TestGateWaitIsObservedApartFromHandlerLatency(t *testing.T) {
 	m := newTest(t)
 	ctx := context.Background()
@@ -173,16 +163,11 @@ func TestGateWaitIsObservedApartFromHandlerLatency(t *testing.T) {
 	if got := len(family(t, m, "mcp_gate_wait_seconds")); got != len(gatekeeper.Verdicts) {
 		t.Errorf("gate_wait series = %d, want %d verdicts", got, len(gatekeeper.Verdicts))
 	}
-	// A wait without a verdict is not a wait a human took; ping was never gated.
 	if got := histogramCount(t, m, "mcp_gate_wait_seconds", "decision=approved"); got != 1 {
 		t.Errorf("gate_wait{approved} count = %d, want 1", got)
 	}
 }
 
-// AC4: the label names are the table's and nothing on a record but the
-// tool, result, reason and verdict reaches a label — coordinates, principals
-// and caller-supplied tool names do not, and the series count does not move
-// with what was called.
 func TestLabelsAreClosedAndCallerTextNeverBecomesASeries(t *testing.T) {
 	m := newTest(t)
 	ctx := context.Background()
@@ -229,15 +214,12 @@ func TestLabelsAreClosedAndCallerTextNeverBecomesASeries(t *testing.T) {
 	}
 }
 
-// AC4: the fold value cannot be shadowed by a tool of the same name.
 func TestNewRefusesAToolNamedLikeTheFold(t *testing.T) {
 	if _, err := New([]string{"ping", Unregistered}); err == nil {
 		t.Fatal("New() accepted a tool named like the fold value")
 	}
 }
 
-// AC5: the exposition is text with the four families and nothing that
-// could execute or return anything — no other family is registered.
 func TestExpositionCarriesExactlyTheFourFamilies(t *testing.T) {
 	m := newTest(t)
 	families, err := m.Gather()

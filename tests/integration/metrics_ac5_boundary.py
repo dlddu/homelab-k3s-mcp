@@ -3,21 +3,11 @@
 검증 시나리오: test-metrics.md#시나리오 5
 실행 대상: auth-variant
 
-시나리오의 「인증이 켜진 기본 배포」는 이 변형이다 — 주 배포는 kind 오버레이가 인증을 내려 두어
-``/mcp`` 의 401 을 볼 수 없다(``auth-fixture.yaml`` 머리말). 메트릭 리스너에는 파드 포트로 닿는다
-(``_metrics.pod_port_forward``). 「그 응답으로 도구 실행·리소스 조회가 가능한지」는 세 겹으로
-잰다: ⑴ 무인증 ``GET /metrics`` 가 200 이되 본문의 모든 샘플이 네 패밀리의 것이고 라벨 전집이
-닫혀 있다(``assert_label_universe``) — 도구 출력이나 클러스터 객체가 실릴 자리가 없다 ⑵ 같은
-리스너에 ``/mcp`` 를 부르면 404 다(``server.MetricsApp`` 의 mux 는 ``GET /metrics`` 한 경로) ⑶ 본
-배포의 ``/mcp`` 는 무인증이면 401 그대로이고, 키를 실으면 ``pong`` 이다 — 경계가 살아 있다는
-대조군이지 죽은 엔드포인트가 아니다.
+주 배포는 kind 오버레이가 인증을 내려 두어 ``/mcp`` 의 401 을 볼 수 없다(``auth-fixture.yaml``
+머리말).
 
-「노출을 끈 변형」은 이 파일이 세우고 거둔다(``tests/k8s/kind/metrics-off-variant.yaml`` —
-``auth-fixture.yaml`` 과 같은 구성에 ``METRICS_DISABLED=1``). 끈 것이 실재함은 서버가 남기는
-경고 줄(``METRICS_DISABLED is set``)로 먼저 확인한다 — 그 줄이 없으면 아래의 「9090 이 닫혀 있다」는
-아직 뜨지 않은 리스너와 구별되지 않는다. 그 다음 기동(가용 레플리카 ≥ 1 · 재시작 0) · ``ping`` →
-``pong`` · 파드 9090 으로의 GET 이 응답 없이 실패함을 잰다. 네임스페이스는 ``finally`` 에서
-지운다(``--wait=false`` — 다음 파일이 기다릴 이유가 없다).
+끈 것이 실재함은 서버가 남기는 경고 줄(``METRICS_DISABLED is set``)로 먼저 확인한다 — 그 줄이 없으면
+아래의 「9090 이 닫혀 있다」는 아직 뜨지 않은 리스너와 구별되지 않는다.
 """
 
 from __future__ import annotations

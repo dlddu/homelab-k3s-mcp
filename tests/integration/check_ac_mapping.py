@@ -1,52 +1,12 @@
 #!/usr/bin/env python3
 """테스트 시나리오 ↔ e2e **파일** 1:1 정합성 체커 (매칭 단위가 아니다).
 
-정합성 모델 `tbm_homelab-k3s-mcp-scenario-e2e`는 `docs/test-*.md`의 테스트 시나리오
-(`### 시나리오 <N>:` 헤딩)와 `tests/integration/` 최상위 `*.py` **파일**을 완전 1:1(전단사)로
-유지할 것을 요구한다. 이 스크립트는 그 판정을 사람의 자기신고가 아니라 **레포의 실제 상태에서
-재도출**해, `docs/doc-tracker.md`의 레지스트리와 대조한다. 클러스터도 서드파티 의존성도 필요
-없다(표준 라이브러리 전용) — CI의 lint 잡에서 돈다.
-
-세 개의 사실 원천을 읽는다.
-
-1. **시나리오 전집** — `docs/test-*.md`의 `### 시나리오 <N>:` 헤딩. 시나리오 식별자는
-   `test-<domain>.md#시나리오 <N>`이고 `<domain>`은 파일명에서 온다. 서수 표기이므로
-   **문서 중간에 시나리오를 끼워 넣으면 뒤 번호가 전부 밀려 식별자가 바뀐다** — 그 사고를
-   잡으려고 레지스트리 행의 **제목까지** 헤딩과 대조한다(아래 규칙 6).
-2. **선언** — 각 매칭 단위 파일 모듈 docstring의 `검증 시나리오:` (파싱은 `run_all.py`가 소유).
-   **정확히 1개**의 시나리오를 선언한 파일만 그 시나리오의 "전용 파일"로 세고, 2개 이상을
-   선언한 파일은 규칙 2 위반(분할 대기)으로 세며 그 시나리오들은 여전히 **공백**으로 계수한다 —
-   겸용 파일은 전단사를 만들지 못하기 때문이다.
-3. **등재** — `docs/doc-tracker.md`의 레지스트리 표·예외 목록·구현 대기 표·비-시나리오 파일
-   목록·집계 블록.
+각 매칭 단위 파일 모듈 docstring의 `검증 시나리오:` (파싱은 `run_all.py`가 소유).
 
 판정하는 것:
 
-* **규칙 1** 시나리오 → 전용 파일 유일 (같은 시나리오를 두 파일이 전용 선언하면 즉시 실패)
-* **규칙 2** 파일 → 시나리오 유일 (겸용 파일은 위반으로 계수되고, 레지스트리와 수가 일치해야 한다)
-* **규칙 3** 비-시나리오 파일은 `검증 시나리오: 없음`을 선언하고 doc-tracker에 등재돼야 한다
-* **규칙 4** 예외(영구 면제)는 사유·대체 검증 수단과 함께 등재돼야 하고, 등재된 시나리오는
-  파일이 없어도 drift가 아니다
 * **규칙 5** 참조 무결성 — 선언·레지스트리·예외 목록·구현 대기 표가 실재하지 않는 시나리오를
   가리키지 않는다
-* **규칙 6** 집계·행 일치 — 레지스트리의 행별 상태·**제목**과 집계 숫자가 실측과 정확히 같다.
-  **미등재 공백은 실패다** — 모델 불변식이 (시나리오 수 − 예외 수 − 구현 대기 수) = (매칭 파일
-  수)이므로, 전용 파일이 없는 시나리오는 예외나 구현 대기 중 하나로 반드시 등재돼야 한다.
-* **규칙 7** 테스트 문서 상태 일치 — 각 시나리오의 `자동화` 필드가 말하는 통합 e2e 현황이 실측
-  파일 집합과 같다(전용 파일이 실재하는데 `(미작성)`이 남아 있거나, 전용 파일이 없는데
-  `(미작성)` 없이 파일을 참조하면 위반)
-* **하네스 무결성** — 매칭 단위 파일 전부가 `run_all.py`에 정확히 한 번 배차되고,
-  각 파일의 `run()`이 그 파일이 정의한 `test_*` 케이스를 **전부 호출한다**
-  (만들어 놓고 CI가 실행하지 않는 파일, 그리고 배차는 되지만 자기 케이스를 부르지 않아
-  **조용히 통과하는 파일**을 둘 다 구조적으로 막는다)
-
-집계가 실측과 다르면 실패하므로, 파일을 쪼개거나 시나리오를 추가한 PR은 **같은 PR에서**
-레지스트리를 갱신해야 한다. 그것이 이 모델이 요구하는 "집계 일치"다. 같은 이유로 규칙 7이
-있다 — e2e 파일을 새로 만든 PR은 그 시나리오의 테스트 문서에서 `(미작성)` 표기를 같은 PR에서
-지워야 한다.
-
-> 파일명(`<domain>_ac<n>.py`)과 이 스크립트 이름은 판정 축이 시나리오로 옮겨진 뒤에도
-> 그대로다 — 매핑의 확인 지점은 파일명이 아니라 **모듈 docstring 선언**이다.
 """
 
 from __future__ import annotations
@@ -63,7 +23,6 @@ REPO_ROOT = HERE.parent.parent
 DOCS = REPO_ROOT / "docs"
 TRACKER = sorted((DOCS / "doc-tracker").glob("[0-9][0-9][0-9][0-9]-[0-9][0-9].md"))[-1]
 
-#: `docs/test-<domain>.md` 의 시나리오 헤딩. 번호와 제목을 함께 딴다.
 SCENARIO_HEADING_RE = re.compile(r"^### 시나리오 (\d+):[ \t]*(.*)$", re.MULTILINE)
 #: 시나리오 식별자 — 레지스트리·예외·구현 대기가 공유하는 표기.
 SCENARIO_ID = r"test-[a-z0-9-]+\.md#시나리오 \d+"
@@ -92,7 +51,6 @@ AGGREGATE_KEYS = (
 
 
 def scenario_universe() -> dict[str, str]:
-    """`docs/test-*.md`에서 시나리오 전집을 재도출한다. 식별자 → 제목."""
     scenarios: dict[str, str] = {}
     for doc in sorted(DOCS.glob("test-*.md")):
         for number, title in SCENARIO_HEADING_RE.findall(
@@ -103,9 +61,7 @@ def scenario_universe() -> dict[str, str]:
 
 
 def scenario_automation(doc: pathlib.Path) -> dict[str, str]:
-    """테스트 문서의 시나리오별 ``자동화`` 필드 본문. 식별자 → 본문.
-
-    필드는 여러 줄로 이어질 수 있으므로 다음 ``- **`` 불릿까지를 한 필드로 본다.
+    """필드는 여러 줄로 이어질 수 있으므로 다음 ``- **`` 불릿까지를 한 필드로 본다.
     """
     text = doc.read_text(encoding="utf-8")
     blocks: dict[str, str] = {}
@@ -133,7 +89,6 @@ def scenario_automation(doc: pathlib.Path) -> dict[str, str]:
 
 
 def _section(text: str, heading_prefix: str) -> str:
-    """`### <heading_prefix>` 로 시작하는 절의 본문(다음 `###` 전까지)."""
     lines = text.splitlines()
     out: list[str] = []
     collecting = False
@@ -149,7 +104,6 @@ def _section(text: str, heading_prefix: str) -> str:
 
 
 class Tracker:
-    """`docs/doc-tracker.md`의 e2e 렌즈 섹션에서 읽어낸 등재 내용."""
 
     def __init__(self, text: str) -> None:
         registry = text.split("### 시나리오 레지스트리")[-1]
@@ -174,7 +128,6 @@ class Tracker:
 
 
 def measure() -> tuple[dict, list[str]]:
-    """레포의 실제 상태를 재도출한다. (측정값, 치명적 오류 목록)"""
     problems: list[str] = []
 
     try:
@@ -210,7 +163,6 @@ def measure() -> tuple[dict, list[str]]:
 
 
 def check_dispatch(decls) -> list[str]:
-    """매칭 단위 파일 전부가 러너에 정확히 한 번 배차되는지."""
     problems = []
     dispatched: list[str] = []
     for group in run_all.GROUPS:
@@ -229,12 +181,8 @@ def check_dispatch(decls) -> list[str]:
 
 
 def check_cases_are_run(decls) -> list[str]:
-    """각 파일의 ``run()`` 이 그 파일이 정의한 ``test_*`` 케이스를 전부 호출하는지.
-
-    배차만으로는 부족하다 — 파일 하나에 케이스 하나인 구조에서는 디스패처가 케이스를
-    부르는 줄을 빠뜨려도 그 파일은 여전히 exit 0 이라 CI가 초록으로 통과한다. 그 파일이
+    """그 파일이
     선언한 시나리오는 레지스트리에서 ✅ 로 세지지만 실제로는 아무것도 단언하지 않는다.
-    AST 만 보므로 클러스터도 서드파티 임포트도 필요 없다.
     """
     problems = []
     for decl in decls:
@@ -268,14 +216,6 @@ def check_cases_are_run(decls) -> list[str]:
 
 
 def check_test_docs(scenarios: dict[str, str], dedicated: dict[str, str]) -> list[str]:
-    """규칙 7 — 각 시나리오의 `자동화` 필드가 말하는 e2e 현황이 실측 파일 집합과 같은지.
-
-    `docs/test-*.md` 를 읽는 게이트가 하나도 없어서, e2e 파일을 만든 PR 이 그 시나리오의
-    자동화 필드를 갱신하지 않아도 CI 가 초록이었다. 그 사이 문서는 "아직 (미작성)" 이라고
-    말하고 파일은 실재하는 상태로 벌어진다 — 2026-09-04 에 그 어긋남이 세 번의 감지를
-    통과했다. 이 검사는 그 자리를 기계로 옮긴다. 판정은 **문서의 자기신고가 아니라 실측
-    파일 집합**(`dedicated`) 기준이다.
-    """
     problems = []
     automation: dict[str, str] = {}
     for doc in sorted(DOCS.glob("test-*.md")):

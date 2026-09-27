@@ -3,21 +3,8 @@
 검증 시나리오: test-event-log.md#시나리오 6
 실행 대상: oauth-variant
 
-이 변형에서 도는 이유는 두 자격증명 경로를 한 배포가 다 갖기 때문이다 — ``MCP_API_KEYS`` 와
-``MCP_OAUTH_*`` 가 함께 설정된 구성 (c). 잘못된 API 키는 정적 키 대조에서 떨어져 JWT 검증까지
-내려간 뒤 401 이 되고, 만료된 JWT 는 서명은 맞되 ``exp`` 가 지나 401 이 된다. 둘 다 인증 층이
-디스패처 앞에서 끊으므로 레코드는 그 층이 남긴다(``internal/auth/auth.go::recordRefusal``).
-
-**만료된 JWT 는 실 발급자(dex)가 서명한 것이다.** 남의 키로 서명한 토큰은 서명 검증에서
-떨어지는 것이지 만료가 아니다 — 그래서 픽스처(``tests/k8s/kind/oidc-fixture.yaml``)가 password
-grant 를 열어 두고, 이 파일은 그 토큰으로 **먼저 성공 호출을 한 번 한다**(주체가 ``jwt:<sub>`` 로
-남는 대조군). 같은 토큰이 만료 뒤 401 이 되고 그 레코드의 주체가 ``unauthenticated`` 라는 것이
-「만료」의 관측이다. 픽스처의 ``expiry.idTokens`` 가 짧은 이유는 이 대기 하나뿐이다.
-
-호출은 MCP 세션이 아니라 원시 JSON-RPC ``tools/call`` 본문이다 — 인증 층은 tools/call 본문에만
-레코드를 남기고(거부된 initialize·tools/list 는 도구 호출이 아니다) 401 은 세션을 열지 못하므로,
-SDK 를 거치면 관측 지점에 닿지 않는다. AC3 교차: 제시한 키 값·JWT 원문·JWT 모양이 두 거부
-레코드 어디에도 없다.
+인증 층은 tools/call 본문에만 레코드를 남기고(거부된 initialize·tools/list 는 도구 호출이 아니다)
+401 은 세션을 열지 못하므로, SDK 를 거치면 관측 지점에 닿지 않는다.
 """
 
 from __future__ import annotations

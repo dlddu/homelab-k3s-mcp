@@ -22,10 +22,8 @@ func (g *slowGate) Authorize(ctx context.Context, call gatekeeper.Call) (*gateke
 	return g.scriptedGate.Authorize(ctx, call)
 }
 
-// prd-metrics AC3 at the record: the time the gate held a call is on the
-// record as GateWait and taken out of Duration, so a slow human does not
-// read as a slow tool. Measured here rather than in the metrics package
-// because the split is made where the call is timed.
+// Measured here rather than in the metrics package because the split is
+// made where the call is timed.
 func TestGateWaitIsRecordedApartFromTheCallsDuration(t *testing.T) {
 	const wait = 60 * time.Millisecond
 	gate := &slowGate{scriptedGate: scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-slow"}}, delay: wait}
@@ -45,7 +43,6 @@ func TestGateWaitIsRecordedApartFromTheCallsDuration(t *testing.T) {
 		t.Errorf("Duration = %v, want >= 0", got.Duration)
 	}
 
-	// An ungated call waits on nothing.
 	if _, rerr := callTool(t, h, "ping", ""); rerr != nil {
 		t.Fatalf("ping = %v", rerr)
 	}
@@ -54,8 +51,6 @@ func TestGateWaitIsRecordedApartFromTheCallsDuration(t *testing.T) {
 	}
 }
 
-// A refusal the gate produced still carries the wait it cost, under the
-// verdict the record already names — that is the series the wait lands in.
 func TestARefusedGatedCallStillCarriesItsWait(t *testing.T) {
 	const wait = 40 * time.Millisecond
 	refusal := &gatekeeper.Refusal{Verdict: gatekeeper.VerdictRejected, RequestID: "req-no", Err: errors.New("refusing resource_patch: approval rejected (request req-no)")}

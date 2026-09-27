@@ -3,18 +3,8 @@
 검증 시나리오: test-event-log.md#시나리오 1
 실행 대상: primary
 
-세 도구는 시나리오가 고른 그대로다 — 좌표를 쓰는 ``resource_get``, 좌표가 없는 ``ping``, 외부
-시스템을 쓰는 ``grafana_token``(주 배포는 grafana-mock 이 배선돼 성공한다). ``resource_get`` 의
-대상은 모든 네임스페이스에 apiserver 가 넣어 두는 ``kube-root-ca.crt`` ConfigMap 이라 픽스처가
-필요 없다. 다섯 필드는 레코드 형식(``internal/eventlog/eventlog.go::Attrs``)의 ``time`` · ``tool`` ·
-``principal`` · ``target.*`` · ``result`` 이고, 「좌표가 없는 도구는 대상 필드가 비어 있되 **필드
-자체는 존재**한다」는 ``_eventlog.parse`` 가 ``key=""`` 를 빈 문자열로 보존하기 때문에 키의 존재와
-값의 공백을 따로 잰다.
-
-기대 결과의 등식 절 — 「같은 구간의 레코드 수가 ``mcp_tool_calls_total`` 증가분과 같다」 — 은 두
-층을 같은 구간에서 읽어 잰다: 호출 전후의 ``msg="tool call"`` 줄 수 차와, 같은 전후의 카운터
-전 계열 합의 차. 둘 다 3 이어야 하고 서로 같아야 한다. 레인을 선언하지 않으므로 레인들이 끝난
-뒤 단독으로 돌고, 그 구간에 남의 호출은 없다 — 등식이 이 파일의 세 호출만을 센다는 성립 조건이다.
+레인을 선언하지 않으므로 레인들이 끝난 뒤 단독으로 돌고, 그 구간에 남의 호출은 없다 — 등식이 이
+파일의 세 호출만을 센다는 성립 조건이다.
 """
 
 from __future__ import annotations
