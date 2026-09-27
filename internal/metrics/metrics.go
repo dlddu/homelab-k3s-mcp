@@ -1,11 +1,5 @@
 // Package metrics is the prd-metrics surface: the four families that PRD's
 // "표면 개요" table closes, derived from tool-call records.
-//
-// It is a Sink rather than a set of counters the handlers touch because both
-// PRDs demand one derivation point — a call counted somewhere the record is
-// not written is a call the two surfaces can disagree about, with nothing to
-// say which is right. The dispatcher and the auth layer emit one Record per
-// call; this package reads that record and nothing else.
 package metrics
 
 import (
@@ -22,13 +16,8 @@ import (
 )
 
 // Unregistered is the tool label of a call that named no registered tool.
-// AC4 lets only server-enumerated values onto a label, and a tool name the
-// dispatcher does not know is the caller's text — so every such call folds
-// into this one value rather than minting a series per string. It is one
-// value, not dropped: a rise in calls to tools that do not exist is a
-// misconfigured client or someone probing, and AC2's invariant has to count
-// those refusals too. The name cannot collide with a tool because New
-// refuses a registry that contains it.
+// It is one value, not dropped: a rise in calls to tools that do not exist
+// is a misconfigured client or someone probing.
 const Unregistered = "unregistered"
 
 // gateWaitBuckets are seconds a human takes to answer, not a handler: the
@@ -51,10 +40,7 @@ type Metrics struct {
 }
 
 // New builds the surface for the given registered tools and pre-registers
-// every series the table bounds: tool × result, tool × reason, one duration
-// histogram per tool and one gate-wait histogram per verdict. AC1 wants an
-// uncalled tool at 0 rather than absent, and pre-registering from the closed
-// lists is also what makes the series count a number known at start.
+// every series the table bounds.
 func New(tools []string) (*Metrics, error) {
 	m := &Metrics{
 		registry: prometheus.NewRegistry(),
@@ -114,9 +100,6 @@ func (m *Metrics) Emit(_ context.Context, r eventlog.Record) {
 	m.calls.WithLabelValues(tool, string(r.Result)).Inc()
 	switch r.Result {
 	case eventlog.ResultRefused:
-		// Every refusal carries a reason (prd-event-log AC2), and the reason
-		// is one of Reasons — the record layer has no other source for it.
-		// That is what keeps sum(refusals_total) == calls_total{refused}.
 		m.refusals.WithLabelValues(tool, string(r.Reason)).Inc()
 	default:
 		// A refused call ran no handler, so it has no handler latency to
@@ -125,19 +108,14 @@ func (m *Metrics) Emit(_ context.Context, r eventlog.Record) {
 		m.duration.WithLabelValues(tool).Observe(r.Duration.Seconds())
 	}
 	if r.Gate.Decision != "" {
-		// A decision is only on the record when the gate was asked, and the
-		// verdict names the series (six, from gatekeeper.Verdicts). A gated
-		// call refused before any verdict — its approval context could not
-		// be built — has no decision and is not a wait a human took.
+		// A gated call refused before any verdict — its approval context
+		// could not be built — has no decision and is not a wait a human
+		// took.
 		m.gateWait.WithLabelValues(r.Gate.Decision).Observe(r.GateWait.Seconds())
 	}
 }
 
-// Handler serves the registry in the Prometheus text exposition. It is the
-// whole of what the metrics path does (AC5): the handler reads counters and
-// nothing else — no tool, no cluster client, no credential is reachable from
-// it — which is why it can be served without /mcp's authentication and still
-// not be a way around it.
+// Handler serves the registry in the Prometheus text exposition.
 func (m *Metrics) Handler() http.Handler {
 	return promhttp.HandlerFor(m.registry, promhttp.HandlerOpts{})
 }

@@ -2,24 +2,6 @@
 
 검증 시나리오: test-metrics.md#시나리오 2
 실행 대상: auth-variant
-
-다섯 사유 중 넷은 이 변형이 한 배포로 낸다 — 인증이 켜져 있고(``MCP_API_KEYS``) 자격증명
-시크릿도 게이트 백엔드도 없어서, 잘못된 bearer 는 인증 층이 ``auth_failed`` 로, 빈 ``kind`` 는
-디스패처가 ``invalid_input`` 으로, ``grafana_token`` 은 핸들러가 ``unconfigured`` 로, 게이트 대상
-``resource_patch`` 는 게이트 층이 ``gate_unconfigured`` 로 끊는다(``event_log_ac4_refusals.py`` 가
-뒤의 셋을 레코드로 관측하는 그 경로). 다섯째 「게이트 거절」만은 백엔드가 있어야 나오므로
-gatekeeper-variant 에 짧은 포트포워드로 닿아 같은 도구를 한 번 띄우고 사람 대신 거절한다
-(``event_log_ac2_decisions.py`` 가 auth-variant 에 닿는 것과 같은 형태). 그래서 스크레이프는
-두 파드에서 하고, 사유별 차는 각자의 배포에서 잰다.
-
-인증 실패는 MCP 세션이 아니라 원시 ``tools/call`` 본문으로 만든다 — 401 은 세션을 열지 못하고,
-인증 층은 tools/call 본문이 이름 붙인 도구로만 레코드를 남기므로(``internal/auth/auth.go``
-``recordRefusal``) 카운터의 ``tool`` 라벨은 본문의 ``ping`` 이다.
-
-「사람이 거절」과 「게이트 통신 실패」가 한 라벨로 합쳐지지 않는다는 것은 거절 배포에서 잰다 —
-``gate_rejected`` 가 1 오르는 동안 ``gate_unreachable`` 은 0 이다. 배포마다 sum(refusals) 의 차가
-``calls_total{result="refused"}`` 의 차와 같은 것(AC2 의 불변식)도 함께 잰다 — 사유 없는 거부가
-새어 들면 여기서 어긋난다.
 """
 
 from __future__ import annotations
