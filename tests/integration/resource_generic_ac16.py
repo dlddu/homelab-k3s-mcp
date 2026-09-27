@@ -4,18 +4,12 @@
 실행 대상: primary
 병렬 레인: gate-tunnels
 
-여섯 verb(`get`·`watch`·`create`·`update`·`patch`·`delete`)를 **한 파일에서 전부** 태운다.
 일부만 떼어 닫으면 「민감 종류는 모든 동사에서 막힌다」가 아니라 「그 동사에서 막힌다」만
 증명되고, 빠진 동사가 바로 새는 자리가 된다.
 
-**「k8s 호출 카운트 0」 절에 대하여.** 시나리오는 미승인 거부에서 k8s 호출이 0 이기를
-요구한다. 호출 수 자체는 SUT 안의 사실이라 e2e 가 셀 수 없고(그 자리는 Go 단위의
-몫이다 — ``internal/mcp/resource_test.go`` 의 게이트 분기 테스트들), apiserver 감사
-프록시는 이 하네스에 없다. 그래서 이 파일은 **밖에서 관측 가능한 등가물**을 단언한다:
-거부된 create 는 객체를 만들지 않았고, 거부된 update·patch 는 `resourceVersion` 을
-움직이지 않았으며, 거부된 delete 뒤에도 객체가 그대로 있다. 「호출은 갔지만 아무 일도
-없었다」와 「호출이 가지 않았다」를 이 층에서 가를 수 없다는 사실을 숨기지 않으려고
-여기 적는다 — 이 파일이 증명하는 것은 **거부가 상태에 닿지 않았다**까지다.
+**「k8s 호출 카운트 0」 절에 대하여.** 「호출은 갔지만 아무 일도 없었다」와 「호출이 가지
+않았다」를 이 층에서 가를 수 없다 — 이 파일이 증명하는 것은 **거부가 상태에 닿지
+않았다**까지다.
 
 미승인은 사람 없이 재야 하므로 **승인 요청을 띄운 뒤 판정을 직접 REJECTED 로 내려**
 만든다(`resource_generic_ac5.py` 의 게이트 대조군과 같은 방식). 자동 거부 모드
@@ -112,7 +106,6 @@ def _seed() -> None:
 
 
 def _gated_calls() -> list[tuple[str, dict, str]]:
-    """여섯 verb 각각 한 호출. 좌표는 전부 같은 민감 종류다."""
     coordinate = {"apiVersion": "v1", "kind": "Secret", "namespace": NAMESPACE}
     return [
         ("resource_get", {**coordinate, "name": GATED_SECRET}, GATED_SECRET),

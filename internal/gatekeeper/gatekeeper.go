@@ -1,11 +1,8 @@
 // Package gatekeeper talks to the gatekeeper (dlddu/gatekeeper) approval
 // backend so that a tool call can be held until a human decides on it.
 //
-// The package implements the decision half of docs/prd-approval-gate.md: it
-// creates an approval request (AC2), polls for the verdict (AC4) and folds
-// every outcome that is not an observed APPROVED into a refusal (AC5). Which
-// calls have to come through here is not decided in this package — that is the
-// declaration table in internal/mcp, which selects by RBAC verb (AC1).
+// Which calls have to come through here is not decided in this package — that
+// is the declaration table in internal/mcp.
 package gatekeeper
 
 import (
@@ -42,8 +39,7 @@ const (
 var ErrNotConfigured = errors.New("approval gate is not configured (GATEKEEPER_BASE_URL/GATEKEEPER_API_KEY): refusing")
 
 // Verdict is how the gate answered, as the record names it (prd-event-log
-// AC2). Six values: approved, and the five refusals prd-metrics AC2 lists —
-// rejected and expired are the backend's own words, timeout is this client
+// AC2). Rejected and expired are the backend's own words, timeout is this client
 // giving up on PENDING, unreachable is a request that produced no verdict
 // (transport, 409, 5xx, an unreadable or unknown answer), unconfigured is a
 // gate with no backend to ask.
@@ -58,10 +54,8 @@ const (
 	VerdictUnconfigured Verdict = "unconfigured"
 )
 
-// Verdicts is the closed set, in the order above. prd-metrics AC3's
-// mcp_gate_wait_seconds{decision} pre-registers one series per value from
-// this list, so the six are enumerated here once rather than counted again
-// where the histogram lives.
+// Verdicts is the closed set, in the order above. The six are enumerated here
+// once rather than counted again where the histogram lives.
 var Verdicts = []Verdict{
 	VerdictApproved, VerdictRejected, VerdictExpired,
 	VerdictTimeout, VerdictUnreachable, VerdictUnconfigured,
@@ -199,8 +193,7 @@ type Call struct {
 	// this, and the ordering is a property of the types rather than a rule each
 	// implementation has to remember.
 	//
-	// An error is a refusal: AC3 ends by saying a call whose detail cannot be
-	// built gets no approval request at all.
+	// An error is a refusal.
 	Describe func(context.Context) (string, error)
 }
 
@@ -220,8 +213,7 @@ func (c Call) describe(ctx context.Context) (string, error) {
 	return text, nil
 }
 
-// Decision is an observed APPROVED verdict, carrying the audit fields of AC8
-// and the auto-response flags of AC9. It is spendable exactly once (AC7).
+// Decision is an observed APPROVED verdict. It is spendable exactly once (AC7).
 type Decision struct {
 	RequestID     string
 	ExternalID    string
@@ -257,8 +249,7 @@ type Gate interface {
 // gated calls instead of quietly running them (AC5).
 type Unavailable struct{ reason error }
 
-// NewUnavailable builds a refusing gate. A zero reason falls back to
-// ErrNotConfigured.
+// NewUnavailable builds a refusing gate.
 func NewUnavailable(reason error) *Unavailable {
 	if reason == nil {
 		reason = ErrNotConfigured
@@ -321,8 +312,7 @@ type requestResponse struct {
 	AutoRejected  bool   `json:"autoRejected"`
 }
 
-// Authorize implements Gate. Every return path other than an observed APPROVED
-// is an error, and none of them reaches kubernetes (AC5).
+// Authorize implements Gate.
 func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
 	// The first point at which the gate knows it has a backend to ask, which is
 	// why Describe is called here rather than by the caller (see Call.Describe).

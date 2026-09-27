@@ -20,10 +20,9 @@ import (
 
 // The AC1/AC2/AC7 request-path tests exercise only local logic (header parsing,
 // key matching, challenge emission, metadata rendering) and never reach the
-// network. The FromEnv OAuth-gating tests stand up a local httptest OIDC server
-// so discovery can complete without a live provider.
+// network.
 
-// --- AC1: 인증 게이트 (gate decision) ---
+// --- gate decision ---
 
 func TestExtractBearerClassifiesHeader(t *testing.T) {
 	cases := []struct {
@@ -84,7 +83,6 @@ func TestRequireBearerRejectsMissingTokenAndAdvertisesDiscovery(t *testing.T) {
 	if !strings.Contains(challenge, `error="missing_token"`) {
 		t.Errorf("challenge = %q, want error=missing_token", challenge)
 	}
-	// AC2: the challenge must point clients at the protected-resource metadata.
 	wantMeta := "https://mcp.example.test/mcp/.well-known/oauth-protected-resource"
 	if !strings.Contains(challenge, "resource_metadata="+`"`+wantMeta+`"`) {
 		t.Errorf("challenge = %q, want resource_metadata %q", challenge, wantMeta)
@@ -107,7 +105,7 @@ func TestRequireBearerRejectsMalformedScheme(t *testing.T) {
 	}
 }
 
-// --- AC2: 인증 디스커버리 (protected-resource metadata) ---
+// --- protected-resource metadata ---
 
 func TestMetadataHandlerServesProtectedResource(t *testing.T) {
 	cfg := &Config{
@@ -142,7 +140,7 @@ func TestMetadataHandlerServesProtectedResource(t *testing.T) {
 	}
 }
 
-// --- AC1: 인증 게이트 enable/disable via environment ---
+// --- enable/disable via environment ---
 
 func TestFromEnvDisabledReturnsNilConfig(t *testing.T) {
 	t.Setenv("MCP_AUTH_DISABLED", "1")
@@ -155,9 +153,6 @@ func TestFromEnvDisabledReturnsNilConfig(t *testing.T) {
 		t.Fatalf("config = %+v, want nil when auth is disabled", cfg)
 	}
 }
-
-// FromEnv gates on four credential combinations: neither → error;
-// API keys only → key-only config; OAuth only and OAuth+keys → OAuth config.
 
 func TestFromEnvNoAuthConfiguredErrors(t *testing.T) {
 	t.Setenv("MCP_AUTH_DISABLED", "0")
@@ -254,7 +249,7 @@ func TestFromEnvRequiresAudienceWhenOAuthRequested(t *testing.T) {
 	}
 }
 
-// --- AC7: 비대화형 API 키 인증 (static key gate) ---
+// --- static key gate ---
 
 func TestParseAPIKeys(t *testing.T) {
 	cases := []struct {
@@ -304,7 +299,6 @@ func TestMatchAPIKey(t *testing.T) {
 		})
 	}
 
-	// A config with no keys never matches (OAuth-only mode).
 	if (&Config{}).matchAPIKey("anything") {
 		t.Error("matchAPIKey on a keyless config = true, want false")
 	}
@@ -348,18 +342,14 @@ func TestRequireBearerRejectsUnknownKeyInKeyOnlyMode(t *testing.T) {
 	if !strings.HasPrefix(challenge, "Bearer ") {
 		t.Fatalf("challenge = %q, want Bearer scheme", challenge)
 	}
-	// AC8: API-key-only mode advertises no OAuth discovery metadata.
 	if strings.Contains(challenge, "resource_metadata") {
 		t.Errorf("challenge = %q, must not advertise resource_metadata without OAuth", challenge)
 	}
-	// The configured key must never leak into the challenge or the body.
 	if strings.Contains(challenge, key) || strings.Contains(rec.Body.String(), key) {
 		t.Errorf("response leaked the API key: challenge=%q body=%q", challenge, rec.Body.String())
 	}
 }
 
-// A structurally valid JWT presented in API-key-only mode must be rejected
-// (401), never triggering a JWKS fetch against the unconfigured OAuth client.
 func TestRequireBearerRejectsJWTInKeyOnlyMode(t *testing.T) {
 	cfg := &Config{apiKeys: []string{"automation-key"}}
 
@@ -474,8 +464,6 @@ func signJWT(t *testing.T, key *rsa.PrivateKey, kid, issuer, audience string) st
 	return signed
 }
 
-// prd-event-log AC1/AC3: the identity handed to the dispatcher is the key's
-// position or the JWT's subject, and never the credential itself.
 func TestRequireBearerHandsDownAPrincipalWithoutTheCredential(t *testing.T) {
 	const (
 		kid      = "test-kid"
@@ -541,10 +529,6 @@ type recordingSink struct{ records []eventlog.Record }
 
 func (s *recordingSink) Emit(_ context.Context, r eventlog.Record) { s.records = append(s.records, r) }
 
-// prd-event-log AC4: a tool call that fails authentication is recorded as a
-// refused call with its reason, whichever way it failed — no header, a key
-// nobody configured, a JWT that does not verify. AC3 crosses here: the record
-// names the tool and says "unauthenticated", never the credential presented.
 func TestRequireBearerRecordsTheCallItRefuses(t *testing.T) {
 	const badKey = "not-a-configured-key"
 	const badJWT = "eyJhbGciOiJSUzI1NiJ9.NOT-A-VALID-JWT.sig"
@@ -586,9 +570,6 @@ func TestRequireBearerRecordsTheCallItRefuses(t *testing.T) {
 	}
 }
 
-// AC4 counts refused tool calls, not refused requests: a body that is not a
-// tools/call — initialize, tools/list, nothing at all — leaves no record,
-// the same as it would authenticated.
 func TestRequireBearerRecordsOnlyToolCalls(t *testing.T) {
 	cases := map[string]string{
 		"initialize": `{"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}`,
