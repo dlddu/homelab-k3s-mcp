@@ -28,8 +28,6 @@ func TestProxyVerbFollowsTheMethod(t *testing.T) {
 
 // TestSplitProxyPathKeepsTheQuery covers the difference between reaching
 // kubelet's /exec with a command and asking it for a file named "?command=id".
-// rest.Request escapes a suffix segment, so the query has to be handed over as
-// parameters rather than as part of the path.
 func TestSplitProxyPathKeepsTheQuery(t *testing.T) {
 	cases := []struct {
 		path     string
@@ -111,10 +109,7 @@ func TestProxyOutcomeMarksACutBody(t *testing.T) {
 }
 
 // TestApiserverRefusalIsToldFromTheTargets is AC18 on the one surface where the
-// two are genuinely confusable. A 403 from the apiserver is this server's grant
-// being absent and must be said plainly; a 403 from whatever is being proxied to
-// is an answer the caller asked for and got. The body is what separates them —
-// the apiserver's is a JSON Status, the target's is whatever it serves.
+// two are genuinely confusable.
 func TestApiserverRefusalIsToldFromTheTargets(t *testing.T) {
 	forbidden := &http.Response{StatusCode: http.StatusForbidden}
 

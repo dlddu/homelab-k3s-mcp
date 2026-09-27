@@ -345,9 +345,6 @@ func discoveryServer(t *testing.T) *httptest.Server {
 	}))
 }
 
-// The negative half carries the criterion — the refusal an operator acts on is
-// the one that says which of "no permission", "no object" and "no such thing" it
-// was, and a bare PUT would have produced the same 404 for all three.
 func TestUpdateScaleRejectsReplicalessKind(t *testing.T) {
 	server := discoveryServer(t)
 	defer server.Close()
