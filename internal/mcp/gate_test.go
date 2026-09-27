@@ -861,8 +861,8 @@ func TestEveryStateChangingToolIsGatedOrDocumented(t *testing.T) {
 	}
 
 	exemptions := Exemptions()
-	if reason, ok := exemptions["dear_baby_reset_user"]; !ok || reason != exemptPendingOwnerDecision {
-		t.Errorf("dear_baby_reset_user exemption = %q, want the documented pending-owner-decision reason", reason)
+	if reason, ok := exemptions["dear_baby_reset_user"]; !ok || reason != exemptAcceptedByOwner {
+		t.Errorf("dear_baby_reset_user exemption = %q, want the documented owner-accepted reason", reason)
 	}
 	if len(exemptions) != 1 {
 		t.Errorf("exemptions = %v, want exactly the one documented exception", exemptions)
