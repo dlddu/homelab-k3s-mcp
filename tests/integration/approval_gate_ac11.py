@@ -5,10 +5,9 @@
 병렬 레인: gate-apiserver-audit
 
 **이 파일은 러너가 건네는 배포를 쓰지 않는다.** 시나리오가 재는 것은 게이트가 승인 전에
-apiserver 로 *어떤 요청을 보냈는지*이고, 그 구분(`PartialObjectMetadata` 인가 전체 객체인가)은
-요청의 ``Accept`` 헤더에만 있다 — apiserver 자신의 감사 로그는 헤더를 기록하지 않는다. 그래서
-`tests/k8s/kind/apiserver-audit-variant.yaml` 이 SUT 와 apiserver 사이에 기록 프록시를 세운
-변형을 따로 띄우고, 이 파일이 자기 포트포워드로 그 배포와 그 프록시의 admin API 에 붙는다
+apiserver 로 *어떤 요청을 보냈는지*이고, 그것이 왜 기록 프록시로만 관측되는지는
+`tests/k8s/kind/apiserver-audit-variant.yaml` 머리말이 든다. 이 파일은 그 변형을 따로 띄우고
+자기 포트포워드로 그 배포와 그 프록시의 admin API 에 붙는다
 (`approval_gate_ac1.py`·`resource_generic_ac18.py` 가 각자의 변형에 붙는 것과 같은 형태).
 
 **부재만 세면 공전한다.** "전체 객체 `get` 이 한 번도 없다"는 기록 경로가 죽어 있어도 참이다.
@@ -21,8 +20,7 @@ apiserver 로 *어떤 요청을 보냈는지*이고, 그 구분(`PartialObjectMe
 증거다. 강한 증거는 ``Accept`` 헤더 쪽이고, 토큰 grep 은 그 위에 얹는 교차 확인이다.
 값 가림 자체는 이 시나리오가 아니라 시나리오 10 이 잰다.
 
-**(c) 의 대조는 무엇인가.** 시나리오는 "게이트 선언과 `rbac.yaml` 을 대조"하고 "선언을 뺀
-변형에서 대조가 실패로 잡힘"을 요구한다. `prd-approval-gate.md` AC11 은 `prd-resource-generic`
+**(c) 의 대조는 무엇인가.** `prd-approval-gate.md` AC11 은 `prd-resource-generic`
 AC19 의 RBAC 대조가 결번이 된 뒤에도 **선언은 남긴다**고 적으므로, 여기서 성립하는 대조는
 ① 선언이 AC11 표의 두 쌍과 정확히 같다 ② 그 두 쌍이 `k8s/rbac.yaml` 이 바인딩하는 ClusterRole
 아래 덮인다 — 둘의 논리곱이다. `cluster-admin` 은 ②를 항상 만족시키므로 ② 하나로는 공전하고,
@@ -62,7 +60,7 @@ COLLECTION = (f"{PREFIX}-doomed-a", f"{PREFIX}-doomed-b")
 #: 레포 어디에도 없는 바늘. 세 표면의 grep 이 곧 판정이다.
 TOKEN = "gk-ac11-needle-6b3d90f4c2ae"
 
-#: 스케일 목표. 픽스처의 `replicas` 와 달라야 "움직이지 않았다"를 잴 수 있다.
+#: 픽스처의 `replicas` 와 달라야 "움직이지 않았다"를 잴 수 있다.
 SCALE_TARGET_REPLICAS = 2
 FIXTURE_REPLICAS = 0
 
@@ -77,14 +75,13 @@ METADATA_LIST_MARK = "as=PartialObjectMetadataList;"
 DECLARATION_LOG_MARK = "approval gate exercises these pairs before any verdict"
 DECLARATION_RE = re.compile(r'pairs="?([^"\n]+?)"?\s*$')
 
-#: `prd-approval-gate.md` AC11 표의 두 행. 이 파일이 대조하는 계약 문면이다.
 PRD_PATH = "docs/prd-approval-gate.md"
 PRD_PAIR_RE = re.compile(r"^\s*\|\s*`(get|list)` on ⟨kind⟩\s*\|")
 
 RBAC_PATH = "k8s/rbac.yaml"
 
-#: `cluster-admin` 이 덮는 것으로 보는 verb 집합. 이 목록은 이름으로 덮음을 판정하는
-#: 좁은 규약이다 — 임의의 ClusterRole 을 해석하지 않는다(그 해석은 apiserver 의 몫이다).
+#: 이름으로 덮음을 판정하는 좁은 규약이다 — 임의의 ClusterRole 을 해석하지 않는다
+#: (그 해석은 apiserver 의 몫이다).
 COVER_ALL_CLUSTER_ROLES = {"cluster-admin"}
 
 
@@ -177,11 +174,7 @@ def _reads_of(records: list[dict], path: str) -> list[dict]:
 
 
 async def _rejected(session, gate: str, tool: str, args: dict, marker: str) -> str:
-    """게이트 대상 호출을 띄우고, 승인 요청이 뜬 상태에서 **거절**한다.
-
-    거부가 클라이언트에 어떤 문면으로 돌아왔는지를 돌려준다 — (a) 의 토큰 부재를 응답
-    표면에서도 세기 때문이다.
-    """
+    """게이트 대상 호출을 띄우고, 승인 요청이 뜬 상태에서 **거절**한다."""
     task = asyncio.create_task(session.call_tool(tool, args))
     row = await wait_for_pending(gate, marker)
     await decide(gate, row["id"], "REJECTED")
@@ -377,7 +370,7 @@ def test_c_the_declaration_matches_the_contract_and_the_grant() -> None:
     problems = compare_declaration(declared, prd_text, rbac_text)
     assert not problems, f"대조가 실패했다: {problems}"
 
-    # 음성 대조 ①: 선언을 뺀 변형. 시나리오 11 (c) 의 기대 결과가 요구하는 자리다.
+    # 음성 대조 ①: 선언을 뺀 변형.
     for dropped in range(len(declared)):
         variant = [p for i, p in enumerate(declared) if i != dropped]
         assert compare_declaration(variant, prd_text, rbac_text), (

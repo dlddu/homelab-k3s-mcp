@@ -1,25 +1,21 @@
 # apiserver 감사 프록시 변형 — test-approval-gate.md#시나리오 11 (approval_gate_ac11.py).
 #
-# 시나리오 11 이 재는 것은 게이트가 **어떻게** 읽었는지다: 민감 종류의 사전 읽기는
-# `PartialObjectMetadata` 여야 하고 전체 객체여서는 안 된다. 그 구분은 요청의 `Accept`
+# 사전 읽기가 `PartialObjectMetadata` 인가 전체 객체인가의 구분은 요청의 `Accept`
 # 헤더에만 있고, apiserver 자신의 감사 로그는 헤더를 기록하지 않는다 — 그래서 관측 지점은
 # 서버와 apiserver 사이의 경로뿐이다. 이 파일이 그 경로에 기록 프록시를 세운 변형이다.
 #
 # 왜 별도 배포인가: 관측을 위해 SUT 의 apiserver 주소와 신뢰 앵커를 바꿔야 하고, 그것을
-# 주 배포에 하면 다른 100여 파일이 전부 이 경로를 지나게 된다. 변형은
-# `gate-refusal-variant.yaml`·`rbac-narrow-fixture.yaml` 과 같은 형태다.
+# 주 배포에 하면 다른 100여 파일이 전부 이 경로를 지나게 된다.
 #
-# 이것은 모킹이 아니다(`docs/e2e-mocking-policy.md` — "http-trace 프록시 — 동작을 치환하지
-# 않고 관측만 하므로 모킹이 아니라 이 정책이 권장하는 대안 쪽이다"). 상류는 실 apiserver
-# 이고, 프록시는 요청을 바이트 그대로 넘기고 응답을 바이트 그대로 돌려준다. 끄는 인증·보안
-# 계층도 없다 — 서버가 보내는 ServiceAccount 토큰은 실물 그대로이고 apiserver 가 여전히
-# 인증·인가한다. 프록시가 상류를 검증하는 CA 도 실 클러스터 CA 다.
+# 모킹이 아니라 관측이다 — 상류는 실 apiserver 이고, 프록시는 요청을 바이트 그대로 넘기고
+# 응답을 바이트 그대로 돌려준다. 끄는 인증·보안 계층도 없다 — 서버가 보내는 ServiceAccount
+# 토큰은 실물 그대로이고 apiserver 가 여전히 인증·인가한다. 프록시가 상류를 검증하는 CA 도
+# 실 클러스터 CA 다.
 #
 # 신뢰 앵커의 교체가 왜 필요한가: `rest.InClusterConfig` 은 주소를 env 두 개
 # (`KUBERNETES_SERVICE_HOST`·`KUBERNETES_SERVICE_PORT`)에서, 토큰과 CA 를 고정 경로
-# `/var/run/secrets/kubernetes.io/serviceaccount/{token,ca.crt}` 에서 읽는다. 그래서
-# initContainer 가 자기 서명 인증서를 emptyDir 에 굽고 그 인증서를 SUT 쪽 SA 디렉터리의
-# `ca.crt` 로 놓는다. 인증서·키는 레포에 커밋되지 않는다 — 파드마다 새로 굽는다.
+# `/var/run/secrets/kubernetes.io/serviceaccount/{token,ca.crt}` 에서 읽는다.
+# 인증서·키는 레포에 커밋되지 않는다 — 파드마다 새로 굽는다.
 #
 # 토큰은 projected 볼륨의 실물이고 initContainer 가 SUT 쪽 디렉터리로 복사한다. 복사본은
 # 회전하지 않으므로 파드 수명이 토큰 유효기간(기본 1시간)을 넘으면 낡는다 — CI 는 배포 후
