@@ -4,16 +4,9 @@
 실행 대상: primary
 병렬 레인: github-app
 
-One file, two deployments (the platform_auth_safety_ac8.py shape): (a) on the
-primary the runner hands it, (b) on the prefix-less variant reached through
-this file's own port-forward — why that variant exists and why no other one
-can stand in is in the header of tests/k8s/kind/commit-status-variant.yaml.
-
-The refusal *text* is what separates this AC from the two neighbours that
-would also produce "tool error, nothing upstream": AC3's input validation
-names the offending field, and AC5's unconfigured App says "github app
-unavailable". Only the prefix guard names the allowed prefixes (a) or the env
-var to set (b), and that is what each half asserts.
+One file, two deployments (the platform_auth_safety_ac8.py shape) — why that
+variant exists and why no other one can stand in is in the header of
+tests/k8s/kind/commit-status-variant.yaml.
 """
 
 from __future__ import annotations
@@ -94,9 +87,7 @@ def available_replicas(namespace: str, deployment: str) -> int:
 async def test_github_commit_status_ac4_foreign_context_is_refused(
     session: ClientSession,
 ) -> None:
-    """AC: github-commit-status/AC4 (a)
-
-    The own-prefix call right after the refusal is the positive control that
+    """The own-prefix call right after the refusal is the positive control that
     the guard is a prefix check and not a blanket refusal — it must actually
     be written, on this same deployment, in this same session.
     """
@@ -118,13 +109,6 @@ async def test_github_commit_status_ac4_foreign_context_is_refused(
 
 
 async def test_github_commit_status_ac4_unconfigured_prefix_refuses_everything() -> None:
-    """AC: github-commit-status/AC4 (b)
-
-    On the variant even the context the primary accepts is refused, and the
-    refusal names the env var — which also proves the App itself *is*
-    configured there (an unconfigured App would answer "github app
-    unavailable" instead, and this assertion would fail on the wording).
-    """
     replicas = available_replicas(VARIANT_NAMESPACE, VARIANT_DEPLOYMENT)
     assert replicas >= 1, (
         f"deploy/{VARIANT_DEPLOYMENT} in {VARIANT_NAMESPACE} has {replicas} available replicas"

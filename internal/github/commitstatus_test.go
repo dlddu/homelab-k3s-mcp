@@ -28,8 +28,6 @@ func statusClient(t *testing.T, fake *fakeGitHub, prefixes ...string) *Client {
 	return c
 }
 
-// TestCommitStatusCreatesStatus covers AC1's success half: the status lands on
-// the installation account's repo and comes back as GitHub reported it.
 func TestCommitStatusCreatesStatus(t *testing.T) {
 	fake := &fakeGitHub{installation: map[string]any{"statuses": "write"}}
 	c := statusClient(t, fake, "homelab-k3s-mcp/")
@@ -62,7 +60,6 @@ func TestCommitStatusCreatesStatus(t *testing.T) {
 	}
 }
 
-// TestCommitStatusSurfacesGitHubError covers AC1's failure half.
 func TestCommitStatusSurfacesGitHubError(t *testing.T) {
 	fake := &fakeGitHub{installation: map[string]any{"statuses": "write"}, statusStatus: 422}
 	c := statusClient(t, fake, "homelab-k3s-mcp/")
@@ -76,8 +73,6 @@ func TestCommitStatusSurfacesGitHubError(t *testing.T) {
 	}
 }
 
-// TestCommitStatusMintsNarrowToken covers AC2's first clause: the minted token
-// is scoped to this repository and to statuses: write, and nothing else.
 func TestCommitStatusMintsNarrowToken(t *testing.T) {
 	fake := &fakeGitHub{installation: map[string]any{"statuses": "write"}}
 	c := statusClient(t, fake, "homelab-k3s-mcp/")
@@ -100,9 +95,8 @@ func TestCommitStatusMintsNarrowToken(t *testing.T) {
 	}
 }
 
-// TestCommitStatusNeverReturnsToken covers AC2's second clause. The success and
-// the failure path are both checked because an error string is the easier place
-// for a credential to escape.
+// The success and the failure path are both checked because an error string is
+// the easier place for a credential to escape.
 func TestCommitStatusNeverReturnsToken(t *testing.T) {
 	for _, tc := range []struct {
 		name         string
@@ -142,9 +136,6 @@ func errString(err error) string {
 	return err.Error()
 }
 
-// TestCommitStatusValidatesBeforeGitHub covers AC3: the six malformed calls of
-// test-github-commit-status.md scenario 3 are refused with the upstream request
-// count still at zero — token mint included.
 func TestCommitStatusValidatesBeforeGitHub(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -174,7 +165,6 @@ func TestCommitStatusValidatesBeforeGitHub(t *testing.T) {
 	}
 }
 
-// TestCommitStatusRejectsForeignContext covers AC4's allowed/refused pair.
 func TestCommitStatusRejectsForeignContext(t *testing.T) {
 	fake := &fakeGitHub{installation: map[string]any{"statuses": "write"}}
 	c := statusClient(t, fake, "homelab-k3s-mcp/", "reconciler/")
@@ -195,8 +185,6 @@ func TestCommitStatusRejectsForeignContext(t *testing.T) {
 	}
 }
 
-// TestCommitStatusRefusesWhenNoPrefixConfigured covers AC4's fail-closed half:
-// no configuration means no writes, not unrestricted writes.
 func TestCommitStatusRefusesWhenNoPrefixConfigured(t *testing.T) {
 	fake := &fakeGitHub{installation: map[string]any{"statuses": "write"}}
 	c := statusClient(t, fake)
@@ -213,7 +201,6 @@ func TestCommitStatusRefusesWhenNoPrefixConfigured(t *testing.T) {
 	}
 }
 
-// TestCommitStatusUnavailableReturnsToolError covers AC5.
 func TestCommitStatusUnavailableReturnsToolError(t *testing.T) {
 	svc := NewUnavailable("")
 	status, err := svc.CreateCommitStatus(context.Background(), validInput())
@@ -225,8 +212,6 @@ func TestCommitStatusUnavailableReturnsToolError(t *testing.T) {
 	}
 }
 
-// TestCommitStatusDiscardsItsToken covers the PRD's "mint, spend, discard": the
-// token is revoked after the call rather than left alive for its full hour.
 func TestCommitStatusDiscardsItsToken(t *testing.T) {
 	fake := &fakeGitHub{installation: map[string]any{"statuses": "write"}}
 	c := statusClient(t, fake, "homelab-k3s-mcp/")

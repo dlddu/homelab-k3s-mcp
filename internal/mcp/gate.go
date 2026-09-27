@@ -359,11 +359,8 @@ func updatePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 }
 
 // deletePairs is genericPairs("delete") with AC10's own argument checks run
-// first, for the reason updatePairs states: authorize runs before the handler,
-// so a call the handler would reject has already cost an approval request by
-// then. Scenario 10 wants a selector-only call refused at argument validation,
-// and pair resolution is the only thing that runs earlier (a resolve error is
-// already a refusal — authorize turns it into -32602).
+// first, for the reason updatePairs states. Scenario 10 wants a selector-only
+// call refused at argument validation.
 func deletePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 	generic := genericPairs("delete")
 	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {

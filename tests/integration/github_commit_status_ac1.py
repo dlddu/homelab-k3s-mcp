@@ -4,11 +4,10 @@
 실행 대상: primary
 병렬 레인: github-app
 
-(a) is measured at both ends — the github-mock request log for what the tool
-sent, the tool result for what the caller got — because either end alone is
-satisfiable by a server that fabricates the other. (b) is measured on the
-refusal text alone: it has to carry the stub's own 422 wording, not a
-paraphrase, or a bad sha becomes indistinguishable from an outage.
+(a) is measured at both ends because either end alone is satisfiable by a server
+that fabricates the other. (b) is measured on the refusal text alone: it has to
+carry the stub's own 422 wording, not a paraphrase, or a bad sha becomes
+indistinguishable from an outage.
 """
 
 from __future__ import annotations
@@ -72,7 +71,6 @@ def refusal_text(result) -> str:
 
 
 async def test_github_commit_status_ac1_writes_the_status(session: ClientSession) -> None:
-    """AC: github-commit-status/AC1 (a) — the four fields go out, the stub's answer comes back."""
     reset_recorded()
     result = await session.call_tool("github_commit_status_create", dict(ARGUMENTS))
     assert result.isError is False, result
@@ -99,9 +97,7 @@ async def test_github_commit_status_ac1_writes_the_status(session: ClientSession
 async def test_github_commit_status_ac1_surfaces_github_error(
     session: ClientSession,
 ) -> None:
-    """AC: github-commit-status/AC1 (b) — the upstream's 422 reaches the caller verbatim.
-
-    The recorded write is the control: without it a locally produced error
+    """The recorded write is the control: without it a locally produced error
     that happened to contain "422" would pass.
     """
     reset_recorded()

@@ -19,10 +19,8 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 TOOL = "github_commit_status_create"
 
-# 세 값을 한 벌로 재는 것이 이 시나리오의 요점이다. 이 도구는 "외부에 쓰지만
-# 파괴하지는 않는다" 는 자리에 있고, 그 자리는 세 힌트의 **조합**으로만 표현된다 —
-# 하나씩 따로 재면 읽기 전용으로 잘못 광고된 서버와 파괴적으로 과표기된 서버가
-# 서로 다른 단언에서 갈려 어느 쪽도 이 자리를 지키지 못한다.
+# 세 힌트를 하나씩 따로 재면 읽기 전용으로 잘못 광고된 서버와 파괴적으로 과표기된
+# 서버가 서로 다른 단언에서 갈려 어느 쪽도 걸리지 않는다.
 EXPECTED_HINTS = {
     "readOnlyHint": False,
     "destructiveHint": False,
@@ -33,11 +31,7 @@ EXPECTED_HINTS = {
 async def test_github_commit_status_ac6_annotation_advertisement(
     session: ClientSession,
 ) -> None:
-    """AC: github-commit-status/AC6
-
-    Promotes the in-process assertion in ``internal/server/mcp_test.go``
-    (``TestToolsListAdvertisesCommitStatus``) to the deployed-server layer: the
-    hints are read back off the wire from the running pod, so a build that
+    """The hints are read back off the wire from the running pod, so a build that
     advertises them only in the in-process fixture is told apart from one that
     serves them.
     """

@@ -314,9 +314,6 @@ func TestDeleteIsSingleObjectOnly(t *testing.T) {
 		{"selector instead of a name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","labelSelector":"app=api"}`, "resource_delete_collection"},
 		{"selector alongside a name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","labelSelector":"app=api"}`, "labelSelector does not apply"},
 		{"field selector", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","fieldSelector":"status.phase=Failed"}`, "fieldSelector does not apply"},
-		// A subresource would be appended to the resolved pair, so the operator
-		// would approve "delete on configmaps/<sub>" while the handler removes
-		// the object itself (prd-approval-gate AC6).
 		{"subresource", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale"}`, "subresource does not apply"},
 		{"missing name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops"}`, "name is required"},
 		{"negative grace period", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","gracePeriodSeconds":-1}`, "gracePeriodSeconds must be >= 0"},

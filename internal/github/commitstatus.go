@@ -20,10 +20,9 @@ const (
 	commitStatusPermLevel = "write"
 )
 
-// fullSHARe is the only accepted spelling of a commit: the 40-hex form. A short
-// SHA or a ref name would resolve on GitHub's side, which is the problem — the
-// status would land on whatever that name points at when the request arrives,
-// not on the commit the caller meant.
+// A short SHA or a ref name would resolve on GitHub's side, which is the
+// problem — the status would land on whatever that name points at when the
+// request arrives, not on the commit the caller meant.
 var fullSHARe = regexp.MustCompile(`^[0-9a-fA-F]{40}$`)
 
 var commitStatusStates = []string{"error", "failure", "pending", "success"}
@@ -69,8 +68,7 @@ func validateCommitStatusInput(in CommitStatusInput) error {
 	if strings.TrimSpace(in.Repository) == "" {
 		return invalid("repository is required")
 	}
-	// The owner half is the installation account, resolved server-side. A
-	// caller-supplied "owner/repo" would not be rejected by GitHub — it would
+	// A caller-supplied "owner/repo" would not be rejected by GitHub — it would
 	// be pasted into the path and address a different repository than the one
 	// the minted token is scoped to.
 	if strings.ContainsAny(in.Repository, "/ ") {

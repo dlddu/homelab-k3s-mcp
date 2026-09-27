@@ -20,12 +20,9 @@ type attachArgs struct {
 }
 
 // parseAttachTarget reads AC13's arguments. Both the pair resolver and the
-// handler run it, for the reason parseExecTarget states: authorize runs before
-// the handler, so a call the handler would reject has already cost an approval
-// request by then, and pair resolution is the only thing that runs earlier.
-// Scenario 13 asks for `readSeconds=31` to be refused, and a refusal that
-// arrives after an operator has approved an attach is not the refusal that was
-// asked for.
+// handler run it, for the reason parseExecTarget states. Scenario 13 asks for
+// `readSeconds=31` to be refused, and a refusal that arrives after an operator
+// has approved an attach is not the refusal that was asked for.
 //
 // What is deliberately absent, as in exec, is a container count check: whether
 // the pod has more than one container is a cluster fact no argument carries,
