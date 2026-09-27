@@ -32,9 +32,14 @@ AGGREGATE_RE = re.compile(
     r"<!-- scenario-e2e-집계 -->(.*?)<!-- /scenario-e2e-집계 -->", re.DOTALL
 )
 AGGREGATE_LINE_RE = re.compile(r"^- (.+): (\d+)$", re.MULTILINE)
+GAP_ROW_RE = re.compile(
+    rf"^\| \*\*({SCENARIO_ID})\*\* \| ([^|]*) \| ([^|]*) \| ([^|]*) \|$", re.MULTILINE
+)
+GAP_RECHECK_RE = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|사건: \S.*)$")
+GAP_CAP_KEY = "공백 등재 상한"
 FILE_REF_RE = re.compile(r"`([a-z_0-9]+\.py)`")
 
-# --- 규칙 7: 테스트 문서(`docs/test-<domain>.md`)의 자동화 필드 -------------------
+# --- 규칙 8: 테스트 문서(`docs/test-<domain>.md`)의 자동화 필드 -------------------
 DOC_FIELD_RE = re.compile(r"^- \*\*(검증 AC|자동화)\*\*:")
 INTEGRATION_REF_RE = re.compile(r"`tests/integration/([a-z_0-9]+\.py)")
 UNWRITTEN_MARK = "(미작성)"
@@ -122,6 +127,13 @@ class Tracker:
             BOLD_SCENARIO_RE.findall(_section(text, "🚫 e2e 예외"))
         )
         self.pending = set(BOLD_SCENARIO_RE.findall(_section(text, "⏳ 구현 대기")))
+        gap_section = _section(text, "🚧 공백")
+        self.gaps = set(BOLD_SCENARIO_RE.findall(gap_section))
+        self.gap_cells = {
+            ident: (prereq.strip(), direction.strip(), recheck.strip())
+            for ident, prereq, direction, recheck in GAP_ROW_RE.findall(gap_section)
+        }
+        self.gap_cap = self.aggregate.get(GAP_CAP_KEY)
         self.non_scenario_files = set(
             FILE_REF_RE.findall(_section(text, "비-시나리오 파일"))
         )
@@ -225,13 +237,13 @@ def check_test_docs(scenarios: dict[str, str], dedicated: dict[str, str]) -> lis
         have = dedicated.get(scenario)
         if have and UNWRITTEN_MARK in field:
             problems.append(
-                f"규칙 7 위반 — {scenario} 의 전용 파일 {have} 이 실재하는데 "
+                f"규칙 8 위반 — {scenario} 의 전용 파일 {have} 이 실재하는데 "
                 f"자동화 필드가 아직 {UNWRITTEN_MARK} 이라고 한다"
             )
         if not have and INTEGRATION_REF_RE.search(field) and UNWRITTEN_MARK not in field:
             refs = sorted(set(INTEGRATION_REF_RE.findall(field)))
             problems.append(
-                f"규칙 7 위반 — {scenario} 의 전용 파일이 실측되지 않는데 "
+                f"규칙 8 위반 — {scenario} 의 전용 파일이 실측되지 않는데 "
                 f"자동화 필드가 {refs} 를 작성된 것처럼 적는다 "
                 f"({UNWRITTEN_MARK} 표기가 빠졌다)"
             )
@@ -287,6 +299,47 @@ def main() -> int:
             f"규칙 4 위반 — 예외와 구현 대기에 동시에 등재된 시나리오: {sorted(both)} "
             f"(영구 면제와 임시 보류를 섞지 않는다)"
         )
+    for label, overlap in (
+        ("예외", tracker.exceptions & tracker.gaps),
+        ("구현 대기", tracker.pending & tracker.gaps),
+    ):
+        if overlap:
+            problems.append(
+                f"규칙 7 위반 — {label} 와 공백에 동시에 등재된 시나리오: {sorted(overlap)} "
+                f"(공백은 1:1 대상으로 세는 부채라 면제 표와 겹칠 수 없다)"
+            )
+    for scenario in sorted(tracker.gaps):
+        if scenario not in scenario_set:
+            problems.append(
+                f"규칙 5 위반 — 공백 표가 실재하지 않는 시나리오 {scenario} 를 등재한다"
+            )
+        cells = tracker.gap_cells.get(scenario)
+        if cells is None:
+            problems.append(
+                f"규칙 7 위반 — 공백 {scenario} 의 행을 네 칸(시나리오·선행 인프라·해소 "
+                f"방향·재검토 시점)으로 읽을 수 없다"
+            )
+            continue
+        prereq, direction, recheck = cells
+        empty = [
+            name
+            for name, cell in (
+                ("선행 인프라", prereq),
+                ("해소 방향", direction),
+                ("재검토 시점", recheck),
+            )
+            if not cell or cell in {"-", "—", "?"}
+        ]
+        if empty:
+            problems.append(
+                f"규칙 7 위반 — 공백 {scenario} 의 {empty} 칸이 비어 있다 "
+                f"(다음 감지가 이을 수 없는 등재는 등재가 아니다)"
+            )
+        elif not GAP_RECHECK_RE.match(recheck):
+            problems.append(
+                f"규칙 7 위반 — 공백 {scenario} 의 재검토 시점 {recheck!r} 은 "
+                f"ISO 날짜(YYYY-MM-DD)도 '사건: …' 도 아니다"
+            )
 
     # --- 규칙 3: 비-시나리오 파일 등재 --------------------------------------
     for name in measured["non_scenario"]:
@@ -343,12 +396,18 @@ def main() -> int:
                     f"규칙 6 위반 — {scenario} 는 ⏳ 로 표시됐지만 구현 대기 표에 "
                     f"근거·해제 조건이 없다"
                 )
+        elif status.startswith("🚧"):
+            if scenario not in tracker.gaps:
+                problems.append(
+                    f"규칙 7 위반 — {scenario} 는 🚧 로 표시됐지만 공백 표에 "
+                    f"선행 인프라·해소 방향·재검토 시점이 없다"
+                )
         else:
             problems.append(
                 f"규칙 6 위반 — {scenario} 의 상태 표기를 해석할 수 없다: {status!r}"
             )
 
-    # --- 규칙 7: 테스트 문서의 e2e 현황이 실측과 같은가 -----------------------
+    # --- 규칙 8: 테스트 문서의 e2e 현황이 실측과 같은가 -----------------------
     problems += check_test_docs(scenarios, dedicated)
 
     # --- 하네스 무결성 -------------------------------------------------------
@@ -380,19 +439,34 @@ def main() -> int:
             )
 
     # --- 불변식: 미등재 공백은 drift 다 --------------------------------------
-    if blank != 0:
-        orphans = sorted(
-            s
-            for s in scenarios
-            if s not in dedicated
-            and s not in tracker.exceptions
-            and s not in tracker.pending
-        )
+    measured_blank = {
+        s
+        for s in scenarios
+        if s not in dedicated
+        and s not in tracker.exceptions
+        and s not in tracker.pending
+    }
+    unregistered = sorted(measured_blank - tracker.gaps)
+    if unregistered:
         problems.append(
             f"불변식 위반 — (시나리오 {len(scenarios)} − 예외 {exceptions} − "
             f"구현 대기 {pending}) = {targets} ≠ 매칭 파일 {matched}. "
-            f"전용 파일도 등재도 없는 시나리오: {orphans} "
-            f"(전용 파일을 저작하거나 예외/구현 대기로 등재할 것)"
+            f"전용 파일도 등재도 없는 시나리오: {unregistered} "
+            f"(전용 파일을 저작하거나 예외/구현 대기/공백으로 등재할 것)"
+        )
+    stale_gaps = sorted(tracker.gaps - measured_blank)
+    if stale_gaps:
+        problems.append(
+            f"규칙 7 위반 — 공백으로 등재됐는데 실측 공백이 아닌 시나리오: {stale_gaps} "
+            f"(전용 파일이 서거나 다른 표로 옮겨졌으면 이 표에서 뺄 것)"
+        )
+    if tracker.gap_cap is None:
+        problems.append(f"규칙 7 위반 — 집계 블록에 '{GAP_CAP_KEY}' 항목이 없다")
+    elif len(measured_blank) > tracker.gap_cap:
+        problems.append(
+            f"규칙 7 위반 — 공백 {len(measured_blank)} 이 등재 상한 "
+            f"{tracker.gap_cap} 을 넘는다 (상한은 공백을 줄일 때 내리고, 올리려면 "
+            f"같은 PR 에서 집계 블록을 고쳐 근거를 남길 것)"
         )
 
     for key in AGGREGATE_KEYS:
@@ -405,7 +479,7 @@ def main() -> int:
         return 1
 
     print(
-        "\nOK: 규칙 1(중복 전용)·2·3·4·5·6·7 위반 없음, 불변식 성립, "
+        "\nOK: 규칙 1(중복 전용)·2·3·4·5·6·7·8 위반 없음, 불변식 성립, "
         "러너 배차 누락·케이스 미호출 없음"
     )
     return 0
