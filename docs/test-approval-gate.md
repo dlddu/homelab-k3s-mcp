@@ -226,9 +226,11 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   거절된 승인은 값을 읽지 않은 것이어야 한다. (b) 스케일은 `get`, 일괄 삭제는 `list` 를
   게이트가 행사하며 그것이 선언과 일치. (c) 게이트 선언을 뺀 변형에서 대조가 실패로 잡힘
 - **검증 AC**: AC11
-- **자동화**: (미작성) — 계획: Go 단위
-  `gatekeeper_test.go::TestPreconditionUsesPartialObjectMetadataForGatedKinds`.
-  통합 `approval_gate_ac11.py`
+- **자동화**: 통합 `tests/integration/approval_gate_ac11.py`(apiserver 앞 기록 프록시 변형
+  `tests/k8s/kind/apiserver-audit-variant.yaml` — (a) 거절된 Secret 승인의 `Accept` 가
+  `PartialObjectMetadata` 뿐이고 전체 객체 `get` 이 0건 · 같은 창의 비민감 사전 읽기가 그 기록
+  경로의 양성 대조 · (b) 스케일 `get` · 일괄 삭제 `list` · (c) 선언 ↔ AC11 표 ↔ `rbac.yaml` 대조와
+  음성 대조 셋)
 
 - **내부 목록 읽기 선행 회귀(2026-09-15)**:
   `internal/k8s/collection_precondition_test.go`의 `TestCollectionSnapshot*`는 로컬 HTTP
