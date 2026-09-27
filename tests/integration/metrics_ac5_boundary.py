@@ -3,9 +3,6 @@
 검증 시나리오: test-metrics.md#시나리오 5
 실행 대상: auth-variant
 
-주 배포는 kind 오버레이가 인증을 내려 두어 ``/mcp`` 의 401 을 볼 수 없다(``auth-fixture.yaml``
-머리말).
-
 끈 것이 실재함은 서버가 남기는 경고 줄(``METRICS_DISABLED is set``)로 먼저 확인한다 — 그 줄이 없으면
 아래의 「9090 이 닫혀 있다」는 아직 뜨지 않은 리스너와 구별되지 않는다.
 """

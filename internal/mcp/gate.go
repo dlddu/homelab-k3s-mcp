@@ -569,8 +569,7 @@ func Exemptions() map[string]string {
 
 // gateTargetKind is how AC11's table spells the resource of the gate's own two
 // pairs. It stays a placeholder rather than a list of kinds for the reason
-// genericPairs gives: the kind is whatever the gated call names, and a static
-// list would either enumerate the cluster or lie about it.
+// genericPairs gives.
 const gateTargetKind = "⟨kind⟩"
 
 // GatePairs reports the kubernetes permissions the gate exercises on its own
