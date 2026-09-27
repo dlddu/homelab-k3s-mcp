@@ -36,6 +36,16 @@ GAP_ROW_RE = re.compile(
     rf"^\| \*\*({SCENARIO_ID})\*\* \| ([^|]*) \| ([^|]*) \| ([^|]*) \|$", re.MULTILINE
 )
 GAP_RECHECK_RE = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|사건: \S.*)$")
+REGISTRY_HEADING_RE = re.compile(
+    r"^### 시나리오 레지스트리 \((\d+)\) — ✅ 전용 파일 (\d+) · ⬜ 분할 대기 (\d+)"
+    r" · 🚧 공백 등재 (\d+) · ⏳ 구현 대기 (\d+) · 🚫 예외 (\d+)$",
+    re.MULTILINE,
+)
+INVARIANT_PROSE_RE = re.compile(
+    r"^> 불변식이 여기서 눈으로 닫힌다: \*\*(\d+) − (\d+)\(예외\) − (\d+)\(구현 대기\)"
+    r" − (\d+)\(공백 등재\) = (\d+) = 매칭 파일 (\d+)\*\*, 미등재 공백 \*\*(\d+)\*\*\.$",
+    re.MULTILINE,
+)
 GAP_CAP_KEY = "공백 등재 상한"
 FILE_REF_RE = re.compile(r"`([a-z_0-9]+\.py)`")
 
@@ -137,6 +147,61 @@ class Tracker:
         self.non_scenario_files = set(
             FILE_REF_RE.findall(_section(text, "비-시나리오 파일"))
         )
+
+
+def check_prose_restatements(
+    text: str, counted: dict[str, int], unregistered: int
+) -> list[str]:
+    problems: list[str] = []
+    heading = REGISTRY_HEADING_RE.search(text)
+    if heading is None:
+        problems.append(
+            "규칙 5 위반 — 레지스트리 표제의 집계 재진술을 찾지 못했다 "
+            "(`### 시나리오 레지스트리 (N) — ✅ 전용 파일 N · ⬜ 분할 대기 N · "
+            "🚧 공백 등재 N · ⏳ 구현 대기 N · 🚫 예외 N` 형태여야 한다 — "
+            "형태를 바꾸려면 이 정규식도 같은 PR 에서 고칠 것)"
+        )
+    else:
+        expected = (
+            counted["시나리오 전집"],
+            counted["매칭 파일(전용)"],
+            counted["분할 대기 파일(규칙 2 위반)"],
+            counted["공백 시나리오"],
+            counted["구현 대기 등재"],
+            counted["예외 등재"],
+        )
+        actual = tuple(int(g) for g in heading.groups())
+        if actual != expected:
+            problems.append(
+                f"규칙 5 위반 — 레지스트리 표제 재진술 {actual} ≠ 실측 {expected} "
+                "(전집 · 전용 파일 · 분할 대기 · 공백 등재 · 구현 대기 · 예외 순)"
+            )
+    prose = INVARIANT_PROSE_RE.search(text)
+    if prose is None:
+        problems.append(
+            "규칙 5 위반 — 레지스트리 절의 불변식 재진술을 찾지 못했다 "
+            "(`> 불변식이 여기서 눈으로 닫힌다: **N − N(예외) − N(구현 대기) − "
+            "N(공백 등재) = N = 매칭 파일 N**, 미등재 공백 **N**.` 형태여야 한다 — "
+            "형태를 바꾸려면 이 정규식도 같은 PR 에서 고칠 것)"
+        )
+    else:
+        expected = (
+            counted["시나리오 전집"],
+            counted["예외 등재"],
+            counted["구현 대기 등재"],
+            counted["공백 시나리오"],
+            counted["매칭 파일(전용)"],
+            counted["매칭 파일(전용)"],
+            unregistered,
+        )
+        actual = tuple(int(g) for g in prose.groups())
+        if actual != expected:
+            problems.append(
+                f"규칙 5 위반 — 불변식 재진술 {actual} ≠ 실측 {expected} "
+                "(전집 · 예외 · 구현 대기 · 공백 등재 · 좌변 합 · 매칭 파일 · "
+                "미등재 공백 순)"
+            )
+    return problems
 
 
 def measure() -> tuple[dict, list[str]]:
@@ -253,7 +318,8 @@ def check_test_docs(scenarios: dict[str, str], dedicated: dict[str, str]) -> lis
 def main() -> int:
     scenarios = scenario_universe()
     scenario_set = set(scenarios)
-    tracker = Tracker(TRACKER.read_text(encoding="utf-8"))
+    tracker_text = TRACKER.read_text(encoding="utf-8")
+    tracker = Tracker(tracker_text)
     measured, problems = measure()
     if not measured:
         for problem in problems:
@@ -454,6 +520,8 @@ def main() -> int:
             f"전용 파일도 등재도 없는 시나리오: {unregistered} "
             f"(전용 파일을 저작하거나 예외/구현 대기/공백으로 등재할 것)"
         )
+    problems += check_prose_restatements(tracker_text, counted, len(unregistered))
+
     stale_gaps = sorted(tracker.gaps - measured_blank)
     if stale_gaps:
         problems.append(
