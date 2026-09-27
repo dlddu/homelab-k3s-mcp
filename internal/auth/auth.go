@@ -36,11 +36,8 @@ type Config struct {
 	jwksURI string
 	http    *http.Client
 
-	// apiKeys are static bearer credentials for non-interactive automation.
 	apiKeys []string
 
-	// events receives the record of a call this layer refused (prd-event-log
-	// AC4). nil means eventlog.Log, as on the dispatcher.
 	events eventlog.Sink
 
 	mu   sync.RWMutex
@@ -222,8 +219,7 @@ func (c *Config) keyForKid(ctx context.Context, kid string) *rsa.PublicKey {
 	return key
 }
 
-// verify checks the JWT and returns its subject — the principal the event
-// record names (prd-event-log AC1).
+// verify checks the JWT and returns its subject.
 func (c *Config) verify(ctx context.Context, raw string) (string, error) {
 	// In API-key-only mode there is no issuer, JWKS URI, or HTTP client, so no
 	// JWT can verify. Refuse before keyForKid would try to fetch a nil JWKS.
@@ -290,12 +286,8 @@ func (c *Config) matchAPIKey(raw string) bool {
 }
 
 // apiKeyIndex returns the 1-based position of raw in MCP_API_KEYS, or 0 when
-// it matches none. The position is what the event record names as the
-// principal (prd-event-log AC1): an identifier that survives in a log without
-// being the key. Each comparison uses subtle.ConstantTimeCompare so
-// equal-length keys are checked without leaking content through timing, and
-// the loop selects the index without an early return so the number of
-// comparisons never reveals which key (if any) matched.
+// it matches none. The loop selects the index without an early return so the
+// number of comparisons never reveals which key (if any) matched.
 func (c *Config) apiKeyIndex(raw string) int {
 	rawBytes := []byte(raw)
 	var index int
@@ -372,10 +364,8 @@ func refusedToolName(body io.Reader) (string, bool) {
 }
 
 // RecordTo routes the records this layer writes (a refused tools/call, AC4)
-// to a sink other than the default log. It is the auth-side twin of
-// mcp.WithEventSink: the two layers that emit records have to share one sink
-// for the metrics of prd-metrics to see every refusal, and auth is built by
-// FromEnv rather than with options, so the sink is set after the fact.
+// to a sink other than the default log. The two layers that emit records have
+// to share one sink for the metrics of prd-metrics to see every refusal.
 func (c *Config) RecordTo(sink eventlog.Sink) {
 	if sink != nil {
 		c.events = sink
@@ -389,8 +379,7 @@ func (c *Config) sink() eventlog.Sink {
 	return eventlog.Log{}
 }
 
-// withPrincipal hands the authenticated identity down the request so the
-// dispatcher's record can name who called (prd-event-log AC1);
+// withPrincipal hands the authenticated identity down the request;
 // eventlog.Principal holds why the credential itself never travels with it.
 func withPrincipal(r *http.Request, p eventlog.Principal) *http.Request {
 	return r.WithContext(eventlog.WithPrincipal(r.Context(), p))

@@ -4,19 +4,13 @@
 실행 대상: primary
 병렬 레인: gate-screens
 
-다섯 경로를 한 파일에서 태운다 — `resource_patch` · `resource_update(subresource=scale)` ·
-`kind=Secret` 의 `resource_get` · `resource_exec` · `resource_create`. 앞 넷은 게이트가
-승인 전에 읽어 둔 `resourceVersion`/`uid` 를 실행 직전에 재확인하는 공통 경로
-(``internal/mcp/gate.go::confirmTargetUnchanged``)를 타고, 생성만 그 경로를 타지 않는다.
+앞 넷은 게이트가 승인 전에 읽어 둔 `resourceVersion`/`uid` 를 실행 직전에 재확인하는 공통
+경로(``internal/mcp/gate.go::confirmTargetUnchanged``)를 타고, 생성만 그 경로를 타지 않는다.
 
-댄스는 늘 같다: 도구 호출을 ``asyncio.create_task`` 로 띄워 PENDING 을 잡고, **승인하기
-전에** kubectl 로 대상을 외부에서 움직인 뒤 승인한다. 그 순서가 이 시나리오 자체다 —
 승인 시점의 상태와 실행 시점의 상태를 갈라 놓는 창은 사람이 판정을 누르기 전의 창이다.
 
-Go 단위(``internal/mcp/update_precondition_test.go`` · ``internal/k8s/update_precondition_test.go``)가
-갱신 호출 횟수와 조건부 PUT 의 늦은 409 를 이미 단언한다. 이 파일이 더하는 것은 **실물
-apiserver 와 실물 gatekeeper 로 같은 계약이 성립하는가**이고, 그래서 여기서는 호출 횟수가
-아니라 **관측 가능한 결과**(대상 무변경 · Secret 값 미반환 · 재승인 요구 문면)를 단언한다.
+이 파일이 더하는 것은 **실물 apiserver 와 실물 gatekeeper 로 같은 계약이 성립하는가**이고,
+그래서 여기서는 호출 횟수가 아니라 **관측 가능한 결과**를 단언한다.
 """
 
 from __future__ import annotations

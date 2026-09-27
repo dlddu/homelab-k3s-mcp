@@ -1,13 +1,9 @@
 # Real gatekeeper fixture for the approval-gate e2e (docs/test-approval-gate.md
-# 픽스처 절). gatekeeper 는 SQLite 한 파일로 기동하는 Go 백엔드라 모킹 대신 kind
-# 클러스터에 실물을 띄운다. 승인·거절은 사람 조작을 대신해 forward-auth 헤더
-# (`Remote-User`)를 실어 PATCH /api/requests/{id}/approve|reject 를 호출한다.
+# 픽스처 절).
 #
 # gatekeeper-trace 는 http-trace 와 같은 계열의 기록 프록시다 — 대체재가 아니라
-# 관측면이다. SUT 가 게이트에 보내는 create 본문(externalId·context·requesterName·
-# timeoutSeconds·userId)과 x-api-key 헤더의 존재는 그 자체가 시나리오 2 의 검증
-# 대상이라, upstream 만으로는 기록에 남지 않아 단언할 수 없다. 프록시는 요청 본문과
-# 식별자만 기록하고 x-api-key 값 자체는 로그에 두지 않는다.
+# 관측면이다. 시나리오 2 의 검증 대상은 upstream 만으로는 기록에 남지 않아 단언할
+# 수 없다. 프록시는 요청 본문과 식별자만 기록하고 x-api-key 값 자체는 로그에 두지 않는다.
 #
 # 이미지를 sha 태그로 핀하는 이유: :latest 는 gatekeeper 레포의 PR 이 덮어쓴다.
 # sha-762fafe 는 gatekeeper main 의 최근 커밋으로, SQLite 를 rollback 저널로
@@ -130,8 +126,7 @@ spec:
       port: 80
       targetPort: http
 ---
-# 기록 프록시. 게이트를 향해 가는 트래픽 전부가 여기를 지난다 — SUT 중 하나
-# (gatekeeper-variant)의 GATEKEEPER_BASE_URL 이 이 Service 를 가리킨다.
+# 기록 프록시. 게이트를 향해 가는 트래픽 전부가 여기를 지난다.
 apiVersion: v1
 kind: ConfigMap
 metadata:

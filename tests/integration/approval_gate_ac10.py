@@ -4,19 +4,11 @@
 실행 대상: primary
 병렬 레인: gate-screens
 
-시나리오가 세는 네 표면과, 토큰이 등장해도 되는 자리 하나(승인받은 정상
-`resource_get` 응답)를 한 번에 잰다.
-
 표면을 하나라도 빼면 이 시나리오는 증명되지 않는다 — 값이 로그로만 새는 구현과
 context 로만 새는 구현은 서로 다른 결함이고, 어느 하나만 막아도 나머지는 그대로
 통과한다. 그래서 표면별로 파일을 쪼개지 않고 여기서 함께 단언한다.
 
-쓰기 경로(`resource_create`·`resource_patch`)의 값은 **어디에도** 나오지 않아야 한다.
-게이트가 인자를 `(masked, NB)` 로 바꿔 넣으므로(``internal/mcp/gate.go::maskCredentialValues``)
-「없다」만이 아니라 **「키 이름과 바이트 수는 있다」**까지 함께 잰다.
-
-실패 경로는 승인 **뒤** 실행이 깨지는 자리다: 판정을 기다리는 동안 대상을 지우면
-게이트의 실행 직전 재확인이 실패하고, 그 에러 문면이 네 번째 표면이 된다.
+가림은 ``internal/mcp/gate.go::maskCredentialValues`` 가 넣는다.
 """
 
 from __future__ import annotations

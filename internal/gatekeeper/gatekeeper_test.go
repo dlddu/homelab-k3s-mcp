@@ -115,8 +115,7 @@ func describedCall(describe func(context.Context) (string, error)) Call {
 	}
 }
 
-// AC2: the approval request carries every field the backend needs to show a
-// human what they are being asked about, authenticated with the API key.
+// AC2: the approval request carries every field, authenticated with the API key.
 func TestAuthorizeSendsTheDocumentedRequestBody(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved, ProcessedByID: "op-1"}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -152,8 +151,7 @@ func TestAuthorizeSendsTheDocumentedRequestBody(t *testing.T) {
 	}
 }
 
-// AC2: two calls are two approvals. Reusing an id would let one approval stand
-// in for a second call.
+// AC2: two calls are two approvals.
 func TestExternalIDDiffersPerCall(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -168,8 +166,7 @@ func TestExternalIDDiffersPerCall(t *testing.T) {
 	}
 }
 
-// AC4: a verdict that arrives after the request was created is only visible to
-// a client that keeps asking.
+// AC4: a verdict that arrives after the request was created.
 func TestPendingBecomesApprovedThroughPolling(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{
 		{ID: "req-1", Status: StatusPending},
@@ -200,10 +197,9 @@ func TestExpiredVerdictIsRefused(t *testing.T) {
 	}
 }
 
-// AC5: every path that is not an observed approval refuses. The table is the
-// list the AC itself enumerates. Each row also names the verdict the refusal
-// carries for the record (prd-event-log AC2): a human reads the prose, the
-// record reads the type, and the two must not disagree.
+// AC5: the table is the list the AC itself enumerates. Each row also names the
+// verdict the refusal carries for the record (prd-event-log AC2): a human reads
+// the prose, the record reads the type, and the two must not disagree.
 func TestEveryFailurePathRefuses(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -297,9 +293,7 @@ func TestEveryFailurePathRefuses(t *testing.T) {
 }
 
 // AC2 (prd-event-log): the refusals that never reach the backend carry their
-// own verdict — unreachable when no request went through, unconfigured when
-// there was nobody to ask, and none at all when the call itself could not be
-// described.
+// own verdict.
 func TestRefusalsBeforeAVerdictAreTypedToo(t *testing.T) {
 	unreachable := New(Config{BaseURL: "http://127.0.0.1:1", APIKey: "k", Timeout: time.Second, PollInterval: time.Millisecond}, "homelab-k3s-mcp")
 	cases := map[string]struct {
@@ -350,8 +344,7 @@ func TestUnreachableBackendRefuses(t *testing.T) {
 	}
 }
 
-// AC5: an unconfigured gate refuses rather than waving calls through. This is
-// the state a deployment without GATEKEEPER_* env is in.
+// AC5: this is the state a deployment without GATEKEEPER_* env is in.
 //
 // The second assertion is the property Call.Describe exists for: a gate with
 // nobody to ask must not reach the renderer, because that is where the
@@ -376,8 +369,7 @@ func TestEmptyContextIsRefusedBeforeTheRequestIsMade(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
 
-	// Three ways a context can fail to say what it is approving. AC3 ends by
-	// asking for the same outcome from each: no request, not a vague one.
+	// Three ways a context can fail to say what it is approving.
 	cases := map[string]Call{
 		"blank":   describedCall(func(context.Context) (string, error) { return "   ", nil }),
 		"errored": describedCall(func(context.Context) (string, error) { return "", errors.New("target could not be read") }),
@@ -412,8 +404,7 @@ func TestApprovalIsSpentOnce(t *testing.T) {
 	}
 }
 
-// AC9: an approval nobody looked at is still an approval, but it must not look
-// like one that a human granted.
+// AC9: an approval nobody looked at is still an approval.
 func TestAutoApprovalIsReported(t *testing.T) {
 	backend := &fakeBackend{createBody: `{"id":"req-1","status":"APPROVED","autoApproved":true,"processedById":"auto"}`}
 	client, _ := newTestClient(t, backend, nil)

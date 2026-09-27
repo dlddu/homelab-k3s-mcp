@@ -34,14 +34,7 @@ spec:
               cpu: 50m
               memory: 16Mi
 ---
-# Crash-once fixture for the workload_logs previous=true scenario
-# (test-workload-logs.md S3 / AC3). The first container instance prints a
-# known marker line and exits non-zero; every later instance finds the
-# emptyDir sentinel and stays Running. That pins lastState.terminated to the
-# marker-printing instance, so previous=true deterministically returns the
-# marker. A perpetual crash loop is deliberately avoided: rapid restarts let
-# containerd GC the previous instance mid-read ("unable to retrieve container
-# logs for containerd://..."), which made the E2E flaky.
+# Crash-once fixture for test-resource-generic.md#시나리오 5 (previous=true).
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -89,11 +82,10 @@ spec:
               cpu: 50m
               memory: 16Mi
 ---
-# Non-Deployment workload kinds for workload_list AC1 ("각 enum 종류에 대해")
-# and workload_scale AC2 (DaemonSet rejection against a DaemonSet that really
-# exists, so the refusal is observably about the *kind* rather than about the
-# object being absent). Both are list-only targets: no case waits for their
-# pods, so ci.yml needs no extra rollout step.
+# Non-Deployment workload kinds. resource_generic_ac8.py scales the DaemonSet:
+# a DaemonSet that really exists makes the refusal observably about the *kind*
+# rather than about the object being absent. Both are list-only targets: no
+# case waits for their pods, so ci.yml needs no extra rollout step.
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:

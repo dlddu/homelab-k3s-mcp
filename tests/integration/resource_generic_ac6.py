@@ -4,18 +4,12 @@
 실행 대상: primary
 병렬 레인: gate-streams
 
-Go 단위(``internal/mcp/resource_test.go`` 의 ``TestWatchWindowBounds`` ·
-``TestWatchOnGatedKindRequiresApproval`` · ``TestWatchCarriesTheResumePoint``)가 인자
-계약과 게이트 분기를 이미 단언한다. **그 층이 못 보는 것**이 이 파일의 이유다.
-
 댄스의 순서가 케이스마다 다르다. 평범한 종류의 창은 호출 즉시 열리므로 **호출 뒤에**
 대상을 흔들고, 민감 종류(`kind=Secret`)의 창은 승인이 떨어져야 열리므로 **승인 뒤에**
 흔든다. 순서를 바꾸면 변경이 창 밖에서 일어나 이벤트 0 으로 헛실패한다.
 
-**이벤트 수 상한(100)의 발화는 여기서 재지 않는다.** 한 창 안에 100 개를 넘기려면 공유
-클러스터에서 비결정적인 양의 쓰기를 밀어 넣어야 하고, 그 자체가 다른 파일의 관측을
-흔든다. 그 상한의 발화는 Go 단위의 몫이고, 여기서는 **상한이 응답 계약으로 서 있는 것**
-(`truncated` 필드가 있고 이벤트가 그 수를 넘지 않는다)까지를 잰다.
+이벤트 수 상한(100)을 한 창 안에서 넘기려면 비결정적인 양의 쓰기가 필요하고, 그 자체가
+다른 파일의 관측을 흔든다.
 """
 
 from __future__ import annotations
@@ -140,7 +134,6 @@ def _last_resource_version(events: list[dict]) -> str:
 
 
 async def test_a_modification_lands_inside_the_window(session) -> str:
-    """창이 열린 동안 일어난 변경이 MODIFIED 로 오고, 창이 닫히면 응답이 돌아온다."""
     _scale(1)
     task = asyncio.create_task(
         session.call_tool("resource_watch", _watch_args("Deployment", WATCH_DEPLOYMENT, 10))
@@ -189,11 +182,7 @@ async def test_resuming_from_a_version_skips_what_was_already_seen(session, sinc
 
 async def test_a_sensitive_kind_needs_approval_and_keeps_its_caps(session, gate) -> None:
     print("    (미승인 — 승인 요청을 띄우고 판정을 REJECTED 로 내려 거절을 태운다)")
-    # 자동 거부 모드(`AUTO_REJECT`)를 쓰지 않는다: 그 모드는 gatekeeper 가 요청의 담당
-    # 사용자에게 적용하는 설정이라 `GATEKEEPER_USER_ID` 를 물고 있는 gatekeeper-variant
-    # 배포에서만 발화한다(시나리오 9 가 `실행 대상: gatekeeper-variant` 인 이유). primary
-    # 의 요청에는 담당자가 없어 모드가 걸리지 않고, 요청은 승인 시한까지 PENDING 으로
-    # 남았다가 타임아웃으로 끝난다 — 거부가 아니라 무응답이라 이 절을 재지 못한다.
+    # 자동 거부 모드(`AUTO_REJECT`)를 쓰지 않는 이유는 resource_generic_ac16.py::_refuse.
     refused = asyncio.create_task(
         session.call_tool("resource_watch", _watch_args("Secret", WATCH_SECRET, 10))
     )

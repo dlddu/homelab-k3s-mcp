@@ -1,28 +1,9 @@
 # Auth-enabled deployment variant for the platform-auth-safety AC1/AC7 e2e.
 #
-# The primary kind deployment sets MCP_AUTH_DISABLED=1 (see the kind overlay's
-# configMapGenerator), so its /mcp endpoint is ungated and the auth gate cannot
-# be observed there. This standalone variant runs the same homelab-k3s-mcp:ci
-# image with auth ENABLED — MCP_AUTH_DISABLED is left unset and MCP_API_KEYS
-# carries a single static key — so tests/integration/platform_auth_safety_ac1.py
-# and platform_auth_safety_ac7.py can assert that
-# unauthenticated / unknown-key requests are rejected (401) and the configured
-# key authorizes. No credential secrets are attached.
-#
 # Kubernetes is the one integration that absence alone cannot switch off -- it
 # reads an in-cluster ServiceAccount, not a secret -- so MCP_K8S_DISABLED below
-# closes that gap explicitly. This variant is therefore the deployment where
-# *every* integration is unconfigured, which is what makes it the only place
-# test-namespace-list.md#시나리오 2 ("통합 미설정 시 도구 에러") is observable.
+# closes that gap explicitly.
 #
-# That absence is now a contract, not just a convenience:
-# The per-AC "미설정 시 graceful 거부" files -- aws_config_get_ac3.py,
-# github_app_installation_token_ac3.py, grafana_token_ac3.py and
-# opensearch_{search_ac4,document_put_ac5,document_delete_ac5}.py -- assert
-# those ACs against this same variant (aws-config-get/AC3,
-# github-app-installation-token/AC3, grafana-token/AC3,
-# opensearch-{search/AC4,document-put/AC5,document-delete/AC5}), and
-# platform_auth_safety_ac5.py asserts server-level graceful degradation here.
 # Do not attach credential secrets or credential env here — wire them into the
 # primary kind deployment instead.
 apiVersion: v1
@@ -83,11 +64,9 @@ spec:
             # tests/integration/_auth_variant.py.
             - name: MCP_API_KEYS
               value: ci-e2e-key
-            # Turning this off is the *subject* of namespace_list_ac2.py, not a
-            # convenience: main.go's buildK8sService returns
-            # k8s.NewUnavailable("kubernetes integration is disabled") for it,
-            # and that file asserts the resulting refusal text verbatim. Removing
-            # this line (or otherwise restoring k8s here) turns that file red.
+            # Turning this off is not a convenience: main.go's buildK8sService
+            # returns k8s.NewUnavailable("kubernetes integration is disabled")
+            # for it, and _auth_variant.py::K8S_REFUSAL pins that text.
             - name: MCP_K8S_DISABLED
               value: "1"
           startupProbe:

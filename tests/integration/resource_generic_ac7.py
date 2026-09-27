@@ -4,13 +4,9 @@
 실행 대상: primary
 병렬 레인: gate-objects
 
-Go 단위(``internal/k8s/create_test.go`` · ``internal/mcp/create_test.go``)가 HTTP 경계와
-디스패처를 이미 덮는다. 이 파일이 더하는 것은 **실물 apiserver 와 실물 gatekeeper 에서
-같은 계약이 성립하는가**이다. 부분 실패를 되돌리지 않는 것은 설계다 — 되돌리려면 승인
-없는 delete 가 필요하다.
+이 파일이 더하는 것은 **실물 apiserver 와 실물 gatekeeper 에서 같은 계약이 성립하는가**이다.
 
-문서가 둘인 호출은 승인 요청도 둘이고, 게이트는 문서 순서대로 하나씩 묻는다. 그래서
-댄스는 `wait_for_pending(첫째 이름)` → 판정 → `wait_for_pending(둘째 이름)` → 판정이다.
+게이트는 문서 순서대로 하나씩 묻는다.
 """
 
 from __future__ import annotations
