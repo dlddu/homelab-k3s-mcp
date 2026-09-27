@@ -47,6 +47,17 @@ INVARIANT_PROSE_RE = re.compile(
     re.MULTILINE,
 )
 GAP_CAP_KEY = "공백 등재 상한"
+SECTION_H2 = "## 테스트 시나리오 ↔ e2e 1:1 정합성"
+REGISTRY_MARKER_RE = re.compile(r"^<!-- registry: (\S+) -->$", re.MULTILINE)
+SUBSECTION_COUNT_RES = (
+    ("⏳ 구현 대기", re.compile(r"^### ⏳ 구현 대기 \((\d+)\) — 규칙 6 등재", re.MULTILINE)),
+    ("🚧 공백", re.compile(r"^### 🚧 공백 \((\d+)\) — 규칙 7 등재", re.MULTILINE)),
+    (
+        "비-시나리오 파일",
+        re.compile(r"^### 비-시나리오 파일 \(스모크·인프라\) \((\d+)\)$", re.MULTILINE),
+    ),
+    ("🚫 e2e 예외", re.compile(r"^### 🚫 e2e 예외 \((\d+)\) — 규칙 4 등재", re.MULTILINE)),
+)
 FILE_REF_RE = re.compile(r"`([a-z_0-9]+\.py)`")
 
 # --- 규칙 8: 테스트 문서(`docs/test-<domain>.md`)의 자동화 필드 -------------------
@@ -103,6 +114,20 @@ def scenario_automation(doc: pathlib.Path) -> dict[str, str]:
     return blocks
 
 
+def _h2_section(text: str) -> str:
+    out: list[str] = []
+    collecting = False
+    for line in text.splitlines():
+        if line.startswith("## "):
+            if collecting:
+                break
+            collecting = line.startswith(SECTION_H2)
+            continue
+        if collecting:
+            out.append(line)
+    return "\n".join(out)
+
+
 def _section(text: str, heading_prefix: str) -> str:
     lines = text.splitlines()
     out: list[str] = []
@@ -150,7 +175,7 @@ class Tracker:
 
 
 def check_prose_restatements(
-    text: str, counted: dict[str, int], unregistered: int
+    text: str, counted: dict[str, int], unregistered: int, non_scenario: int
 ) -> list[str]:
     problems: list[str] = []
     heading = REGISTRY_HEADING_RE.search(text)
@@ -200,6 +225,42 @@ def check_prose_restatements(
                 f"규칙 5 위반 — 불변식 재진술 {actual} ≠ 실측 {expected} "
                 "(전집 · 예외 · 구현 대기 · 공백 등재 · 좌변 합 · 매칭 파일 · "
                 "미등재 공백 순)"
+            )
+    subsection_expected = {
+        "⏳ 구현 대기": counted["구현 대기 등재"],
+        "🚧 공백": counted["공백 시나리오"],
+        "비-시나리오 파일": non_scenario,
+        "🚫 e2e 예외": counted["예외 등재"],
+    }
+    for label, pattern in SUBSECTION_COUNT_RES:
+        found = pattern.search(text)
+        if found is None:
+            problems.append(
+                f"규칙 5 위반 — 「{label}」 절 표제의 건수 재진술을 찾지 못했다 "
+                f"(`### {label} … (N)` 형태여야 한다 — 표제 형태를 바꾸려면 "
+                "이 정규식도 같은 PR 에서 고칠 것)"
+            )
+        elif int(found.group(1)) != subsection_expected[label]:
+            problems.append(
+                f"규칙 5 위반 — 「{label}」 절 표제 재진술 {int(found.group(1))} ≠ "
+                f"실측 {subsection_expected[label]}"
+            )
+    section = _h2_section(text)
+    marker = REGISTRY_MARKER_RE.search(section)
+    if marker is None:
+        problems.append(
+            f"규칙 5 위반 — 등재 절({SECTION_H2})에서 "
+            "`<!-- registry: <모델 id> -->` 표식을 찾지 못했다 "
+            "(이 표식이 절의 소관 모델을 정하므로 지우지 말 것)"
+        )
+    else:
+        self_as_sibling = f"자매 모델 `{marker.group(1)}`"
+        if self_as_sibling in section:
+            problems.append(
+                f"규칙 7 위반 — 등재 절이 자기 모델을 「{self_as_sibling}」 로 부른다 "
+                "(이 절이 그 모델의 등재 원장이므로 소관은 항상 이 렌즈다 — "
+                "다른 절의 같은 표현을 이 절로 옮겨 적어 「남의 몫」으로 읽히게 된 "
+                "사고가 2026-09-27 `rct_20260927-0009` 다)"
             )
     return problems
 
@@ -520,7 +581,9 @@ def main() -> int:
             f"전용 파일도 등재도 없는 시나리오: {unregistered} "
             f"(전용 파일을 저작하거나 예외/구현 대기/공백으로 등재할 것)"
         )
-    problems += check_prose_restatements(tracker_text, counted, len(unregistered))
+    problems += check_prose_restatements(
+        tracker_text, counted, len(unregistered), len(measured["non_scenario"])
+    )
 
     stale_gaps = sorted(tracker.gaps - measured_blank)
     if stale_gaps:
