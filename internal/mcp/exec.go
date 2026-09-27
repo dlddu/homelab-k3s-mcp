@@ -11,9 +11,7 @@ import (
 )
 
 // parseExecTarget reads AC12's one shape. Both sides run it, for the reason
-// parseUpdateTarget states: authorize runs before the handler, so a call the
-// handler would reject has already cost an approval request by then, and pair
-// resolution is the only thing that runs earlier.
+// parseUpdateTarget states.
 //
 // What is deliberately absent is a container count check: whether the pod has
 // more than one container is a cluster fact no argument carries, so the

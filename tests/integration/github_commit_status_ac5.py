@@ -27,12 +27,6 @@ VALID_ARGUMENTS = {
 async def test_github_commit_status_ac5_unconfigured_refusal(
     session: ClientSession,
 ) -> None:
-    """AC: github-commit-status/AC5
-
-    ``assert_unavailable_refusal`` 이 재는 두 조각이 그대로 이 시나리오의 기대
-    결과다 — 거부가 전송 실패가 아니라 정상 도구 결과로 돌아오는 것과, 그 직후
-    같은 세션의 ``ping`` 이 살아 있는 것("graceful" 의 나머지 절반).
-    """
     await assert_unavailable_refusal(
         session,
         "github_commit_status_create",

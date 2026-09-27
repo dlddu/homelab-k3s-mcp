@@ -4,12 +4,8 @@
 실행 대상: primary
 병렬 레인: github-app
 
-Both claims here are about a token the caller never sees, so neither can be
-read off the tool result alone. The scope claim is read from the mint request
-body the github-mock recorded; the non-exposure claim is a scan of the whole
-serialized result, and it is made non-vacuous by the revoke request that same
-log shows — the server demonstrably held ``ghs_mock_67890`` and still returned
-a result without it.
+Both claims are about a token the caller never sees, so neither can be read off
+the tool result alone.
 """
 
 from __future__ import annotations
@@ -78,9 +74,7 @@ async def call_and_read_mint(session: ClientSession, arguments: dict[str, Any]):
 async def test_github_commit_status_ac2_mints_a_narrow_token(
     session: ClientSession,
 ) -> None:
-    """AC: github-commit-status/AC2 — the mint body is exactly one repo, statuses:write.
-
-    Checked on the success call and on the 422 call alike: the scope is
+    """Checked on the success call and on the 422 call alike: the scope is
     decided before the upstream answers, so an error path that widened it
     would be just as much a violation.
     """
@@ -96,13 +90,6 @@ async def test_github_commit_status_ac2_mints_a_narrow_token(
 async def test_github_commit_status_ac2_never_exposes_the_token(
     session: ClientSession,
 ) -> None:
-    """AC: github-commit-status/AC2 — no token, PEM or JWT in either result.
-
-    The revoke the server sends afterwards carries the minted token in its
-    Authorization header, and that recorded header is the positive control:
-    the token existed on the server side of this very call, so "absent from
-    the result" is a statement about discarding it, not about never having it.
-    """
     for arguments in (SUCCESS_ARGUMENTS, FAILURE_ARGUMENTS):
         result, _ = await call_and_read_mint(session, arguments)
 

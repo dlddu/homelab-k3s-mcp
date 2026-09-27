@@ -21,11 +21,9 @@ type portForwardArgs struct {
 }
 
 // parsePortForwardTarget reads AC14's arguments. Both the pair resolver and the
-// handler run it, for the reason parseAttachTarget states: authorize runs before
-// the handler, so a call the handler would reject has already cost an approval
-// request by then, and pair resolution is the only thing that runs earlier.
-// Scenario 14 asks for over-cap arguments to be refused, and a refusal that
-// arrives after an operator has approved reaching a port is not that refusal.
+// handler run it, for the reason parseAttachTarget states. Scenario 14 asks for
+// over-cap arguments to be refused, and a refusal that arrives after an operator
+// has approved reaching a port is not that refusal.
 func parsePortForwardTarget(obj map[string]any) (portForwardArgs, *rpcErr) {
 	apiVersion := optionalString(obj, "apiVersion")
 	if apiVersion == nil {

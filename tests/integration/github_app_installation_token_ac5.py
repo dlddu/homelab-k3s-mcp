@@ -25,8 +25,6 @@ MINT_PATH = f"/app/installations/{EXPECTED_INSTALLATION_ID}/access_tokens"
 INSTALLATION_PATH = f"/app/installations/{EXPECTED_INSTALLATION_ID}"
 REVOKE_PATH = "/installation/token"
 
-# Reached directly rather than through _helpers: this is the only file that
-# drives the mock's knobs (/_admin/config).
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
 
 
