@@ -1,35 +1,6 @@
 # OIDC issuer + the auth-configuration deployment variants that
 # platform-auth-safety/AC2 (인증 디스커버리) and /AC8 (인증 방식 구성 유연성) need.
 #
-# Neither AC is observable on the deployments this repo already stands up. The
-# primary kind deployment runs with MCP_AUTH_DISABLED=1, and the auth-variant
-# (tests/k8s/kind/auth-fixture.yaml) is API-key-only, so no deployment here has
-# ever had MCP_OAUTH_* set -- and OAuth is exactly what advertises the discovery
-# document. This file adds the missing half.
-#
-# The issuer is a REAL OpenID Connect provider (dex), not a stub that serves two
-# static JSON files. docs/e2e-mocking-policy.md counts real implementations as
-# harness, not mocking (MinIO stands in for S3 and single-node OpenSearch for
-# Serverless on exactly that basis), and its two candidate categories both
-# exclude a stub here: `UPS` requires that the real upstream cannot be run in the
-# CI cluster, and `IMG` requires that the image cannot be pulled. ghcr.io/dexidp/dex
-# is a public image with a linux/arm64 manifest, so neither holds and a stub
-# issuer would be an unregistrable mocking point. The 2026-09-04 session-list
-# slice reached the same conclusion about the session-platform control plane.
-#
-# What runs here, and which AC8 configuration each one is:
-#
-#   dex                          -- the issuer. Serves OIDC discovery + JWKS.
-#   homelab-k3s-mcp-oauth        -- (c) MCP_OAUTH_* and MCP_API_KEYS both set.
-#                                   Also the `oauth-variant` runner group target.
-#   homelab-k3s-mcp-oauth-only   -- (b) MCP_OAUTH_* only.
-#   homelab-k3s-mcp-no-auth      -- (d) neither, and MCP_AUTH_DISABLED unset.
-#                                   This one is MEANT to fail to start.
-#
-# Configuration (a) -- MCP_API_KEYS only -- is the existing auth-fixture.yaml
-# deployment; platform_auth_safety_ac8.py runs against it directly and reaches
-# the three variants here over short-lived port-forwards.
-#
 # No credential secrets are attached to any of the servers, for the same reason
 # auth-fixture.yaml attaches none: main.go's buildXService helpers degrade to an
 # unavailable service and the server still starts, which is all these ACs need.
@@ -171,11 +142,7 @@ metadata:
     app.kubernetes.io/name: homelab-k3s-mcp-oauth
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
-# (c) Both credential paths configured. MCP_OAUTH_RESOURCE is deliberately set to
-# something other than the audience so the Resource != Audience branch of
-# auth.configureOAuth is the one actually exercised, and so the resource_metadata
-# URL in the WWW-Authenticate challenge is derived from a value the test can tell
-# apart from the audience.
+# (c) Both credential paths configured.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -288,8 +255,7 @@ spec:
       targetPort: http
       protocol: TCP
 ---
-# (b) OAuth only. No MCP_API_KEYS at all: this is the "IdP-only" deployment shape
-# AC8 says must keep working exactly as before API keys existed.
+# (b) OAuth only. No MCP_API_KEYS at all.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -398,17 +364,9 @@ spec:
 ---
 # (d) Neither credential path configured, and MCP_AUTH_DISABLED is NOT set.
 #
-# This deployment is expected to CRASHLOOP, and that is the assertion: main.go
-# calls auth.FromEnv, which refuses to build a config when nothing gates /mcp,
-# and exits 1 rather than serve the endpoint undefended. It carries no probes and
-# no Service because it never serves, and .github/workflows/ci.yml deliberately
-# does NOT wait for its rollout -- waiting would block CI on a pod that is
-# supposed to never become Available.
-#
-# It is also what keeps the AC2 argument honest: "the OAuth deployments are
-# Available, therefore they completed OIDC discovery and the JWKS fetch at
-# startup" only means something because a server that fails that path really does
-# stay down, and this is where that is observed.
+# It carries no probes and no Service because it never serves, and
+# .github/workflows/ci.yml deliberately does NOT wait for its rollout --
+# waiting would block CI on a pod that is supposed to never become Available.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

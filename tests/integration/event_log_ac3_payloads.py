@@ -3,23 +3,9 @@
 검증 시나리오: test-event-log.md#시나리오 5
 실행 대상: gatekeeper-variant
 
-시나리오의 요점은 「두 관측이 같은 실행에서 나온다」는 것이다 — 승인된 ``resource_get(kind=Secret)``
-응답에 데이터 값이 실려 오고, ``resource_exec`` 응답에 명령의 stdout 이 실려 온 **바로 그 호출**의
-레코드에 값도 명령도 본문도 없다. 응답 쪽 단언이 먼저인 이유는 자매 ``event_log_ac3_credentials.py``
-와 같다 — 그것이 없으면 네거티브는 아무것도 돌려주지 않는 서버로도 통과한다.
-
-**이 변형에서 도는 이유는 승인을 사람 없이 즉시 내기 위해서다.** 둘 다 게이트 대상 호출이라
-승인이 필요한데, 이 배포는 `GATEKEEPER_USER_ID` 를 물고 있어 gatekeeper 의 `AUTO_APPROVE` 모드가
-실제로 발화한다(``approval_gate_ac9.py`` 가 같은 손잡이로 세 모드를 잰다). primary 의 수동
-댄스(`wait_for_pending` → `decide`)도 가능하지만 승인 2회를 사람 대신 폴링으로 맞추는 경주가
-되고, 이 파일이 재는 것은 승인 절차가 아니라 승인 **뒤에** 쓰인 레코드다. 모드를 바꾸므로
-`병렬 레인:` 은 선언하지 않는다(``resource_generic_ac17.py`` 와 같은 이유).
-
-**대상 Secret 과 파드는 이 파일이 스스로 세운다** — 값은 레포 어디에도 없는 상수라 어느 표면에서
-발견되면 그것이 이 Secret 에서 나온 것이다(``resource_generic_ac17.py`` 의 `TOKEN` 과 같은
-방식). 파드는 그 Secret 을 파일로 얹고 잠들어 있기만 하면 되고, `exec` 의 `cat` 이 그 파일을
-읽어 평문을 stdout 으로 돌려준다. 그래서 base64 값(읽기 응답)·평문(exec 응답)·명령 인자·마운트
-경로 넷이 한 대상 위에서 바늘이 된다.
+primary 의 수동 댄스(`wait_for_pending` → `decide`)를 쓰지 않는 것은 승인 2회를 사람 대신 폴링으로
+맞추는 경주가 되기 때문이다 — 이 파일이 재는 것은 승인 절차가 아니라 승인 **뒤에** 쓰인 레코드다.
+모드를 바꾸므로 `병렬 레인:` 은 선언하지 않는다(``resource_generic_ac17.py`` 와 같은 이유).
 
 레코드는 이 변형 파드 stdout 의 ``msg="tool call"`` 줄이다. 이 호출의 레코드는 호출 전후 좌표별
 (`tool`·`target.kind`·`target.name`) 레코드 수의 차로 집는다 — 이 그룹의 파일은 차례로 돌고 이

@@ -12,8 +12,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 )
 
-// These tests cover platform AC8 at the routing layer.
-
 func appWith(authCfg *auth.Config) http.Handler {
 	return server.App(authCfg, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 }
@@ -46,7 +44,6 @@ func TestDiscoveryAbsentWhenOAuthNotConfigured(t *testing.T) {
 	}
 }
 
-// prd-metrics AC5 at the routing layer (server.MetricsApp doc holds why).
 func TestMetricsAreNotServedOnTheMCPListenerAndMCPIsNotOnTheMetricsOne(t *testing.T) {
 	t.Setenv("MCP_AUTH_DISABLED", "")
 	t.Setenv("MCP_API_KEYS", "first-key")
@@ -83,8 +80,6 @@ func TestMetricsAreNotServedOnTheMCPListenerAndMCPIsNotOnTheMetricsOne(t *testin
 		t.Errorf("GET /metrics on the metrics listener = %d %q, want the exposition with ping at 0", rec.Code, rec.Body.String())
 	}
 
-	// /mcp itself still asks for a credential — the metrics port changed
-	// nothing about the boundary it sits beside.
 	rec = httptest.NewRecorder()
 	app.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","arguments":{}}}`)))
 	if rec.Code != http.StatusUnauthorized {

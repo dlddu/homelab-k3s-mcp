@@ -5,13 +5,6 @@ metadata:
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
-# Recording reverse proxy that makes the AssumeRole -> SigV4 access path
-# OBSERVABLE, which the fixtures on their own are not.
-#
-# Wiring (see .github/workflows/ci.yml): AWS_CONFIG_S3_ENDPOINT and
-# OPENSEARCH_STS_ENDPOINT point at :9000 (MinIO co-locates S3 and STS) and
-# OPENSEARCH_ENDPOINT points at :9200. The trace is read over :8081.
-#
 # The proxy is signature-transparent: SigV4 signs the Host header, so the
 # client's original Host is forwarded verbatim and the upstream recomputes the
 # same signature it would have computed without the proxy in the path.
@@ -116,11 +109,6 @@ data:
             _next_seq += 1
             _records.append(entry)
             if len(_records) > MAX_RECORDS:
-                # Evict the oldest ordinary records but keep every AssumeRole one.
-                # A client caches the credentials it was issued, so it assumes each
-                # role once per process: an evicted AssumeRole entry can never be
-                # observed again, and it is the anchor every access-path assertion
-                # correlates against.
                 overflow = len(_records) - MAX_RECORDS
                 kept = []
                 for item in _records:

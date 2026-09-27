@@ -44,12 +44,6 @@ func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc 
 }
 
 // MetricsApp builds the handler of the metrics listener (prd-metrics AC5).
-// It is a second http.Handler for a second listener rather than a route on
-// App's mux on purpose: App is what the ingress reaches, and a path on it
-// would be public the moment it existed. On its own port the exposition is
-// reachable only inside the cluster, and the mux carries exactly one route —
-// there is no /mcp here to be reached without auth, and nothing on the
-// metrics handler can run a tool or read the cluster.
 func MetricsApp(exposition http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", exposition)
@@ -74,7 +68,6 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
-// statusRecorder captures the response status code for logging.
 type statusRecorder struct {
 	http.ResponseWriter
 	status int
@@ -85,8 +78,6 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-// silentPaths are health/readiness probe endpoints excluded from access logs
-// to avoid flooding them with kubelet probe traffic.
 var silentPaths = map[string]bool{
 	"/healthz": true,
 	"/readyz":  true,

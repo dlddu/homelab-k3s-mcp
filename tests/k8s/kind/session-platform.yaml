@@ -1,11 +1,5 @@
 # The session-platform control plane, run for real in the kind harness.
 #
-# session_list reads the control plane's in-cluster REST API
-# (GET /api/v1/sessions), so session-list/AC1..AC3 need one to exist. This
-# deploys the REAL component rather than an upstream stand-in: running the
-# real thing is what docs/e2e-mocking-policy.md asks for, and this fixture
-# adds no allowlist entry.
-#
 # Names mirror production on purpose. The base deployment
 # (k8s/deployment.yaml) already wires
 # SESSION_PLATFORM_ENDPOINT=http://control-plane.session-platform.svc.cluster.local
@@ -38,8 +32,7 @@
 # The data plane image is the real published component at the *same commit tag*
 # as the control plane above: session-platform's docker-build-push.yaml
 # publishes both from one workflow under the commit SHA, so a matching pair is
-# guaranteed to speak the same agent contract. This fixture still adds no
-# allowlist entry.
+# guaranteed to speak the same agent contract.
 #
 # Session pods carry `serviceAccountName: data-plane` with an automounted token
 # (ClientOrchestrator.buildPod), so that ServiceAccount must exist here or the

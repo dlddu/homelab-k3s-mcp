@@ -101,11 +101,6 @@ func TestInitializeReturnsServerInfo(t *testing.T) {
 func TestToolsListIncludesAllTools(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
-	// want is the whole advertised surface, and the count is taken from it
-	// rather than written out: a literal here is a number two slices landing in
-	// the same week both have to edit, and this list is what the assertion is
-	// actually about. Naming every tool still fails on a surprise addition —
-	// len(tools) != len(want) — and on a removal, via findTool.
 	want := []string{
 		"ping", "api_resources", "resource_list", "resource_get", "resource_watch",
 		"resource_create", "resource_update", "resource_patch", "resource_delete",
@@ -744,10 +739,6 @@ func TestToolsListAdvertisesGitHubToken(t *testing.T) {
 	}
 }
 
-// TestToolsListAdvertisesCommitStatus covers prd-github-commit-status AC6. The
-// three hints are asserted by name rather than as a whole map: destructiveHint
-// false is the claim a client acts on (a status is appended, never overwritten)
-// and it is the one a copy-pasted tool entry gets wrong.
 func TestToolsListAdvertisesCommitStatus(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
@@ -1194,8 +1185,6 @@ func TestOpenSearchSearchRequiresQuery(t *testing.T) {
 }
 
 func TestOpenSearchSearchServiceErrorIsToolError(t *testing.T) {
-	// The size cap itself lives in the opensearch package (unit-tested there);
-	// this covers the handler mapping a rejected size to a tool error.
 	fake := &fakeOpenSearch{searchResponse: func() (*opensearch.SearchResult, error) {
 		return nil, errors.New("opensearch error: size must be <= 50, got 51")
 	}}
@@ -1349,8 +1338,6 @@ func TestToolsListAdvertisesSessionList(t *testing.T) {
 	if len(props) != 0 {
 		t.Fatalf("properties should be empty, got %v", props)
 	}
-	// The PRD pins every hint: a passive listing is read-only, non-destructive
-	// and idempotent, and it reaches a service outside this server.
 	if at(t, list, "annotations", "title") != "List Sessions" ||
 		at(t, list, "annotations", "readOnlyHint") != true ||
 		at(t, list, "annotations", "destructiveHint") != false ||
@@ -1394,7 +1381,6 @@ func TestSessionListEnumeratesSessions(t *testing.T) {
 		t.Fatalf("sessions[0] = %v", live)
 	}
 
-	// A snapshotted session has no pod: the field is omitted, not empty.
 	parked := sessions[1].(map[string]any)
 	if parked["id"] != "s-2" || parked["state"] != "snapshot" || parked["workloadType"] != "claude-code" {
 		t.Fatalf("sessions[1] = %v", parked)
@@ -1439,7 +1425,6 @@ func TestToolsListAdvertisesSessionRead(t *testing.T) {
 		t.Fatalf("required = %v, want [id]: offset defaults to 0", required)
 	}
 
-	// The PRD pins every hint, and readOnlyHint=false is the load-bearing one.
 	if at(t, read, "annotations", "title") != "Read Session Output" ||
 		at(t, read, "annotations", "readOnlyHint") != false ||
 		at(t, read, "annotations", "destructiveHint") != false ||
@@ -1476,7 +1461,6 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 		t.Fatalf("nextOffset = %v, want the server-issued cursor passed through verbatim",
 			at(t, body, "result", "structuredContent", "nextOffset"))
 	}
-	// AC2: the branch and the session after the call are both visible.
 	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->read" {
 		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
 	}
@@ -1505,7 +1489,6 @@ func TestSessionReadOffsetDefaultsToZero(t *testing.T) {
 	}
 }
 
-// TestSessionReadRejectsBadArguments is AC3 at the protocol layer.
 func TestSessionReadRejectsBadArguments(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -1533,10 +1516,6 @@ func TestSessionReadRejectsBadArguments(t *testing.T) {
 	}
 }
 
-// TestSessionReadSurfacesNotFound is the other half of AC3, driven through the
-// real client rather than a fake so the 404 mapping is exercised end to end: a
-// missing session must read differently from every other failure the caller can
-// hit.
 func TestSessionReadSurfacesNotFound(t *testing.T) {
 	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
@@ -1565,8 +1544,6 @@ func TestSessionReadSurfacesNotFound(t *testing.T) {
 	}
 }
 
-// TestSessionReadUnavailableReturnsToolError is AC4: with no endpoint wired the
-// tool refuses, and the refusal stays confined to it.
 func TestSessionReadUnavailableReturnsToolError(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 
@@ -1598,7 +1575,6 @@ func TestSessionListUnavailableReturnsToolError(t *testing.T) {
 		t.Fatalf("text = %q", text)
 	}
 
-	// The refusal is confined to this tool: the server keeps serving.
 	survivor := callTool(t, app, 163, "ping", map[string]any{})
 	if at(t, survivor, "result", "isError") != false {
 		t.Fatalf("ping isError = %v", at(t, survivor, "result", "isError"))
@@ -1638,11 +1614,6 @@ func TestToolsListAdvertisesSessionWrite(t *testing.T) {
 		t.Fatalf("required = %v, want both id and payload", required)
 	}
 
-	// AC3. destructiveHint=true is the load-bearing one: the payload runs as an
-	// arbitrary command or prompt inside the session, so a client must not treat
-	// this the way it treats the two read-shaped session tools. idempotentHint
-	// is false for the same reason — sending the same payload twice runs it
-	// twice.
 	if at(t, write, "annotations", "title") != "Write to Session" ||
 		at(t, write, "annotations", "readOnlyHint") != false ||
 		at(t, write, "annotations", "destructiveHint") != true ||
@@ -1652,9 +1623,6 @@ func TestToolsListAdvertisesSessionWrite(t *testing.T) {
 	}
 }
 
-// TestSessionWriteReturnsBranchAndSession is AC2 at the protocol layer: a write
-// that revived a parked session says so, both in the branch it reports and in
-// the session it hands back.
 func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	fake := &fakeSessionPlatform{writeResponse: func(id, _ string) (*sessionplatform.WriteResult, error) {
 		return &sessionplatform.WriteResult{
@@ -1724,14 +1692,6 @@ func TestSessionWriteRejectsBadArguments(t *testing.T) {
 	}
 }
 
-// TestSessionWriteSurfacesRefusalsDistinctly is AC4 driven through the real
-// client, so the whole status-to-tool-error path is exercised. Every status is
-// served with the *same* error body on purpose: with the control plane's own
-// wording held constant, the four tool errors can only differ by what this
-// server adds, so the test cannot be satisfied by upstream prose that happens to
-// vary. It also pins that the retryable refusal is the only one that reads as
-// retryable, and that none of the four can be mistaken for an unconfigured
-// server.
 func TestSessionWriteSurfacesRefusalsDistinctly(t *testing.T) {
 	const sameReason = "refused"
 
@@ -1790,8 +1750,6 @@ func TestSessionWriteSurfacesRefusalsDistinctly(t *testing.T) {
 	}
 }
 
-// TestSessionWriteUnavailableReturnsToolError is AC5: with no endpoint wired the
-// tool refuses, and the refusal stays confined to it.
 func TestSessionWriteUnavailableReturnsToolError(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 
