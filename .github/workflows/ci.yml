@@ -366,6 +366,13 @@ jobs:
             --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
             --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
             --dry-run=client -o yaml | kubectl apply -f -
+          kubectl create namespace homelab-k3s-mcp-apiserver-audit \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp-apiserver-audit create secret generic homelab-k3s-mcp-gatekeeper \
+            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
+            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
+            --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
+            --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
@@ -402,6 +409,9 @@ jobs:
 
       - name: Apply gate-refusal variants
         run: kubectl apply -f tests/k8s/kind/gate-refusal-variant.yaml
+
+      - name: Apply apiserver-audit variant fixture
+        run: kubectl apply -f tests/k8s/kind/apiserver-audit-variant.yaml
 
       # The session pod image, preloaded into the kind node. The control plane
       # gives a session pod two minutes to report Ready and that budget covers
@@ -486,6 +496,9 @@ jobs:
       # reason deploy/homelab-k3s-mcp-no-auth is skipped below.
       - name: Wait for gate-refusal rollout
         run: kubectl -n homelab-k3s-mcp-gate-refusal rollout status deploy/homelab-k3s-mcp-gate-refusal --timeout=120s
+
+      - name: Wait for apiserver-audit variant rollout
+        run: kubectl -n homelab-k3s-mcp-apiserver-audit rollout status deploy/homelab-k3s-mcp-apiserver-audit --timeout=300s
 
       - name: Wait for gate-broken variant rollouts
         run: |
@@ -605,6 +618,11 @@ jobs:
           kubectl -n homelab-k3s-mcp-gatekeeper-variant logs deploy/homelab-k3s-mcp-gatekeeper-variant --tail=200 || true
           kubectl -n homelab-k3s-mcp-rbac-narrow get all -o wide || true
           kubectl -n homelab-k3s-mcp-rbac-narrow logs deploy/homelab-k3s-mcp-rbac-narrow --tail=200 || true
+          kubectl -n homelab-k3s-mcp-apiserver-audit get all -o wide || true
+          kubectl -n homelab-k3s-mcp-apiserver-audit describe deploy/homelab-k3s-mcp-apiserver-audit || true
+          kubectl -n homelab-k3s-mcp-apiserver-audit logs deploy/homelab-k3s-mcp-apiserver-audit -c mint-cert || true
+          kubectl -n homelab-k3s-mcp-apiserver-audit logs deploy/homelab-k3s-mcp-apiserver-audit -c audit-proxy --tail=200 || true
+          kubectl -n homelab-k3s-mcp-apiserver-audit logs deploy/homelab-k3s-mcp-apiserver-audit -c server --tail=200 || true
           kubectl -n homelab-k3s-mcp-gate-refusal get all -o wide || true
           kubectl -n homelab-k3s-mcp-gate-refusal logs deploy/homelab-k3s-mcp-gate-refusal --tail=200 || true
           # 기동 실패가 의도인 변형(시나리오 1 (c)). 백오프 중이면 현재 인스턴스에 로그가 없다.

@@ -1,0 +1,548 @@
+# apiserver 감사 프록시 변형 — test-approval-gate.md#시나리오 11 (approval_gate_ac11.py).
+#
+# 시나리오 11 이 재는 것은 게이트가 **어떻게** 읽었는지다: 민감 종류의 사전 읽기는
+# `PartialObjectMetadata` 여야 하고 전체 객체여서는 안 된다. 그 구분은 요청의 `Accept`
+# 헤더에만 있고, apiserver 자신의 감사 로그는 헤더를 기록하지 않는다 — 그래서 관측 지점은
+# 서버와 apiserver 사이의 경로뿐이다. 이 파일이 그 경로에 기록 프록시를 세운 변형이다.
+#
+# 왜 별도 배포인가: 관측을 위해 SUT 의 apiserver 주소와 신뢰 앵커를 바꿔야 하고, 그것을
+# 주 배포에 하면 다른 100여 파일이 전부 이 경로를 지나게 된다. 변형은
+# `gate-refusal-variant.yaml`·`rbac-narrow-fixture.yaml` 과 같은 형태다.
+#
+# 이것은 모킹이 아니다(`docs/e2e-mocking-policy.md` — "http-trace 프록시 — 동작을 치환하지
+# 않고 관측만 하므로 모킹이 아니라 이 정책이 권장하는 대안 쪽이다"). 상류는 실 apiserver
+# 이고, 프록시는 요청을 바이트 그대로 넘기고 응답을 바이트 그대로 돌려준다. 끄는 인증·보안
+# 계층도 없다 — 서버가 보내는 ServiceAccount 토큰은 실물 그대로이고 apiserver 가 여전히
+# 인증·인가한다. 프록시가 상류를 검증하는 CA 도 실 클러스터 CA 다.
+#
+# 신뢰 앵커의 교체가 왜 필요한가: `rest.InClusterConfig` 은 주소를 env 두 개
+# (`KUBERNETES_SERVICE_HOST`·`KUBERNETES_SERVICE_PORT`)에서, 토큰과 CA 를 고정 경로
+# `/var/run/secrets/kubernetes.io/serviceaccount/{token,ca.crt}` 에서 읽는다. 그래서
+# initContainer 가 자기 서명 인증서를 emptyDir 에 굽고 그 인증서를 SUT 쪽 SA 디렉터리의
+# `ca.crt` 로 놓는다. 인증서·키는 레포에 커밋되지 않는다 — 파드마다 새로 굽는다.
+#
+# 토큰은 projected 볼륨의 실물이고 initContainer 가 SUT 쪽 디렉터리로 복사한다. 복사본은
+# 회전하지 않으므로 파드 수명이 토큰 유효기간(기본 1시간)을 넘으면 낡는다 — CI 는 배포 후
+# 수 분 안에 끝나므로 이 하네스에서는 문제가 되지 않고, 대신 회전이 필요한 프로덕션 경로와
+# 이 변형이 같은 구성이라고 오독되지 않게 여기 적어 둔다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: homelab-k3s-mcp-apiserver-audit
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: homelab-k3s-mcp
+  namespace: homelab-k3s-mcp-apiserver-audit
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: homelab-k3s-mcp:apiserver-audit-workloads
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: homelab-k3s-mcp
+    namespace: homelab-k3s-mcp-apiserver-audit
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apiserver-audit-script
+  namespace: homelab-k3s-mcp-apiserver-audit
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+data:
+  audit_proxy.py: |
+    """Recording TLS reverse proxy in front of the kube-apiserver.
+
+    The gate reads its target before it asks anyone (prd-approval-gate AC11), and
+    what has to be observable is *how* it read: a sensitive kind must be fetched as
+    ``PartialObjectMetadata`` and never as a whole object. That distinction lives in
+    the request's ``Accept`` header, which the apiserver's own audit log does not
+    record, so the only place it can be seen is in the path between the server and
+    the apiserver.
+
+    TLS therefore has to terminate here. The listener presents a certificate an
+    init container mints into a shared emptyDir, and the SUT container's projected
+    service-account directory carries that certificate as its ``ca.crt`` -- so
+    ``rest.InClusterConfig`` trusts this listener while the ServiceAccount token it
+    sends stays the real one and the apiserver still authenticates and authorizes
+    every call. Upstream is verified against the cluster CA.
+
+    What is recorded is deliberately narrow -- identifiers only, never payloads:
+    method, path, query, the ``Accept`` header, whether an ``Authorization`` header
+    was present, and the response status. No request or response body is kept, and
+    no header value other than ``Accept`` is. A Secret read through here therefore
+    cannot leak its value into the log even when the read is the whole object; the
+    evidence that the read was metadata-only is the ``Accept`` header, not the body.
+    """
+
+    from __future__ import annotations
+
+    import json
+    import os
+    import ssl
+    import sys
+    import threading
+    import time
+    from http.client import HTTPSConnection
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    MAX_RECORDS = 4000
+
+    # Hop-by-hop headers must not be forwarded.
+    SKIP_REQUEST_HEADERS = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "proxy-authorization",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+        "expect",
+        # Re-sent below from the body actually forwarded.
+        "content-length",
+    }
+    SKIP_RESPONSE_HEADERS = {
+        "connection",
+        "keep-alive",
+        "proxy-authenticate",
+        "te",
+        "trailers",
+        "transfer-encoding",
+        "upgrade",
+        "content-length",
+    }
+
+    _records: list[dict] = []
+    _lock = threading.Lock()
+    _next_seq = 1
+
+
+    def log(message: str) -> None:
+        sys.stdout.write(f"apiserver-audit {message}\n")
+        sys.stdout.flush()
+
+
+    def record(entry: dict) -> None:
+        global _next_seq
+        with _lock:
+            entry["seq"] = _next_seq
+            _next_seq += 1
+            _records.append(entry)
+            if len(_records) > MAX_RECORDS:
+                del _records[: len(_records) - MAX_RECORDS]
+        log(
+            "{seq} {method} {path} accept={accept!r} -> {status}".format(
+                seq=entry["seq"],
+                method=entry["method"],
+                path=entry["path"],
+                accept=entry["accept"],
+                status=entry["status"],
+            )
+        )
+
+
+    def snapshot() -> list[dict]:
+        with _lock:
+            return list(_records)
+
+
+    def make_proxy_handler(upstream_host: str, upstream_port: int, upstream_ctx: ssl.SSLContext):
+        class ProxyHandler(BaseHTTPRequestHandler):
+            protocol_version = "HTTP/1.1"
+
+            def log_message(self, fmt, *args):  # noqa: D102 - quieter default log
+                pass
+
+            def _read_body(self) -> bytes:
+                length = int(self.headers.get("Content-Length") or 0)
+                return self.rfile.read(length) if length else b""
+
+            def _forward(self) -> None:
+                body = self._read_body()
+                headers = [
+                    (name, value)
+                    for name, value in self.headers.items()
+                    if name.lower() not in SKIP_REQUEST_HEADERS and name.lower() != "host"
+                ]
+                had_content_length = self.headers.get("Content-Length") is not None
+
+                conn = HTTPSConnection(
+                    upstream_host, upstream_port, timeout=60, context=upstream_ctx
+                )
+                try:
+                    conn.putrequest(
+                        self.command, self.path, skip_host=True, skip_accept_encoding=True
+                    )
+                    # The apiserver is addressed by its own name upstream; nothing in
+                    # the request is signed over the Host header, unlike the SigV4
+                    # path in http-trace.yaml.
+                    conn.putheader("Host", f"{upstream_host}:{upstream_port}")
+                    for name, value in headers:
+                        conn.putheader(name, value)
+                    if had_content_length or body or self.command in ("POST", "PUT", "PATCH"):
+                        conn.putheader("Content-Length", str(len(body)))
+                    conn.endheaders()
+                    if body:
+                        conn.send(body)
+                    response = conn.getresponse()
+                    response_body = response.read()
+                    status = response.status
+                    response_headers = response.getheaders()
+                except Exception as exc:  # noqa: BLE001 - reported to the caller as 502
+                    log(f"{self.command} {self.path} failed: {exc}")
+                    self._record(502)
+                    self.send_response_only(502)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                    return
+                finally:
+                    conn.close()
+
+                self._record(status)
+
+                self.send_response_only(status)
+                for name, value in response_headers:
+                    if name.lower() in SKIP_RESPONSE_HEADERS:
+                        continue
+                    self.send_header(name, value)
+                self.send_header("Content-Length", str(len(response_body)))
+                self.end_headers()
+                if response_body and self.command != "HEAD":
+                    self.wfile.write(response_body)
+
+            def _record(self, status: int) -> None:
+                path, _, query = self.path.partition("?")
+                record(
+                    {
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "method": self.command,
+                        "path": path,
+                        "query": query,
+                        "accept": self.headers.get("Accept", ""),
+                        "authorized": self.headers.get("Authorization") is not None,
+                        "status": status,
+                    }
+                )
+
+            do_GET = _forward
+            do_PUT = _forward
+            do_POST = _forward
+            do_HEAD = _forward
+            do_DELETE = _forward
+            do_PATCH = _forward
+
+        return ProxyHandler
+
+
+    class AdminHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, fmt, *args):  # noqa: D102
+            pass
+
+        def do_GET(self):
+            if self.path == "/healthz":
+                self._json(200, {"status": "ok"})
+                return
+            if self.path.startswith("/requests"):
+                self._json(200, {"requests": snapshot()})
+                return
+            self._json(404, {"error": "not found"})
+
+        def _json(self, code, payload):
+            body = json.dumps(payload).encode()
+            self.send_response_only(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+
+    def serve(server: ThreadingHTTPServer) -> None:
+        server.daemon_threads = True
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+
+
+    def main() -> None:
+        listen_port = int(os.environ.get("AUDIT_LISTEN_PORT", "8443"))
+        admin_port = int(os.environ.get("AUDIT_ADMIN_PORT", "8099"))
+        upstream = os.environ.get("AUDIT_UPSTREAM", "kubernetes.default.svc:443")
+        upstream_ca = os.environ.get(
+            "AUDIT_UPSTREAM_CA", "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
+        )
+        cert = os.environ["AUDIT_TLS_CERT"]
+        key = os.environ["AUDIT_TLS_KEY"]
+
+        host, _, port = upstream.rpartition(":")
+        upstream_ctx = ssl.create_default_context(cafile=upstream_ca)
+
+        handler = make_proxy_handler(host, int(port), upstream_ctx)
+        server = ThreadingHTTPServer(("127.0.0.1", listen_port), handler)
+        listen_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        listen_ctx.load_cert_chain(certfile=cert, keyfile=key)
+        server.socket = listen_ctx.wrap_socket(server.socket, server_side=True)
+        serve(server)
+        log(f"terminating TLS on 127.0.0.1:{listen_port} -> https://{host}:{port}")
+
+        serve(ThreadingHTTPServer(("0.0.0.0", admin_port), AdminHandler))
+        log(f"admin api on :{admin_port}")
+
+        threading.Event().wait()
+
+
+    if __name__ == "__main__":
+        main()
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: homelab-k3s-mcp-apiserver-audit
+  namespace: homelab-k3s-mcp-apiserver-audit
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+        app.kubernetes.io/component: server
+        app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+    spec:
+      serviceAccountName: homelab-k3s-mcp
+      # 기본 자동 마운트를 끄고 projected 볼륨으로 명시한다 — SUT 쪽 SA 디렉터리는
+      # 프록시 인증서를 `ca.crt` 로 담은 emptyDir 라, 자동 마운트가 같은 경로를 덮으면
+      # 무엇이 이기는지가 구현 세부에 달린다.
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      volumes:
+        - name: sa-real
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+        - name: sa-proxied
+          emptyDir: {}
+        - name: certs
+          emptyDir: {}
+        - name: script
+          configMap:
+            name: apiserver-audit-script
+      initContainers:
+        # 인증서를 파드마다 새로 굽는다(레포에 개인키를 두지 않는다). SAN 이 IP:127.0.0.1
+        # 인 이유는 SUT 가 같은 파드의 루프백으로 붙기 때문이다 — 프록시를 별도 파드로
+        # 두면 SUT 쪽 `ca.crt` 를 미리 알아야 해서 커밋된 키가 필요해진다.
+        - name: mint-cert
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+                -keyout /certs/tls.key -out /certs/tls.crt \
+                -subj /CN=apiserver-audit \
+                -addext subjectAltName=IP:127.0.0.1
+              cp /sa-real/token /sa-proxied/token
+              cp /certs/tls.crt /sa-proxied/ca.crt
+              ls -l /certs /sa-proxied
+          volumeMounts:
+            - name: certs
+              mountPath: /certs
+            - name: sa-real
+              mountPath: /sa-real
+              readOnly: true
+            - name: sa-proxied
+              mountPath: /sa-proxied
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+      containers:
+        - name: audit-proxy
+          image: python:3.12-slim
+          imagePullPolicy: IfNotPresent
+          command: ["python3", "-u", "/script/audit_proxy.py"]
+          ports:
+            - name: audit
+              containerPort: 8099
+              protocol: TCP
+          env:
+            - name: AUDIT_LISTEN_PORT
+              value: "8443"
+            - name: AUDIT_ADMIN_PORT
+              value: "8099"
+            - name: AUDIT_UPSTREAM
+              value: kubernetes.default.svc:443
+            # 상류 검증은 실 클러스터 CA 로 한다 — projected 볼륨의 kube-root-ca.crt.
+            - name: AUDIT_UPSTREAM_CA
+              value: /sa-real/ca.crt
+            - name: AUDIT_TLS_CERT
+              value: /certs/tls.crt
+            - name: AUDIT_TLS_KEY
+              value: /certs/tls.key
+          volumeMounts:
+            - name: script
+              mountPath: /script
+              readOnly: true
+            - name: certs
+              mountPath: /certs
+              readOnly: true
+            - name: sa-real
+              mountPath: /sa-real
+              readOnly: true
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: audit
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+        - name: server
+          image: homelab-k3s-mcp:ci
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 3000
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: 0.0.0.0:3000
+            - name: LOG_LEVEL
+              value: info
+            # auth-fixture.yaml 과 같은 일회용 CI 키 — e2e 가 _auth_variant.API_KEY 를
+            # 그대로 쓴다.
+            - name: MCP_API_KEYS
+              value: ci-e2e-key
+            # 이 둘이 InClusterConfig 의 주소를 같은 파드의 프록시로 돌린다.
+            - name: KUBERNETES_SERVICE_HOST
+              value: 127.0.0.1
+            - name: KUBERNETES_SERVICE_PORT
+              value: "8443"
+          envFrom:
+            # ci.yml 의 "Seed the gatekeeper e2e user" 스텝이 이 네임스페이스에 만든다.
+            - secretRef:
+                name: homelab-k3s-mcp-gatekeeper
+          volumeMounts:
+            - name: sa-proxied
+              mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            failureThreshold: 60
+            periodSeconds: 1
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 2
+            failureThreshold: 2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 250m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: homelab-k3s-mcp-apiserver-audit
+  namespace: homelab-k3s-mcp-apiserver-audit
+  labels:
+    app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+    app.kubernetes.io/component: server
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: homelab-k3s-mcp-apiserver-audit
+    app.kubernetes.io/component: server
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+    - name: audit
+      port: 8099
+      targetPort: audit
+      protocol: TCP
