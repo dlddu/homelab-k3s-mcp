@@ -74,9 +74,7 @@ type toolDeclaration struct {
 // The one reason any tool is currently exempt. It comes from the documents,
 // not from this package.
 const (
-	// docs/prd-approval-gate.md, "남은 예외 1건" — the reason and its open state
-	// live there; this code only cites them.
-	exemptPendingOwnerDecision = "prd-approval-gate 「남은 예외 1건」 — 소유자 판단 대기 (doc-tracker.md 미결)"
+	exemptAcceptedByOwner = "prd-approval-gate 「남은 예외 1건」 — 소유자 수용 (doc-tracker 수용된 위험, 2026-09-27)"
 
 	// docs/prd-resource-generic.md AC15, and the same sentence in
 	// prd-approval-gate's write-gate table: "메서드와 무관하게 전부 게이트
@@ -185,7 +183,7 @@ var toolRegistry = map[string]toolEntry{
 				{Verb: "list", Resource: "pods"},
 				{Verb: "create", Resource: "pods/exec"},
 			},
-			outsideGate: exemptPendingOwnerDecision,
+			outsideGate: exemptAcceptedByOwner,
 		},
 		handle: (*Handler).dearBabyResetUser,
 	},
