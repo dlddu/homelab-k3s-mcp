@@ -26,7 +26,22 @@ const (
 	httpClientTimeout = 10 * time.Second
 
 	statusesPermission = "statuses"
+	checksPermission   = "checks"
 )
+
+var excludedWritePermissions = []struct {
+	name    string
+	refusal string
+}{
+	{
+		name:    statusesPermission,
+		refusal: "this tool does not issue statuses: write — use github_commit_status_create, which exercises commit status writes as a narrow action. statuses: read is issued normally",
+	},
+	{
+		name:    checksPermission,
+		refusal: "this tool does not issue checks: write — this server does not exercise check run writes through any tool. checks: read is issued normally",
+	},
+}
 
 // errKind separates a "not configured" failure from an apiserver error.
 type errKind int
@@ -234,8 +249,10 @@ func (c *Client) installationOwner(ctx context.Context, jwtToken string) (string
 
 func (c *Client) effectivePermissions(ctx context.Context, jwtToken string, requested map[string]any) (map[string]any, error) {
 	if requested != nil {
-		if permissionLevel(requested, statusesPermission) == "write" {
-			return nil, rejected("this tool does not issue statuses: write — use github_commit_status_create, which exercises commit status writes as a narrow action. statuses: read is issued normally")
+		for _, excluded := range excludedWritePermissions {
+			if permissionLevel(requested, excluded.name) == "write" {
+				return nil, rejected(excluded.refusal)
+			}
 		}
 		return requested, nil
 	}
@@ -249,8 +266,10 @@ func (c *Client) effectivePermissions(ctx context.Context, jwtToken string, requ
 	for name, level := range installed {
 		effective[name] = level
 	}
-	if permissionLevel(effective, statusesPermission) == "write" {
-		effective[statusesPermission] = "read"
+	for _, excluded := range excludedWritePermissions {
+		if permissionLevel(effective, excluded.name) == "write" {
+			effective[excluded.name] = "read"
+		}
 	}
 	return effective, nil
 }
@@ -346,8 +365,11 @@ func (c *Client) CreateInstallationToken(ctx context.Context, repositories []str
 		return nil, err
 	}
 
-	if permissionLevel(token.Permissions, statusesPermission) == "write" {
-		msg := "installation token came back carrying statuses: write; it was revoked and is not returned"
+	for _, excluded := range excludedWritePermissions {
+		if permissionLevel(token.Permissions, excluded.name) != "write" {
+			continue
+		}
+		msg := fmt.Sprintf("installation token came back carrying %s: write; it was revoked and is not returned", excluded.name)
 		if revokeErr := c.revokeToken(ctx, token.Token); revokeErr != nil {
 			msg += fmt.Sprintf(" (revoke failed: %v)", revokeErr)
 		}
