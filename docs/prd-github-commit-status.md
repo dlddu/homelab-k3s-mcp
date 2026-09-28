@@ -50,6 +50,9 @@ App에 `statuses` 권한을 **먼저** 부여하면, 그 순간부터 `permissio
 2. GitHub App 권한에 Commit statuses: Read and write를 추가하고 설치 소유자가 승인한다.
 3. 이 도구를 배포한다(1과 같은 릴리스여도 된다 — 2 이전에는 AC1이 GitHub 422로 실패할 뿐이다).
 
+세 단계는 이 순서대로 완료됐다(2026-09-28 실측 — 2의 write 급은 이 도구의 실제 기록으로 판정했다. 경위는
+`doc-tracker/` 「수용된 위험」의 「배포 순서 역전」 행).
+
 ## 범위 밖 (근거와 함께)
 - **승인 게이트(gatekeeper)를 타지 않는다.** 게이트의 보증은 「승인 없이는 **클러스터 상태**가
   바뀌지 않는다」이고(values V3), commit status는 클러스터 밖 GitHub의 추가 전용(append-only)
