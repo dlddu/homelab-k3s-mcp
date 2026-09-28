@@ -5,7 +5,7 @@
 - AC2: 스코프 제한 (PRD: github_app_installation_token)
 - AC3: 미설정 시 graceful 거부 (PRD: github_app_installation_token)
 - AC4: 베이스 키 비노출 (PRD: github_app_installation_token)
-- AC5: commit status 쓰기 권한 배제 (읽기는 발급) (PRD: github_app_installation_token)
+- AC5: 필수 검사 쓰기 권한 배제 — statuses·checks (읽기는 발급) (PRD: github_app_installation_token)
 
 ## 테스트 시나리오
 
@@ -78,3 +78,22 @@
   설치 권한 조회 500 모드 · `DELETE /installation/token`)이 그 파일과 같은 PR 로 착지했다.
   Go 단위가 `httptest` 상류에서 보는 것을 e2e 는 배포된 서버와 github-mock 의 요청 기록에서
   본다
+
+### 시나리오 6: checks 쓰기는 발급되지 않고 읽기는 발급된다
+- **사전 조건**: github-mock이 (a) 설치 권한 조회 `GET /app/installations/67890`에 `checks: write`를
+  포함한 권한 목록을 돌려주고, (b) 받은 요청을 돌려주는 기록 엔드포인트를 가진다. (c) 토큰 발급
+  응답에 `checks: write`를 섞어 돌려주는 모드를 켤 수 있다. (d) 설치 권한 목록에 `statuses: write`와
+  `checks: write`를 함께 싣는 모드를 켤 수 있다
+- **실행 단계**: ① `permissions={checks: write}`, `{contents: read, checks: write}`로 각각 호출.
+  ② `permissions={checks: read}`로 호출. ③ 인자 없이 호출. ④ (c) 모드에서
+  `permissions={contents: read}`로 호출. ⑤ (d) 모드에서 인자 없이 호출
+- **기대 결과**: ① 둘 다 check run 쓰기를 행사하지 않는다고 알리는 도구 에러, 발급 요청 0.
+  ② 발급되고 응답 `# Permissions:` 주석이 `checks=read`. ③ 발급 요청 본문에 `permissions`가 명시돼
+  있고 `checks`가 `read`이며, 응답 주석도 `checks=read`. ④ `DELETE /installation/token` 요청 1회,
+  도구 에러, 직렬화한 결과에 발급된 토큰 문자열 없음. ⑤ 발급 요청 본문에 `statuses`·`checks` 둘 다
+  `read`
+- **검증 AC**: AC5
+- **자동화**: (미작성) — 2026-09-28 에 AC5 가 배제 대상을 `checks` 로 넓히며 생긴 시나리오이고, 제품
+  구현이 아직 `statuses` 만 본다(`doc-tracker` ⏳ 구현 대기). 설치 권한 조회 실패(시나리오 5 ④)는
+  권한 종류와 무관한 경로라 여기서 반복하지 않는다. 시나리오 5 의 github-mock 노브(요청 기록 ·
+  응답 모드)를 `checks` 로 넓혀 쓰는 것이 예정된 형태다
