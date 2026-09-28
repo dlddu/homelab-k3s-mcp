@@ -11,12 +11,13 @@ import asyncio
 
 from mcp import ClientSession
 
-from _helpers import base_url, open_session, parse_env_resource, wait_for_healthz
-
-
-# Must match GITHUB_APP_INSTALLATION_ID in the CI "Create test GitHub App secret"
-# step, which is the installation id the mock embeds in the issued token.
-EXPECTED_INSTALLATION_ID = "67890"
+from _helpers import (
+    GITHUB_APP_INSTALLATION_ID,
+    base_url,
+    open_session,
+    parse_env_resource,
+    wait_for_healthz,
+)
 
 
 async def test_github_app_installation_token_ac4_private_key_not_exposed(
@@ -46,7 +47,7 @@ async def test_github_app_installation_token_ac4_private_key_not_exposed(
     assert "eyJ" not in serialized, serialized
 
     env_text, _ = parse_env_resource(result)
-    assert f"GITHUB_TOKEN=ghs_mock_{EXPECTED_INSTALLATION_ID}" in env_text, env_text
+    assert f"GITHUB_TOKEN=ghs_mock_{GITHUB_APP_INSTALLATION_ID}" in env_text, env_text
 
 
 async def run() -> None:
