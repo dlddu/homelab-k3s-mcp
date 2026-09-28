@@ -76,4 +76,5 @@
   `checks`는 2026-09-28 에 배제 대상으로 들어왔다. 그날 실측으로 설치에는 `checks: read`만 있다
   (`checks: read` 발급 성공 · `checks: write` 요청은 GitHub 422 not granted) — 그래서 이 확장이
   오늘 호출자에게 바꾸는 것도 0이고, 막는 것은 누군가 App에 `checks: write`를 더하는 순간이다.
-  같은 이유로 `checks: write`는 이 확장이 운영 파드에 **배포된 뒤에만** App에 부여한다.
+  같은 날 이 확장이 운영 파드에 배포됐고(이미지 `597e0bf`), App에는 `checks: write`를 **부여하지 않는다** —
+  이 서버에는 check run을 쓰는 도구가 없다.
