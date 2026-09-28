@@ -93,7 +93,14 @@
   도구 에러, 직렬화한 결과에 발급된 토큰 문자열 없음. ⑤ 발급 요청 본문에 `statuses`·`checks` 둘 다
   `read`
 - **검증 AC**: AC5
-- **자동화**: (미작성) — 2026-09-28 에 AC5 가 배제 대상을 `checks` 로 넓히며 생긴 시나리오이고, 제품
-  구현이 아직 `statuses` 만 본다(`doc-tracker` ⏳ 구현 대기). 설치 권한 조회 실패(시나리오 5 ④)는
-  권한 종류와 무관한 경로라 여기서 반복하지 않는다. 시나리오 5 의 github-mock 노브(요청 기록 ·
-  응답 모드)를 `checks` 로 넓혀 쓰는 것이 예정된 형태다
+- **자동화**: Go 단위 `github_test.go::TestGitHubTokenRejectsChecksWrite`(①),
+  `TestGitHubTokenAllowsChecksRead`(②), `TestGitHubTokenDefaultDowngradesChecksToRead`(③),
+  `TestGitHubTokenRevokesTokenCarryingChecksWrite`(④),
+  `TestGitHubTokenDefaultDowngradesStatusesAndChecksTogether`(⑤).
+  통합 e2e 는 `tests/integration/github_app_installation_token_ac5_checks.py` 가 다섯 단계를
+  그대로 단언한다 — 시나리오 5 의 github-mock 노브(요청 기록 · `installation_permissions` ·
+  `mint_extra_permissions`)가 임의 권한 이름을 받는 일반형 dict 라 새 픽스처 없이 `checks` 로
+  넓혀 쓴다. 설치 권한 조회 실패(시나리오 5 ④)는 권한 종류와 무관한 경로라 여기서 반복하지
+  않으므로, 그 자리가 ④ 반환 토큰 폐기 · ⑤ 두 권한 동시 강등으로 채워져 단계 수는 같고 축만
+  다르다. ⑤ 는 자매 파일이 볼 수 없는 자리다 — 시나리오 5 ③ 과 여기 ③ 은 배제 대상을 하나만
+  싣기 때문에 첫 일치에서 멈추는 서버도 둘 다 통과한다
