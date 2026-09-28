@@ -58,8 +58,9 @@ App에 `statuses` 권한을 **먼저** 부여하면, 그 순간부터 `permissio
   않는다.
 - **status 조회·목록·삭제는 다루지 않는다.** GitHub API에 status 삭제는 없고, 조회는
   `github_app_installation_token`에서 `statuses: read` 토큰을 받아 한다(그 PRD AC5).
-- **check run(`checks` 권한)은 다루지 않는다.** 다른 API·다른 권한이며, 그 권한을 토큰 도구에서
-  배제할지는 이 PRD가 정하지 않는다(`doc-tracker/` 미결 사항에 등재).
+- **check run(`checks` 권한)은 다루지 않는다.** 다른 API·다른 권한이다. 토큰 도구에서 `checks: write`
+  를 배제하는 것은 그 PRD AC5 가 정한다(2026-09-28 — statuses 와 같은 위조 경로라 한 AC 로 넓혔다).
+  check run 쓰기를 좁은 동작으로 행사하는 도구는 두지 않는다.
 
 ## Acceptance Criteria
 
