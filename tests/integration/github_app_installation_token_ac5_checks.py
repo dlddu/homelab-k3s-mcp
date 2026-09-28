@@ -4,14 +4,6 @@
 실행 대상: primary
 병렬 레인: github-app
 
-The sibling file github_app_installation_token_ac5.py covers the same AC on the
-``statuses`` axis. Both are needed because the product exercises the exclusion
-through a *set* (``excludedWritePermissions``): a server that special-cased
-``statuses`` and forgot the loop would keep that file green. The two live in one
-lane on purpose — they drive the same github-mock knobs through
-``/_admin/config``, so running them concurrently would let one file's reset wipe
-the other's fixture mid-case.
-
 EXPECTED_INSTALLATION_ID must match GITHUB_APP_INSTALLATION_ID in the CI
 "Create test GitHub App secret" step, which is the installation id the mock
 embeds in the issued token.
@@ -76,12 +68,8 @@ def mint_body() -> dict[str, Any]:
 async def test_sc6_explicit_checks_write_is_refused(session: ClientSession) -> None:
     """시나리오 6 ① — an explicit ``checks: write`` never reaches the mint call.
 
-    The refusal has to say that no tool here exercises check run writes, because
-    unlike ``statuses`` there is no narrow action to redirect the caller to — a
-    message shaped like the statuses one would send them looking for a tool that
-    does not exist. Zero recorded mint requests is the load-bearing half: a
-    server that asked for the write scope and then discarded the answer would
-    still be wrong.
+    Zero recorded mint requests is the load-bearing half: a server that asked
+    for the write scope and then discarded the answer would still be wrong.
     """
     for arguments in (
         {"permissions": {"checks": "write"}},
@@ -154,14 +142,7 @@ async def test_sc6_token_carrying_checks_write_is_revoked(
 async def test_sc6_both_excluded_permissions_are_downgraded(
     session: ClientSession,
 ) -> None:
-    """시나리오 6 ⑤ — a grant carrying both write scopes is downgraded in full.
-
-    This is the case that separates a loop over the exclusion set from a chain
-    of two ifs where the first one returns early. Neither ③ here nor its
-    statuses twin in the sibling file can see that difference: each of them puts
-    exactly one excluded scope in the grant, so a server that stops after the
-    first match still passes both.
-    """
+    """시나리오 6 ⑤ — a grant carrying both write scopes is downgraded in full."""
     reset_mock(installation_permissions={"statuses": "write", "checks": "write"})
     result = await session.call_tool("github_app_installation_token", {})
     assert result.isError is False, result
