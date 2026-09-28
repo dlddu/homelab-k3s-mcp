@@ -66,6 +66,10 @@ EXPECTED_TOOLS = {
     "session_write",
 }
 
+# Must match GITHUB_APP_INSTALLATION_ID in the CI "Create test GitHub App secret"
+# step, which is the installation id the mock embeds in the issued token.
+GITHUB_APP_INSTALLATION_ID = "67890"
+
 
 def base_url() -> str:
     if len(sys.argv) > 1 and sys.argv[1]:

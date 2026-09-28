@@ -3,10 +3,6 @@
 검증 시나리오: test-github-app-installation-token.md#시나리오 6
 실행 대상: primary
 병렬 레인: github-app
-
-EXPECTED_INSTALLATION_ID must match GITHUB_APP_INSTALLATION_ID in the CI
-"Create test GitHub App secret" step, which is the installation id the mock
-embeds in the issued token.
 """
 
 from __future__ import annotations
@@ -19,11 +15,16 @@ from typing import Any
 import httpx
 from mcp import ClientSession
 
-from _helpers import base_url, open_session, parse_env_resource, wait_for_healthz
+from _helpers import (
+    GITHUB_APP_INSTALLATION_ID,
+    base_url,
+    open_session,
+    parse_env_resource,
+    wait_for_healthz,
+)
 
 
-EXPECTED_INSTALLATION_ID = "67890"
-MINT_PATH = f"/app/installations/{EXPECTED_INSTALLATION_ID}/access_tokens"
+MINT_PATH = f"/app/installations/{GITHUB_APP_INSTALLATION_ID}/access_tokens"
 REVOKE_PATH = "/installation/token"
 
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
@@ -134,7 +135,7 @@ async def test_sc6_token_carrying_checks_write_is_revoked(
 
     revocations = recorded("DELETE", REVOKE_PATH)
     assert len(revocations) == 1, revocations
-    minted = f"ghs_mock_{EXPECTED_INSTALLATION_ID}"
+    minted = f"ghs_mock_{GITHUB_APP_INSTALLATION_ID}"
     assert revocations[0]["authorization"] == f"Bearer {minted}", revocations
     assert minted not in result.model_dump_json(), result
 

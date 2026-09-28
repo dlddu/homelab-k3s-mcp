@@ -11,12 +11,13 @@ import asyncio
 
 from mcp import ClientSession
 
-from _helpers import base_url, open_session, parse_env_resource, wait_for_healthz
-
-
-# Must match GITHUB_APP_INSTALLATION_ID in the CI "Create test GitHub App secret"
-# step, which is the installation id the mock embeds in the issued token.
-EXPECTED_INSTALLATION_ID = "67890"
+from _helpers import (
+    GITHUB_APP_INSTALLATION_ID,
+    base_url,
+    open_session,
+    parse_env_resource,
+    wait_for_healthz,
+)
 
 
 async def test_github_app_installation_token_ac2_scope_restriction(
@@ -38,7 +39,7 @@ async def test_github_app_installation_token_ac2_scope_restriction(
     )
     assert scoped.isError is False, scoped
     env_text, _ = parse_env_resource(scoped)
-    assert f"GITHUB_TOKEN=ghs_mock_{EXPECTED_INSTALLATION_ID}" in env_text, env_text
+    assert f"GITHUB_TOKEN=ghs_mock_{GITHUB_APP_INSTALLATION_ID}" in env_text, env_text
     assert "# Repository selection: selected" in env_text, env_text
     assert "# Permissions: contents=read" in env_text, env_text
     assert "metadata=read" not in env_text, env_text

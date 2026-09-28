@@ -18,16 +18,13 @@ from typing import Any
 import httpx
 from mcp import ClientSession
 
-from _helpers import base_url, open_session, wait_for_healthz
+from _helpers import GITHUB_APP_INSTALLATION_ID, base_url, open_session, wait_for_healthz
 
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
 
-# Must match GITHUB_APP_INSTALLATION_ID in the CI "Create test GitHub App secret"
-# step; the mock embeds it in the token it issues.
-INSTALLATION_ID = "67890"
-MINT_PATH = f"/app/installations/{INSTALLATION_ID}/access_tokens"
+MINT_PATH = f"/app/installations/{GITHUB_APP_INSTALLATION_ID}/access_tokens"
 REVOKE_PATH = "/installation/token"
-MINTED_TOKEN = f"ghs_mock_{INSTALLATION_ID}"
+MINTED_TOKEN = f"ghs_mock_{GITHUB_APP_INSTALLATION_ID}"
 
 REPOSITORY = "test"
 EXPECTED_MINT_BODY = {
