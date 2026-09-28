@@ -276,6 +276,155 @@ func TestGitHubTokenRevokesTokenCarryingStatusesWrite(t *testing.T) {
 	}
 }
 
+func TestGitHubTokenRejectsChecksWrite(t *testing.T) {
+	cases := []struct {
+		name        string
+		permissions map[string]any
+	}{
+		{
+			name:        "alone",
+			permissions: map[string]any{"checks": "write"},
+		},
+		{
+			name:        "alongside another permission",
+			permissions: map[string]any{"contents": "read", "checks": "write"},
+		},
+		{
+			name:        "mixed case",
+			permissions: map[string]any{"checks": "WRITE"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeGitHub{installation: map[string]any{"contents": "read"}}
+			c := newTestClient(t, fake)
+
+			tok, err := c.CreateInstallationToken(context.Background(), nil, tc.permissions)
+			if err == nil {
+				t.Fatalf("CreateInstallationToken = %+v, want an error", tok)
+			}
+			if !strings.Contains(err.Error(), "check run") {
+				t.Errorf("error = %q, want it to say this server does not exercise check run writes", err)
+			}
+			if strings.Contains(err.Error(), "github_commit_status_create") {
+				t.Errorf("error = %q, want the checks refusal not to point at the commit status tool", err)
+			}
+			if got := len(fake.requests); got != 0 {
+				t.Errorf("upstream saw %d requests (%+v), want 0", got, fake.requests)
+			}
+		})
+	}
+}
+
+func TestGitHubTokenAllowsChecksRead(t *testing.T) {
+	fake := &fakeGitHub{}
+	c := newTestClient(t, fake)
+
+	tok, err := c.CreateInstallationToken(context.Background(), nil, map[string]any{"checks": "read"})
+	if err != nil {
+		t.Fatalf("CreateInstallationToken: %v", err)
+	}
+	if got := permissionLevel(tok.Permissions, "checks"); got != "read" {
+		t.Errorf("minted checks = %q, want read", got)
+	}
+	if got := fake.mintCount(); got != 1 {
+		t.Errorf("mint requests = %d, want 1", got)
+	}
+	if got := fake.countOf(http.MethodGet, "/app/installations/42"); got != 0 {
+		t.Errorf("installation lookups = %d, want 0", got)
+	}
+}
+
+func TestGitHubTokenDefaultDowngradesChecksToRead(t *testing.T) {
+	fake := &fakeGitHub{installation: map[string]any{
+		"contents": "write",
+		"metadata": "read",
+		"checks":   "write",
+	}}
+	c := newTestClient(t, fake)
+
+	tok, err := c.CreateInstallationToken(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("CreateInstallationToken: %v", err)
+	}
+
+	if got := fake.mintCount(); got != 1 {
+		t.Fatalf("mint requests = %d, want 1", got)
+	}
+	sent, ok := fake.bodyOf(http.MethodPost, "/app/installations/42/access_tokens")["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("mint body = %+v, want an explicit permissions map",
+			fake.bodyOf(http.MethodPost, "/app/installations/42/access_tokens"))
+	}
+	if got := permissionLevel(sent, "checks"); got != "read" {
+		t.Errorf("requested checks = %q, want read", got)
+	}
+	if got := permissionLevel(sent, "contents"); got != "write" {
+		t.Errorf("requested contents = %q, want write — the downgrade must not double as a scope change", got)
+	}
+	if got := permissionLevel(tok.Permissions, "checks"); got != "read" {
+		t.Errorf("minted checks = %q, want read", got)
+	}
+}
+
+func TestGitHubTokenDefaultDowngradesStatusesAndChecksTogether(t *testing.T) {
+	fake := &fakeGitHub{installation: map[string]any{
+		"contents": "write",
+		"metadata": "read",
+		"statuses": "write",
+		"checks":   "write",
+	}}
+	c := newTestClient(t, fake)
+
+	tok, err := c.CreateInstallationToken(context.Background(), nil, nil)
+	if err != nil {
+		t.Fatalf("CreateInstallationToken: %v", err)
+	}
+
+	if got := fake.mintCount(); got != 1 {
+		t.Fatalf("mint requests = %d, want 1", got)
+	}
+	sent, ok := fake.bodyOf(http.MethodPost, "/app/installations/42/access_tokens")["permissions"].(map[string]any)
+	if !ok {
+		t.Fatalf("mint body = %+v, want an explicit permissions map",
+			fake.bodyOf(http.MethodPost, "/app/installations/42/access_tokens"))
+	}
+	for _, name := range []string{"statuses", "checks"} {
+		if got := permissionLevel(sent, name); got != "read" {
+			t.Errorf("requested %s = %q, want read — downgrading one excluded permission must not skip the other",
+				name, got)
+		}
+		if got := permissionLevel(tok.Permissions, name); got != "read" {
+			t.Errorf("minted %s = %q, want read", name, got)
+		}
+	}
+}
+
+func TestGitHubTokenRevokesTokenCarryingChecksWrite(t *testing.T) {
+	fake := &fakeGitHub{
+		installation:      map[string]any{"contents": "read"},
+		mintedPermissions: map[string]any{"contents": "read", "checks": "write"},
+	}
+	c := newTestClient(t, fake)
+
+	tok, err := c.CreateInstallationToken(context.Background(), nil, map[string]any{"contents": "read"})
+	if err == nil {
+		t.Fatalf("CreateInstallationToken = %+v, want an error", tok)
+	}
+	if !strings.Contains(err.Error(), "checks: write") {
+		t.Errorf("error = %q, want it to name the permission that came back", err)
+	}
+	if got := fake.countOf(http.MethodDelete, "/installation/token"); got != 1 {
+		t.Errorf("revocations = %d, want 1", got)
+	}
+	if strings.Contains(err.Error(), "ghs_mock_42") {
+		t.Errorf("error leaks the revoked token: %q", err)
+	}
+	if tok != nil {
+		t.Errorf("token = %+v, want nil", tok)
+	}
+}
+
 // TestCreateInstallationTokenNeverExposesSigningKey covers
 // github_app_installation_token AC4 (베이스 키 비노출). The RSA private key — and
 // the app JWT minted from it that authenticates the mint request — are
