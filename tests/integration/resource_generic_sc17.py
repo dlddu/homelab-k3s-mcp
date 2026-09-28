@@ -10,13 +10,13 @@ Go 단위가 이 계약의 조각들을 이미 단언한다 — ``internal/mcp/r
 관측되지 않는다. 이 파일이 재는 것이 그 자리다.
 
 **primary 에 (b) 의 env 를 세울 수 없는 두 번째 이유.** ``RESOURCE_GATED_KINDS`` 를 primary 에
-세우면 같은 픽스처 CRD 를 읽는 ``resource_generic_ac1.py`` 의 전제가 흔들린다. 그래서 이미 서
+세우면 같은 픽스처 CRD 를 읽는 ``resource_generic_sc1.py`` 의 전제가 흔들린다. 그래서 이미 서
 있는 이 변형(``tests/k8s/kind/gatekeeper-variant.yaml``)의 env 한 줄로 세웠다. 이 변형의 SA 는 primary 와
 **같은** ``cluster-admin`` 바인딩이므로(``k8s/rbac.yaml``, 2026-09-14 개정), (d) 의 「``watch``
 는 이제 부여되어 403 이 아니다」도 운영과 같은 권한 위에서 관측된다.
 
 **미승인은 사람 없이 만든다 — 이 변형의 ``AUTO_REJECT`` 모드로.** 이 배포는 ``GATEKEEPER_USER_ID``
-를 물고 있어 gatekeeper 의 자동 응답 모드가 실제로 발화한다(그래서 ``approval_gate_ac9.py`` 가
+를 물고 있어 gatekeeper 의 자동 응답 모드가 실제로 발화한다(그래서 ``approval_gate_sc9.py`` 가
 여기서 돈다). 판정을 직접 내리는 댄스(``wait_for_pending`` → ``decide``)를 쓰지 않는 것은 이
 배포의 ``GATEKEEPER_TIMEOUT_SECONDS`` 가 5 초라, 호출마다 그 5 초 창 안에서 폴링과 판정을 끝내야
 하는 경주를 만들기 때문이다. 자동 거부는 그 창을 없앤다 — **그리고 기록은 그대로 남아** 화면
@@ -26,7 +26,7 @@ Go 단위가 이 계약의 조각들을 이미 단언한다 — ``internal/mcp/r
 
 **토큰은 픽스처가 박는 상수다.** 시나리오가 말하는 「고유 난수」의 요점은 매 실행 새로 뽑히는
 것이 아니라 **그 문자열이 이 레포의 다른 어디에도 없어서**, 어떤 응답에서 발견되면 그것이 이
-Secret 에서 새어 나온 것이라고 단정할 수 있다는 데 있다. ``resource_generic_ac16.py`` 의
+Secret 에서 새어 나온 것이라고 단정할 수 있다는 데 있다. ``resource_generic_sc16.py`` 의
 ``TOKEN`` 과 같은 방식이다.
 
 **이 파일이 스스로 세우는 대상의 모양.** 이미지는 이미 클러스터에 있는
@@ -93,7 +93,7 @@ PROXY_PATH = "/token"
 #: 노드 프록시로 같은 파일을 읽으려는 호출. kubelet 의 ``/exec`` 은 POST 를 받으므로 쌍의
 #: verb 는 ``create`` 다 — 시나리오가 「쌍이 ``create nodes/proxy`` 로만 기록된다」고 적은
 #: 자리다. 이 호출도 승인 없이 거부되므로 kubelet 이 실제로 무엇을 답하는지는 여기서 재지
-#: 않는다(그 자리는 ``resource_generic_ac15.py`` 다).
+#: 않는다(그 자리는 ``resource_generic_sc15.py`` 다).
 NODE_EXEC_PATH = f"/exec/{NAMESPACE}/{POD}/{CONTAINER}?command=cat&command={TOKEN_PATH}"
 
 #: 승인 화면의 쌍 줄. ``approvalContext`` 가 이 철자로 쓴다(``<verb> on <resource>``).
@@ -131,7 +131,7 @@ def _verbatim(value: str) -> str:
 
     ``arguments:`` 블록은 인자를 **JSON 그대로** 싣는다. 개행이나 따옴표를 담은 값은 원문
     철자로는 그 블록에 없으므로, 원문으로 찾으면 「전문이 실렸는가」가 값의 모양에 따라 거짓
-    실패한다(``approval_gate_ac3.py`` 의 같은 헬퍼).
+    실패한다(``approval_gate_sc3.py`` 의 같은 헬퍼).
     """
     return json.dumps(value)[1:-1]
 
@@ -302,7 +302,7 @@ async def test_the_secret_list_passes_ungated_and_carries_no_values(
         assert TOKEN not in getattr(block, "text", ""), "토큰이 표 텍스트에 실려 나왔다"
 
     # 게이트는 배포 넷이 공유하므로 「요청 수가 그대로다」로 재지 않는다 — 이 호출이 만들었을
-    # 요청만 골라 본다(``resource_generic_ac16.py`` 의 같은 자리와 같은 독법).
+    # 요청만 골라 본다(``resource_generic_sc16.py`` 의 같은 자리와 같은 독법).
     offenders = [
         row
         for row in list_requests(gate)

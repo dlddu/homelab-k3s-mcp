@@ -4,7 +4,7 @@
 # deployment env rather than of anything gatekeeper does, and env is per
 # deployment (the same reason gatekeeper-variant.yaml exists). They cannot be
 # folded into one deployment and they cannot be produced by mutating an
-# existing one mid-run: approval_gate_ac{2,4,9}.py share the gatekeeper-variant
+# existing one mid-run: approval_gate_sc{2,4,9}.py share the gatekeeper-variant
 # namespace, and restarting it under them would be a cross-file race.
 #
 #  * unreachable  -- GATEKEEPER_BASE_URL points at the container's own discard

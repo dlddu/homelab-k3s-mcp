@@ -8,7 +8,7 @@
 apiserver 로 *어떤 요청을 보냈는지*이고, 그것이 왜 기록 프록시로만 관측되는지는
 `tests/k8s/kind/apiserver-audit-variant.yaml` 머리말이 든다. 이 파일은 그 변형을 따로 띄우고
 자기 포트포워드로 그 배포와 그 프록시의 admin API 에 붙는다
-(`approval_gate_ac1.py`·`resource_generic_ac18.py` 가 각자의 변형에 붙는 것과 같은 형태).
+(`approval_gate_sc1.py`·`resource_generic_sc18.py` 가 각자의 변형에 붙는 것과 같은 형태).
 
 **부재만 세면 공전한다.** "전체 객체 `get` 이 한 번도 없다"는 기록 경로가 죽어 있어도 참이다.
 그래서 같은 창에서 **비민감 종류의 게이트 읽기**(스케일의 Deployment)를 함께 태운다 — 그것은
