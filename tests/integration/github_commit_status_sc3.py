@@ -4,7 +4,7 @@
 실행 대상: primary
 병렬 레인: github-app
 
-로그를 직접 읽는 파일이 자매 `github_app_installation_token_ac5.py` 에 이어 둘째다.
+로그를 직접 읽는 파일이 자매 `github_app_installation_token_sc5.py` 에 이어 둘째다.
 아직 공유 모듈로 빼지 않은 것은 그쪽이 노브(`/_admin/config`)까지 쓰는 반면 이쪽은
 요청 로그만 읽어, 지금 합치면 공유 표면이 두 파일의 합집합이 되기 때문이다.
 """

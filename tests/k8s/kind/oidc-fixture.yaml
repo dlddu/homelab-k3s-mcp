@@ -19,7 +19,7 @@ metadata:
 # local connector. AC2/AC8 need only discovery and the key set, never a login.
 #
 # The password grant below is for test-event-log.md#시나리오 6 (2026-09-21): an
-# expired JWT has to be one this issuer signed, so event_log_ac4_auth_failed.py
+# expired JWT has to be one this issuer signed, so event_log_sc6.py
 # mints one through `POST /token` (grant_type=password, the local connector)
 # and lets it expire. idTokens is short for that reason alone; nothing else in
 # this cluster consumes a dex token. The static client id equals the servers'

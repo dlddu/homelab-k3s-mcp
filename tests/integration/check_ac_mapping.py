@@ -59,6 +59,7 @@ SUBSECTION_COUNT_RES = (
     ("🚫 e2e 예외", re.compile(r"^### 🚫 e2e 예외 \((\d+)\) — 규칙 4 등재", re.MULTILINE)),
 )
 FILE_REF_RE = re.compile(r"`([a-z_0-9]+\.py)`")
+SCENARIO_ID_PARTS_RE = re.compile(r"test-([a-z0-9-]+)\.md#시나리오 (\d+)")
 
 # --- 규칙 8: 테스트 문서(`docs/test-<domain>.md`)의 자동화 필드 -------------------
 DOC_FIELD_RE = re.compile(r"^- \*\*(검증 AC|자동화)\*\*:")
@@ -399,6 +400,18 @@ def main() -> int:
                     f"규칙 5 위반 — {decl.name} 이 실재하지 않는 시나리오 "
                     f"{scenario} 를 선언한다"
                 )
+    for decl in decls:
+        if len(decl.scenarios) != 1:
+            continue
+        match = SCENARIO_ID_PARTS_RE.fullmatch(decl.scenarios[0])
+        if match is None:
+            continue
+        expected = f"{match.group(1).replace('-', '_')}_sc{match.group(2)}.py"
+        if decl.name != expected:
+            problems.append(
+                f"규칙 9 위반 — {decl.name} 은 {decl.scenarios[0]} 전용이므로 "
+                f"이름이 {expected} 여야 한다"
+            )
     for scenario in tracker.rows:
         if scenario not in scenario_set:
             problems.append(
@@ -610,7 +623,7 @@ def main() -> int:
         return 1
 
     print(
-        "\nOK: 규칙 1(중복 전용)·2·3·4·5·6·7·8 위반 없음, 불변식 성립, "
+        "\nOK: 규칙 1(중복 전용)·2·3·4·5·6·7·8·9 위반 없음, 불변식 성립, "
         "러너 배차 누락·케이스 미호출 없음"
     )
     return 0

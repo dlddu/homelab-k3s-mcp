@@ -8,7 +8,7 @@
 `GATEKEEPER_TIMEOUT_SECONDS` 가 지난다」를 열네 번 관측하는데, primary 의 기본 타임아웃은
 300 초라 그 열넷이 한 시간을 넘는다. 타임아웃은 env 라 배포당이므로, 5 초짜리 배포를
 `tests/k8s/kind/gate-refusal-variant.yaml` 에 따로 세우고 이 파일이 자기 포트포워드로 붙는다
-(`resource_generic_ac18.py` 가 좁은 RBAC 변형에 붙는 것과 같은 형태). 그 배포의 게이트
+(`resource_generic_sc18.py` 가 좁은 RBAC 변형에 붙는 것과 같은 형태). 그 배포의 게이트
 시크릿에는 `GATEKEEPER_USER_ID` 가 없다 — 담당자가 없으면 gatekeeper 의 자동 응답 모드가
 걸리지 않아 아무도 판정하지 않는다. 시나리오의 「자동 응답을 끄고 판정하지 않는다」가 이
 구성이다.
@@ -279,7 +279,7 @@ async def _refused(session, gate: str, tool: str, args: dict, marker: str) -> di
 
     거부 문면은 단언하지 않는다 — 클라이언트의 폴링 마감과 gatekeeper 의 만료가 같은
     `GATEKEEPER_TIMEOUT_SECONDS` 에서 파생해 어느 쪽이 먼저 닫는지가 경주이기 때문이다
-    (`approval_gate_ac4.py` (b) 와 같은 이유). 계약은 셋이 진다: 승인 요청이 실제로
+    (`approval_gate_sc4.py` (b) 와 같은 이유). 계약은 셋이 진다: 승인 요청이 실제로
     만들어졌다 · 거부가 타임아웃을 기다린 뒤에 왔다 · 그 기록이 EXPIRED 다.
     """
     started = time.monotonic()

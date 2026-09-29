@@ -6,8 +6,8 @@
 ``SESSION_PLATFORM_ENDPOINT`` is one of the endpoints this variant leaves
 unattached: the only place in the repo that sets it is the base deployment
 (``k8s/deployment.yaml``), which this variant does not use -- so the AC's
-premise holds here and nowhere else. ``session_list_ac3.py`` and
-``session_read_ac4.py`` are the precedents for this seat; all three tools share
+premise holds here and nowhere else. ``session_list_sc3.py`` and
+``session_read_sc4.py`` are the precedents for this seat; all three tools share
 one ``Unavailable`` service, so this file asserts the refusal is scoped to
 *this* tool rather than assuming it.
 

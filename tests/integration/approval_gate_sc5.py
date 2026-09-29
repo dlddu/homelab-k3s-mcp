@@ -7,7 +7,7 @@
 `GATEKEEPER_TIMEOUT_SECONDS=5` 라 만료·타임아웃 경로를 초 단위로 관측할 수 있기
 때문이다(primary 는 기본 300초다). 미설정·연결 실패 셋은 env 가 배포당이라
 그 배포로는 만들 수 없어, `tests/k8s/kind/gate-broken-variant.yaml` 의 전용
-배포 셋에 이 파일 자신의 포트포워드로 닿는다 — `github_commit_status_ac4.py`
+배포 셋에 이 파일 자신의 포트포워드로 닿는다 — `github_commit_status_sc4.py`
 가 `commit-status-variant` 에 닿는 것과 같은 형태다.
 
 **409·5xx 를 만드는 수단.** 실물 gatekeeper 는 자기 고유 인덱스
@@ -22,7 +22,7 @@ MCP 의 `randomExternalID` 는 16바이트 난수라 클라이언트가 스스�
 
 **만료와 「판정 없음」이 두 경로인 이유.** 이 배포에서 클라이언트의 폴링 마감과
 gatekeeper 의 만료는 같은 `GATEKEEPER_TIMEOUT_SECONDS` 에서 파생해 사실상 같은
-순간에 닫히고, 어느 쪽이 먼저인지는 타이머 경주다(`approval_gate_ac4.py` (b) 가
+순간에 닫히고, 어느 쪽이 먼저인지는 타이머 경주다(`approval_gate_sc4.py` (b) 가
 같은 사실을 적는다). 그래서 둘을 **서로 다른 관측면**으로 가른다 — 「판정 없음」은
 *클라이언트가* 판정 없이 마감했다는 것(거부 지연 ≥ 타임아웃, 판정 없음)이고,
 `EXPIRED` 는 *gatekeeper 기록이* 만료로 전이했다는 것이다. 도구 에러의 문면은
@@ -98,7 +98,7 @@ EXPIRY_BUDGET = VARIANT_TIMEOUT_SECONDS + 8
 
 BROKEN_NAMESPACE = "homelab-k3s-mcp-gate-broken"
 #: 이 레인이 도는 동안 열려 있는 다른 포워드(_gatekeeper 8095·8096, ci.yml 의 그룹
-#: 포워드 8080·8088·8089·8090·8092·8093, github_commit_status_ac4 18084,
+#: 포워드 8080·8088·8089·8090·8092·8093, github_commit_status_sc4 18084,
 #: _session_platform 18083, platform_auth_safety 18080-18082)와 겹치지 않는 자리.
 BROKEN_VARIANTS = {
     TARGET_UNREACHABLE: ("homelab-k3s-mcp-gate-unreachable", 18085),

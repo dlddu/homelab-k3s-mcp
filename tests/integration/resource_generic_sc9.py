@@ -12,8 +12,8 @@ json patch 의 값은 승인 화면에서 가려진다(AC10 의 마스킹이 jso
 
 **대상은 이 파일이 매 실행 새로 세우는 Deployment(`DEPLOYMENT`)다.** 재시작은 파드를 갈아
 끼우고 패치들은 어노테이션을 남기므로, 공용 `workload-fixture` 를 쓰면 그것의 spec·어노테이션을
-대조하는 `resource_generic_ac4.py` 와 같은 레인에 묶여야 한다. 재시작 요청을 대상 이름으로 집는
-것도 그래서다 — 재시작 어노테이션 키는 `approval_gate_ac3.py` 의 재시작 화면에도 나온다.
+대조하는 `resource_generic_sc4.py` 와 같은 레인에 묶여야 한다. 재시작 요청을 대상 이름으로 집는
+것도 그래서다 — 재시작 어노테이션 키는 `approval_gate_sc3.py` 의 재시작 화면에도 나온다.
 """
 
 from __future__ import annotations

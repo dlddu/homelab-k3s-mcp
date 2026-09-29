@@ -29,7 +29,7 @@
   (`TestWriteThenReadRecoversOutput` — 페이로드가 바이트 그대로 전달되고, 그 산출물은 write
   응답이 아니라 **뒤이은 read**로만 관측된다. 출력을 담을 필드가 `WriteResult`에 아예 없는
   것이 "완료를 기다리지 않는다"의 구조적 표현이다) + 통합
-  `tests/integration/session_write_ac1.py` — 실 워크로드가 명령을 실제로 실행하는지는 여기서만
+  `tests/integration/session_write_sc1.py` — 실 워크로드가 명령을 실제로 실행하는지는 여기서만
   관측된다
 
 ### 시나리오 2: 상태 분기와 그 노출
@@ -42,7 +42,7 @@
   (`TestWriteDisclosesStateBranch` — `active`/`idle->active->write`/`snapshot->restore->write`
   3분기가 그대로 전달되고 처리 후 상태가 `active`) + `internal/server/mcp_test.go`
   (`TestSessionWriteReturnsBranchAndSession`) + 통합 (미작성)
-  `tests/integration/session_write_ac2.py` — 복원이 **실제 파드를 만드는지**는 여기서만
+  `tests/integration/session_write_sc2.py` — 복원이 **실제 파드를 만드는지**는 여기서만
   관측된다
 
 ### 시나리오 3: destructiveHint 광고
@@ -52,7 +52,7 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `internal/server/mcp_test.go`
   (`TestToolsListAdvertisesSessionWrite` — 네 어노테이션 전부와 `required: [id, payload]`) +
-  통합 `tests/integration/session_write_ac3.py`
+  통합 `tests/integration/session_write_sc3.py`
   (`tools/list` 메타데이터만 읽고 파괴 동작은 실행하지 않는다)
 
 ### 시나리오 4: 거부 사유 구분
@@ -71,7 +71,7 @@
   — 네 상태코드에 **같은 오류 본문**을 물려 놓고도 네 메시지가 쌍쌍이 달라야 한다: 제어면이
   문구를 달리 써 줘서 구별되는 것이 아님을 못박는다) + `internal/server/mcp_test.go`
   (`TestSessionWriteSurfacesRefusalsDistinctly`) + 통합 (미작성)
-  `tests/integration/session_write_ac4.py`
+  `tests/integration/session_write_sc4.py`
 
 ### 시나리오 5: 미설정 시 도구 에러
 - **사전 조건**: `SESSION_PLATFORM_ENDPOINT` 미설정
@@ -82,4 +82,4 @@
   (`TestSessionWriteUnavailableReturnsToolError` — 거부가 이 도구에 갇히고 직후 `ping`은
   여전히 `pong`) + `internal/sessionplatform/sessionplatform_test.go`
   (`TestUnavailableRefusesWrite`) + 통합
-  `tests/integration/session_write_ac5.py`(`실행 대상: auth-variant`)
+  `tests/integration/session_write_sc5.py`(`실행 대상: auth-variant`)

@@ -82,7 +82,7 @@ spec:
               cpu: 50m
               memory: 16Mi
 ---
-# Non-Deployment workload kinds. resource_generic_ac8.py scales the DaemonSet:
+# Non-Deployment workload kinds. resource_generic_sc8.py scales the DaemonSet:
 # a DaemonSet that really exists makes the refusal observably about the *kind*
 # rather than about the object being absent. Both are list-only targets: no
 # case waits for their pods, so ci.yml needs no extra rollout step.

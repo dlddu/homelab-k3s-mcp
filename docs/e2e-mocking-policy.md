@@ -181,8 +181,8 @@ VAPID 더미와 같은 판정이다.
 | 지점 | 무엇을 태우는가 |
 | --- | --- |
 | `tests/k8s/kind/kustomization.yaml` | 기본 kind 배포. kind 오버레이의 configMapGenerator가 넣는다. |
-| `tests/k8s/kind/gatekeeper-variant.yaml` | 승인 게이트 e2e 전용 배포 변형(`approval_gate_ac{2,4,9}.py`). Deployment의 `env`가 직접 넣는다 — env는 배포당이라 기본 배포의 값을 물려받을 수 없다. |
-| `tests/k8s/kind/gate-broken-variant.yaml` | 승인 게이트 **오구성** e2e 전용 배포 변형 **셋**(`approval_gate_ac5.py`의 연결 실패 · `GATEKEEPER_BASE_URL` 미설정 · `GATEKEEPER_API_KEY` 미설정 경로). 검증 대상은 `gatekeeper.FromEnv()`의 오구성 분기이지 인증이 아니다. 세 Deployment의 `env`가 각각 직접 넣는다 — 같은 이유로 하나로 접을 수 없다. |
+| `tests/k8s/kind/gatekeeper-variant.yaml` | 승인 게이트 e2e 전용 배포 변형(`approval_gate_sc{2,4,9}.py`). Deployment의 `env`가 직접 넣는다 — env는 배포당이라 기본 배포의 값을 물려받을 수 없다. |
+| `tests/k8s/kind/gate-broken-variant.yaml` | 승인 게이트 **오구성** e2e 전용 배포 변형 **셋**(`approval_gate_sc5.py`의 연결 실패 · `GATEKEEPER_BASE_URL` 미설정 · `GATEKEEPER_API_KEY` 미설정 경로). 검증 대상은 `gatekeeper.FromEnv()`의 오구성 분기이지 인증이 아니다. 세 Deployment의 `env`가 각각 직접 넣는다 — 같은 이유로 하나로 접을 수 없다. |
 
 세 지점은 **같은 완화**(`:ci` 이미지의 인증 게이트를 내린다)이고 같은 대체 검증을 공유하므로 한
 행으로 등재한다. 배포가 늘었다고 예외가 는 것이 아니다 — 이 절은 행을 늘리지도 상한을
@@ -280,8 +280,8 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
 1. ~~`tbm_homelab-k3s-mcp-scenario-e2e`가 실물 gatekeeper 이미지·kind 픽스처를 확보한다.~~
    **충족 (2026-09-18).** [PR #106](https://github.com/dlddu/homelab-k3s-mcp/pull/106)이
    실물 `tests/k8s/kind/gatekeeper-fixture.yaml`(`ghcr.io/dlddu/gatekeeper:sha-762fafe` +
-   SQLite PVC)과 배포 변형 `gatekeeper-variant.yaml`, 전용 e2e `approval_gate_ac{2,4,7,8,9}.py`를
-   착지시켰다. **`approval_gate_ac5.py`는 여전히 없다** — 착지분에 AC5는 포함되지 않았다.
+   SQLite PVC)과 배포 변형 `gatekeeper-variant.yaml`, 전용 e2e `approval_gate_sc{2,4,7,8,9}.py`를
+   착지시켰다. **`approval_gate_sc5.py`는 여전히 없다** — 착지분에 AC5는 포함되지 않았다.
    `internal/gatekeeper/gatekeeper.go::randomExternalID`는 여전히 호출마다 난수 ID를 생성하므로,
    단순히 같은 도구를 두 번 부르는 것으로 409 재현이 된다고 가정하지 않는다.
 2. ~~그 소관이 실제 승인 클라이언트를 통과하는 409·5xx 경로의 재현 가능성을 조사하고 요청·응답과
@@ -310,7 +310,7 @@ security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증
    **충족 (2026-09-26, `tbm_homelab-k3s-mcp-scenario-e2e/rct_20260926-0001`) — 이 행은 해소됐고
    위 표에서 뺐다.** B3가 요구하는 해소 증거는 셋이다:
 
-   - **대체물이 실재한다**: `tests/integration/approval_gate_ac5.py` 가 여덟 경로
+   - **대체물이 실재한다**: `tests/integration/approval_gate_sc5.py` 가 여덟 경로
      (`REJECTED`·만료·판정 없음·409·5xx·연결 실패·`GATEKEEPER_BASE_URL` 미설정·
      `GATEKEEPER_API_KEY` 미설정)와 읽기 대조군을 덮는다. 주입기는
      `tests/k8s/kind/gatekeeper-injector.yaml`, 미설정·불통 배포는

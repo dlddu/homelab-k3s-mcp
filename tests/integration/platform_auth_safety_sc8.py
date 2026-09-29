@@ -38,7 +38,7 @@ from _oidc import (
 )
 
 #: 필요한 순간에만 여는 로컬 포트. `ci.yml` 의 그룹 포워드(8080·8088·8089·8090)와
-#: `platform_auth_safety_ac2.py` 의 18080 을 피한다.
+#: `platform_auth_safety_sc2.py` 의 18080 을 피한다.
 OAUTH_ONLY_LOCAL_PORT = 18081
 BOTH_LOCAL_PORT = 18082
 
@@ -222,7 +222,7 @@ async def test_platform_auth_safety_ac8_d_neither_refuses_to_start() -> None:
     종료 코드와 로그를 함께 보는 이유는, 어떤
     이유로든 죽기만 하면 통과하는 단정이 되지 않게 하기 위해서다.
 
-    이 관측은 `platform_auth_safety_ac2.py` 가 「OAuth 배포가 Available 하다 ⇒ 기동 시 OIDC
+    이 관측은 `platform_auth_safety_sc2.py` 가 「OAuth 배포가 Available 하다 ⇒ 기동 시 OIDC
     디스커버리와 JWKS 로드에 성공했다」로 쓰는 추론의 근거이기도 하다 — 그 경로가 실제로
     치명적임을 여기서 본다.
     """

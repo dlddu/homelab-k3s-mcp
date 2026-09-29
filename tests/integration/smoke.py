@@ -14,7 +14,7 @@
 이것은 platform-auth-safety/AC5(서버 수준 graceful degradation)가 **아니다**. 이 배포는
 모든 통합이 구성돼 있어 정상적인 tools/list 가 degradation 에 대해 아무것도 말해 주지
 않는다 — AC5 는 자격증명이 없는 배포에서만 관측되므로 그 전용 파일
-(`platform_auth_safety_ac5.py`)은 auth-variant 에서 돈다.
+(`platform_auth_safety_sc5.py`)은 auth-variant 에서 돈다.
 """
 
 from __future__ import annotations

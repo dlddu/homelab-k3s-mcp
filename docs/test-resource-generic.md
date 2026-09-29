@@ -51,10 +51,10 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 가리켜 파일 전체가 거부된다.
 
 위 목록 중 **HTTP 서빙 파드·attach 대상 파드·난수 토큰 Secret**은 이 파일이 아니라 그것을
-요구하는 e2e가 스스로 세운다(`resource_generic_ac14.py`·`ac15.py`·`ac17.py`). 러너가 파일을
+요구하는 e2e가 스스로 세운다(`resource_generic_sc14.py`·`sc15.py`·`sc17.py`). 러너가 파일을
 자동 발견하므로 그 편이 `ci.yml` 배선을 늘리지 않고, 대상의 수명이 그것을 쓰는 파일 안에서
 끝나 같은 네임스페이스를 보는 다른 파일의 전제를 흔들지 않는다. 시나리오 17의 Secret은
-그래서 `resource_generic_ac17.py`가 세우며, 토큰은 매 실행 새로 뽑는 값이 아니라 **이 레포
+그래서 `resource_generic_sc17.py`가 세우며, 토큰은 매 실행 새로 뽑는 값이 아니라 **이 레포
 어디에도 없는 상수**다 — 어떤 응답에서 발견되면 그것이 그 Secret에서 새어 나온 것이라고
 단정할 수 있다는 것이 「고유」의 쓸모다.
 
@@ -75,7 +75,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   대상별로 좁혀짐(폐기된 `pod_describe`의 이벤트 부분이 이 경로로 대체됨).
   클러스터 스코프 + `namespace` 조합은 무시되지 않고 거부
 - **검증 AC**: AC1
-- **자동화**: 통합 `tests/integration/resource_generic_ac1.py`. Go 단위는 아직 없다 — 계획:
+- **자동화**: 통합 `tests/integration/resource_generic_sc1.py`. Go 단위는 아직 없다 — 계획:
   `resource_test.go::TestListResolvesArbitraryKinds`,
   `TestListRejectsNamespaceOnClusterScoped`
 
@@ -86,7 +86,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **기대 결과**: 도구 응답이 Table 형식(컬럼 헤더 + 행)이고 객체 전문보다 현저히 작음.
   `NAME`/`READY` 등 `kubectl get`에 준하는 컬럼이 보존됨
 - **검증 AC**: AC2
-- **자동화**: 통합 `tests/integration/resource_generic_ac2.py`. Go 단위는 아직 없다 — 계획:
+- **자동화**: 통합 `tests/integration/resource_generic_sc2.py`. Go 단위는 아직 없다 — 계획:
   `resource_test.go::TestListUsesTableAccept`, `TestTableResponseIsSubstantiallySmaller`
 
 ### 시나리오 3: 절단과 이어보기
@@ -95,7 +95,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **기대 결과**: 1회차에 100건 + 절단 표시 + `continue` 토큰. 2회차에 나머지 20건.
   `limit=1000`은 클램프되지 않고 **거부**(시나리오 5의 `tailLines=5001`과 같은 처리)
 - **검증 AC**: AC3
-- **자동화**: 통합 `tests/integration/resource_generic_ac3.py`. 상한 처리는 Go 단위
+- **자동화**: 통합 `tests/integration/resource_generic_sc3.py`. 상한 처리는 Go 단위
   `internal/server/mcp_test.go::TestResourceListLimitDefaultsAndCeiling`이 이미 고정한다
   (기본 100 · 초과 거부) — 통합 쪽은 배포된 서버에서 같은 경계를 다시 재고, 거기에 더해
   `continue` 이어보기가 두 페이지로 전집을 덮는지까지 본다
@@ -108,7 +108,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   없음, 나머지 `spec`/`status`는 온전. `name` 누락 호출은 거부되고 메시지가
   `resource_list`로 먼저 찾으라고 안내함 — 대상 해석 경로가 존재하지 않아야 verb 1:1이 유지됨
 - **검증 AC**: AC4
-- **자동화**: 통합 `tests/integration/resource_generic_ac4.py`. Go 단위는 아직 없다 — 계획:
+- **자동화**: 통합 `tests/integration/resource_generic_sc4.py`. Go 단위는 아직 없다 — 계획:
   `resource_test.go::TestGetStripsNoise`, `TestGetRequiresName`
 
 ### 시나리오 5: 서브리소스 조회
@@ -121,7 +121,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   없어도 동작). `container` 누락이 거부되고 후보 이름이 제시됨. `subresource=scale`이
   현재 레플리카를 반환. 모든 호출이 `get` verb만 행사하므로 승인 요청이 생기지 않음
 - **검증 AC**: AC5
-- **자동화**: 통합 `tests/integration/resource_generic_ac5.py` — 위 여섯 단계와 마지막 절
+- **자동화**: 통합 `tests/integration/resource_generic_sc5.py` — 위 여섯 단계와 마지막 절
   (「승인 요청이 생기지 않음」)을 전부 단정하고, 폐기된 `workload_logs_ac{1,2,3,4}.py`의 단언을
   승계했다. 그 파일들이 단정하지 못한 채 남겼던 「컨테이너가 둘 이상이면 `container`가
   필요하다」는 다중 컨테이너 픽스처가 서면서 이 파일에서 닫혔다. `container` 누락 축은 Go
@@ -139,7 +139,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   61은 거부. `resourceVersion` 이후 변경만 옴. Secret 은 미승인 시 거부되고 승인 후에는
   이벤트가 오되 수·창 상한이 그대로 적용됨
 - **검증 AC**: AC6
-- **자동화**: 통합 `tests/integration/resource_generic_ac6.py` — 창 안의 `MODIFIED`,
+- **자동화**: 통합 `tests/integration/resource_generic_sc6.py` — 창 안의 `MODIFIED`,
   창 상한(61 거부), `resourceVersion` resume, 민감 종류의 미승인 거부·승인 후 수신·창 상한
   유지를 실물 apiserver 와 실물 gatekeeper 로 단언한다. 이벤트 **수** 상한의 발화는 공유
   클러스터에서 비결정적이라 Go 단위에 남기고, 통합은 상한이 응답 계약으로 서 있는 것까지
@@ -175,7 +175,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestMultiDocCreateStopsAndReportsOnFailure`가 승인 전량 선행, 거절/만료/오류 시 호출 0,
   부분 실패의 좌표 보고와 미소비 승인을 검증한다. 같은 파일에서 파싱 전체 선행,
   승인 재사용 거부, 민감 값 마스킹, 자동 승인 표시도 검증한다.
-  **통합 `tests/integration/resource_generic_ac7.py`** 가 그 위에 실물 층을 얹는다 —
+  **통합 `tests/integration/resource_generic_sc7.py`** 가 그 위에 실물 층을 얹는다 —
   단건 생성·같은 이름의 409·2문서의 승인 2건·둘째 거절 시 첫째 객체조차 없음·둘 다 승인
   뒤 실행 409 의 좌표 보고와 무롤백을 실 apiserver 와 실물 gatekeeper 로 관측한다.
   위 Go 테스트는 dispatcher와 HTTP 경계를 검증하며 그 자체로는 실 apiserver·gatekeeper
@@ -196,7 +196,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `internal/mcp/resource_test.go::TestUpdateReplacesWithTheCallersManifest` 가 덮는다.
   레플리카가 실제로 그 수로 수렴하는지와 파드가 그에 맞춰 뜨고 지는지는 apiserver 의
   거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
-  통합은 `tests/integration/resource_generic_ac8.py` — 승인 댄스 뒤 3·0·1 수렴을 status
+  통합은 `tests/integration/resource_generic_sc8.py` — 승인 댄스 뒤 3·0·1 수렴을 status
   폴링으로 잡고, 음수·누락 거부는 「새 승인 요청 0건」과 나란히 고정하며, DaemonSet 거부는
   승인 뒤 사유 문면으로 잰다. `workload_scale_ac{1,2}.py` 는 #72 에서 폐기됐으므로 승계할
   파일은 없고 단언은 새로 저작했다
@@ -217,7 +217,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestRestartPatchTouchesOnlyAnnotation`(서비스에 도달하는 호출자 데이터 본문은 유지한다; API 경계에는 승인 조건만 추가된다),
   `TestRestartPatchIsGatedLikeAnyPatch`. 파드 교체와 `spec.replicas` 보존은 apiserver 의
   거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
-  통합은 `tests/integration/resource_generic_ac9.py` — 네 patchType 각각의 승인·적용,
+  통합은 `tests/integration/resource_generic_sc9.py` — 네 patchType 각각의 승인·적용,
   재시작 패치 뒤 파드 교체(uid 기준), `spec.replicas` 보존, 그 어노테이션 외 무변경을 spec
   전문 비교로 잰다. `workload_restart_ac1.py` 는 #72 에서 폐기됐으므로 승계할 파일은 없고
   단언은 새로 저작했다
@@ -245,7 +245,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `internal/server/mcp_test.go::TestToolsListAdvertisesResourceTools` 가 단언한다.
   지정 객체만 사라지고 같은 레이블의 다른 객체가 남는지, `gracePeriodSeconds` 가 실제로
   반영되는지는 apiserver 의 거동이라 단위 층이 볼 수 없고 통합 쪽 몫이다.
-  통합은 `tests/integration/resource_generic_ac10.py` — 거부 셋이 승인 요청을 만들지 않음을
+  통합은 `tests/integration/resource_generic_sc10.py` — 거부 셋이 승인 요청을 만들지 않음을
   PENDING 카운트로 고정하고, 지정 객체만 사라짐·같은 레이블의 다른 객체 생존을 잰다.
   `gracePeriodSeconds=0` 의 반영은 SIGTERM 을 무시하는 일회용 파드로 잰다 — 기본 유예가
   흘렀다면 30초를 버텼을 행동이 즉시 SIGKILL 로 끝나는 것이 그 값이 apiserver 에 닿았음의
@@ -262,7 +262,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   stdout·stderr 구분 전달과 좌표·컨테이너·명령 전달, 인자 사전 거부(클러스터 호출 0),
   상한 잘림·시간 상한 표시, AC6의 승인 뒤 재생성 거부) · `exec_test.go::TestExecStreamOutcome`
   착지(2026-09-18 — 스트림 종료의 분류 여섯 갈래). 통합
-  `tests/integration/resource_generic_ac11.py` 는 같은 계약을 실물 kubelet 왕복으로
+  `tests/integration/resource_generic_sc11.py` 는 같은 계약을 실물 kubelet 왕복으로
   관측한다(2026-09-19 재저작) — `resource-generic-multi` 파드에서 stdout·stderr 가 갈라져
   오는 것, `container` 누락이 승인 뒤 apiserver 거절로 후보 이름(`chatty`·`quiet`)을 실어
   오는 것, `yes` 의 끝없는 출력이 256KiB 상한에서 잘리고 `stdoutTruncated` 로 표시되는 것.
@@ -290,7 +290,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestCollectionContextTruncatesNamesButNotTheCount`,
   `TestCollectionThatGrewAfterApprovalIsRefused`,
   `TestApprovedCollectionDeleteSendsTheSelectorsUnchanged`). 통합
-  `tests/integration/resource_generic_ac12.py` 는 같은 계약을 실물 apiserver·실물
+  `tests/integration/resource_generic_sc12.py` 는 같은 계약을 실물 apiserver·실물
   gatekeeper 왕복으로 관측한다(2026-09-19 착지) — 승인 화면이 대상 수 5와 다섯 이름을
   싣는 것, 승인 뒤 그 다섯만 사라지고 다른 레이블 2개는 남는 것, `namespace` 누락과 0건
   셀렉터가 **승인 요청조차 만들지 않는** 것, 승인과 실행 사이에 같은 레이블이 하나 늘면
@@ -313,7 +313,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `internal/k8s/attach_test.go` 의 `attachStdinReader` 부분테스트 셋(2026-09-19 착지 — 창이
   열린 동안 EOF 에 닿지 않음, 페이로드를 다 흘린 뒤에도 창이 닫힐 때까지 `Read` 가 답하지 않음,
   빈 `stdin` 도 부재와 달리 창을 지킴). 통합
-  `tests/integration/resource_generic_ac13.py` 는 같은 계약을 **실물 kubelet · 실물
+  `tests/integration/resource_generic_sc13.py` 는 같은 계약을 **실물 kubelet · 실물
   gatekeeper** 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 `stdin:true` busybox 파드에
   `readSeconds=3` 으로 붙어 돌아온 줄이 **파드 로그에도 있고** 티커 번호가 1 보다 크다는 것(둘
   다 「새 프로세스가 뜨지 않았다」의 증인이다), `readSeconds=31` 이 **호출 앞뒤의 gatekeeper
@@ -338,7 +338,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestPortForwardOutcomeReportsItsEncoding`)과 `internal/mcp/port_forward_test.go` 셋
   (`TestPortForwardMakesOneRoundTrip`, `TestPortForwardRefusalsCostNoApproval`,
   `TestPortForwardContextCarriesPortAndPayload`). 통합
-  `tests/integration/resource_generic_ac14.py` 는 같은 계약을 실물 apiserver·실물
+  `tests/integration/resource_generic_sc14.py` 는 같은 계약을 실물 apiserver·실물
   gatekeeper 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 busybox `httpd` 파드에
   요청을 한 번 보내고 답을 받아 `tunnelClosed` 로 끝나는 것, 승인 화면이 포트와 페이로드
   **전문**을 싣는 것, 같은 호출을 한 번 더 하면 첫 승인이 재사용되지 않고 **새 id** 의 승인
@@ -379,7 +379,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestProxyOutcomeReportsItsEncoding`, 256KiB 에서 잘리고 `truncated` 가 참이 되는 것은
   `TestProxyOutcomeMarksACutBody` 의 자리다(문면은 `prd-resource-generic` AC15 · 2026-09-19
   기재 — 코드가 먼저 착지하고 문서가 뒤따랐다). 통합
-  `tests/integration/resource_generic_ac15.py` 가 2026-09-20 착지했다 — 가짜 게이트가
+  `tests/integration/resource_generic_sc15.py` 가 2026-09-20 착지했다 — 가짜 게이트가
   구별하지 못하는 자리를 잰다: 실물 승인 화면에 실제로 무엇이 실리는지(`/healthz` 와 `/exec` 의
   쌍을 두 화면에서 뽑아 **서로 대조**한다), 그리고 승인된 프록시 호출이 apiserver 의
   `⟨kind⟩/proxy` 를 지나 대상이 정말 답하는지(파드가 돌려주는 본문과 kubelet 의 `ok`).
@@ -408,7 +408,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestGatedKindsGateEveryVerbButList` 는 아직 서지 않았다 —
   `get`·`watch`·`create`·`update`·`patch`·`delete` 여섯 verb가 모두 등록돼 있다.
   create의 값 가림·생성 값 보존은 `internal/mcp/create_test.go`의 Go 테스트로 검증한다.
-  통합 `tests/integration/resource_generic_ac16.py` 가 여섯 verb 전부를 한 파일에서
+  통합 `tests/integration/resource_generic_sc16.py` 가 여섯 verb 전부를 한 파일에서
   미승인 거부시키고, 승인된 create 의 `context` 가림(`(masked, NB)`)·저장된 값·승인 없는
   `list`·대조군 ConfigMap `get` 을 실물로 단언한다. 기대 결과의 「k8s 호출 카운트 0」은
   SUT 내부 사실이라 통합이 셀 수 없으므로(감사 프록시 부재), 통합은 그 자리에서 **밖에서
@@ -430,7 +430,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   쌍으로 막을 수 없는 경로임을 시나리오로 못박는다. 막는 것은 `context` 의 경로 노출뿐임.
   (d) `watch` 는 이제 부여되어 403 이 아니라 **민감 종류 게이트**에서 거부 — `watch` 미부여로 스트림 우회 경로 없음
 - **검증 AC**: AC17
-- **자동화**: 통합 `tests/integration/resource_generic_ac17.py` 가 다섯 갈래를 각각 단언한다 —
+- **자동화**: 통합 `tests/integration/resource_generic_sc17.py` 가 다섯 갈래를 각각 단언한다 —
   (a) 미승인 `resource_list` 가 `Name/Type/Data/Age` 네 컬럼만 담고 토큰이 응답 어디에도 없으며
   승인 요청도 만들지 않는 것, (b) `RESOURCE_GATED_KINDS` 에 더해진 픽스처 CRD 의 `resource_get` 이
   `get on resourcegenericsamples` 쌍으로 거부되고 같은 도구의 비민감 종류 대조군은 지나가는 것,
@@ -438,7 +438,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   거부되고 그 화면에 명령·stdin·페이로드·경로가 **전문**으로 실리되 토큰은 실리지 않는 것,
   (c') 노드 프록시 호출의 쌍이 `create on nodes/proxy` 뿐이라 민감 종류 판정에 걸리지 않는 것,
   (d) SA 토큰의 직접 `watch` 가 403 이 아니라 200 이고 같은 watch 가 `watch on secrets` 로 거부되는 것.
-  대상 Secret·서빙 파드는 이 파일이 스스로 세우고(`resource_generic_ac15.py` 와 같은 방식 —
+  대상 Secret·서빙 파드는 이 파일이 스스로 세우고(`resource_generic_sc15.py` 와 같은 방식 —
   픽스처 YAML 과 `ci.yml` 을 늘리지 않는다), 실행 대상은 `gatekeeper-variant` 다((b) 의
   `RESOURCE_GATED_KINDS` 가 배포당 env 라 primary 로는 세울 수 없다).
   기대 결과의 「k8s 호출 카운트 0」은 SUT 내부 사실이라 통합이 셀 수 없으므로(감사 프록시 부재),
@@ -454,7 +454,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   반환하며 그 메시지에 누락된 `(verb, resource)` 쌍이 담김
 - **검증 AC**: AC18
 - **자동화**: Go 단위 `resource_test.go::TestForbiddenBecomesAGrantStatement`(번역 함수 —
-  가짜 403). 통합 `tests/integration/resource_generic_ac18.py` — 실물 403 은 좁은 ClusterRole 을
+  가짜 403). 통합 `tests/integration/resource_generic_sc18.py` — 실물 403 은 좁은 ClusterRole 을
   바인딩한 배포 변형(`tests/k8s/kind/rbac-narrow-fixture.yaml`)에서만 나오므로 파일이 자기
   포트포워드로 그 변형에 닿는다. 게이트가 승인 전에 대상을 읽으므로(approval-gate AC11)
   「승인 뒤 403」은 종류는 읽히고 verb 만 빠진 쌍 `(patch, clusterroles)` 로, 「RBAC 에 없는
@@ -469,6 +469,6 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   행사하지 않으므로 RBAC 대조 대상이 아님
 - **검증 AC**: AC20
 - **자동화**: Go 단위 `resource_test.go::TestUnknownKindSuggestsCandidates`(후보 산출).
-  통합 `tests/integration/resource_generic_ac20.py` — 전용 프로브 CRD 를 테스트가 런타임에
+  통합 `tests/integration/resource_generic_sc20.py` — 전용 프로브 CRD 를 테스트가 런타임에
   세우고 지운다(픽스처로 두면 설치 「전」 상태가 관측되지 않는다). 「재기동 불필요」는 서버
   파드의 `uid`·`startTime` 이 그대로임으로 잰다

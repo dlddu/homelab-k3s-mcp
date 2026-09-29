@@ -25,7 +25,7 @@
 - **기대 결과**: 세 결과 라벨의 카운터가 각각 1이고 서로 섞이지 않는다. **한 번도 호출되지
   않은 등록 도구도 0으로 노출된다** — 계열 부재와 0이 구별된다
 - **검증 AC**: AC1
-- **자동화**: `tests/integration/metrics_ac1_results.py`(primary · 2026-09-21 `rct_20260921-0010`) — `ping`(성공) · `kind` 없는
+- **자동화**: `tests/integration/metrics_sc1.py`(primary · 2026-09-21 `rct_20260921-0010`) — `ping`(성공) · `kind` 없는
   `resource_get`(거부 `invalid_input`) · 없는 ConfigMap 의 `resource_get`(에러) 를 한 번씩 만들고 스크레이프 전후 차로
   세 (도구, 결과) 계열이 각 1, 같은 도구의 다른 결과 계열이 0 임을 단언한다. 「미호출 도구의 0」은 파드 stdout 레코드에
   한 번도 나오지 않은 등록 도구 집합을 계산해 그 도구들의 세 결과 계열이 **값 0 으로 존재**함으로 잰다 — 그런 도구가
@@ -39,7 +39,7 @@
 - **기대 결과**: 사유 라벨이 다섯으로 갈리고 각각 1이다. **「사람이 거절」과 「게이트 통신
   실패」가 같은 라벨로 합쳐지지 않는다**
 - **검증 AC**: AC2
-- **자동화**: `tests/integration/metrics_ac2_reasons.py`(auth-variant · 2026-09-21 `rct_20260921-0010`) — 넷은 이 변형이 한 배포로
+- **자동화**: `tests/integration/metrics_sc2.py`(auth-variant · 2026-09-21 `rct_20260921-0010`) — 넷은 이 변형이 한 배포로
   낸다(잘못된 bearer 의 원시 `tools/call` → `auth_failed` · `kind` 없는 좌표 → `invalid_input` · `grafana_token` →
   `unconfigured` · 백엔드 없는 `resource_patch` → `gate_unconfigured`), 다섯째 `gate_rejected` 는 gatekeeper-variant 에
   짧은 포트포워드로 닿아 `resource_patch` 를 띄우고 forward-auth 헤더로 거절한다. 각 배포의 `mcp_tool_refusals_total`
@@ -53,7 +53,7 @@
 - **기대 결과**: 두 계열이 따로 기록되고, 승인 대기가 길어져도 **처리 지연 계열은 그만큼
   커지지 않는다**
 - **검증 AC**: AC3
-- **자동화**: `tests/integration/metrics_ac3_gate_wait.py`(primary · 2026-09-21 `rct_20260921-0010`) — `ping` 한 번(처리 지연 계열에
+- **자동화**: `tests/integration/metrics_sc3.py`(primary · 2026-09-21 `rct_20260921-0010`) — `ping` 한 번(처리 지연 계열에
   1 관측 · 대기 계열 무이동), 이어 workload-test 의 ConfigMap 에 `resource_patch` 를 띄워 승인 요청이 보인 뒤 **3초를
   기다렸다가** 승인한다. `mcp_gate_wait_seconds{decision="approved"}` 가 1 관측 · 합 ≥ 3.0 이고
   `mcp_tool_duration_seconds{tool="resource_patch"}` 가 1 관측 · 합 < 1.5 (대기의 절반 미만) — 대기가 처리 지연에
@@ -69,7 +69,7 @@
   못한다. 노출된 라벨 이름 집합이 정확히 `tool`·`result`·`reason`·`decision`(히스토그램 버킷의
   `le` 외)이고, 리소스 좌표·주체 식별자·경로·명령이 라벨 값 어디에도 없다
 - **검증 AC**: AC4
-- **자동화**: `tests/integration/metrics_ac4_cardinality.py`(primary · 2026-09-21 `rct_20260921-0010`) — ⑴ 네임스페이스·이름만 다른
+- **자동화**: `tests/integration/metrics_sc4.py`(primary · 2026-09-21 `rct_20260921-0010`) — ⑴ 네임스페이스·이름만 다른
   `resource_get` 30회 뒤 계열 수 불변 ⑵ 파일이 CRD(`metricssamples.metrics.homelab-k3s-mcp.test`)를 세우고 established
   를 기다려 커스텀 리소스를 하나 만든 뒤 `resource_get` 으로 조회(성공)하고 다시 스크레이프 — 계열 수 불변, 노출에
   종류·이름·네임스페이스 문자열 0. 라벨은 `_metrics.assert_label_universe` 로 잰다: 패밀리 넷 · 라벨 이름
@@ -85,7 +85,7 @@
   리소스를 반환하지 않는다. `/mcp`는 여전히 인증 없이는 401이다. 노출을 끈 변형에서도
   서버와 도구는 정상이다
 - **검증 AC**: AC5
-- **자동화**: `tests/integration/metrics_ac5_boundary.py`(auth-variant · 2026-09-21 `rct_20260921-0010`) — 인증이 켜진 이 변형에서
+- **자동화**: `tests/integration/metrics_sc5.py`(auth-variant · 2026-09-21 `rct_20260921-0010`) — 인증이 켜진 이 변형에서
   무인증 `GET /metrics` 가 200 이되 본문의 모든 샘플이 네 패밀리의 것이고 라벨 전집이 닫혀 있으며, 같은 리스너의
   `/mcp` 는 404(`server.MetricsApp` 의 mux 에 `GET /metrics` 한 경로), 본 배포의 `/mcp` 는 무인증 401 · 키로 `pong`.
   「노출을 끈 변형」은 파일이 `tests/k8s/kind/metrics-off-variant.yaml`(auth-fixture 와 같은 구성 + `METRICS_DISABLED=1`)

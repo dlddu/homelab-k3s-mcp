@@ -7,7 +7,7 @@
 # collision, a storage abort — never the response. That distinction is the
 # whole basis of the verdict in docs/e2e-mocking-policy.md
 # 「실환경 주입 판정 (3번 결과, 2026-09-26)」, whose conditions C1~C5 this file
-# and tests/integration/approval_gate_ac5.py must both stay inside.
+# and tests/integration/approval_gate_sc5.py must both stay inside.
 #
 # WHY A SEPARATE DEPLOYMENT rather than a sidecar on gatekeeper: the smallest
 # way to honour C3 is to leave gatekeeper-fixture.yaml untouched.

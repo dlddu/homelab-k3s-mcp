@@ -1,4 +1,4 @@
-# apiserver 감사 프록시 변형 — test-approval-gate.md#시나리오 11 (approval_gate_ac11.py).
+# apiserver 감사 프록시 변형 — test-approval-gate.md#시나리오 11 (approval_gate_sc11.py).
 #
 # 사전 읽기가 `PartialObjectMetadata` 인가 전체 객체인가의 구분은 요청의 `Accept`
 # 헤더에만 있고, apiserver 자신의 감사 로그는 헤더를 기록하지 않는다 — 그래서 관측 지점은

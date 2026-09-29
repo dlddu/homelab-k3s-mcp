@@ -1,5 +1,5 @@
 # Gatekeeper-wired SUT variant for the approval-gate e2e
-# (approval_gate_ac{2,4,9}.py) and resource_generic_ac17.py.
+# (approval_gate_sc{2,4,9}.py) and resource_generic_sc17.py.
 #
 # The primary kind deployment can carry the gate too, but three observation
 # designs need their own env values, and env is per deployment:
@@ -111,7 +111,7 @@ spec:
             - name: GATEKEEPER_POLL_INTERVAL_SECONDS
               value: "1"
             # This list is per deployment. It cannot go on the primary:
-            # resource_generic_ac1.py reads the same CRD there and would start
+            # resource_generic_sc1.py reads the same CRD there and would start
             # needing an approval for it. The default value is repeated
             # on purpose -- this env replaces the list rather than extending it, so
             # dropping v1/Secret here would silently ungate every Secret read this
