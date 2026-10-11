@@ -266,7 +266,7 @@ def _wait_for_pod_gone(pod: str, timeout: float = RECLAIM_TIMEOUT) -> None:
     Deleting a session returns as soon as the control plane has issued the pod
     deletion, but the pod lingers in ``Terminating`` until its grace period
     elapses. That matters to the *next* file rather than to this one:
-    ``session_read_ac3.py`` samples the pod set and asserts it is unchanged
+    ``session_read_sc3.py`` samples the pod set and asserts it is unchanged
     across its calls, so a pod still draining when that file starts and gone by
     the time it finishes would fail an assertion about something else entirely.
     Waiting here keeps the "each file establishes its own precondition" rule

@@ -42,7 +42,7 @@ async def test_platform_auth_safety_ac2_challenge_advertises_metadata(
     """AC: platform-auth-safety/AC2
 
     API 키 전용 배포에서는 이 파라미터가 없으며, 그 대조는
-    `platform_auth_safety_ac8.py` 가 맡는다.
+    `platform_auth_safety_sc8.py` 가 맡는다.
     """
     print("--- discovery: 401 advertises resource_metadata (AC: platform-auth-safety/AC2) ---")
     response, challenge = unauthenticated_challenge(url)
@@ -92,7 +92,7 @@ async def test_platform_auth_safety_ac2_issuer_discovery_loads_jwks(url: str) ->
     관측된 것이다.
 
     **서버 쪽 동적 로드**는 이 배포가 Available 하다는 사실이 증거다. 그 경로가 실제로
-    치명적이라는 것은 `platform_auth_safety_ac8.py` 가 자격증명을 하나도 주지 않은 변형에서
+    치명적이라는 것은 `platform_auth_safety_sc8.py` 가 자격증명을 하나도 주지 않은 변형에서
     관측한다 — 그래서 이 단정은 공허하지 않다.
     """
     print("--- discovery: issuer OIDC discovery -> JWKS (AC: platform-auth-safety/AC2) ---")

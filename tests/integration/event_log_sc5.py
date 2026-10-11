@@ -5,7 +5,7 @@
 
 primary 의 수동 댄스(`wait_for_pending` → `decide`)를 쓰지 않는 것은 승인 2회를 사람 대신 폴링으로
 맞추는 경주가 되기 때문이다 — 이 파일이 재는 것은 승인 절차가 아니라 승인 **뒤에** 쓰인 레코드다.
-모드를 바꾸므로 `병렬 레인:` 은 선언하지 않는다(``resource_generic_ac17.py`` 와 같은 이유).
+모드를 바꾸므로 `병렬 레인:` 은 선언하지 않는다(``resource_generic_sc17.py`` 와 같은 이유).
 
 레코드는 이 변형 파드 stdout 의 ``msg="tool call"`` 줄이다. 이 호출의 레코드는 호출 전후 좌표별
 (`tool`·`target.kind`·`target.name`) 레코드 수의 차로 집는다 — 이 그룹의 파일은 차례로 돌고 이

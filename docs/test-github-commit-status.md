@@ -44,7 +44,7 @@
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `TestCommitStatusCreatesStatus`·`TestCommitStatusSurfacesGitHubError`
   (`internal/github/commitstatus_test.go`, 2026-09-20 착지). 통합 e2e 는
-  `tests/integration/github_commit_status_ac1.py` 가 (a) 를 양 끝에서 잰다 — github-mock 의
+  `tests/integration/github_commit_status_sc1.py` 가 (a) 를 양 끝에서 잰다 — github-mock 의
   요청 기록에서 `statuses/{sha}` 본문의 네 필드를, 도구 응답에서 `id`·`state`·`context`·
   `created_at` 이 스텁 계약과 같고 `sha` 가 요청값임을 — 그리고 (b) 의 422 문면이 스텁의
   `message` 를 축자로 담는지와 그 거부가 실제 기록된 상류 응답에서 왔는지를 함께 단언한다
@@ -60,7 +60,7 @@
 - **자동화**: Go 단위 `TestCommitStatusMintsNarrowToken`·`TestCommitStatusNeverReturnsToken`
   (발급 본문을 문자열로 대조하고, 성공·실패 두 결과를 직렬화해 토큰·PEM·JWT 부재를 단언한다).
   `TestCommitStatusDiscardsItsToken` 이 「쓰고 버린다」의 폐기 호출까지 잰다. 통합 e2e 는
-  `tests/integration/github_commit_status_ac2.py` 가 성공·실패 호출 각각의 발급 요청 본문을
+  `tests/integration/github_commit_status_sc2.py` 가 성공·실패 호출 각각의 발급 요청 본문을
   github-mock 기록에서 읽어 JSON 동치를 단언하고, 두 결과의 직렬화 전체에 토큰·PEM·JWT 가
   없음을 재되, 같은 기록의 폐기 요청(`DELETE /installation/token`) 헤더에 그 토큰이 실려
   있음을 포지티브 컨트롤로 삼아 「없다」가 공허하지 않게 한다
@@ -72,7 +72,7 @@
 - **기대 결과**: 여섯 모두 도구 에러이고 스텁 요청 카운터가 0이다(토큰 발급 요청도 0)
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `TestCommitStatusValidatesBeforeGitHub`(표 기반 6행 — 각 행이 상류 요청 수 0을
-  단언한다, 2026-09-20 착지). 통합 e2e 는 `tests/integration/github_commit_status_ac3.py` 가 여섯
+  단언한다, 2026-09-20 착지). 통합 e2e 는 `tests/integration/github_commit_status_sc3.py` 가 여섯
   호출을 한 창에 몰아 넣고 끝에 github-mock 의 요청 로그가 비어 있음을 단언한다 — 거부가 입력
   검증에서 왔다는 것은 필드를 지목하는 문면으로 가르고, 「로그가 비어 있다」가 공허하지 않다는
   것은 유효한 한 벌이 로그를 남기는 포지티브 컨트롤로 가른다
@@ -87,7 +87,7 @@
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `TestCommitStatusRejectsForeignContext`(거부 문면이 허용 접두사 목록을 보여 주는
   것까지)·`TestCommitStatusRefusesWhenNoPrefixConfigured`(2026-09-20 착지). 통합 e2e 는
-  `tests/integration/github_commit_status_ac4.py` 한 파일이 두 배포를 대조한다 — (a) 는 primary
+  `tests/integration/github_commit_status_sc4.py` 한 파일이 두 배포를 대조한다 — (a) 는 primary
   에서 거부 문면의 허용 접두사 목록과 상류 요청 0, 이어지는 자기 접두사 호출의 기록을 재고,
   (b) 는 접두사 env 만 없는 전용 변형(`tests/k8s/kind/commit-status-variant.yaml`)에 자기
   포트포워드로 닿아 거부 문면이 `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES` 를 지목하는지(= App
@@ -99,7 +99,7 @@
 - **기대 결과**: `github app unavailable: …` 도구 에러, 직후 `ping` 정상
 - **검증 AC**: AC5
 - **자동화**: Go 단위 `TestCommitStatusUnavailableReturnsToolError`(2026-09-20 착지). 통합 e2e 는
-  `tests/integration/github_commit_status_ac5.py` 가 auth-variant 배포(`auth-fixture.yaml`)에서
+  `tests/integration/github_commit_status_sc5.py` 가 auth-variant 배포(`auth-fixture.yaml`)에서
   유효한 입력의 거부 문면과 직후 `ping` 을 함께 단언한다
 
 ### 시나리오 6: 어노테이션 광고
@@ -110,5 +110,5 @@
 - **검증 AC**: AC6
 - **자동화**: Go 단위 `TestToolsListAdvertisesCommitStatus`(`internal/server/mcp_test.go`,
   세 힌트를 이름으로 단언, 2026-09-20 착지). 통합 e2e 는
-  `tests/integration/github_commit_status_ac6.py` 가 배포된 서버의 `tools/list` 에서 세 힌트를
+  `tests/integration/github_commit_status_sc6.py` 가 배포된 서버의 `tools/list` 에서 세 힌트를
   한 벌로 되읽는다

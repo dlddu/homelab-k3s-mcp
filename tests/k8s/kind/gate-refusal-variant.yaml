@@ -1,5 +1,5 @@
 # Approval-refusal SUT variants for test-approval-gate.md#시나리오 1
-# (approval_gate_ac1.py). Two deployments that no existing variant can stand in
+# (approval_gate_sc1.py). Two deployments that no existing variant can stand in
 # for, for two unrelated reasons.
 #
 #  * homelab-k3s-mcp-gate-refusal -- (a) and (b). The scenario asks that gated

@@ -16,8 +16,8 @@
 
 > **AC3(최소권한 권한 경계)은 결번이다.** `k8s/rbac.yaml`이 `cluster-admin` 바인딩으로
 > 바뀌면서 이 PRD가 권한 경계에 대해 주장할 것이 없어졌다. 뒤 번호는 당기지 않는다 —
-> AC4~AC8은 e2e 파일명(`platform_auth_safety_ac{4,5,6,7,8}.py`)과 `comment-policy/ledger.md`의
-> 과거 판정 행에 그 번호로 박혀 있고, 당기면 그 기록들이 소급해서 거짓이 된다.
+> AC4~AC8은 같은 번호의 테스트 시나리오(와 그 번호를 딴 e2e 파일명 `platform_auth_safety_sc{5,6,7,8}.py`)와
+> `comment-policy/ledger.md`의 과거 판정 행에 그 번호로 박혀 있고, 당기면 그 기록들이 소급해서 거짓이 된다.
 
 ## Acceptance Criteria
 

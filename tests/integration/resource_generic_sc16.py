@@ -12,7 +12,7 @@
 않았다**까지다.
 
 미승인은 사람 없이 재야 하므로 **승인 요청을 띄운 뒤 판정을 직접 REJECTED 로 내려**
-만든다(`resource_generic_ac5.py` 의 게이트 대조군과 같은 방식). 자동 거부 모드
+만든다(`resource_generic_sc5.py` 의 게이트 대조군과 같은 방식). 자동 거부 모드
 (`AUTO_REJECT`)를 쓰지 않는 이유는 `_refuse` 의 docstring 에 있다 — 그 모드는 primary
 배포의 요청에는 걸리지 않는다.
 """
@@ -156,10 +156,10 @@ async def _refuse(session, gate, tool: str, args: dict, marker: str) -> None:
     자동 응답 모드(`AUTO_REJECT`)를 쓰지 않는 이유: 그 모드는 gatekeeper 가 **요청의
     담당 사용자**에게 적용하는 설정이라 `GATEKEEPER_USER_ID` 를 물고 있는
     `gatekeeper-variant` 배포에서만 발화한다(그래서 시나리오 9 의
-    `approval_gate_ac9.py` 가 `실행 대상: gatekeeper-variant` 다). primary 배포의
+    `approval_gate_sc9.py` 가 `실행 대상: gatekeeper-variant` 다). primary 배포의
     요청에는 담당자가 없어 모드가 걸리지 않고, 요청은 승인 시한(5분)까지 PENDING 으로
     남았다가 타임아웃으로 끝난다 — 거부가 아니라 **무응답**이라 이 시나리오가 재려는
-    것을 재지 못한다. 그래서 `resource_generic_ac5.py` 의 게이트 대조군과 같은 방식으로
+    것을 재지 못한다. 그래서 `resource_generic_sc5.py` 의 게이트 대조군과 같은 방식으로
     판정을 직접 내린다.
     """
     task = asyncio.create_task(session.call_tool(tool, args))

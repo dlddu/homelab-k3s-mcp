@@ -16,7 +16,7 @@
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `mcp_test.go::TestDearBabyResetDispatchesWithDefaults`,
   `TestDearBabyResetReportsNonZeroExit`. 통합
-  `dear_baby_reset_user_ac1.py::test_dear_baby_reset_user_ac1_reset_execution`(success / failure path).
+  `dear_baby_reset_user_sc1.py::test_dear_baby_reset_user_ac1_reset_execution`(success / failure path).
   **단, 온보딩 필드의 값 자체는 이 e2e가 단정하지 않는다** — 픽스처는 2026-09-26(#237)부터
   busybox 스텁이 아니라 sha 핀 실 백엔드 + 기동 시 마이그레이션·시드가 도는 SQLite
   (`tests/k8s/kind/dear-baby.yaml`)이므로 필드 초기화는 실제로 일어나며, 성공
@@ -34,7 +34,7 @@
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `mcp_test.go::TestDearBabyResetRequiresNamespaceAndEmail`,
   `TestDearBabyResetHonoursOverrides`. 통합
-  `dear_baby_reset_user_ac2.py::test_dear_baby_reset_user_ac2_explicit_target`(email 누락 → `McpError:
+  `dear_baby_reset_user_sc2.py::test_dear_baby_reset_user_ac2_explicit_target`(email 누락 → `McpError:
   email is required`, 기본 selector·container 에코, selector 재정의 → no Running pod,
   container 재정의 → 실패 = 재정의가 실제로 반영됨의 판별자).
 
@@ -44,4 +44,4 @@
 - **기대 결과**: `dear_baby_reset_user`가 `destructiveHint=true`로 광고됨
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `mcp_test.go::TestToolsListAdvertisesDearBabyReset`. 통합
-  `dear_baby_reset_user_ac3.py::test_dear_baby_reset_user_ac3_destructive_hint`.
+  `dear_baby_reset_user_sc3.py::test_dear_baby_reset_user_ac3_destructive_hint`.

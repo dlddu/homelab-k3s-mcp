@@ -48,7 +48,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   (b)는 승인 요청 없이 정상 수행된다. (c)는 기동이 실패한다.
   미등록 도구의 unknown-tool 오류나 잘못된 인자·좌표로 인한 거부는 (a)의 게이트 통과 증거가 아니다.
 - **검증 AC**: AC1, AC5
-- **자동화**: `tests/integration/approval_gate_ac1.py` — 승인 타임아웃 5초짜리 배포 변형
+- **자동화**: `tests/integration/approval_gate_sc1.py` — 승인 타임아웃 5초짜리 배포 변형
   (`tests/k8s/kind/gate-refusal-variant.yaml`)에서 (a)의 열세 호출을 판정 없이 만료시키고
   각 도구가 남겼을 흔적이 없음을 세며, (b)의 네 호출이 승인 요청 없이 수행되는 것을 잰다.
   (c)는 같은 파일의 둘째 배포 — `e2e_undeclared_tool` 빌드 태그로 선언 없는 도구를 끼운
@@ -67,7 +67,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `timeoutSeconds` 모두 존재. 두 호출의 `externalId`가 서로 다름.
   `GATEKEEPER_USER_ID` 설정 시 `userId` 포함
 - **검증 AC**: AC2
-- **자동화**: 통합 `tests/integration/approval_gate_ac2.py` — create 본문 계약을 기록 프록시
+- **자동화**: 통합 `tests/integration/approval_gate_sc2.py` — create 본문 계약을 기록 프록시
   기록과 gatekeeper 레코드로 잰다. Go 단위는 아직 없다 — 계획:
   `gatekeeper_test.go::TestCreateRequestBodyContract`, `TestExternalIDIsUniquePerCall`
 
@@ -84,7 +84,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   않음.
   좌표를 해석할 수 없는 호출은 승인 요청을 만들지 않고 거부
 - **검증 AC**: AC3
-- **자동화**: 통합 `tests/integration/approval_gate_ac3.py` — 게이트 대상 쌍 열하나
+- **자동화**: 통합 `tests/integration/approval_gate_sc3.py` — 게이트 대상 쌍 열하나
   (`create/update/patch/delete/deletecollection on configmaps` · `update on deployments/scale` ·
   `patch on deployments` · `create on pods/{exec,attach,portforward,proxy}`)를 각각 한 번씩
   태워 실물 gatekeeper 의 요청 레코드에서 `context` 를 되읽고, verb 별 상세(교체본·레플리카
@@ -104,7 +104,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   (b) 폴링이 `EXPIRED`를 관측하고 거부. gatekeeper가 자발적으로 만료시키지 않으므로,
   폴링을 끊고 최초 응답만 본 구현은 이 시나리오를 통과하지 못함
 - **검증 AC**: AC4
-- **자동화**: 통합 `tests/integration/approval_gate_ac4.py` — (a) 폴링 전이는 승인 댄스와
+- **자동화**: 통합 `tests/integration/approval_gate_sc4.py` — (a) 폴링 전이는 승인 댄스와
   기록 프록시의 GET 카운트, (b) 만료는 거부 지연·기록의 EXPIRED·폴링 카운트로 잰다.
   만료와 클라이언트 마감이 같은 env 에서 파생하므로 클라이언트 에러 문면은 단언하지 않는다
 
@@ -123,7 +123,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `resource_list`와 비게이트 종류의 `resource_get`은 정상 동작. 반대로 **변경은 전부
   멈춘다** — 승인 경로가 죽었는데 변경이 나가면 게이트가 있으나 마나이므로 의도된 동작이다
 - **검증 AC**: AC5
-- **자동화**: 통합 `tests/integration/approval_gate_ac5.py` — 여덟 경로와 읽기 대조군을 실물
+- **자동화**: 통합 `tests/integration/approval_gate_sc5.py` — 여덟 경로와 읽기 대조군을 실물
   gatekeeper 에서 잰다. `REJECTED`·만료·판정 없음은 실물 판정과 만료로, 409·5xx 는
   `docs/e2e-mocking-policy.md` 의 「실환경 주입 판정」이 조건 C1~C5 안에서 허용한 마커 한정
   `BEFORE INSERT` 주입으로, 연결 실패와 두 미설정은 `tests/k8s/kind/gate-broken-variant.yaml` 의
@@ -151,7 +151,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `create`가 원자적으로 내린다(**409**). 승인 요청 본문에도 그 대상의
   `resourceVersion`이 실리지 않는다
 - **검증 AC**: AC6
-- **자동화**: 통합 `tests/integration/approval_gate_ac6.py`(patch·scale·Secret get·exec·
+- **자동화**: 통합 `tests/integration/approval_gate_sc6.py`(patch·scale·Secret get·exec·
   create 각 1케이스 — 승인 **전에** kubectl 로 대상을 움직이고 승인해, 앞 넷은 재확인
   거부와 대상 무변경을, create 는 재확인이 아닌 apiserver 409 와 승인 context 에
   `target resourceVersion` 이 없음을 단언한다). update 부분의 Go 회귀는
@@ -169,7 +169,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   (기존 `externalId` 재사용 없음). 같은 Secret 재조회도 **새 승인 요청**을 만듦 — 한 번
   승인이 그 대화 내내 유효해지지 않는다
 - **검증 AC**: AC7
-- **자동화**: 통합 `tests/integration/approval_gate_ac7.py` — 요청-레코드 계약(호출마다 새
+- **자동화**: 통합 `tests/integration/approval_gate_sc7.py` — 요청-레코드 계약(호출마다 새
   승인 요청, externalId 재사용 없음)을 잰다. 소비-한-번 단정은 Go 단위의 몫 — 계획:
   `gatekeeper_test.go::TestApprovalIsConsumedOnce` (바깥에서는 SUT 안의 Decision 을 같은
   id 로 두 번 쓰게 만들 경로가 없다)
@@ -180,7 +180,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **기대 결과**: 두 경우 모두 요청 id·`externalId`·도구·동사·대상 좌표가 로그에 남음.
   승인 실행에는 `processedById`가, 거부에는 거부 사유가 함께 남음
 - **검증 AC**: AC8
-- **자동화**: 통합 `tests/integration/approval_gate_ac8.py` — 감사 라인을 `kubectl logs` 로
+- **자동화**: 통합 `tests/integration/approval_gate_sc8.py` — 감사 라인을 `kubectl logs` 로
   잰다(요청 id·external_id·tool·pairs·processed_by_id·auto_approved, 거부 사유). Go 단위는
   아직 없다 — 계획: `gatekeeper_test.go::TestAuditLogFields`
 
@@ -190,7 +190,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **기대 결과**: 실행은 되지만 도구 응답 본문에 자동 승인이었음이 표기되고, 로그에도
   `autoApproved=true`가 남음. `AUTO_REJECT` 사용자로는 실행이 거부됨
 - **검증 AC**: AC9
-- **자동화**: 통합 `tests/integration/approval_gate_ac9.py` — 같은 사용자의 모드를
+- **자동화**: 통합 `tests/integration/approval_gate_sc9.py` — 같은 사용자의 모드를
   AUTO_APPROVE → AUTO_REJECT → NONE 으로 바꿔 세 상태를 잰다(응답 표기·로그
   auto_approved·기록의 processedById)
 
@@ -206,7 +206,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   응답에만 등장한다. **쓰기 경로의 값은 어디에도 등장하지 않는다** — `context` 에는 키
   이름과 바이트 수만 있다
 - **검증 AC**: AC10
-- **자동화**: 통합 `tests/integration/approval_gate_ac10.py` 가 네 표면(승인 요청 `context` ·
+- **자동화**: 통합 `tests/integration/approval_gate_sc10.py` 가 네 표면(승인 요청 `context` ·
   SUT 서버 로그 · 실행 실패 에러 문면 · `resource_list` 응답)에서 토큰 부재를 단언하고,
   승인된 `resource_get` 응답에만 값이 등장함을 대조군으로 둔다. 쓰기 경로는 `(masked, NB)`
   표기까지 함께 단언한다(전부 가리는 구현도 이 AC 의 통과가 아니다).
@@ -226,7 +226,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   거절된 승인은 값을 읽지 않은 것이어야 한다. (b) 스케일은 `get`, 일괄 삭제는 `list` 를
   게이트가 행사하며 그것이 선언과 일치. (c) 게이트 선언을 뺀 변형에서 대조가 실패로 잡힘
 - **검증 AC**: AC11
-- **자동화**: 통합 `tests/integration/approval_gate_ac11.py`(apiserver 앞 기록 프록시 변형
+- **자동화**: 통합 `tests/integration/approval_gate_sc11.py`(apiserver 앞 기록 프록시 변형
   `tests/k8s/kind/apiserver-audit-variant.yaml` — (a) 거절된 Secret 승인의 `Accept` 가
   `PartialObjectMetadata` 뿐이고 전체 객체 `get` 이 0건 · 같은 창의 비민감 사전 읽기가 그 기록
   경로의 양성 대조 · (b) 스케일 `get` · 일괄 삭제 `list` · (c) 선언 ↔ AC11 표 ↔ `rbac.yaml` 대조와
@@ -239,4 +239,4 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   정렬된 이름·uid·버전, 0건, 범위 밖 좌표, 불완전/중복/변경된 페이지, 만료/오류, 상한과
   취소를 검사한다. 실행: `go test ./internal/k8s -run '^TestCollectionSnapshot' -count=1`.
   이것은 실제 gatekeeper·apiserver나 도구 경로의 증거가 아니다. 위 (a)·(b)·(c)의 실물
-  시나리오와 `approval_gate_ac11.py`는 계속 대기하며, 도구 등록·승인·삭제는 이 회귀에 없다.
+  시나리오와 `approval_gate_sc11.py`는 계속 대기하며, 도구 등록·승인·삭제는 이 회귀에 없다.

@@ -25,7 +25,7 @@
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestReadFullThenIncremental`, `TestReadIsNonDestructive`) + 통합
-  `tests/integration/session_read_ac1.py`
+  `tests/integration/session_read_sc1.py`
 
 ### 시나리오 2: 상태 분기와 그 노출
 - **사전 조건**: `active`·`idle`·`snapshot` 세션 각 1개
@@ -51,7 +51,7 @@
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestReadRejectsNegativeOffset`, `TestReadNotFound`) + `internal/server/mcp_test.go`
   (`TestSessionReadRejectsBadArguments`, `TestSessionReadSurfacesNotFound`) + 통합
-  `tests/integration/session_read_ac3.py`.
+  `tests/integration/session_read_sc3.py`.
   "상태가 변하지 않는다"는 **요청이 0건임**으로 증명한다 — 음수 커서·빈 id는 HTTP에 닿기 전에
   거부되므로 대상 세션을 건드릴 수 없다. 통합 쪽은 그 구조를 밖에서 되받는다: 두 실패의 층이
   서로 다르고(not found는 도구 에러, 잘못된 커서는 `-32602` 프로토콜 에러) 두 호출 뒤 실재
@@ -66,5 +66,5 @@
   (`TestUnavailableRefusesRead`) + `internal/server/mcp_test.go`
   (`TestSessionReadUnavailableReturnsToolError` — 거부가 이 도구에 갇히고 `ping`은 계속 `pong`)
   + 통합
-  `tests/integration/session_read_ac4.py::test_session_read_ac4_unconfigured_refusal`
+  `tests/integration/session_read_sc4.py::test_session_read_ac4_unconfigured_refusal`
   (`실행 대상: auth-variant` — 자격증명을 하나도 붙이지 않은 변형이라 AC의 전제가 여기서만 참이다)

@@ -10,7 +10,7 @@
 뒤집히면 여기서 잡힌다.
 
 ``workload_scale_ac3.py`` · ``workload_restart_ac2.py`` ·
-``opensearch_document_{put,delete}_ac3.py`` · ``dear_baby_reset_user_ac3.py`` 가
+``opensearch_document_{put,delete}_sc3.py`` · ``dear_baby_reset_user_sc3.py`` 가
 같은 자리의 선례다.
 """
 

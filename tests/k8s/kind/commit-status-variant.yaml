@@ -5,7 +5,7 @@
 # URL and private key as the primary's, minus the
 # GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES key, and no env line supplies one either.
 # Adding that env (or that key to the secret) turns
-# tests/integration/github_commit_status_ac4.py red on purpose.
+# tests/integration/github_commit_status_sc4.py red on purpose.
 #
 # Auth stays ON (MCP_API_KEYS, same throwaway key as auth-fixture.yaml) rather
 # than relaxed with MCP_AUTH_DISABLED, so this file adds no GATE entry to

@@ -30,7 +30,7 @@ import (
 )
 
 // UndeclaredProbeTool is the name test-approval-gate.md#시나리오 1 (c) looks for
-// in the refusal. tests/integration/approval_gate_ac1.py pins the same spelling.
+// in the refusal. tests/integration/approval_gate_sc1.py pins the same spelling.
 const UndeclaredProbeTool = "e2e_undeclared_probe"
 
 func init() {

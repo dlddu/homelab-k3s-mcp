@@ -213,7 +213,7 @@ jobs:
       - name: Deploy http-trace fixture
         run: kubectl apply -f tests/k8s/kind/http-trace.yaml
 
-      # Real gatekeeper for the approval-gate e2e (approval_gate_ac*.py) plus
+      # Real gatekeeper for the approval-gate e2e (approval_gate_sc*.py) plus
       # the recording proxy in front of it. The API-key secret is created
       # BEFORE the rollout wait: without it the pod sits in
       # CreateContainerConfigError (the deployment requires VAPID and API
@@ -270,7 +270,7 @@ jobs:
 
       # AWS_CONFIG_S3_ENDPOINT points at the http-trace proxy rather than at
       # MinIO directly (the proxy forwards to MinIO preserving the signed Host
-      # header). That is what lets aws_config_get_ac2.py observe which
+      # header). That is what lets aws_config_get_sc2.py observe which
       # credential signed the GetObject.
       - name: Create test AWS config secret
         run: |
@@ -313,7 +313,7 @@ jobs:
       # pinned into the variant secret: GATEKEEPER_USER_ID must be a users.id,
       # which only exists after the first forward-auth request, so the id cannot
       # be baked into a manifest. The main SUT reaches gatekeeper directly; the
-      # variant goes through the recording proxy because approval_gate_ac2.py
+      # variant goes through the recording proxy because approval_gate_sc2.py
       # asserts the create body, which only the proxy observes.
       - name: Seed the gatekeeper e2e user and create the SUT gate secrets
         run: |
@@ -507,7 +507,7 @@ jobs:
               rollout status "deploy/homelab-k3s-mcp-$d" --timeout=120s
           done
 
-      # Ready before the primary group runs: session_list_ac{1,2}.py seed and
+      # Ready before the primary group runs: session_list_sc{1,2}.py seed and
       # read this control plane. The image is pulled from GHCR (not kind-loaded),
       # so allow for the pull.
       - name: Wait for session-platform control plane rollout

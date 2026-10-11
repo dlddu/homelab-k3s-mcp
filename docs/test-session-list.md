@@ -25,7 +25,7 @@
   (`TestListSessionsReturnsAllSessions`, `TestListSessionsEmpty`) + MCP 표면
   `internal/server/mcp_test.go::TestSessionListEnumeratesSessions`·
   `::TestSessionListEmptyInventoryIsNotAnError` + 통합
-  `tests/integration/session_list_ac1.py`
+  `tests/integration/session_list_sc1.py`
   (`test_session_list_ac1_empty_inventory` → 재고를 비워 빈 목록을 관측하고,
   `test_session_list_ac1_enumerates_sessions` → active·snapshot 둘을 시드해 열거와
   상태별 응답 모양(`pod` 유무)까지 단언한다 — 두 절이 한 파일 안에 있어 파일 간 실행 순서에
@@ -41,7 +41,7 @@
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go::TestListSessionsIsPassive`
   (연속 3회 호출이 `GET /api/v1/sessions` 외의 요청을 하나도 내지 않고 상태·`lastAccess`가
   불변임을 단언 — 도구가 상태를 바꿀 경로 자체를 갖지 않음을 보인다) + 통합
-  `tests/integration/session_list_ac2.py::test_session_list_ac2_listing_is_passive`
+  `tests/integration/session_list_sc2.py::test_session_list_ac2_listing_is_passive`
   (파드 집합 비교는 실 제어면이 있어야 판별력을 가지므로 통합의 몫이다 — 스텁 앞에서는
   만들어질 파드가 없어 vacuous하다)
 
@@ -54,5 +54,5 @@
   (`TestUnavailableFailsEveryCall`, `TestFromEnv`) + MCP 표면
   `internal/server/mcp_test.go::TestSessionListUnavailableReturnsToolError`
   (거부 직후 `ping`이 여전히 `pong`임까지 단언) + 통합
-  `tests/integration/session_list_ac3.py::test_session_list_ac3_unconfigured_refusal`
+  `tests/integration/session_list_sc3.py::test_session_list_ac3_unconfigured_refusal`
   (자격증명 미부착 배포 변형 `auth-fixture.yaml` 재사용)

@@ -4,7 +4,7 @@
 실행 대상: primary
 병렬 레인: github-app
 
-One file, two deployments (the platform_auth_safety_ac8.py shape) — why that
+One file, two deployments (the platform_auth_safety_sc8.py shape) — why that
 variant exists and why no other one can stand in is in the header of
 tests/k8s/kind/commit-status-variant.yaml.
 """

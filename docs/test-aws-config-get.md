@@ -15,7 +15,7 @@
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/awsconfig/awsconfig_test.go::TestGetConfigMapsObjectAndMetadata`,
   `mcp_test.go::TestAWSConfigGetDispatchesToService`. 통합
-  `aws_config_get_ac1.py`(내용·size + contentType·ETag 모양·
+  `aws_config_get_sc1.py`(내용·size + contentType·ETag 모양·
   lastModified RFC3339 파싱까지 단정, 텍스트 블록 = 객체 내용).
 
 ### 시나리오 2: AssumeRole → GetObject 경로(정적 키 없음)
@@ -26,7 +26,7 @@
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `awsconfig_test.go`(assume-role 배선·
   `TestGetConfigWrapsGetObjectError`). 통합
-  `aws_config_get_ac2.py` — MinIO는 베이스
+  `aws_config_get_sc2.py` — MinIO는 베이스
   자격증명(minioadmin)도 똑같이 받아주므로 도구 응답으로는 구분되지 않는다. 대신
   `tests/k8s/kind/http-trace.yaml` 프록시 기록에서 (1) 설정된 role ARN의 AssumeRole이
   베이스 자격증명으로 서명돼 발급됐고 (2) 뒤이은 GetObject가 STS가 내준 키로 서명됐으며
@@ -39,5 +39,5 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `awsconfig_test.go::TestUnavailableGetConfig`,
   `TestFromEnvUnsetBucketReturnsNil`, `TestFromEnvRequiresKeyAndRole`. 통합
-  `tests/integration/aws_config_get_ac3.py::test_aws_config_get_ac3_unconfigured_refusal`
+  `tests/integration/aws_config_get_sc3.py::test_aws_config_get_ac3_unconfigured_refusal`
   (자격증명 미부착 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).

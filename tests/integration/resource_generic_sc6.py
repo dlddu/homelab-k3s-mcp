@@ -182,7 +182,7 @@ async def test_resuming_from_a_version_skips_what_was_already_seen(session, sinc
 
 async def test_a_sensitive_kind_needs_approval_and_keeps_its_caps(session, gate) -> None:
     print("    (미승인 — 승인 요청을 띄우고 판정을 REJECTED 로 내려 거절을 태운다)")
-    # 자동 거부 모드(`AUTO_REJECT`)를 쓰지 않는 이유는 resource_generic_ac16.py::_refuse.
+    # 자동 거부 모드(`AUTO_REJECT`)를 쓰지 않는 이유는 resource_generic_sc16.py::_refuse.
     refused = asyncio.create_task(
         session.call_tool("resource_watch", _watch_args("Secret", WATCH_SECRET, 10))
     )

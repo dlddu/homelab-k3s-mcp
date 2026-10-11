@@ -4,7 +4,7 @@
 실행 대상: primary
 병렬 레인: gate-objects
 
-ConfigMap 을 쓰는 것은 자매 ``resource_generic_ac10.py`` 가 단건 삭제에서 쓰는 것과 같은
+ConfigMap 을 쓰는 것은 자매 ``resource_generic_sc10.py`` 가 단건 삭제에서 쓰는 것과 같은
 이유다 — 종료 유예도 파이널라이저도 없어 「사라졌다」가 곧 관측이고, 그 관측에 파드
 수명주기의 흔들림이 섞이지 않는다.
 

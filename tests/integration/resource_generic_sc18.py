@@ -40,7 +40,7 @@ VARIANT_SERVICE = VARIANT_DEPLOYMENT
 # Clear of ci.yml's group forwards (8080·8088·8089·8090·8092·8093), of
 # _gatekeeper's 8095·8096, and of the ports other lanes open while this file
 # runs (_session_platform 18083, platform_auth_safety 18080-18082,
-# github_commit_status_ac4 18084).
+# github_commit_status_sc4 18084).
 VARIANT_LOCAL_PORT = 18085
 
 # The variant's own ClusterRole: the object whose patch is refused. If the
