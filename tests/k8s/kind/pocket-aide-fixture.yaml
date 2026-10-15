@@ -1,28 +1,55 @@
-# Real gatekeeper fixture for the approval-gate e2e (docs/test-approval-gate.md
+# Real PocketAide (dlddu/pocket-aide) for the approval-gate e2e (docs/test-approval-gate.md
 # 픽스처 절).
 #
-# gatekeeper-trace 는 http-trace 와 같은 계열의 기록 프록시다 — 대체재가 아니라
-# 관측면이다. 시나리오 2 의 검증 대상은 upstream 만으로는 기록에 남지 않아 단언할
-# 수 없다. 프록시는 요청 본문과 식별자만 기록하고 x-api-key 값 자체는 로그에 두지 않는다.
+# 이미지는 발행 이미지가 아니라 ci.yml 이 POCKET_AIDE_SHA 커밋의 backend/cmd/server 를 빌드한
+# `pocket-aide:ci` 다. 발행 이미지(ghcr.io/dlddu/pocket-aide)는 서버만 담고 IdP(cmd/oidcmock)가
+# 없어서, 서버와 IdP 를 같은 커밋에서 맞추려면 둘 다 소스에서 빌드해야 한다.
 #
-# 이미지를 sha 태그로 핀하는 이유: :latest 는 gatekeeper 레포의 PR 이 덮어쓴다.
-# sha-762fafe 는 gatekeeper main 의 최근 커밋으로, SQLite 를 rollback 저널로
-# 되돌린 판본이다. fsGroup 은 컨테이너가 uid 1001(non-root)로 SQLite 파일을 쓰기
-# 때문에 볼륨 소유권을 그 그룹으로 맞추는 것이다.
+# 서비스 어카운트 호출자는 TokenReview 로 검증된다(internal/auth/serviceaccount.go). 그래서
+# PocketAide 자신의 SA 가 system:auth-delegator 에 묶여야 하고, 묶이지 않으면 외부 호출 전부가
+# 503 이다 — 거부가 아니라 「검증 불가」라 SUT 쪽에서는 unreachable 로 보인다.
+#
+# pocket-aide-trace 는 http-trace 와 같은 계열의 기록 프록시다 — 대체재가 아니라 관측면이다.
+# 시나리오 2 의 검증 대상(create 요청 본문)은 PocketAide 의 기록에 남지 않는다. 프록시는 요청
+# 본문과 식별자만 기록하고 Authorization 값(SUT 의 서비스 어카운트 토큰)은 로그에 두지 않는다.
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: gatekeeper
+  name: pocket-aide
   labels:
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pocket-aide
+  namespace: pocket-aide
+  labels:
+    app: pocket-aide
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pocket-aide:auth-delegator
+  labels:
+    app: pocket-aide
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: pocket-aide
+    namespace: pocket-aide
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: gatekeeper-pvc
-  namespace: gatekeeper
+  name: pocket-aide
+  namespace: pocket-aide
   labels:
-    app: gatekeeper
+    app: pocket-aide
 spec:
   accessModes:
     - ReadWriteOnce
@@ -30,17 +57,16 @@ spec:
     requests:
       storage: 100Mi
 ---
-# gatekeeper 레포 k8s/deployment.yaml 의 kind 판본. Recreate 전략과 복제 1 은 그
-# 파일이 SQLite 단일 쓰자 불변식을 위해 고정해 둔 것이라 그대로 가져왔다.
-# VAPID 값은 더미다 — push 발송은 이 하네스가 치지 않고, NewService 는 기동 시점에
-# 값을 검증하지 않는다(기록 뒤 런타임 경로의 몫).
+# pocket-aide 레포 k8s/deployment.yaml 의 kind 판본. Recreate 와 복제 1 은 그 파일이 SQLite
+# 단일 쓰기 불변식 때문에 고정해 둔 것이라 그대로 가져왔다. SQS_QUEUE_URL 을 두지 않으므로
+# PR 모니터와 APNs 발송은 꺼진 채 뜬다 — 승인 요청 생성 뒤의 푸시는 이 하네스가 보지 않는다.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gatekeeper
-  namespace: gatekeeper
+  name: pocket-aide
+  namespace: pocket-aide
   labels:
-    app: gatekeeper
+    app: pocket-aide
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 spec:
   replicas: 1
@@ -48,101 +74,113 @@ spec:
     type: Recreate
   selector:
     matchLabels:
-      app: gatekeeper
+      app: pocket-aide
   template:
     metadata:
       labels:
-        app: gatekeeper
+        app: pocket-aide
     spec:
+      serviceAccountName: pocket-aide
       nodeSelector:
         kubernetes.io/arch: arm64
       securityContext:
-        fsGroup: 1001
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
-        - name: gatekeeper
-          image: ghcr.io/dlddu/gatekeeper:sha-762fafe
+        - name: pocket-aide
+          image: pocket-aide:ci
           imagePullPolicy: IfNotPresent
+          command: ["/usr/local/bin/pocket-aide"]
           ports:
             - name: http
-              containerPort: 3000
+              containerPort: 8080
           env:
-            - name: DATABASE_URL
-              value: file:/app/data/gatekeeper.db
-            - name: API_SECRET_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gatekeeper-secrets
-                  key: API_SECRET_KEY
-            - name: VAPID_SUBJECT
-              valueFrom:
-                secretKeyRef:
-                  name: gatekeeper-secrets
-                  key: VAPID_SUBJECT
-            - name: VAPID_PUBLIC_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gatekeeper-secrets
-                  key: VAPID_PUBLIC_KEY
-            - name: VAPID_PRIVATE_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: gatekeeper-secrets
-                  key: VAPID_PRIVATE_KEY
+            - name: PORT
+              value: "8080"
+            - name: DATABASE_PATH
+              value: /data/pocket-aide.db
+            # 셋 다 oidc-mock.yaml 의 플래그와 같아야 한다(issuer · audience · client id).
+            - name: OIDC_ISSUER
+              value: http://oidc-mock.oidc-mock.svc.cluster.local:5556
+            - name: OIDC_AUDIENCE
+              value: pocket-aide-e2e
+            - name: OIDC_CLIENT_ID
+              value: homelab-k3s-mcp-e2e
+            - name: OIDC_REDIRECT_URI
+              value: http://127.0.0.1/e2e-callback
+            # k8s/deployment.yaml 의 pocket-aide-token 볼륨 audience 와 같아야 한다.
+            - name: APPROVAL_SERVICE_ACCOUNT_AUDIENCE
+              value: pocket-aide
           volumeMounts:
             - name: data
-              mountPath: /app/data
+              mountPath: /data
           readinessProbe:
             httpGet:
-              path: /api/health
+              path: /healthz
               port: http
-            periodSeconds: 5
-            timeoutSeconds: 2
-            failureThreshold: 6
+            periodSeconds: 2
+            failureThreshold: 30
           livenessProbe:
             httpGet:
-              path: /api/health
+              path: /healthz
               port: http
             periodSeconds: 10
             timeoutSeconds: 2
             failureThreshold: 3
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
       volumes:
         - name: data
           persistentVolumeClaim:
-            claimName: gatekeeper-pvc
+            claimName: pocket-aide
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: gatekeeper
-  namespace: gatekeeper
+  name: pocket-aide
+  namespace: pocket-aide
   labels:
-    app: gatekeeper
+    app: pocket-aide
 spec:
   type: ClusterIP
   selector:
-    app: gatekeeper
+    app: pocket-aide
   ports:
     - name: http
-      port: 80
+      port: 8080
       targetPort: http
 ---
-# 기록 프록시. 게이트를 향해 가는 트래픽 전부가 여기를 지난다.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: gatekeeper-trace-script
-  namespace: gatekeeper
+  name: pocket-aide-trace-script
+  namespace: pocket-aide
 data:
   trace_proxy.py: |
-    """Recording reverse proxy in front of the gatekeeper fixture.
+    """Recording reverse proxy in front of the PocketAide fixture.
 
-    Two listeners in one process: :3000 forwards every request to the
-    gatekeeper Service verbatim, :8081 serves the recording as JSON. What is
+    Two listeners in one process: :8080 forwards every request to the
+    PocketAide Service verbatim, :8081 serves the recording as JSON. What is
     recorded is what the approval contract (docs/test-approval-gate.md
     시나리오 2, docs/prd-approval-gate.md AC2) makes observable and the upstream
     alone does not: the create body (externalId, context, requesterName,
-    timeoutSeconds, userId), whether x-api-key was present, and how many times
-    each request id was polled. The api key VALUE never lands in the log.
+    timeoutSeconds), the scheme of the Authorization header, and how many times
+    each request id was polled. The credential itself never lands in the log.
     """
 
     import json
@@ -151,7 +189,8 @@ data:
     import urllib.request
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    UPSTREAM = "http://gatekeeper.gatekeeper.svc.cluster.local"
+    UPSTREAM = "http://pocket-aide.pocket-aide.svc.cluster.local:8080"
+    CREATE_PATH = "/api/external/approvals"
     MAX_RECORDS = 2000
 
     records = []
@@ -162,6 +201,12 @@ data:
         with records_lock:
             records.append(entry)
             del records[:-MAX_RECORDS]
+
+
+    def auth_scheme(value):
+        if not value:
+            return ""
+        return value.split(" ", 1)[0]
 
 
     class ForwardHandler(BaseHTTPRequestHandler):
@@ -186,8 +231,8 @@ data:
                 resp_body = exc.read()
                 status = exc.code
                 resp_headers = dict(exc.headers or {})
-            if self.command == "POST" and self.path.startswith("/api/requests"):
-                parsed = None
+            scheme = auth_scheme(self.headers.get("Authorization"))
+            if self.command == "POST" and self.path == CREATE_PATH:
                 try:
                     parsed = json.loads(body or b"{}")
                 except ValueError:
@@ -195,11 +240,17 @@ data:
                 record({
                     "type": "create",
                     "path": self.path,
-                    "x_api_key_present": bool(self.headers.get("x-api-key")),
+                    "status": status,
+                    "authorization_scheme": scheme,
                     "body": parsed,
                 })
-            elif self.command == "GET" and self.path.startswith("/api/requests/"):
-                record({"type": "poll", "path": self.path})
+            elif self.command == "GET" and self.path.startswith(CREATE_PATH + "/"):
+                record({
+                    "type": "poll",
+                    "path": self.path,
+                    "status": status,
+                    "authorization_scheme": scheme,
+                })
             self.send_response(status)
             for key in ("Content-Type",):
                 if key in resp_headers:
@@ -232,7 +283,7 @@ data:
 
 
     def main():
-        forward = ThreadingHTTPServer(("0.0.0.0", 3000), ForwardHandler)
+        forward = ThreadingHTTPServer(("0.0.0.0", 8080), ForwardHandler)
         admin = ThreadingHTTPServer(("0.0.0.0", 8081), RecordHandler)
         threading.Thread(target=forward.serve_forever, daemon=True).start()
         admin.serve_forever()
@@ -244,21 +295,22 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gatekeeper-trace
-  namespace: gatekeeper
+  name: pocket-aide-trace
+  namespace: pocket-aide
   labels:
-    app: gatekeeper-trace
+    app: pocket-aide-trace
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: gatekeeper-trace
+      app: pocket-aide-trace
   template:
     metadata:
       labels:
-        app: gatekeeper-trace
+        app: pocket-aide-trace
     spec:
+      automountServiceAccountToken: false
       nodeSelector:
         kubernetes.io/arch: arm64
       containers:
@@ -268,7 +320,7 @@ spec:
           command: ["python3", "/script/trace_proxy.py"]
           ports:
             - name: forward
-              containerPort: 3000
+              containerPort: 8080
             - name: admin
               containerPort: 8081
           volumeMounts:
@@ -289,22 +341,22 @@ spec:
       volumes:
         - name: script
           configMap:
-            name: gatekeeper-trace-script
+            name: pocket-aide-trace-script
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: gatekeeper-trace
-  namespace: gatekeeper
+  name: pocket-aide-trace
+  namespace: pocket-aide
   labels:
-    app: gatekeeper-trace
+    app: pocket-aide-trace
 spec:
   type: ClusterIP
   selector:
-    app: gatekeeper-trace
+    app: pocket-aide-trace
   ports:
     - name: forward
-      port: 3000
+      port: 8080
       targetPort: forward
     - name: admin
       port: 8081

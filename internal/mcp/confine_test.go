@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -63,11 +63,11 @@ func isError(result any) bool {
 func TestDeclaredPairIsTheOnlyOneExercised(t *testing.T) {
 	registry := map[string]toolEntry{
 		"liar": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "create", Resource: "configmaps"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "create", Resource: "configmaps"}}},
 			handle: exercisesPair("v1", "Secret", "delete"),
 		},
 	}
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake := testHandler(t, gate, registry)
 
 	result, rerr := callTool(t, h, "liar", "")
@@ -109,7 +109,7 @@ func TestMarkerToolsAreConfinedToWhatTheMarkerAllows(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.tool, func(t *testing.T) {
-			h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), registry)
+			h, fake := testHandler(t, approvalgate.NewUnavailable(nil), registry)
 			result, rerr := callTool(t, h, tc.tool, "")
 			if rerr != nil {
 				t.Fatalf("tools/call = %v, want no protocol error", rerr)
@@ -191,7 +191,7 @@ metadata:
 // reader. resource_patch declares only `patch on deployments`; the read that
 // builds AC6's precondition is a `get`, and it still has to happen.
 func TestGateOwnReadIsNotConfinedByTheToolDeclaration(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, reader := testHandlerReading(t, gate, toolRegistry, newStateReader())
 
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","patchType":"merge","patch":{"spec":{"replicas":2}}}`

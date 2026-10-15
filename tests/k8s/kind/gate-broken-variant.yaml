@@ -1,29 +1,29 @@
 # Misconfigured-gate SUT variants for test-approval-gate.md#시나리오 5.
 #
 # Three of the scenario's eight failure paths are properties of the SUT's own
-# deployment env rather than of anything gatekeeper does, and env is per
-# deployment (the same reason gatekeeper-variant.yaml exists). They cannot be
+# deployment rather than of anything PocketAide does, and env and volumes are
+# per deployment (the same reason approval-variant.yaml exists). They cannot be
 # folded into one deployment and they cannot be produced by mutating an
-# existing one mid-run: approval_gate_sc{2,4,9}.py share the gatekeeper-variant
-# namespace, and restarting it under them would be a cross-file race.
+# existing one mid-run: the approval-variant namespace is shared by every file
+# of its group, and restarting it under them would be a cross-file race.
 #
-#  * unreachable  -- GATEKEEPER_BASE_URL points at the container's own discard
+#  * unreachable  -- APPROVAL_GATE_URL points at the container's own discard
 #    port, so the dial is refused immediately and deterministically. A Service
 #    with no endpoints would also refuse, but it would be one more object whose
-#    absence of endpoints is itself something to keep true.
+#    absence of endpoints is itself something to keep true. The token volume is
+#    mounted so that FromEnv succeeds and the refusal really is the dial.
 #
-# The no-base-url and no-api-key variants are the halves of
-# gatekeeper.FromEnv()'s two error branches; the server still starts and main.go
-# turns each into gatekeeper.NewUnavailable(err) (main.go 「invalid approval gate
-# config; gated calls will be refused」), which is exactly the AC5 property the
-# scenario asks about. Both refuse WITHOUT calling Describe, so no kubernetes
-# read happens either -- the e2e observes that as the target object staying
+# The no-url and no-token variants are two error branches of
+# approvalgate.FromEnv(); the server still starts and main.go turns each into
+# approvalgate.NewUnavailable(err) (main.go 「invalid approval gate config;
+# gated calls will be refused」), which is exactly the AC5 property the scenario
+# asks about. Both refuse WITHOUT calling Describe, so no kubernetes read
+# happens either -- the e2e observes that as the target object staying
 # byte-identical.
 #
-# Unlike the other gate fixtures these carry their env inline: none of the
-# three needs a value CI has to discover at runtime (no seeded user id, no API
-# key that must match gatekeeper's), and a literal is easier to read against
-# the branch of FromEnv it is meant to hit.
+# None of the three is registered as a PocketAide caller (ci.yml registers only
+# the deployments that reach it): a refusal here must not depend on PocketAide
+# answering at all.
 #
 # The dedicated ClusterRoleBinding exists for the same reason the other
 # variants' do: authorization is per ServiceAccount.
@@ -113,14 +113,16 @@ spec:
               value: "1"
             # 연결 실패 경로. 파드 자신의 discard 포트라 아무도 듣지 않아 dial 이 즉시 거부된다 —
             # 타임아웃을 기다리지 않으므로 이 경로만 초 단위로 결정적이다.
-            - name: GATEKEEPER_BASE_URL
+            - name: APPROVAL_GATE_URL
               value: http://127.0.0.1:9
-            - name: GATEKEEPER_API_KEY
-              value: unreachable-variant-key
-            - name: GATEKEEPER_TIMEOUT_SECONDS
+            - name: APPROVAL_GATE_TIMEOUT_SECONDS
               value: "5"
-            - name: GATEKEEPER_POLL_INTERVAL_SECONDS
+            - name: APPROVAL_GATE_POLL_INTERVAL_SECONDS
               value: "1"
+          volumeMounts:
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -133,6 +135,14 @@ spec:
               port: http
             periodSeconds: 10
             timeoutSeconds: 2
+      volumes:
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token
 ---
 apiVersion: v1
 kind: Service
@@ -154,10 +164,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: homelab-k3s-mcp-gate-no-base-url
+  name: homelab-k3s-mcp-gate-no-url
   namespace: homelab-k3s-mcp-gate-broken
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-url
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 spec:
@@ -165,12 +175,12 @@ spec:
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+      app.kubernetes.io/name: homelab-k3s-mcp-gate-no-url
       app.kubernetes.io/component: server
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+        app.kubernetes.io/name: homelab-k3s-mcp-gate-no-url
         app.kubernetes.io/component: server
         app.kubernetes.io/part-of: homelab-k3s-mcp-tests
     spec:
@@ -202,9 +212,14 @@ spec:
             # mock-exception: GATE — 이 변형의 검증 대상은 게이트 미설정·불통이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
             - name: MCP_AUTH_DISABLED
               value: "1"
-            # GATEKEEPER_BASE_URL 미설정 — FromEnv 의 「API_KEY is set but BASE_URL is not」 분기.
-            - name: GATEKEEPER_API_KEY
-              value: no-base-url-variant-key
+            # APPROVAL_GATE_URL 미설정 — FromEnv 의 「TOKEN_FILE is set but URL is not」 분기.
+            # 토큰 파일은 실재하므로(아래 볼륨) 이 거부는 URL 하나의 부재에서만 나온다.
+            - name: APPROVAL_GATE_TOKEN_FILE
+              value: /var/run/secrets/pocket-aide/token
+          volumeMounts:
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -217,18 +232,26 @@ spec:
               port: http
             periodSeconds: 10
             timeoutSeconds: 2
+      volumes:
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: homelab-k3s-mcp-gate-no-base-url
+  name: homelab-k3s-mcp-gate-no-url
   namespace: homelab-k3s-mcp-gate-broken
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-url
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-base-url
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-url
     app.kubernetes.io/component: server
   ports:
     - name: http
@@ -238,10 +261,10 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: homelab-k3s-mcp-gate-no-api-key
+  name: homelab-k3s-mcp-gate-no-token
   namespace: homelab-k3s-mcp-gate-broken
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-token
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 spec:
@@ -249,12 +272,12 @@ spec:
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+      app.kubernetes.io/name: homelab-k3s-mcp-gate-no-token
       app.kubernetes.io/component: server
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+        app.kubernetes.io/name: homelab-k3s-mcp-gate-no-token
         app.kubernetes.io/component: server
         app.kubernetes.io/part-of: homelab-k3s-mcp-tests
     spec:
@@ -286,9 +309,11 @@ spec:
             # mock-exception: GATE — 이 변형의 검증 대상은 게이트 미설정·불통이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
             - name: MCP_AUTH_DISABLED
               value: "1"
-            # GATEKEEPER_API_KEY 미설정 — FromEnv 의 「BASE_URL is set but API_KEY is not」 분기.
-            - name: GATEKEEPER_BASE_URL
-              value: http://gatekeeper.gatekeeper.svc.cluster.local
+            # 토큰 미마운트 — URL 은 살아 있는 PocketAide 를 가리키지만 pocket-aide-token 볼륨이
+            # 없어 FromEnv 가 기본 경로의 토큰을 읽지 못하는 분기다. 닿을 수 있는 백엔드를 두는
+            # 것이 요점이다: 거부가 연결 실패가 아니라 자격증명 부재에서 나왔다는 것이 문면으로 갈린다.
+            - name: APPROVAL_GATE_URL
+              value: http://pocket-aide.pocket-aide.svc.cluster.local:8080
           startupProbe:
             httpGet:
               path: /healthz
@@ -305,14 +330,14 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: homelab-k3s-mcp-gate-no-api-key
+  name: homelab-k3s-mcp-gate-no-token
   namespace: homelab-k3s-mcp-gate-broken
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-token
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-api-key
+    app.kubernetes.io/name: homelab-k3s-mcp-gate-no-token
     app.kubernetes.io/component: server
   ports:
     - name: http

@@ -1,0 +1,99 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  # mock-exception: UPS — PocketAide 의 실 상류 IdP 는 운영자의 외부 OIDC 공급자(실 계정·브라우저 동의)라 kind 안에서 로그인을 구동할 수 없다.
+  name: oidc-mock
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# PocketAide 레포(dlddu/pocket-aide)의 cmd/oidcmock 를 ci.yml 이 POCKET_AIDE_SHA 커밋에서
+# 빌드한 이미지다. 그 레포 자신의 iOS CI 가 쓰는 것과 같은 IdP 라, PocketAide 가 기대하는 토큰
+# 모양(access_token 의 aud = OIDC_AUDIENCE)이 이 하네스에서 따로 맞춰지지 않는다.
+#
+# issuer 는 PocketAide 의 OIDC_ISSUER(pocket-aide-fixture.yaml)와 글자까지 같아야 한다 —
+# PocketAide 는 기동할 때 discovery 문서의 issuer 를 대조하고, 어긋나면 log.Fatalf 로 죽는다.
+# 사람 로그인 대신 _approval_gate.py 가 /authorize 의 login_hint 로 subject 를 골라 PKCE
+# 흐름을 돈다. /e2e/next-login-subject 를 쓰지 않는 것은 그 값이 프로세스 전역 하나라 병렬
+# 레인이 서로의 다음 로그인을 덮어쓰기 때문이다.
+#
+# 서명 키는 프로세스 기동 때마다 새로 만든다. 파드가 재시작하면 그 전에 발급된 토큰은 전부
+# 무효가 되므로 이 Deployment 를 테스트 도중에 다시 굴리지 말 것.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oidc-mock
+  namespace: oidc-mock
+  labels:
+    app: oidc-mock
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: oidc-mock
+  template:
+    metadata:
+      labels:
+        app: oidc-mock
+    spec:
+      automountServiceAccountToken: false
+      nodeSelector:
+        kubernetes.io/arch: arm64
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: oidc-mock
+          image: oidc-mock:ci
+          imagePullPolicy: IfNotPresent
+          command:
+            - /usr/local/bin/oidcmock
+            - -addr
+            - ":5556"
+            - -issuer
+            - http://oidc-mock.oidc-mock.svc.cluster.local:5556
+            - -client-id
+            - homelab-k3s-mcp-e2e
+            - -audience
+            - pocket-aide-e2e
+          ports:
+            - name: http
+              containerPort: 5556
+          readinessProbe:
+            httpGet:
+              path: /.well-known/openid-configuration
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 250m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oidc-mock
+  namespace: oidc-mock
+  labels:
+    app: oidc-mock
+spec:
+  type: ClusterIP
+  selector:
+    app: oidc-mock
+  ports:
+    - name: http
+      port: 5556
+      targetPort: http

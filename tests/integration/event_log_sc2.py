@@ -1,7 +1,7 @@
 """게이트 판정의 구분 — 승인·거절·타임아웃·미설정 네 경로의 레코드가 판정 필드에서 갈린다.
 
 검증 시나리오: test-event-log.md#시나리오 2
-실행 대상: gatekeeper-variant
+실행 대상: approval-variant
 
 통신 실패는 판정을 낳지 못한 요청이라 id 가 없고, 그 구분이 이 두 필드에 그대로 남는다.
 """
@@ -16,13 +16,13 @@ from mcp.shared.exceptions import McpError
 
 from _auth_variant import API_KEY as AUTH_VARIANT_API_KEY
 from _eventlog import exactly_one_new, records, select, wait_for_new
-from _gatekeeper import decide, gatekeeper_url, set_auto_response, wait_for_pending
+from _approval_gate import decide, approval_url, set_auto_response, wait_for_pending
 from _helpers import base_url, open_session, port_forward, wait_for_healthz
 
 NAMESPACE = "workload-test"
 
-VARIANT_NAMESPACE = "homelab-k3s-mcp-gatekeeper-variant"
-VARIANT_DEPLOYMENT = "homelab-k3s-mcp-gatekeeper-variant"
+VARIANT_NAMESPACE = "homelab-k3s-mcp-approval-variant"
+VARIANT_DEPLOYMENT = "homelab-k3s-mcp-approval-variant"
 
 AUTH_NAMESPACE = "homelab-k3s-mcp-auth"
 AUTH_DEPLOYMENT = "homelab-k3s-mcp-auth"
@@ -161,7 +161,7 @@ async def run() -> None:
         _config_map(name)
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         set_auto_response(gate, "NONE")
         async with open_session(url) as session:
             print("--- event-log/시나리오 2 (승인) ---")

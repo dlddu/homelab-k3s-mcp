@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -65,8 +65,8 @@ func parseExecTarget(obj map[string]any) (k8s.ExecRef, []string, *string, *rpcEr
 // first, for the reason updatePairs states. exec is a verb the call performs on
 // the pod, so the resource name hangs the subresource off the coordinate the
 // way dear_baby_reset_user's declaration spells it.
-func execPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+func execPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")

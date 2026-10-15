@@ -25,9 +25,9 @@ from mcp import ClientSession
 from mcp.shared.exceptions import McpError
 
 from _auth_variant import API_KEY
-from _gatekeeper import (
+from _approval_gate import (
     decide,
-    gatekeeper_url,
+    approval_url,
     get_request,
     list_requests,
     wait_for_pending,
@@ -38,7 +38,7 @@ VARIANT_NAMESPACE = "homelab-k3s-mcp-rbac-narrow"
 VARIANT_DEPLOYMENT = "homelab-k3s-mcp-rbac-narrow"
 VARIANT_SERVICE = VARIANT_DEPLOYMENT
 # Clear of ci.yml's group forwards (8080·8088·8089·8090·8092·8093), of
-# _gatekeeper's 8095·8096, and of the ports other lanes open while this file
+# _approval_gate's 8096, and of the ports other lanes open while this file
 # runs (_session_platform 18083, platform_auth_safety 18080-18082,
 # github_commit_status_sc4 18084).
 VARIANT_LOCAL_PORT = 18085
@@ -122,7 +122,7 @@ async def test_resource_generic_ac18_missing_verb_is_named_after_approval(
 ) -> None:
     """AC: resource-generic/AC18 (a)
 
-    The gatekeeper record reading APPROVED afterwards is what places the 403
+    The PocketAide record reading APPROVED afterwards is what places the 403
     after the approval rather than in front of it — the pre-read path of (b)
     would have left no record at all.
     """
@@ -201,7 +201,7 @@ async def run() -> None:
     )
 
     print("--- resource-generic/시나리오 18 (narrow-RBAC variant) ---")
-    with gatekeeper_url() as gate, port_forward(
+    with approval_url() as gate, port_forward(
         VARIANT_NAMESPACE, VARIANT_SERVICE, 80, VARIANT_LOCAL_PORT, ready_path="/healthz"
     ) as url:
         wait_for_healthz(url)

@@ -80,12 +80,13 @@
 | --- | --- | --- | --- |
 | `github-mock` | `UPS` | `tests/k8s/kind/github-mock.yaml` | — |
 | `grafana-mock` | `UPS` | `tests/k8s/kind/grafana-mock.yaml` | — |
-| `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/gatekeeper-variant.yaml` · `tests/k8s/kind/gate-broken-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
+| `oidc-mock` | `UPS` | `tests/k8s/kind/oidc-mock.yaml` | — |
+| `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/approval-variant.yaml` · `tests/k8s/kind/gate-broken-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
 | `DISABLE_SECURITY_PLUGIN` | `GATE` | `tests/k8s/kind/opensearch.yaml` | `tests/k8s/kind/http-trace.yaml` |
 
 <!-- /mock-exception-원장 -->
 
-등재 상한: <!-- mock-exception-상한 -->4<!-- /mock-exception-상한 -->
+등재 상한: <!-- mock-exception-상한 -->5<!-- /mock-exception-상한 -->
 
 상한은 허용목록의 행 수와 **정확히 같아야** 한다(체커 R6, 양방향). 예외를 늘리려면 같은 PR에서
 이 숫자를 명시적으로 올려야 하고, 예외가 사라지면 같이 내려야 한다 — 예외는 늘지 않는 방향으로만
@@ -144,6 +145,39 @@ App의 private key·installation id가 필요하다. CI 클러스터 안에 GitH
 
 **소멸 조건**: Grafana Cloud를 CI에서 안전하게 호출할 수 있게 되면 소멸한다.
 
+### `oidc-mock` — `UPS`
+
+**대상**: 승인 게이트의 상대인 PocketAide(`dlddu/pocket-aide`)가 사용자를 식별하는 OIDC 발급자.
+게이트 e2e 는 **사람 대신** 승인·거절·자동 응답 모드를 PocketAide 앱 API 로 조작하는데, 그 API 는
+OIDC Bearer 로만 열리고 요청은 「그 호출자를 등록한 사용자」의 것이라, 사용자 몫의 토큰이 있어야
+판정을 내릴 수 있다. 이 지점은 PocketAide 레포 자신의 `cmd/oidcmock`(PKCE 인가 코드 흐름 ·
+`login_hint` 로 subject 선택)을 `ci.yml` 이 PocketAide 서버와 **같은 커밋**(`POCKET_AIDE_SHA`)에서
+빌드해 `oidc-mock` 네임스페이스에 띄운 것이다. 흉내 내는 것은 IdP 의 로그인 화면·실 계정뿐이고,
+발급된 JWT 는 실물 PocketAide 가 실물 go-oidc 검증기로 discovery·JWKS 를 거쳐 검증한다.
+
+**실환경 불가 사유**: PocketAide 의 실 상류 IdP 는 운영자의 외부 OIDC 공급자이고, 거기서 토큰을
+받으려면 실 계정과 브라우저 동의가 필요하다. CI 클러스터 안에서 그 로그인을 구동할 수 없고, 실
+계정 자격증명을 CI 에 두면 매 PR 이 운영 사용자의 승인 화면을 만지게 된다.
+
+**dex 가 이미 있는데도 등재하는 이유 — 그리고 이 등재가 지는 부채.** 이 하네스에는 실 OIDC 구현인
+dex(`tests/k8s/kind/oidc-fixture.yaml`)가 이미 돈다. 그 dex 를 PocketAide 의 발급자로 쓰는 길은
+**원리적으로 막혀 있지 않다** — PocketAide 는 `sub` 만 보므로 정적 클라이언트와 사용자 몇을 더하면
+된다. 그 길을 지금 택하지 않은 것은 셋 때문이고, 셋 다 「불가능」이 아니라 「비용」이다: ⑴ dex 의
+`expiry.idTokens` 는 `event_log_sc6.py` 가 만료를 재려고 20초로 묶어 둔 전역 값이라 게이트 e2e 의
+토큰이 호출 도중에 만료된다 ⑵ dex 롤아웃이 지금 CI 의 맨 뒤에 있어 PocketAide(기동 시 discovery
+필수)가 그 뒤로 밀린다 ⑶ PocketAide 쪽 CI 가 검증하는 토큰 모양(액세스 토큰의 `aud` = `OIDC_AUDIENCE`)
+과 같은 것을 쓰면 두 레포의 하네스가 같은 계약 위에 선다. 이 판정은 「카테고리 판정이 애매하면 제거
+쪽으로 기운다」와 긴장 관계에 있으므로 **소멸 조건을 dex 쪽으로 열어 둔다**.
+
+**배선**: `.github/workflows/ci.yml` 이 이 매니페스트를 PocketAide 보다 먼저 배포·대기하고,
+`tests/k8s/kind/pocket-aide-fixture.yaml` 의 `OIDC_ISSUER` 가
+`http://oidc-mock.oidc-mock.svc.cluster.local:5556` 을 가리킨다. 토큰을 받는 쪽은
+`tests/integration/_approval_gate.py` 하나다.
+
+**소멸 조건**: PocketAide 의 발급자를 이 하네스의 실 OIDC 구현(dex)으로 옮기면 — dex 토큰 만료를
+게이트 e2e 와 갈라 쓸 수 있게 되거나 PocketAide 픽스처를 dex 롤아웃 뒤로 미루는 비용을 받아들이면 —
+이 등재는 소멸한다.
+
 ### 해소된 등재 — `dear-baby-fixture` (`IMG`, 2026-09-26 삭제)
 
 기록으로만 남긴다. 이 자리에는 busybox 파드에 `/reset-user` 스텁 스크립트를 심은
@@ -181,8 +215,8 @@ VAPID 더미와 같은 판정이다.
 | 지점 | 무엇을 태우는가 |
 | --- | --- |
 | `tests/k8s/kind/kustomization.yaml` | 기본 kind 배포. kind 오버레이의 configMapGenerator가 넣는다. |
-| `tests/k8s/kind/gatekeeper-variant.yaml` | 승인 게이트 e2e 전용 배포 변형(`approval_gate_sc{2,4,9}.py`). Deployment의 `env`가 직접 넣는다 — env는 배포당이라 기본 배포의 값을 물려받을 수 없다. |
-| `tests/k8s/kind/gate-broken-variant.yaml` | 승인 게이트 **오구성** e2e 전용 배포 변형 **셋**(`approval_gate_sc5.py`의 연결 실패 · `GATEKEEPER_BASE_URL` 미설정 · `GATEKEEPER_API_KEY` 미설정 경로). 검증 대상은 `gatekeeper.FromEnv()`의 오구성 분기이지 인증이 아니다. 세 Deployment의 `env`가 각각 직접 넣는다 — 같은 이유로 하나로 접을 수 없다. |
+| `tests/k8s/kind/approval-variant.yaml` | 승인 게이트 e2e 전용 배포 변형(`approval_gate_sc{2,4,5,9}.py` 등). Deployment의 `env`가 직접 넣는다 — env는 배포당이라 기본 배포의 값을 물려받을 수 없다. |
+| `tests/k8s/kind/gate-broken-variant.yaml` | 승인 게이트 **오구성** e2e 전용 배포 변형 **셋**(`approval_gate_sc5.py`의 연결 실패 · `APPROVAL_GATE_URL` 미설정 · 서비스 어카운트 토큰 미마운트 경로). 검증 대상은 `approvalgate.FromEnv()`의 오구성 분기와 연결 실패이지 인증이 아니다. 세 Deployment의 `env`가 각각 직접 넣는다 — 같은 이유로 하나로 접을 수 없다. |
 
 세 지점은 **같은 완화**(`:ci` 이미지의 인증 게이트를 내린다)이고 같은 대체 검증을 공유하므로 한
 행으로 등재한다. 배포가 늘었다고 예외가 는 것이 아니다 — 이 절은 행을 늘리지도 상한을
@@ -190,7 +224,7 @@ VAPID 더미와 같은 판정이다.
 
 **실환경 불가 사유**: 인증을 켜면 모든 도구 호출에 유효한 자격증명이 필요해져, **인증이 검증
 대상이 아닌** 나머지 도구 e2e가 인증 설정에 종속된다. 게이트를 내려야 도구 동작을 관측할 수 있다.
-승인 게이트 변형도 같다 — 그 파일들의 검증 대상은 gatekeeper 왕복이지 인증이 아니다.
+승인 게이트 변형도 같다 — 그 파일들의 검증 대상은 PocketAide 왕복이지 인증이 아니다.
 
 **대체 검증**: `tests/k8s/kind/auth-fixture.yaml` — 같은 `:ci` 이미지를 **인증을 켠 채**
 (`MCP_AUTH_DISABLED`를 일부러 두지 않고 `MCP_API_KEYS`에 단일 키만) 띄우는 별도 배포 변형.
@@ -472,6 +506,30 @@ C1~C5 안에서만이다.
 안에 있다 — 이 행은 4번이 착지할 때까지 남고, 행 삭제 PR 은 해소 증거를 연결해야 하며(증거 없는
 삭제는 B3 위반), 사건이 오지 않으면 `2026-10-15` 재검토가 backstop 이다. 주입기를 코드로 착지시키는
 PR 의 리뷰가 C1~C5 를 대조하는 자리다.
+
+### 주입 대상 이전 — PocketAide (2026-10-15)
+
+승인 게이트의 상대가 gatekeeper 에서 PocketAide(`dlddu/pocket-aide`)로 바뀌었다. 위 판정의 근거
+1~5 는 **gatekeeper 의 이름으로** 적혀 있으므로, 같은 판정이 새 상대에서도 서는지 근거마다 대조하고
+대상만 옮겼다. 판정은 그대로다 — 주입은 이 정책이 세는 모킹이 아니고, 허용목록·상한은 이 이전으로
+움직이지 않는다(PocketAide 앞의 IdP 는 주입과 무관한 별개 지점이라 위 `oidc-mock` 절이 따로 판정한다).
+
+| 근거 | gatekeeper 에서 | PocketAide 에서 |
+| --- | --- | --- |
+| 1 (스텁 아님) | 요청은 실물 `ghcr.io/dlddu/gatekeeper` 가 받는다 | 요청은 `POCKET_AIDE_SHA` 커밋에서 빌드한 실물 서버(`tests/k8s/kind/pocket-aide-fixture.yaml`)가 받는다 |
+| 2 (스위치 아님) | 배포 구성 무변경 | 같다 — 주입기는 별도 Deployment(`tests/k8s/kind/pocket-aide-injector.yaml`)이고 픽스처를 고치지 않는다 |
+| 3 (응답 출처) | 409 = `Request_externalId_key` 고유 인덱스 → 실물 핸들러, 500 = `httpx.InternalError` | 409 = `approval_requests` 의 `UNIQUE (caller_key_id, external_id)` → 실물 `approvals.isUniqueViolation` → `409 externalId already used by this caller key`, 500 = 실물 `create failed` 분기 |
+| 4·5 | 관측이 아닌 개입이되 치환이 아님 · 편의 아님 | 같다. 유일한 대안이 여전히 난수 ID 를 고정하는 제품 개작이다 |
+
+C1~C5 는 문면 그대로 적용되고, 바뀐 것은 그것을 지키는 자리의 이름뿐이다 — C2 의 트리거 조건은
+`instr(NEW.context, '<마커>') > 0` 그대로이고 테이블이 `approval_requests` 로 바뀌었다. C4 의 그림자
+행은 `requester_name = 'e2e-shadow'` 로 집는다. 저장소는 SQLite(`journal_mode=DELETE` ·
+`busy_timeout=5000`)라 두 번째 쓰기 프로세스가 지원되는 구성이다. 주입기는 파일을 `mode=rw` 로 열어
+**DB 를 만들 수 없다** — PocketAide 가 마이그레이션하기 전에는 Ready 가 되지 않는다. 그 주입이 새
+상대에서 실제로 409·500 을 내는지는 같은 커밋의 서버를 로컬로 띄우고 같은 트리거를 걸어 관측했다
+(2026-10-15: 마커 요청 `409 {"error":"externalId already used by this caller key"}` · `500
+{"error":"create failed"}` · 다른 마커 `201` · 걷은 뒤 `triggers: [] · shadow_rows: 0`). kind 위의 관측은
+`approval_gate_sc5.py` 의 몫이다.
 
 ### 집행 경계
 

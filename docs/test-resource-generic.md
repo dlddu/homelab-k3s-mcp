@@ -58,7 +58,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 어디에도 없는 상수**다 — 어떤 응답에서 발견되면 그것이 그 Secret에서 새어 나온 것이라고
 단정할 수 있다는 것이 「고유」의 쓸모다.
 
-변경 verb 시나리오는 전부 승인이 필요하므로 `test-approval-gate.md`의 gatekeeper 픽스처를
+변경 verb 시나리오는 전부 승인이 필요하므로 `test-approval-gate.md`의 PocketAide 픽스처를
 공유하고, 승인은 forward-auth 헤더로 `PATCH /api/requests/{id}/approve`를 직접 호출해
 대신한다.
 
@@ -131,7 +131,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestPodLogsFallsBackWhenTheBodyIsNotAStatus`
 
 ### 시나리오 6: 변경 스트림 관측
-- **사전 조건**: `workload-fixture` 기준선, 픽스처 Secret, kind 실물 gatekeeper
+- **사전 조건**: `workload-fixture` 기준선, 픽스처 Secret, kind 실물 PocketAide
 - **실행 단계**: Deployment 를 `watchSeconds=10` 으로 관측하면서 별도 경로로 레플리카 변경 →
   `watchSeconds=61` 호출 → `resourceVersion` 을 주고 재관측 → `kind=Secret` 으로 미승인 호출 →
   승인 후 재호출
@@ -141,7 +141,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
 - **검증 AC**: AC6
 - **자동화**: 통합 `tests/integration/resource_generic_sc6.py` — 창 안의 `MODIFIED`,
   창 상한(61 거부), `resourceVersion` resume, 민감 종류의 미승인 거부·승인 후 수신·창 상한
-  유지를 실물 apiserver 와 실물 gatekeeper 로 단언한다. 이벤트 **수** 상한의 발화는 공유
+  유지를 실물 apiserver 와 실물 PocketAide 로 단언한다. 이벤트 **수** 상한의 발화는 공유
   클러스터에서 비결정적이라 Go 단위에 남기고, 통합은 상한이 응답 계약으로 서 있는 것까지
   잰다. Go 단위 둘은 계획한
   이름 그대로 섰다: `internal/mcp/resource_test.go::TestWatchWindowBounds`(기본 10 · 60 통과 ·
@@ -155,7 +155,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   이벤트 수 상한이 실물 스트림에서 닫히는지이며, 그것이 통합 파일이 남아 있는 이유다.
 
 ### 시나리오 7: 생성은 덮어쓰지 않는다
-- **사전 조건**: kind 실물 gatekeeper
+- **사전 조건**: kind 실물 PocketAide
 - **실행 단계**: 신규 ConfigMap 매니페스트로 `resource_create`(승인) → 같은 이름으로 재호출
   (승인) → Deployment + Service 2문서 매니페스트로 호출 → 같은 2문서 매니페스트를 이름만
   바꿔 다시 호출하되 **둘째 문서의 승인을 거절** → 또 한 번 호출하되 둘 다 승인하고
@@ -177,8 +177,8 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   승인 재사용 거부, 민감 값 마스킹, 자동 승인 표시도 검증한다.
   **통합 `tests/integration/resource_generic_sc7.py`** 가 그 위에 실물 층을 얹는다 —
   단건 생성·같은 이름의 409·2문서의 승인 2건·둘째 거절 시 첫째 객체조차 없음·둘 다 승인
-  뒤 실행 409 의 좌표 보고와 무롤백을 실 apiserver 와 실물 gatekeeper 로 관측한다.
-  위 Go 테스트는 dispatcher와 HTTP 경계를 검증하며 그 자체로는 실 apiserver·gatekeeper
+  뒤 실행 409 의 좌표 보고와 무롤백을 실 apiserver 와 실물 PocketAide 로 관측한다.
+  위 Go 테스트는 dispatcher와 HTTP 경계를 검증하며 그 자체로는 실 apiserver·PocketAide
   동작을 입증하지 않는다.
 
 ### 시나리오 8: 전체 교체와 스케일
@@ -226,7 +226,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   JSON Patch의 앞뒤 조건 실패, metadata 조건 변조 거부와 큰 정수 보존을 검증한다.
   `internal/mcp/patch_precondition_test.go`는 승인 상태 전달·호출자 위조값 무시,
   누락/변경 상태의 0쓰기, 충돌 시 1승인·1쓰기·재읽기 없음과 호출 간 격리를 검증한다.
-  이들은 Go/HTTP 경계 회귀이며 실물 apiserver·gatekeeper 통합 증거를 대신하지 않는다.
+  이들은 Go/HTTP 경계 회귀이며 실물 apiserver·PocketAide 통합 증거를 대신하지 않는다.
 
 ### 시나리오 10: 삭제는 단건만
 - **사전 조건**: 동일
@@ -252,7 +252,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   관측이다
 
 ### 시나리오 11: 컨테이너 안에서 명령 실행
-- **사전 조건**: kind 실물 gatekeeper, `workload-fixture` 기준선, 다중 컨테이너 파드
+- **사전 조건**: kind 실물 PocketAide, `workload-fixture` 기준선, 다중 컨테이너 파드
 - **실행 단계**: `resource_exec`으로 `echo` 실행(승인) → stderr 를 내는 명령 실행 →
   다중 컨테이너 파드에 `container` 없이 호출 → `yes` 처럼 무한 출력하는 명령 실행
 - **기대 결과**: stdout 과 stderr 가 구분되어 반환됨. `container` 누락이 거부되고 후보
@@ -275,7 +275,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `stdoutTruncated: true` 가 그 두 자리의 회귀 방지선이다.
 
 ### 시나리오 12: 컬렉션 일괄 삭제
-- **사전 조건**: kind 실물 gatekeeper, 같은 레이블을 단 ConfigMap 5개와 다른 레이블 2개
+- **사전 조건**: kind 실물 PocketAide, 같은 레이블을 단 ConfigMap 5개와 다른 레이블 2개
 - **실행 단계**: `labelSelector` 로 5개를 겨냥해 호출 → 승인 요청 `context` 수집 → 승인 →
   `namespace` 없이 호출 → 0건을 가리키는 셀렉터로 호출 → 승인과 실행 사이에 같은 레이블의
   ConfigMap 을 하나 더 만들고 승인
@@ -291,7 +291,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   `TestCollectionThatGrewAfterApprovalIsRefused`,
   `TestApprovedCollectionDeleteSendsTheSelectorsUnchanged`). 통합
   `tests/integration/resource_generic_sc12.py` 는 같은 계약을 실물 apiserver·실물
-  gatekeeper 왕복으로 관측한다(2026-09-19 착지) — 승인 화면이 대상 수 5와 다섯 이름을
+  PocketAide 왕복으로 관측한다(2026-09-19 착지) — 승인 화면이 대상 수 5와 다섯 이름을
   싣는 것, 승인 뒤 그 다섯만 사라지고 다른 레이블 2개는 남는 것, `namespace` 누락과 0건
   셀렉터가 **승인 요청조차 만들지 않는** 것, 승인과 실행 사이에 같은 레이블이 하나 늘면
   실행이 거부되는 것. 단위 층의 가짜 목록 판독기는 자기가 받은 셀렉터를 기록할 뿐이라
@@ -314,9 +314,9 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   열린 동안 EOF 에 닿지 않음, 페이로드를 다 흘린 뒤에도 창이 닫힐 때까지 `Read` 가 답하지 않음,
   빈 `stdin` 도 부재와 달리 창을 지킴). 통합
   `tests/integration/resource_generic_sc13.py` 는 같은 계약을 **실물 kubelet · 실물
-  gatekeeper** 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 `stdin:true` busybox 파드에
+  PocketAide** 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 `stdin:true` busybox 파드에
   `readSeconds=3` 으로 붙어 돌아온 줄이 **파드 로그에도 있고** 티커 번호가 1 보다 크다는 것(둘
-  다 「새 프로세스가 뜨지 않았다」의 증인이다), `readSeconds=31` 이 **호출 앞뒤의 gatekeeper
+  다 「새 프로세스가 뜨지 않았다」의 증인이다), `readSeconds=31` 이 **호출 앞뒤의 PocketAide
   요청 수를 바꾸지 않고** 거부된다는 것, 그리고 실어 보낸 `stdin` 의 되울림이 응답과 파드 로그
   **양쪽에** 나타난다는 것. 마지막 하나는 2026-09-18 까지 하네스가 도달할 수 없던 자리다 —
   `resource_attach` 가 `stdin` 을 받으면 `readSeconds` 창을 0.016초로 걷고도 **성공 응답**을
@@ -339,7 +339,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   (`TestPortForwardMakesOneRoundTrip`, `TestPortForwardRefusalsCostNoApproval`,
   `TestPortForwardContextCarriesPortAndPayload`). 통합
   `tests/integration/resource_generic_sc14.py` 는 같은 계약을 실물 apiserver·실물
-  gatekeeper 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 busybox `httpd` 파드에
+  PocketAide 왕복으로 관측한다(2026-09-19 착지) — 자기가 세운 busybox `httpd` 파드에
   요청을 한 번 보내고 답을 받아 `tunnelClosed` 로 끝나는 것, 승인 화면이 포트와 페이로드
   **전문**을 싣는 것, 같은 호출을 한 번 더 하면 첫 승인이 재사용되지 않고 **새 id** 의 승인
   요청이 서며 그것을 거절하면 두 번째 왕복이 일어나지 않는 것, 상한을 넘기는 응답이 정확히
@@ -348,7 +348,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   반쪽을 닫는 구현과 닫지 않는 구현을 구별하지 못한다 — 그 자리를 이 파일이 잰다
 
 ### 시나리오 15: 프록시는 경로를 숨기지 않는다
-- **사전 조건**: kind 실물 gatekeeper, HTTP 파드와 그 Service, 노드 1개
+- **사전 조건**: kind 실물 PocketAide, HTTP 파드와 그 Service, 노드 1개
 - **실행 단계**: `kind=Pod`로 `GET`(승인) → `kind=Service`로 `POST`(승인) →
   `kind=Node`로 `/healthz` `GET`(승인) → `kind=Node`로 `/exec/⟨ns⟩/⟨pod⟩/⟨c⟩?command=id`
   호출하고 승인 요청 `context` 수집 후 승인 → `GET`을 승인 없이 호출 →
@@ -393,7 +393,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   에 넘기는 `⟨이름⟩:⟨포트⟩`)가 잰다. 실물 파드의 둘째 포트로 도달하는 통합 단언은 아직 없다
 
 ### 시나리오 16: 민감 종류는 읽기도 쓰기도 승인을 거친다
-- **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 gatekeeper
+- **사전 조건**: 값이 고유 난수 토큰인 Secret, kind 실물 PocketAide
 - **실행 단계**: `kind=Secret`으로 `get`·`watch`·`create`·`update`·`patch`·`delete`를
   각각 미승인 호출 → `create`를 승인 흐름까지 태우고 `context` 수집 → 승인 후 값 확인 →
   `kind=Secret`으로 `list` 호출(승인 없이) → `kind=ConfigMap`으로 `get`
@@ -439,7 +439,7 @@ containerd가 직전 인스턴스 로그를 GC해 `previous=true` 읽기를 흔�
   (c') 노드 프록시 호출의 쌍이 `create on nodes/proxy` 뿐이라 민감 종류 판정에 걸리지 않는 것,
   (d) SA 토큰의 직접 `watch` 가 403 이 아니라 200 이고 같은 watch 가 `watch on secrets` 로 거부되는 것.
   대상 Secret·서빙 파드는 이 파일이 스스로 세우고(`resource_generic_sc15.py` 와 같은 방식 —
-  픽스처 YAML 과 `ci.yml` 을 늘리지 않는다), 실행 대상은 `gatekeeper-variant` 다((b) 의
+  픽스처 YAML 과 `ci.yml` 을 늘리지 않는다), 실행 대상은 `approval-variant` 다((b) 의
   `RESOURCE_GATED_KINDS` 가 배포당 env 라 primary 로는 세울 수 없다).
   기대 결과의 「k8s 호출 카운트 0」은 SUT 내부 사실이라 통합이 셀 수 없으므로(감사 프록시 부재),
   시나리오 16 과 같이 **밖에서 관측 가능한 등가물**(응답·거부 문면·승인 화면 어디에도 토큰이 없고

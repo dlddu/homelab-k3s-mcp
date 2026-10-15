@@ -7,7 +7,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -30,7 +30,7 @@ func TestPatchCarriesOnlyGateApprovedTarget(t *testing.T) {
 
 func TestPatchMissingOrChangedApprovalMakesNoWrite(t *testing.T) {
 	for _, state := range []k8s.TargetState{{ResourceVersion: "100"}, {UID: "uid-1"}, {ResourceVersion: "101", UID: "uid-1"}, {ResourceVersion: "100", UID: "new-uid"}} {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		reader := newStateReader()
 		if state.ResourceVersion == "" || state.UID == "" {
 			reader.state = state
@@ -62,7 +62,7 @@ func (s *refusingPatchService) PatchResource(_ context.Context, ref k8s.PatchRef
 }
 
 func TestPatchConflictEndsToolsCall(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, reader := testHandlerReading(t, gate, toolRegistry, newStateReader())
 	h.k8s = &refusingPatchService{fake}
 	result, rerr := callTool(t, h, "resource_patch", conditionalPatchArgs)

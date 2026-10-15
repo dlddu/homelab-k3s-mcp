@@ -115,8 +115,12 @@ jobs:
     if: needs.changes.outputs.app == 'true'
     runs-on: ubuntu-24.04-arm
     # CGO 설정이 다르면 net 을 거치는 거의 모든 패키지의 빌드 캐시가 어긋나므로 잡 전체를 0 으로 둔다.
+    #
+    # POCKET_AIDE_SHA 는 승인 게이트 상대(PocketAide 서버와 그 레포의 oidcmock)를 빌드하는
+    # dlddu/pocket-aide 커밋이다. 이 한 줄이 그 의존의 유일한 핀이다.
     env:
       CGO_ENABLED: '0'
+      POCKET_AIDE_SHA: c9a4d18de8f86806b1eed94ab1bdeb0c58cacecf
     steps:
       - uses: actions/checkout@v4
 
@@ -180,12 +184,31 @@ jobs:
           go build -tags e2e_undeclared_tool -ldflags="-s -w" \
             -o /tmp/image-ctx-undeclared/homelab-k3s-mcp .
 
+      # 발행 이미지(ghcr.io/dlddu/pocket-aide)에는 oidcmock 이 없어 서버와 IdP 를 같은 커밋에서
+      # 맞추려면 둘 다 소스에서 빌드해야 한다. 그 레포의 go.mod 가 이 잡의 Go(GOTOOLCHAIN=local)보다
+      # 높은 go 줄을 요구하면 여기서 실패한다 — 핀을 옮길 때 같이 볼 것.
+      - name: Build PocketAide and oidc-mock binaries
+        run: |
+          git init -q /tmp/pocket-aide-src
+          git -C /tmp/pocket-aide-src fetch -q --depth 1 \
+            https://github.com/dlddu/pocket-aide "$POCKET_AIDE_SHA"
+          git -C /tmp/pocket-aide-src checkout -q FETCH_HEAD
+          test "$(git -C /tmp/pocket-aide-src rev-parse HEAD)" = "$POCKET_AIDE_SHA"
+          mkdir -p /tmp/pocket-aide-ctx
+          cd /tmp/pocket-aide-src/backend
+          go build -ldflags="-s -w" -o /tmp/pocket-aide-ctx/pocket-aide ./cmd/server
+          go build -ldflags="-s -w" -o /tmp/pocket-aide-ctx/oidcmock ./cmd/oidcmock
+
       - name: Build image
         run: |
           docker build --target runtime-prebuilt -f Dockerfile \
             -t homelab-k3s-mcp:ci /tmp/image-ctx
           docker build --target runtime-prebuilt -f Dockerfile \
             -t homelab-k3s-mcp:ci-undeclared /tmp/image-ctx-undeclared
+          docker build -f tests/k8s/kind/Dockerfile.pocket-aide --build-arg BINARY=pocket-aide \
+            -t pocket-aide:ci /tmp/pocket-aide-ctx
+          docker build -f tests/k8s/kind/Dockerfile.pocket-aide --build-arg BINARY=oidcmock \
+            -t oidc-mock:ci /tmp/pocket-aide-ctx
 
       - name: Wait for kind cluster
         run: |
@@ -197,6 +220,8 @@ jobs:
         run: |
           kind load docker-image homelab-k3s-mcp:ci --name homelab-k3s-mcp
           kind load docker-image homelab-k3s-mcp:ci-undeclared --name homelab-k3s-mcp
+          kind load docker-image pocket-aide:ci --name homelab-k3s-mcp
+          kind load docker-image oidc-mock:ci --name homelab-k3s-mcp
 
       - name: Deploy github-mock fixture
         run: kubectl apply -f tests/k8s/kind/github-mock.yaml
@@ -213,37 +238,35 @@ jobs:
       - name: Deploy http-trace fixture
         run: kubectl apply -f tests/k8s/kind/http-trace.yaml
 
-      # Real gatekeeper for the approval-gate e2e (approval_gate_sc*.py) plus
-      # the recording proxy in front of it. The API-key secret is created
-      # BEFORE the rollout wait: without it the pod sits in
-      # CreateContainerConfigError (the deployment requires VAPID and API
-      # secretKeyRefs) and the wait can never pass. Seeding the e2e user has to
-      # wait for the rollout -- the user only exists once the API is alive.
-      - name: Deploy gatekeeper fixture
-        run: kubectl apply -f tests/k8s/kind/gatekeeper-fixture.yaml
-
-      - name: Create gatekeeper test secret
+      # Real PocketAide for the approval-gate e2e (approval_gate_sc*.py), the
+      # recording proxy in front of it and the fault injector on its SQLite file.
+      # Order is load-bearing: PocketAide fetches the issuer's discovery document
+      # once at startup and exits when it fails, so oidc-mock must be Ready first;
+      # the injector opens the database read-write without creating it, so it
+      # waits for PocketAide to have migrated it.
+      - name: Deploy oidc-mock fixture
         run: |
-          GK_KEY="$(openssl rand -hex 24)"
-          kubectl -n gatekeeper create secret generic gatekeeper-secrets \
-            --from-literal=API_SECRET_KEY="$GK_KEY" \
-            --from-literal=VAPID_SUBJECT=mailto:ci-e2e@invalid \
-            --from-literal=VAPID_PUBLIC_KEY=ci-e2e-unused \
-            --from-literal=VAPID_PRIVATE_KEY=ci-e2e-unused \
-            --dry-run=client -o yaml | kubectl apply -f -
-          # The e2e's record reads need the same key: GET /api/requests/{id} is
-          # API-key protected (only the list is public), and that route is where
-          # the read-time EXPIRED evaluation happens.
-          echo "GATEKEEPER_E2E_API_KEY=$GK_KEY" >> "$GITHUB_ENV"
+          kubectl apply -f tests/k8s/kind/oidc-mock.yaml
+          kubectl -n oidc-mock rollout status deploy/oidc-mock --timeout=120s
 
-      - name: Deploy gatekeeper injector
-        run: kubectl apply -f tests/k8s/kind/gatekeeper-injector.yaml
-
-      - name: Wait for gatekeeper fixture rollout
+      - name: Deploy PocketAide fixture
         run: |
-          kubectl -n gatekeeper rollout status deploy/gatekeeper --timeout=300s
-          kubectl -n gatekeeper rollout status deploy/gatekeeper-trace --timeout=180s
-          kubectl -n gatekeeper rollout status deploy/gatekeeper-injector --timeout=180s
+          kubectl apply -f tests/k8s/kind/pocket-aide-fixture.yaml
+          kubectl -n pocket-aide rollout status deploy/pocket-aide --timeout=180s
+          kubectl -n pocket-aide rollout status deploy/pocket-aide-trace --timeout=180s
+
+      - name: Deploy PocketAide injector
+        run: |
+          kubectl apply -f tests/k8s/kind/pocket-aide-injector.yaml
+          kubectl -n pocket-aide rollout status deploy/pocket-aide-injector --timeout=180s
+
+      # Each SUT that reaches PocketAide authenticates as its own ServiceAccount,
+      # which PocketAide accepts only once a user has registered it as a caller.
+      # The table of accounts and owning OIDC subjects lives in the helper
+      # (CALLERS), so the e2e and this registration cannot disagree about who
+      # owns which request. Registration needs only the names, not the pods.
+      - name: Register the SUT service accounts as PocketAide callers
+        run: python tests/integration/_approval_gate.py
 
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
@@ -309,71 +332,6 @@ jobs:
             --from-literal=OPENSEARCH_STS_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      # The e2e user is created through the forward-auth path and its users.id
-      # pinned into the variant secret: GATEKEEPER_USER_ID must be a users.id,
-      # which only exists after the first forward-auth request, so the id cannot
-      # be baked into a manifest. The main SUT reaches gatekeeper directly; the
-      # variant goes through the recording proxy because approval_gate_sc2.py
-      # asserts the create body, which only the proxy observes.
-      - name: Seed the gatekeeper e2e user and create the SUT gate secrets
-        run: |
-          GK_KEY="$GATEKEEPER_E2E_API_KEY"
-          # Not `kubectl run --rm -i`: the attach stream has been observed to
-          # interleave non-JSON bytes into the redirected stdout. A completed
-          # pod's `kubectl logs` is the deterministic capture path.
-          kubectl -n gatekeeper run gatekeeper-seed --quiet --restart=Never \
-            --image=curlimages/curl --image-pull-policy=IfNotPresent \
-            --command -- curl -sS -H 'Remote-User: gatekeeper-e2e' http://gatekeeper/api/me/
-          # Pods carry no "complete" condition (that is a Job condition) -- wait
-          # on the phase instead. A Failed pod has no useful log to parse, so
-          # surface it before the JSON read.
-          kubectl -n gatekeeper wait --for=jsonpath='{.status.phase}'=Succeeded \
-            --timeout=120s pod/gatekeeper-seed \
-            || { kubectl -n gatekeeper describe pod gatekeeper-seed || true; \
-                 kubectl -n gatekeeper logs pod/gatekeeper-seed || true; exit 1; }
-          kubectl -n gatekeeper logs pod/gatekeeper-seed > /tmp/gk-me.json
-          kubectl -n gatekeeper delete pod gatekeeper-seed --wait=false || true
-          echo "seed response: $(cat /tmp/gk-me.json)"
-          GK_USER_ID="$(python3 -c 'import json; print(json.load(open("/tmp/gk-me.json"))["id"])')"
-          # The variant namespace does not exist yet (its fixture applies later);
-          # the secret must exist before the variant pod starts.
-          kubectl create namespace homelab-k3s-mcp-gatekeeper-variant \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-gatekeeper \
-            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
-            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
-            --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n homelab-k3s-mcp-gatekeeper-variant create secret generic homelab-k3s-mcp-gatekeeper \
-            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper-trace.gatekeeper.svc.cluster.local:3000 \
-            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
-            --from-literal=GATEKEEPER_USER_ID="$GK_USER_ID" \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl create namespace homelab-k3s-mcp-rbac-narrow \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n homelab-k3s-mcp-rbac-narrow create secret generic homelab-k3s-mcp-gatekeeper \
-            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
-            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
-            --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
-            --dry-run=client -o yaml | kubectl apply -f -
-          # The short GATEKEEPER_TIMEOUT_SECONDS is in the deployment's own env,
-          # because it is what separates those two deployments from this secret's
-          # readers.
-          kubectl create namespace homelab-k3s-mcp-gate-refusal \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n homelab-k3s-mcp-gate-refusal create secret generic homelab-k3s-mcp-gatekeeper \
-            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
-            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
-            --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl create namespace homelab-k3s-mcp-apiserver-audit \
-            --dry-run=client -o yaml | kubectl apply -f -
-          kubectl -n homelab-k3s-mcp-apiserver-audit create secret generic homelab-k3s-mcp-gatekeeper \
-            --from-literal=GATEKEEPER_BASE_URL=http://gatekeeper.gatekeeper.svc.cluster.local \
-            --from-literal=GATEKEEPER_API_KEY="$GK_KEY" \
-            --from-literal=GATEKEEPER_POLL_INTERVAL_SECONDS=1 \
-            --dry-run=client -o yaml | kubectl apply -f -
-
       - name: Deploy via kustomize (kind overlay)
         run: kubectl apply -k tests/k8s/kind
 
@@ -398,8 +356,8 @@ jobs:
       - name: Apply commit-status-variant fixture
         run: kubectl apply -f tests/k8s/kind/commit-status-variant.yaml
 
-      - name: Apply gatekeeper-variant fixture
-        run: kubectl apply -f tests/k8s/kind/gatekeeper-variant.yaml
+      - name: Apply approval-variant fixture
+        run: kubectl apply -f tests/k8s/kind/approval-variant.yaml
 
       - name: Apply rbac-narrow fixture
         run: kubectl apply -f tests/k8s/kind/rbac-narrow-fixture.yaml
@@ -484,8 +442,8 @@ jobs:
       - name: Wait for commit-status-variant rollout
         run: kubectl -n homelab-k3s-mcp-commit-status-variant rollout status deploy/homelab-k3s-mcp-commit-status-variant --timeout=120s
 
-      - name: Wait for gatekeeper-variant rollout
-        run: kubectl -n homelab-k3s-mcp-gatekeeper-variant rollout status deploy/homelab-k3s-mcp-gatekeeper-variant --timeout=120s
+      - name: Wait for approval-variant rollout
+        run: kubectl -n homelab-k3s-mcp-approval-variant rollout status deploy/homelab-k3s-mcp-approval-variant --timeout=120s
 
       - name: Wait for rbac-narrow rollout
         run: kubectl -n homelab-k3s-mcp-rbac-narrow rollout status deploy/homelab-k3s-mcp-rbac-narrow --timeout=120s
@@ -502,7 +460,7 @@ jobs:
 
       - name: Wait for gate-broken variant rollouts
         run: |
-          for d in gate-unreachable gate-no-base-url gate-no-api-key; do
+          for d in gate-unreachable gate-no-url gate-no-token; do
             kubectl -n homelab-k3s-mcp-gate-broken \
               rollout status "deploy/homelab-k3s-mcp-$d" --timeout=120s
           done
@@ -534,18 +492,18 @@ jobs:
           exit "$(cat /tmp/bg/data-plane-load.rc)"
 
       # set +e 인 이유: 스텝 셸의 -e 가 서브셸에 물려 러너가 실패하면 .rc 를 못 남긴다.
-      - name: Start oauth-, auth- and gatekeeper-variant groups in background
+      - name: Start oauth-, auth- and approval-variant groups in background
         run: |
           mkdir -p /tmp/bg
           ( set +e
             (
-              ( while true; do kubectl -n homelab-k3s-mcp-gatekeeper-variant port-forward svc/homelab-k3s-mcp-gatekeeper-variant 8092:80 >>/tmp/pf-gatekeeper.log 2>&1; sleep 1; done ) &
+              ( while true; do kubectl -n homelab-k3s-mcp-approval-variant port-forward svc/homelab-k3s-mcp-approval-variant 8092:80 >>/tmp/pf-approval.log 2>&1; sleep 1; done ) &
               PF_PID=$!
-              python tests/integration/run_all.py --group gatekeeper-variant --base-url http://127.0.0.1:8092 \
-                >/tmp/bg/gatekeeper-variant.log 2>&1
-              echo $? >/tmp/bg/gatekeeper-variant.rc
+              python tests/integration/run_all.py --group approval-variant --base-url http://127.0.0.1:8092 \
+                >/tmp/bg/approval-variant.log 2>&1
+              echo $? >/tmp/bg/approval-variant.rc
               kill $PF_PID 2>/dev/null
-              pkill -f "port-forward svc/homelab-k3s-mcp-gatekeeper-variant 8092:80"
+              pkill -f "port-forward svc/homelab-k3s-mcp-approval-variant 8092:80"
             ) &
             GK_PID=$!
 
@@ -593,11 +551,11 @@ jobs:
           cat /tmp/bg/auth-variant.log
           exit "$(cat /tmp/bg/auth-variant.rc)"
 
-      - name: Wait for integration tests (gatekeeper-variant deployment)
+      - name: Wait for integration tests (approval-variant deployment)
         run: |
-          timeout 300 bash -c 'until [ -f /tmp/bg/gatekeeper-variant.rc ]; do sleep 1; done'
-          cat /tmp/bg/gatekeeper-variant.log
-          exit "$(cat /tmp/bg/gatekeeper-variant.rc)"
+          timeout 300 bash -c 'until [ -f /tmp/bg/approval-variant.rc ]; do sleep 1; done'
+          cat /tmp/bg/approval-variant.log
+          exit "$(cat /tmp/bg/approval-variant.rc)"
 
       - name: Dump cluster diagnostics on failure
         if: failure()
@@ -611,11 +569,16 @@ jobs:
           kubectl -n dear-baby-test describe deploy/dear-baby || true
           kubectl -n dear-baby-test logs deploy/dear-baby --tail=200 || true
           kubectl -n dear-baby-test logs deploy/redis --tail=50 || true
-          kubectl -n gatekeeper get all -o wide || true
-          kubectl -n gatekeeper describe deploy/gatekeeper || true
-          kubectl -n gatekeeper logs deploy/gatekeeper --tail=200 || true
-          kubectl -n homelab-k3s-mcp-gatekeeper-variant get all -o wide || true
-          kubectl -n homelab-k3s-mcp-gatekeeper-variant logs deploy/homelab-k3s-mcp-gatekeeper-variant --tail=200 || true
+          kubectl -n oidc-mock get all -o wide || true
+          kubectl -n oidc-mock logs deploy/oidc-mock --tail=200 || true
+          kubectl -n pocket-aide get all -o wide || true
+          kubectl -n pocket-aide describe deploy/pocket-aide || true
+          kubectl -n pocket-aide logs deploy/pocket-aide --tail=200 || true
+          kubectl -n pocket-aide logs deploy/pocket-aide-trace --tail=50 || true
+          kubectl -n pocket-aide logs deploy/pocket-aide-injector --tail=50 || true
+          kubectl -n homelab-k3s-mcp-approval-variant get all -o wide || true
+          kubectl -n homelab-k3s-mcp-approval-variant logs deploy/homelab-k3s-mcp-approval-variant --tail=200 || true
+          kubectl -n homelab-k3s-mcp-gate-broken get all -o wide || true
           kubectl -n homelab-k3s-mcp-rbac-narrow get all -o wide || true
           kubectl -n homelab-k3s-mcp-rbac-narrow logs deploy/homelab-k3s-mcp-rbac-narrow --tail=200 || true
           kubectl -n homelab-k3s-mcp-apiserver-audit get all -o wide || true

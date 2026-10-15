@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -338,9 +338,9 @@ func (c *countingK8s) attach() (k8s.AttachRef, *string, *string, int) {
 // scriptedGate answers with one prepared decision (or one refusal) and records
 // what it was asked to approve.
 type scriptedGate struct {
-	decision *gatekeeper.Decision
+	decision *approvalgate.Decision
 	err      error
-	calls    []gatekeeper.Call
+	calls    []approvalgate.Call
 	contexts []string
 }
 
@@ -437,7 +437,7 @@ func (r *stateReader) observed() []k8s.TargetRef {
 // Authorize renders the context before deciding, the way Client does. Holding
 // the rendering until this point is what AC5 requires of the real gate, so a
 // double that rendered eagerly would let a case pass that production refuses.
-func (g *scriptedGate) Authorize(ctx context.Context, call gatekeeper.Call) (*gatekeeper.Decision, error) {
+func (g *scriptedGate) Authorize(ctx context.Context, call approvalgate.Call) (*approvalgate.Decision, error) {
 	g.calls = append(g.calls, call)
 	text, err := call.Describe(ctx)
 	if err != nil {
@@ -464,7 +464,7 @@ func (g *scriptedGate) context(n int) string {
 // tool to drive them and are declared here instead. The cases that are about
 // resource_patch itself pass toolRegistry — a synthetic stand-in would assert
 // the test's own declaration rather than the shipped one.
-func testHandler(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEntry) (*Handler, *countingK8s) {
+func testHandler(t *testing.T, gate approvalgate.Gate, registry map[string]toolEntry) (*Handler, *countingK8s) {
 	t.Helper()
 	h, fake, _ := testHandlerReading(t, gate, registry, newStateReader())
 	return h, fake
@@ -473,7 +473,7 @@ func testHandler(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEnt
 // testHandlerReading is testHandler with the gate's reader in the caller's
 // hands, for the cases where what the gate read — or could not read — is the
 // assertion (AC6, AC11).
-func testHandlerReading(t *testing.T, gate gatekeeper.Gate, registry map[string]toolEntry, reader *stateReader) (*Handler, *countingK8s, *stateReader) {
+func testHandlerReading(t *testing.T, gate approvalgate.Gate, registry map[string]toolEntry, reader *stateReader) (*Handler, *countingK8s, *stateReader) {
 	t.Helper()
 	h, fake, _ := testHandlerListing(t, gate, registry, reader, newCollectionReader())
 	return h, fake, reader
@@ -484,7 +484,7 @@ func testHandlerReading(t *testing.T, gate gatekeeper.Gate, registry map[string]
 // listed — and whether it listed at all — is the assertion (AC11).
 func testHandlerListing(
 	t *testing.T,
-	gate gatekeeper.Gate,
+	gate approvalgate.Gate,
 	registry map[string]toolEntry,
 	reader *stateReader,
 	lister *collectionReader,
@@ -564,7 +564,7 @@ func TestValidateRegistryRejectsMismatches(t *testing.T) {
 			name: "both pairs and marker",
 			registered: map[string]toolEntry{"loud_tool": {
 				decl: toolDeclaration{
-					pairs:                []gatekeeper.Pair{{Verb: "get", Resource: "pods"}},
+					pairs:                []approvalgate.Pair{{Verb: "get", Resource: "pods"}},
 					noResourcePermission: &noResourcePermission{kind: touchesNothing, reason: "contradicts the pair above"},
 				},
 				handle: reachesKubernetes,
@@ -638,11 +638,11 @@ func TestGatedCallIsRefusedBeforeKubernetes(t *testing.T) {
 		t.Run(verb, func(t *testing.T) {
 			registry := map[string]toolEntry{
 				"writer": {
-					decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: verb, Resource: "deployments"}}},
+					decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: verb, Resource: "deployments"}}},
 					handle: reachesKubernetes,
 				},
 			}
-			h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), registry)
+			h, fake := testHandler(t, approvalgate.NewUnavailable(nil), registry)
 
 			_, rerr := callTool(t, h, "writer", "")
 			if rerr == nil {
@@ -660,11 +660,11 @@ func TestGatedCallIsRefusedBeforeKubernetes(t *testing.T) {
 func TestExecSubresourceIsGated(t *testing.T) {
 	registry := map[string]toolEntry{
 		"exec": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "create", Resource: "pods/exec"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "create", Resource: "pods/exec"}}},
 			handle: reachesKubernetes,
 		},
 	}
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), registry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), registry)
 
 	if _, rerr := callTool(t, h, "exec", ""); rerr == nil {
 		t.Fatal("tools/call = nil error, want a refusal")
@@ -675,16 +675,16 @@ func TestExecSubresourceIsGated(t *testing.T) {
 }
 
 // AC1/AC5: reads that are neither state-changing nor sensitive keep working
-// while the approval path is down. If they did not, an outage in gatekeeper
+// while the approval path is down. If they did not, an outage in PocketAide
 // would take the whole server with it.
 func TestUngatedReadsStillRunWhileTheGateRefuses(t *testing.T) {
 	registry := map[string]toolEntry{
 		"lister": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "list", Resource: "deployments"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "list", Resource: "deployments"}}},
 			handle: exercisesPair("apps/v1", "Deployment", "list"),
 		},
 		"getter": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "get", Resource: "pods"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "get", Resource: "pods"}}},
 			handle: exercisesPair("v1", "Pod", "get"),
 		},
 		"platform": {
@@ -695,7 +695,7 @@ func TestUngatedReadsStillRunWhileTheGateRefuses(t *testing.T) {
 			handle: reachesKubernetes,
 		},
 	}
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), registry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), registry)
 
 	for _, name := range []string{"lister", "getter", "platform"} {
 		if _, rerr := callTool(t, h, name, ""); rerr != nil {
@@ -709,11 +709,11 @@ func TestUngatedReadsStillRunWhileTheGateRefuses(t *testing.T) {
 
 func TestSensitiveReadsAreGated(t *testing.T) {
 	registry := map[string]toolEntry{
-		"secret_get":   {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "get", Resource: "secrets"}}}, handle: reachesKubernetes},
-		"secret_watch": {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "watch", Resource: "secrets"}}}, handle: reachesKubernetes},
-		"pod_watch":    {decl: toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "watch", Resource: "pods"}}}, handle: exercisesPair("v1", "Pod", "watch")},
+		"secret_get":   {decl: toolDeclaration{pairs: []approvalgate.Pair{{Verb: "get", Resource: "secrets"}}}, handle: reachesKubernetes},
+		"secret_watch": {decl: toolDeclaration{pairs: []approvalgate.Pair{{Verb: "watch", Resource: "secrets"}}}, handle: reachesKubernetes},
+		"pod_watch":    {decl: toolDeclaration{pairs: []approvalgate.Pair{{Verb: "watch", Resource: "pods"}}}, handle: exercisesPair("v1", "Pod", "watch")},
 	}
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), registry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), registry)
 
 	for _, name := range []string{"secret_get", "secret_watch"} {
 		if _, rerr := callTool(t, h, name, ""); rerr == nil {
@@ -731,10 +731,10 @@ func TestSensitiveReadsAreGated(t *testing.T) {
 // AC1/AC3: the gate is handed the pair it is judging and a context that names
 // the tool and carries the arguments in full.
 func TestApprovedCallReachesKubernetesWithAJudgeableContext(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1", ProcessedByID: "op-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	registry := map[string]toolEntry{
 		"writer": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "patch", Resource: "deployments"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "patch", Resource: "deployments"}}},
 			handle: exercisesPair("apps/v1", "Deployment", "patch"),
 		},
 	}
@@ -758,10 +758,10 @@ func TestApprovedCallReachesKubernetesWithAJudgeableContext(t *testing.T) {
 }
 
 func TestApprovalCannotBeSpentTwice(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	registry := map[string]toolEntry{
 		"writer": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "delete", Resource: "deployments"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "delete", Resource: "deployments"}}},
 			handle: exercisesPair("apps/v1", "Deployment", "delete"),
 		},
 	}
@@ -786,17 +786,17 @@ func TestGatedCallsAreAudited(t *testing.T) {
 
 	registry := map[string]toolEntry{
 		"writer": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "patch", Resource: "deployments"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "patch", Resource: "deployments"}}},
 			handle: exercisesPair("apps/v1", "Deployment", "patch"),
 		},
 	}
 
-	approved := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-42", ExternalID: "ext-42", ProcessedByID: "op-7"}}
+	approved := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-42", ExternalID: "ext-42"}}
 	h, _ := testHandler(t, approved, registry)
 	if _, rerr := callTool(t, h, "writer", ""); rerr != nil {
 		t.Fatalf("tools/call = %v", rerr)
 	}
-	for _, want := range []string{"req-42", "op-7", "writer"} {
+	for _, want := range []string{"req-42", "ext-42", "writer"} {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("audit log %q is missing %q", buf.String(), want)
 		}
@@ -814,10 +814,10 @@ func TestGatedCallsAreAudited(t *testing.T) {
 }
 
 func TestAutoApprovalIsVisibleInTheToolResponse(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1", AutoApproved: true}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1", AutoApproved: true}}
 	registry := map[string]toolEntry{
 		"writer": {
-			decl:   toolDeclaration{pairs: []gatekeeper.Pair{{Verb: "patch", Resource: "deployments"}}},
+			decl:   toolDeclaration{pairs: []approvalgate.Pair{{Verb: "patch", Resource: "deployments"}}},
 			handle: exercisesPair("apps/v1", "Deployment", "patch"),
 		},
 	}
@@ -876,7 +876,7 @@ func TestDefaultHandlerHasARefusingGate(t *testing.T) {
 	if h.gate == nil {
 		t.Fatal("NewHandler() left the gate nil, which would mean gated calls run unattended")
 	}
-	if _, err := h.gate.Authorize(context.Background(), gatekeeper.Call{Tool: "x", Describe: func(context.Context) (string, error) { return "y", nil }}); err == nil {
+	if _, err := h.gate.Authorize(context.Background(), approvalgate.Call{Tool: "x", Describe: func(context.Context) (string, error) { return "y", nil }}); err == nil {
 		t.Error("default gate approved a call, want a refusal")
 	}
 }
@@ -886,7 +886,7 @@ func TestDefaultHandlerHasARefusingGate(t *testing.T) {
 // refusal that still reached kubernetes would mean the value was already read
 // by the time the operator was asked.
 func TestSensitiveGenericReadIsRefusedBeforeKubernetes(t *testing.T) {
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), toolRegistry)
 
 	_, rerr := callTool(t, h, "resource_get", `{"apiVersion":"v1","kind":"Secret","namespace":"default","name":"db"}`)
 	if rerr == nil {
@@ -898,7 +898,7 @@ func TestSensitiveGenericReadIsRefusedBeforeKubernetes(t *testing.T) {
 }
 
 func TestOrdinaryReadsAndSecretListsStayUngated(t *testing.T) {
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), toolRegistry)
 
 	if _, rerr := callTool(t, h, "resource_get", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"app"}`); rerr != nil {
 		t.Fatalf("resource_get on a ConfigMap was refused: %v", rerr.message)
@@ -914,7 +914,7 @@ func TestOrdinaryReadsAndSecretListsStayUngated(t *testing.T) {
 // AC5: a call whose coordinate cannot be read is a call whose pair cannot be
 // named, and an unnamed pair cannot be judged sensitive or not.
 func TestGenericCallWithoutACoordinateIsRefused(t *testing.T) {
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), toolRegistry)
 
 	if _, rerr := callTool(t, h, "resource_get", `{"namespace":"default","name":"db"}`); rerr == nil {
 		t.Error("resource_get without apiVersion/kind was allowed")
@@ -954,14 +954,14 @@ func TestGenericPairsFollowTheCoordinate(t *testing.T) {
 func TestSensitiveReadGateLooksThroughSubresources(t *testing.T) {
 	kinds := []string{defaultSensitiveKind}
 	for _, resource := range []string{"secrets", "secrets/status"} {
-		if !readIsSensitive(gatekeeper.Pair{Verb: "get", Resource: resource}, kinds) {
+		if !readIsSensitive(approvalgate.Pair{Verb: "get", Resource: resource}, kinds) {
 			t.Errorf("get on %s was judged insensitive", resource)
 		}
 	}
-	if readIsSensitive(gatekeeper.Pair{Verb: "get", Resource: "pods/log"}, kinds) {
+	if readIsSensitive(approvalgate.Pair{Verb: "get", Resource: "pods/log"}, kinds) {
 		t.Error("get on pods/log was judged sensitive")
 	}
-	if readIsSensitive(gatekeeper.Pair{Verb: "list", Resource: "secrets"}, kinds) {
+	if readIsSensitive(approvalgate.Pair{Verb: "list", Resource: "secrets"}, kinds) {
 		t.Error("list on secrets was judged sensitive; AC16 keeps list outside the gate")
 	}
 }
@@ -973,7 +973,7 @@ func TestContextIncludesCurrentAndTargetReplicas(t *testing.T) {
 	reader := newStateReader()
 	current := int64(3)
 	reader.state = k8s.TargetState{ResourceVersion: "100", UID: "uid-1", Replicas: &current}
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale","replicas":10}`
@@ -993,7 +993,7 @@ func TestContextIncludesCurrentAndTargetReplicas(t *testing.T) {
 // a count the cluster could not report is said to be unknown, not left out.
 func TestContextSaysSoWhenTheCurrentReplicaCountIsUnknown(t *testing.T) {
 	reader := newStateReader() // Replicas nil — a server that answered without a spec
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale","replicas":10}`
@@ -1065,7 +1065,7 @@ func TestExecutionIsRefusedWhenTargetChangedAfterApproval(t *testing.T) {
 			reader := newStateReader()
 			next := tc.next
 			reader.next = &next
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 			_, rerr := callTool(t, h, tc.tool, tc.args)
@@ -1089,7 +1089,7 @@ func TestExecutionIsRefusedWhenTargetChangedAfterApproval(t *testing.T) {
 // above would also pass for an implementation that refuses everything.
 func TestExecutionProceedsWhenTheTargetIsUnchanged(t *testing.T) {
 	reader := newStateReader()
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","patchType":"merge","patch":{"spec":{"replicas":2}}}`
@@ -1114,7 +1114,7 @@ func TestGateReadsSensitiveKindsAsMetadataOnly(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			reader := newStateReader()
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 			if _, rerr := callTool(t, h, tc.tool, tc.args); rerr != nil {
@@ -1138,7 +1138,7 @@ func TestGateReadsSensitiveKindsAsMetadataOnly(t *testing.T) {
 // the button into a formality, so the refusal comes before the request.
 func TestUnresolvableTargetIsRejectedBeforeRequest(t *testing.T) {
 	reader := newStateReader()
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	// A patch that names a kind but no object: enough to judge the pair, not
@@ -1162,7 +1162,7 @@ func TestUnresolvableTargetIsRejectedBeforeRequest(t *testing.T) {
 func TestGatedCallIsRefusedWhenTheGateCannotReadItsTarget(t *testing.T) {
 	reader := newStateReader()
 	reader.err = errors.New("kubernetes client unavailable")
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","patchType":"merge","patch":{}}`
@@ -1178,7 +1178,7 @@ func TestGatedCallIsRefusedWhenTheGateCannotReadItsTarget(t *testing.T) {
 // exercises nothing beyond them. The declaration is the reviewable half; the
 // reads recorded on the way through are the half that could drift from it.
 func TestGateDeclaresTheTwoPairsItMayExercise(t *testing.T) {
-	want := []gatekeeper.Pair{
+	want := []approvalgate.Pair{
 		{Verb: "get", Resource: gateTargetKind},
 		{Verb: "list", Resource: gateTargetKind},
 	}
@@ -1195,7 +1195,7 @@ func TestGateDeclaresTheTwoPairsItMayExercise(t *testing.T) {
 	// Every read the gate makes addresses one named object, which is a get. Why
 	// the list half is declared with no call site is on GatePairs.
 	reader := newStateReader()
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","patchType":"merge","patch":{}}`
 	if _, rerr := callTool(t, h, "resource_patch", args); rerr != nil {
@@ -1220,7 +1220,7 @@ func TestGatedToolWithNoDeclaredTargetIsRefused(t *testing.T) {
 			handle: reachesKubernetes,
 		},
 	}
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, _ := testHandlerReading(t, gate, registry, newStateReader())
 
 	_, rerr := callTool(t, h, "writer", `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api"}`)
@@ -1255,7 +1255,7 @@ func TestGatedReadWithNoDeclaredTargetIsDescribedFromItsArguments(t *testing.T) 
 			handle: exercisesPair("v1", "Secret", "watch"),
 		},
 	}
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, reader := testHandlerReading(t, gate, registry, newStateReader())
 
 	args := `{"apiVersion":"v1","kind":"Secret","namespace":"ops","labelSelector":"app=api"}`

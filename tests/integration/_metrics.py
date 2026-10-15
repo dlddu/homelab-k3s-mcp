@@ -25,7 +25,7 @@ FAMILIES = {"mcp_tool_calls_total", "mcp_tool_refusals_total", "mcp_tool_duratio
 
 LABEL_NAMES = {"tool", "result", "reason", "decision", "le"}
 
-#: internal/eventlog 의 Results·Reasons 와 internal/gatekeeper 의 Verdicts 와 같아야 한다 — 값이 늘면 두 자리가 함께 움직인다.
+#: internal/eventlog 의 Results·Reasons 와 internal/approvalgate 의 Verdicts 와 같아야 한다 — 값이 늘면 두 자리가 함께 움직인다.
 CLOSED_VALUES = {
     "tool": EXPECTED_TOOLS | {"unregistered"},
     "result": {"success", "refused", "error"},

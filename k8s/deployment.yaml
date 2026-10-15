@@ -73,6 +73,12 @@ spec:
             # 같은 키가 있어도 env 가 이긴다.
             - name: GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES
               value: review/
+            # 승인 게이트(prd-approval-gate)는 PocketAide 다. 인증은 아래 pocket-aide-token
+            # 볼륨의 서비스 어카운트 토큰이고, PocketAide 앱 「승인 게이트 설정」에
+            # `homelab-k3s-mcp/homelab-k3s-mcp` 가 서비스 어카운트 호출자로 등록돼 있어야
+            # 통과한다 — 등록이 없으면 게이트 대상 호출은 401 로 전부 거부된다(fail-closed).
+            - name: APPROVAL_GATE_URL
+              value: http://pocket-aide.pocket-aide.svc.cluster.local:8080
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth
@@ -84,14 +90,13 @@ spec:
                 name: homelab-k3s-mcp-grafana
             - secretRef:
                 name: homelab-k3s-mcp-opensearch
-            # Optional because an unconfigured gate already fails closed, so a
-            # missing secret degrades one boundary rather than crashlooping.
-            - secretRef:
-                name: homelab-k3s-mcp-gatekeeper
-                optional: true
             - secretRef:
                 name: homelab-k3s-mcp-api-keys
                 optional: true
+          volumeMounts:
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -125,3 +130,14 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        # audience 는 PocketAide 의 APPROVAL_SERVICE_ACCOUNT_AUDIENCE(기본 pocket-aide)와
+        # 같아야 한다. 기본 마운트 토큰(audience = apiserver)을 보내지 않는 이유는, 그 토큰을
+        # 받은 쪽이 이 서버를 사칭해 apiserver 를 부를 수 있기 때문이다.
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token

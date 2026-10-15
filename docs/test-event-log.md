@@ -39,15 +39,15 @@
 
 ### 시나리오 2: 게이트 판정 여섯의 구분
 
-- **사전 조건**: 표면 구현 · 실물 gatekeeper 픽스처(`tests/k8s/kind/`)
+- **사전 조건**: 표면 구현 · 실물 PocketAide 픽스처(`tests/k8s/kind/`)
 - **실행 단계**: 승인 · 거절 · 타임아웃 · 미설정 네 경로를 태운다
-- **기대 결과**: 네 레코드의 판정 필드가 서로 다른 값으로 갈리고, `request_id`가 gatekeeper 쪽
+- **기대 결과**: 네 레코드의 판정 필드가 서로 다른 값으로 갈리고, `request_id`가 PocketAide 쪽
   요청과 일치한다. 「거절」과 「통신 실패」가 같은 값으로 뭉치지 않는다
 - **검증 AC**: AC2
-- **자동화**: 통합 `tests/integration/event_log_sc2.py`(gatekeeper-variant) — 승인·거절은 forward-auth
-  헤더로 판정을 내리고 타임아웃은 변형의 5초 마감을 기다리며, 미설정은 게이트 백엔드가 없는 auth-variant 에
+- **자동화**: 통합 `tests/integration/event_log_sc2.py`(approval-variant) — 승인·거절은 PocketAide
+  앱 API 로 판정을 내리고 타임아웃은 변형의 5초 마감을 기다리며, 미설정은 게이트 백엔드가 없는 auth-variant 에
   짧은 포트포워드로 닿아 만든다. 네 레코드의 `gate.decision` 이 서로 다르고 앞 셋의 `gate.request_id` 가
-  gatekeeper 요청 id 와 같음을 단언한다(타임아웃 레코드는 `approval_gate_sc4.py` 의 타이머 경주대로
+  PocketAide 요청 id 와 같음을 단언한다(타임아웃 레코드는 `approval_gate_sc4.py` 의 타이머 경주대로
   `timeout`/`expired` 중 하나, `reason` 은 그 판정을 따른다). Go 단위
   `internal/mcp/eventlog_test.go::TestRefusalRecordsCarryTheirReason`(가짜 게이트)
 
@@ -58,7 +58,7 @@
 - **기대 결과**: 레코드의 자동 승인 표기 필드가 참이다. 끈 변형에서는 거짓이고, 두 경우의
   판정 필드는 모두 「승인」이라 **표기 필드 없이는 구별되지 않는다**
 - **검증 AC**: AC2
-- **자동화**: 통합 `tests/integration/event_log_sc3.py`(gatekeeper-variant) — 같은 사용자의 자동
+- **자동화**: 통합 `tests/integration/event_log_sc3.py`(approval-variant) — 변형 배포를 등록한 PocketAide 사용자의 자동
   응답 모드를 `AUTO_APPROVE` 로 켜 한 번, `NONE` 으로 되돌려 사람 대신 승인해 한 번 같은 도구를 태운 뒤,
   두 레코드가 `gate.decision=approved` 로 같고 `gate.auto_approved` 만 `true`/`false` 로 갈리며 그 필드를
   빼면 (대상 이름·요청 id 외) 나머지 필드가 같음을 단언한다. Go 단위
@@ -82,7 +82,7 @@
 - **기대 결과**: Secret 데이터 값과 exec 명령의 페이로드·응답 본문이 레코드에 없다.
   도구 응답에는 있고 레코드에는 없다는 **두 관측이 같은 실행에서** 나온다
 - **검증 AC**: AC3
-- **자동화**: 통합 `tests/integration/event_log_sc5.py`(gatekeeper-variant) — 자기 Secret 과 그것을
+- **자동화**: 통합 `tests/integration/event_log_sc5.py`(approval-variant) — 자기 Secret 과 그것을
   마운트한 파드를 세우고 `AUTO_APPROVE` 로 승인된 `resource_get(kind=Secret)`·`resource_exec` 를 태운 뒤,
   같은 호출의 레코드에서 값·명령·본문을 검색해 0건임을 단언한다(응답에 base64 값과 stdout 이 있음을 먼저
   단언한다). Go 단위는 시나리오 4 와 같은 테스트
@@ -110,7 +110,7 @@
 - **자동화**: 통합 `tests/integration/event_log_sc7.py`(auth-variant — 통합·게이트 미설정 변형) —
   `kind` 없는 좌표(`-32602`), 게이트 백엔드 없는 배포의 게이트 대상 호출, 미설정 통합 도구를 각각 불러
   세 레코드의 `reason` 이 `invalid_input`·`gate_unconfigured`·`unconfigured` 로 갈리고 셋 다 `result=refused`
-  임을 단언한다. 「나가지 않았음」은 게이트 레코드의 빈 `gate.request_id` 와 gatekeeper 요청 목록의 부재,
+  임을 단언한다. 「나가지 않았음」은 게이트 레코드의 빈 `gate.request_id` 와 PocketAide 요청 목록의 부재,
   미설정 응답의 고정 문면, 좌표 거부의 코드로 잰다. Go 단위
   `internal/server/eventlog_test.go::TestRefusedToolCallIsRecordedOnStdoutWithoutTheCredential`
 

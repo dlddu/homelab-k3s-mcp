@@ -11,8 +11,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	dto "github.com/prometheus/client_model/go"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 )
 
 // Unregistered is the tool label of a call that named no registered tool.
@@ -84,7 +84,7 @@ func New(tools []string) (*Metrics, error) {
 		}
 		m.duration.WithLabelValues(tool)
 	}
-	for _, verdict := range gatekeeper.Verdicts {
+	for _, verdict := range approvalgate.Verdicts {
 		m.gateWait.WithLabelValues(string(verdict))
 	}
 	return m, nil

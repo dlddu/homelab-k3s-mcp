@@ -15,7 +15,7 @@ import base64
 import json
 import subprocess
 
-from _gatekeeper import decide, gatekeeper_url, get_request, wait_for_pending
+from _approval_gate import decide, approval_url, get_request, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -104,19 +104,20 @@ async def run() -> None:
     )
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- approval-gate/시나리오 7 (첫 승인·실행) ---")
             first = await _approved_patch(session, gate)
             first_record = get_request(gate, APPROVED_IDS[0])
             assert first_record["status"] == "APPROVED", first_record
-            assert first_record["processedById"], first_record
+            assert first_record["decision_mode"] == "manual", first_record
+            assert first_record["processed_at"], first_record
 
             print("--- approval-gate/시나리오 7 (같은 호출의 재시도) ---")
             second = await _approved_patch(session, gate)
             second_record = get_request(gate, APPROVED_IDS[1])
             assert APPROVED_IDS[0] != APPROVED_IDS[1], "승인 요청이 재사용됐다"
-            assert first_record["externalId"] != second_record["externalId"], (
+            assert first_record["external_id"] != second_record["external_id"], (
                 "재시도가 기존 externalId 를 재사용했다"
             )
             assert first.structuredContent["object"]["data"]["key"] == "patched"
@@ -133,7 +134,7 @@ async def run() -> None:
             assert encoded in value_again
             fourth_record = get_request(gate, APPROVED_IDS[3])
             assert APPROVED_IDS[2] != APPROVED_IDS[3], "재조회가 승인을 재사용했다"
-            assert third_record["externalId"] != fourth_record["externalId"], (
+            assert third_record["external_id"] != fourth_record["external_id"], (
                 "같은 Secret 재조회가 externalId 를 재사용했다"
             )
     print("ok: test-approval-gate.md#시나리오 7")

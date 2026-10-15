@@ -32,7 +32,7 @@ VARIANT_NAMESPACE = "homelab-k3s-mcp-commit-status-variant"
 VARIANT_DEPLOYMENT = "homelab-k3s-mcp-commit-status-variant"
 VARIANT_SERVICE = VARIANT_DEPLOYMENT
 # Clear of ci.yml's group forwards (8080·8088·8089·8090·8092·8093) and of the
-# ports other lanes open while this one runs (_gatekeeper 8095·8096,
+# ports other lanes open while this one runs (_approval_gate 8096,
 # _session_platform 18083, platform_auth_safety 18080-18082).
 VARIANT_LOCAL_PORT = 18084
 

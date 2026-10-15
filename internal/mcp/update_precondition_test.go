@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -18,7 +18,7 @@ func TestUpdateReceivesTheGateApprovedVersion(t *testing.T) {
 	} {
 		t.Run(args, func(t *testing.T) {
 			reader := newStateReader()
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, service, _ := testHandlerReading(t, gate, toolRegistry, reader)
 			_, rerr := callTool(t, h, "resource_update", args)
 			if rerr != nil {
@@ -38,7 +38,7 @@ func TestUpdateReceivesTheGateApprovedVersion(t *testing.T) {
 }
 
 func TestUpdateRequiresApprovalStateInTheRequest(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, service := testHandler(t, gate, toolRegistry)
 	args := json.RawMessage(`{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale","replicas":3}`)
 	for _, ctx := range []context.Context{
@@ -57,14 +57,14 @@ func TestUpdateRequiresApprovalStateInTheRequest(t *testing.T) {
 
 func TestUpdateDoesNotReuseAnEarlierCallsApprovalState(t *testing.T) {
 	reader := newStateReader()
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, service, _ := testHandlerReading(t, gate, toolRegistry, reader)
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api","subresource":"scale","replicas":3}`
 	if _, rerr := callTool(t, h, "resource_update", args); rerr != nil {
 		t.Fatal(rerr)
 	}
 	reader.state.ResourceVersion = "200"
-	gate.decision = &gatekeeper.Decision{RequestID: "req-2"}
+	gate.decision = &approvalgate.Decision{RequestID: "req-2"}
 	if _, rerr := callTool(t, h, "resource_update", args); rerr != nil {
 		t.Fatal(rerr)
 	}
@@ -84,7 +84,7 @@ func TestUpdateConflictEndsTheCallWithoutAutomaticReapproval(t *testing.T) {
 		for _, phase := range []string{"gate-recheck", "conditional-write"} {
 			t.Run(shape.name+"/"+phase, func(t *testing.T) {
 				reader := newStateReader()
-				gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+				gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 				h, service, _ := testHandlerReading(t, gate, toolRegistry, reader)
 				wantUpdates := 0
 				if phase == "gate-recheck" {
@@ -124,7 +124,7 @@ func TestUpdateConflictEndsTheCallWithoutAutomaticReapproval(t *testing.T) {
 				if len(reader.observed()) != 2 {
 					t.Errorf("target reads = %d, want describe + recheck without automatic refresh", len(reader.observed()))
 				}
-				if err := gate.decision.Consume(); !errors.Is(err, gatekeeper.ErrConsumed) {
+				if err := gate.decision.Consume(); !errors.Is(err, approvalgate.ErrConsumed) {
 					t.Errorf("approval was not consumed: %v", err)
 				}
 			})

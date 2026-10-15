@@ -27,7 +27,7 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import count_requests, decide, gatekeeper_url, get_request, wait_for_pending
+from _approval_gate import count_requests, decide, approval_url, get_request, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -230,7 +230,7 @@ async def run() -> None:
     _serving_pod()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 14 (단발 왕복과 승인 화면) ---")
             first = await test_one_round_trip_answers_and_closes(session, gate)

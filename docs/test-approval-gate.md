@@ -16,21 +16,28 @@
 
 ## 픽스처
 
-E2E는 `e2e-mocking-policy.md`의 실물 우선 원칙을 따른다. gatekeeper는 SQLite 한 파일로
-기동하는 Go 백엔드이므로, 모킹 대신 **kind 클러스터에 실물 gatekeeper를 띄운다**
-(`tests/k8s/kind/gatekeeper-fixture.yaml`). 승인·거절은 forward-auth 헤더(`Remote-User`)를
-직접 실어 `PATCH /api/requests/{id}/approve|reject`를 호출해 사람 조작을 대신한다.
+E2E는 `e2e-mocking-policy.md`의 실물 우선 원칙을 따른다. PocketAide는 SQLite 한 파일로
+기동하는 Go 백엔드이므로, 모킹 대신 **kind 클러스터에 실물 PocketAide를 띄운다**
+(`tests/k8s/kind/pocket-aide-fixture.yaml` — CI 가 `POCKET_AIDE_SHA` 커밋에서 서버를 빌드한다).
+SUT 배포들은 각자의 서비스 어카운트 토큰(audience `pocket-aide`)으로 PocketAide 를 부르고,
+PocketAide 는 그것을 실 kube-apiserver TokenReview 로 검증한다. CI 는 각 SUT 의 서비스 어카운트를
+**배포마다 다른 PocketAide 사용자** 아래 호출자로 등록한다(`tests/integration/_approval_gate.py`
+`CALLERS`) — 승인 요청과 자동 응답 모드가 사용자 단위라, 한 배포의 모드 변경이 다른 배포의 요청에
+번지지 않게 하기 위해서다. 사람 조작은 그 사용자로 로그인해 앱 API(`GET /api/approvals` ·
+`GET /api/approvals/history` · `POST /api/approvals/{id}/approve|reject` ·
+`PATCH /api/approval-settings`)를 부르는 것으로 대신한다. 로그인은 실 IdP 대신 PocketAide 레포의
+`oidcmock`(`tests/k8s/kind/oidc-mock.yaml`, 허용목록 `oidc-mock` `UPS`)으로 한다.
 
-Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉내 낸다. 이는 실물을 피하는
-모킹이 아니라, 실물로는 만들기 어려운 실패 경로(5xx·타임아웃·연결 실패)를 만들기 위한 것이다.
+Go 단위 테스트에서는 `httptest.Server`로 PocketAide 외부 승인 API 계약만 흉내 낸다. 이는 실물을
+피하는 모킹이 아니라, 실물로는 만들기 어려운 실패 경로(5xx·타임아웃·연결 실패)를 만들기 위한 것이다.
 
 ## 테스트 시나리오
 
 ### 시나리오 1: 게이트 대상만 막히고 나머지는 지나간다
 - **사전 조건**: 호출 인자·대상 좌표·매니페스트는 각 도구의 계약에 맞게 준비한다.
   단위 테스트에서는 가짜 k8s 서비스의 **도구 실행 호출** 카운터와 게이트의 `TargetReader`
-  사전 읽기를 구분한다. E2E는 kind의 실물 gatekeeper에서 자동 응답을 끄고 판정하지 않는다.
-  게이트 대상 호출은 `GATEKEEPER_TIMEOUT_SECONDS` 안에 승인받지 못하게 한다.
+  사전 읽기를 구분한다. E2E는 kind의 실물 PocketAide에서 자동 응답을 끄고 판정하지 않는다.
+  게이트 대상 호출은 `APPROVAL_GATE_TIMEOUT_SECONDS` 안에 승인받지 못하게 한다.
 - **실행 단계**:
   - (a) 쓰기 게이트 표의 도구를 각각 호출한다: `resource_create`, `resource_update`
     (전체 교체와 `subresource=scale`), `resource_patch` (SSA와 롤링 재시작 어노테이션 패치),
@@ -61,15 +68,18 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   실물의 승인 대기 만료, 모든 도구 분기, 선언과 실제 권한 행사의 일치를 전부 검증했다는 뜻은 아니다.
 
 ### 시나리오 2: 요청 본문 계약
-- **사전 조건**: gatekeeper 스텁이 요청 본문을 기록
+- **사전 조건**: 실물 PocketAide 앞의 기록 프록시가 요청 본문을 기록(Authorization 값은 기록하지 않고
+  스킴만 남긴다). SUT 의 서비스 어카운트가 PocketAide 에 호출자로 등록돼 있다
 - **실행 단계**: 게이트 대상 도구를 서로 다른 대상으로 2회 호출
-- **기대 결과**: `x-api-key` 헤더 존재. `externalId`·`context`·`requesterName`·
-  `timeoutSeconds` 모두 존재. 두 호출의 `externalId`가 서로 다름.
-  `GATEKEEPER_USER_ID` 설정 시 `userId` 포함
+- **기대 결과**: `Authorization: Bearer` 헤더 존재. 본문의 키가 `externalId`·`context`·
+  `requesterName`·`timeoutSeconds` 넷과 **정확히** 같다(판정자를 고르는 필드는 없다). 두 호출의
+  `externalId`가 서로 다름. 만들어진 요청은 **그 SUT 의 서비스 어카운트를 등록한 사용자의 것**으로
+  보인다 — 등록·토큰 볼륨·Bearer 헤더가 한 사슬로 맞았다는 관측이다
 - **검증 AC**: AC2
 - **자동화**: 통합 `tests/integration/approval_gate_sc2.py` — create 본문 계약을 기록 프록시
-  기록과 gatekeeper 레코드로 잰다. Go 단위는 아직 없다 — 계획:
-  `gatekeeper_test.go::TestCreateRequestBodyContract`, `TestExternalIDIsUniquePerCall`
+  기록과 PocketAide 레코드(그 주인 사용자 포함)로 잰다. Go 단위는
+  `internal/approvalgate/approvalgate_test.go::TestAuthorizeSendsTheDocumentedRequestBody`·
+  `TestExternalIDDiffersPerCall` 가 본문·헤더 계약을 `httptest` 로 고정한다
 
 ### 시나리오 3: context가 판정을 가능하게 한다
 - **사전 조건**: 동일
@@ -87,7 +97,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
 - **자동화**: 통합 `tests/integration/approval_gate_sc3.py` — 게이트 대상 쌍 열하나
   (`create/update/patch/delete/deletecollection on configmaps` · `update on deployments/scale` ·
   `patch on deployments` · `create on pods/{exec,attach,portforward,proxy}`)를 각각 한 번씩
-  태워 실물 gatekeeper 의 요청 레코드에서 `context` 를 되읽고, verb 별 상세(교체본·레플리카
+  태워 실물 PocketAide 의 요청 레코드에서 `context` 를 되읽고, verb 별 상세(교체본·레플리카
   이동·patchType 과 패치 본문·`gracePeriodSeconds`·대상 수와 이름·명령·stdin·페이로드·
   메서드와 경로와 본문)를 전문으로 대조한다. 공통 계약(도구 이름·쌍·좌표·요청 시각)과 쌍의
   전집은 모은 열한 화면을 놓고 한 번에 판정하고, 좌표 해석 실패는 **승인 요청 수**로 잰다.
@@ -97,11 +107,11 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `internal/mcp/delete_collection_test.go::TestCollectionContextCarriesCountAndNames`
 
 ### 시나리오 4: 폴링으로 판정을 관측한다
-- **사전 조건**: kind 실물 gatekeeper
+- **사전 조건**: kind 실물 PocketAide
 - **실행 단계**: (a) 게이트 대상 도구 호출 → 별도 경로로 `approve` → 실행 완료 확인.
   (b) `timeoutSeconds=2`로 호출하고 아무 판정도 하지 않은 채 대기
 - **기대 결과**: (a) `PENDING`→`APPROVED` 전이가 폴링으로 관측되고 실행이 이어짐.
-  (b) 폴링이 `EXPIRED`를 관측하고 거부. gatekeeper가 자발적으로 만료시키지 않으므로,
+  (b) 폴링이 `EXPIRED`를 관측하고 거부. PocketAide가 자발적으로 만료시키지 않으므로,
   폴링을 끊고 최초 응답만 본 구현은 이 시나리오를 통과하지 못함
 - **검증 AC**: AC4
 - **자동화**: 통합 `tests/integration/approval_gate_sc4.py` — (a) 폴링 전이는 승인 댄스와
@@ -109,31 +119,31 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   만료와 클라이언트 마감이 같은 env 에서 파생하므로 클라이언트 에러 문면은 단언하지 않는다
 
 ### 시나리오 5: 모든 실패는 거부로 수렴한다
-- **사전 조건**: 단위 테스트는 가짜 k8s 서비스(호출 카운터)와 `httptest.Server` gatekeeper를
-  경로별로 구성한다. E2E는 위 「픽스처」대로 **실물 gatekeeper**를 쓰고 스텁을 두지 않는다 —
-  `REJECTED`·`EXPIRED`·판정 없음은 실물 판정·만료로, 연결 실패와 두 미설정은 배포 env로 만든다.
-  409·5xx는 실물 gatekeeper가 자기 핸들러로 내게 하는 수단이 실측됐고(실물 DB에 마커 한정
-  트리거, `e2e-mocking-policy.md` 차단 원장 `approval-gate-ac5-http-failures` 의 「2번 관측 로그」),
-  그 수단은 같은 행의 3번 판정이 조건 C1~C5 안에서 허용했다(2026-09-26). k8s 호출 0은 대상
-  객체의 불변으로 관측한다
+- **사전 조건**: 단위 테스트는 가짜 k8s 서비스(호출 카운터)와 `httptest.Server` PocketAide를
+  경로별로 구성한다. E2E는 위 「픽스처」대로 **실물 PocketAide**를 쓰고 스텁을 두지 않는다 —
+  `REJECTED`·`EXPIRED`·판정 없음은 실물 판정·만료로, 연결 실패와 두 미설정은 배포 env·볼륨으로
+  만든다. 409·5xx는 실물 백엔드가 자기 핸들러로 내게 하는 수단(실물 DB에 마커 한정 트리거)을
+  `e2e-mocking-policy.md` 「실환경 주입 판정」이 조건 C1~C5 안에서 허용했고(2026-09-26), 같은 문서
+  「주입 대상 이전 — PocketAide」가 그 판정을 PocketAide 의 `approval_requests` 로 옮겼다(2026-10-15).
+  k8s 호출 0은 대상 객체의 불변으로 관측한다
 - **실행 단계**: 다음을 각각 재현 — `REJECTED`, `EXPIRED`, 타임아웃 내 판정 없음,
-  `externalId` 충돌(409), 5xx, 연결 실패, `GATEKEEPER_BASE_URL` 미설정,
-  `GATEKEEPER_API_KEY` 미설정
+  `externalId` 충돌(409), 5xx, 연결 실패, `APPROVAL_GATE_URL` 미설정,
+  서비스 어카운트 토큰 미마운트
 - **기대 결과**: 8가지 모두 도구 에러. 모든 경우 k8s 호출 카운트 0. 같은 조건에서
   `resource_list`와 비게이트 종류의 `resource_get`은 정상 동작. 반대로 **변경은 전부
   멈춘다** — 승인 경로가 죽었는데 변경이 나가면 게이트가 있으나 마나이므로 의도된 동작이다
 - **검증 AC**: AC5
 - **자동화**: 통합 `tests/integration/approval_gate_sc5.py` — 여덟 경로와 읽기 대조군을 실물
-  gatekeeper 에서 잰다. `REJECTED`·만료·판정 없음은 실물 판정과 만료로, 409·5xx 는
+  PocketAide 에서 잰다. `REJECTED`·만료·판정 없음은 실물 판정과 만료로, 409·5xx 는
   `docs/e2e-mocking-policy.md` 의 「실환경 주입 판정」이 조건 C1~C5 안에서 허용한 마커 한정
   `BEFORE INSERT` 주입으로, 연결 실패와 두 미설정은 `tests/k8s/kind/gate-broken-variant.yaml` 의
   전용 배포로 만든다. 만료와 「판정 없음」은 이 배포에서 같은 env 에서 파생해 같은 순간에 닫히므로
   기록 쪽 얼굴(EXPIRED 전이)과 클라이언트 쪽 얼굴(타임아웃을 기다린 뒤의 거부)로 갈라 잰다.
-  Go 단위는 아직 없다 — 계획: `gatekeeper_test.go::TestFailClosedPaths`(표 기반 8 케이스),
-  `TestReadsSurviveGatekeeperOutage`, `TestAllWritesStopOnGatekeeperOutage`
+  Go 단위는 아직 없다 — 계획: `approvalgate_test.go::TestFailClosedPaths`(표 기반 8 케이스),
+  `TestReadsSurviveApprovalBackendOutage`, `TestAllWritesStopOnApprovalBackendOutage`
 
 ### 시나리오 6: 승인한 상태와 실행할 상태가 같아야 한다
-- **사전 조건**: kind 실물 gatekeeper + 테스트 Deployment
+- **사전 조건**: kind 실물 PocketAide + 테스트 Deployment
 - **실행 단계**: `resource_patch` 호출로 승인 요청 생성 → 승인 전에 외부에서 같은
   대상을 수정(`resourceVersion` 변경) → 승인. 같은 절차를 `resource_update`
   (`subresource=scale`)와 `kind=Secret`의 `resource_get`으로 반복. 이어서
@@ -159,7 +169,7 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   (전체 객체·scale × 재확인 충돌·서비스 충돌, 승인 1회·소비 확인·추가 읽기/갱신 없음)과
   `internal/k8s/update_precondition_test.go::TestUpdateUsesApprovedVersionOnTheWire`
   (승인 버전 PUT·늦은 409·PUT 1회·자동 거부 문면)로 검증한다.
-  이 단위·HTTP 경계 검증은 실물 gatekeeper/apiserver E2E 완료로 세지 않는다
+  이 단위·HTTP 경계 검증은 실물 PocketAide/apiserver E2E 완료로 세지 않는다
 
 ### 시나리오 7: 승인은 한 번만 쓰인다
 - **사전 조건**: 동일
@@ -170,32 +180,36 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   승인이 그 대화 내내 유효해지지 않는다
 - **검증 AC**: AC7
 - **자동화**: 통합 `tests/integration/approval_gate_sc7.py` — 요청-레코드 계약(호출마다 새
-  승인 요청, externalId 재사용 없음)을 잰다. 소비-한-번 단정은 Go 단위의 몫 — 계획:
-  `gatekeeper_test.go::TestApprovalIsConsumedOnce` (바깥에서는 SUT 안의 Decision 을 같은
+  승인 요청, externalId 재사용 없음, 첫 승인이 사람의 판정(`manual`))을 잰다. 소비-한-번 단정은
+  Go 단위의 몫 — 계획: `approvalgate_test.go::TestApprovalIsConsumedOnce` (바깥에서는 SUT 안의 Decision 을 같은
   id 로 두 번 쓰게 만들 경로가 없다)
 
 ### 시나리오 8: 감사 로그
 - **사전 조건**: 서버 로그 캡처
 - **실행 단계**: 승인 후 실행 1회, 거절 1회
 - **기대 결과**: 두 경우 모두 요청 id·`externalId`·도구·동사·대상 좌표가 로그에 남음.
-  승인 실행에는 `processedById`가, 거부에는 거부 사유가 함께 남음
+  승인 실행에는 판정 주체(`auto_approved=false`)가 남고 같은 요청의 PocketAide 기록이 사람의
+  판정(`manual`)이다 — 판정한 사람은 그 서비스 어카운트를 등록한 사용자이고, PocketAide 는 그
+  식별자를 호출자에게 주지 않으므로 로그 필드로 남길 수 없다. 거부에는 거부 사유가 함께 남음
 - **검증 AC**: AC8
 - **자동화**: 통합 `tests/integration/approval_gate_sc8.py` — 감사 라인을 `kubectl logs` 로
-  잰다(요청 id·external_id·tool·pairs·processed_by_id·auto_approved, 거부 사유). Go 단위는
-  아직 없다 — 계획: `gatekeeper_test.go::TestAuditLogFields`
+  잰다(요청 id·external_id·tool·pairs·auto_approved, 거부 사유)·판정 응답의 `decision_mode`. Go
+  단위는 아직 없다 — 계획: `approvalgate_test.go::TestAuditLogFields`
 
 ### 시나리오 9: 자동 승인은 숨기지 않는다
-- **사전 조건**: kind 실물 gatekeeper, 대상 사용자의 `autoResponseMode=AUTO_APPROVE`
-- **실행 단계**: `GATEKEEPER_USER_ID`를 그 사용자로 두고 게이트 대상 도구 호출
+- **사전 조건**: kind 실물 PocketAide, SUT 의 서비스 어카운트를 등록한 사용자의
+  `auto_response=AUTO_APPROVE`
+- **실행 단계**: 그 SUT 로 게이트 대상 도구 호출
 - **기대 결과**: 실행은 되지만 도구 응답 본문에 자동 승인이었음이 표기되고, 로그에도
-  `autoApproved=true`가 남음. `AUTO_REJECT` 사용자로는 실행이 거부됨
+  `auto_approved=true`가 남음. PocketAide 기록의 판정 방식은 `auto` 다. `AUTO_REJECT` 로는 실행이
+  거부됨
 - **검증 AC**: AC9
-- **자동화**: 통합 `tests/integration/approval_gate_sc9.py` — 같은 사용자의 모드를
+- **자동화**: 통합 `tests/integration/approval_gate_sc9.py` — 변형 배포를 등록한 사용자의 모드를
   AUTO_APPROVE → AUTO_REJECT → NONE 으로 바꿔 세 상태를 잰다(응답 표기·로그
-  auto_approved·기록의 processedById)
+  auto_approved·기록의 `decision_mode`·주인 사용자)
 
 ### 시나리오 10: 자격증명 값이 응답 밖으로 새지 않는다
-- **사전 조건**: kind 실물 gatekeeper, 값이 고유 토큰인 Secret 1개
+- **사전 조건**: kind 실물 PocketAide, 값이 고유 토큰인 Secret 1개
   (예: `data.token` = 검색 가능한 난수 문자열)
 - **실행 단계**: `kind=Secret`으로 `resource_get` 호출 → 승인 요청 본문을 수집 →
   같은 Secret 을 `resource_create`·`resource_patch` 로 쓰며 요청 본문을 수집 →
@@ -210,12 +224,12 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   SUT 서버 로그 · 실행 실패 에러 문면 · `resource_list` 응답)에서 토큰 부재를 단언하고,
   승인된 `resource_get` 응답에만 값이 등장함을 대조군으로 둔다. 쓰기 경로는 `(masked, NB)`
   표기까지 함께 단언한다(전부 가리는 구현도 이 AC 의 통과가 아니다).
-  Go 단위 `gatekeeper_test.go::TestSecretValueNeverLeavesResponse`
+  Go 단위 `approvalgate_test.go::TestSecretValueNeverLeavesResponse`
   (context·로그·에러 3표면 표 기반)는 아직 서지 않았다 — 통합이 그 세 표면을 실물에서
   덮으므로 단위는 회귀 고정용 후속이다
 
 ### 시나리오 11: 게이트의 읽기가 선언되고 값에 닿지 않는다
-- **사전 조건**: kind 실물 gatekeeper, 값이 고유 난수 토큰인 Secret, apiserver 요청을
+- **사전 조건**: kind 실물 PocketAide, 값이 고유 난수 토큰인 Secret, apiserver 요청을
   기록하는 감사 프록시
 - **실행 단계**: (a) `kind=Secret`으로 `resource_get` 호출 → 승인 요청이 뜬 상태에서
   **거절** → 감사 프록시 기록을 수집. (b) `resource_update`(`subresource=scale`)와
@@ -238,5 +252,5 @@ Go 단위 테스트에서는 `httptest.Server`로 gatekeeper HTTP 계약만 흉�
   `PartialObjectMetadataList` 협상과 폴백 거부, 모든 페이지의 셀렉터/커서, 일관된 목록 버전,
   정렬된 이름·uid·버전, 0건, 범위 밖 좌표, 불완전/중복/변경된 페이지, 만료/오류, 상한과
   취소를 검사한다. 실행: `go test ./internal/k8s -run '^TestCollectionSnapshot' -count=1`.
-  이것은 실제 gatekeeper·apiserver나 도구 경로의 증거가 아니다. 위 (a)·(b)·(c)의 실물
+  이것은 실제 승인 백엔드·apiserver나 도구 경로의 증거가 아니다. 위 (a)·(b)·(c)의 실물
   시나리오와 `approval_gate_sc11.py`는 계속 대기하며, 도구 등록·승인·삭제는 이 회귀에 없다.

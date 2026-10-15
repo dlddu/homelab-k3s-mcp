@@ -26,9 +26,9 @@ import subprocess
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import (
+from _approval_gate import (
     decide,
-    gatekeeper_url,
+    approval_url,
     list_requests,
     wait_for_pending,
 )
@@ -153,14 +153,11 @@ def _gated_calls() -> list[tuple[str, dict, str]]:
 async def _refuse(session, gate, tool: str, args: dict, marker: str) -> None:
     """도구 호출을 띄우고, 그것이 만든 승인 요청을 사람 대신 **거절**한다.
 
-    자동 응답 모드(`AUTO_REJECT`)를 쓰지 않는 이유: 그 모드는 gatekeeper 가 **요청의
-    담당 사용자**에게 적용하는 설정이라 `GATEKEEPER_USER_ID` 를 물고 있는
-    `gatekeeper-variant` 배포에서만 발화한다(그래서 시나리오 9 의
-    `approval_gate_sc9.py` 가 `실행 대상: gatekeeper-variant` 다). primary 배포의
-    요청에는 담당자가 없어 모드가 걸리지 않고, 요청은 승인 시한(5분)까지 PENDING 으로
-    남았다가 타임아웃으로 끝난다 — 거부가 아니라 **무응답**이라 이 시나리오가 재려는
-    것을 재지 못한다. 그래서 `resource_generic_sc5.py` 의 게이트 대조군과 같은 방식으로
-    판정을 직접 내린다.
+    자동 응답 모드(`AUTO_REJECT`)를 쓰지 않는 이유: 그 모드는 PocketAide 가 **호출자를
+    등록한 사용자**에게 적용하는 설정이라, primary 의 사용자에 켜면 같은 그룹에서 동시에
+    도는 다른 레인의 승인 댄스까지 거절해 버린다(자동 응답을 바꾸는 파일이
+    `실행 대상: approval-variant` 에 모여 있는 이유가 그것이다). 그래서
+    `resource_generic_sc5.py` 의 게이트 대조군과 같은 방식으로 판정을 직접 내린다.
     """
     task = asyncio.create_task(session.call_tool(tool, args))
     row = await wait_for_pending(gate, marker)
@@ -251,7 +248,7 @@ async def run() -> None:
     _seed()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 16 (여섯 verb 미승인 거부) ---")
             await test_every_gated_verb_is_refused_without_approval(session, gate)

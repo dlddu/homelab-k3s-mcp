@@ -12,7 +12,7 @@
 > `:9090/metrics` 별도 리스너 · 단위 테스트가 AC1~AC5 를 레코드 층에서 단언한다 — `rct_20260921-0008`), 다섯 파일은
 > 배포된 서버를 **파드의 9090 포트로** 스크레이프한다(`tests/integration/_metrics.py` — 변형 배포의 Service 에는
 > `metrics` 포트가 없어 파드 포트를 직접 연다). 3 의 「승인이 수 초 걸리는」 상태는 지연 주입 픽스처가 아니라
-> **승인자의 지연**으로 만든다 — 실물 gatekeeper 앞에서 호출은 판정까지 블록하고, 판정은 파일이 사람 대신 내리므로
+> **승인자의 지연**으로 만든다 — 실물 PocketAide 앞에서 호출은 판정까지 블록하고, 판정은 파일이 사람 대신 내리므로
 > 승인 전에 기다린 시간이 곧 게이트 대기다. 하네스 밖 관측: 미등록 이름의 `tool="unregistered"` 접힘은
 > `internal/metrics/metrics_test.go`.
 
@@ -33,7 +33,7 @@
 
 ### 시나리오 2: 거부 사유가 갈린다
 
-- **사전 조건**: 표면 구현 · 실물 gatekeeper 픽스처 · 통합 미설정 변형
+- **사전 조건**: 표면 구현 · 실물 PocketAide 픽스처 · 통합 미설정 변형
 - **실행 단계**: 인증 실패 · 입력 검증 · 게이트 거절 · 게이트 미설정 · 통합 미설정을 각각
   일으킨다
 - **기대 결과**: 사유 라벨이 다섯으로 갈리고 각각 1이다. **「사람이 거절」과 「게이트 통신
@@ -41,14 +41,14 @@
 - **검증 AC**: AC2
 - **자동화**: `tests/integration/metrics_sc2.py`(auth-variant · 2026-09-21 `rct_20260921-0010`) — 넷은 이 변형이 한 배포로
   낸다(잘못된 bearer 의 원시 `tools/call` → `auth_failed` · `kind` 없는 좌표 → `invalid_input` · `grafana_token` →
-  `unconfigured` · 백엔드 없는 `resource_patch` → `gate_unconfigured`), 다섯째 `gate_rejected` 는 gatekeeper-variant 에
+  `unconfigured` · 백엔드 없는 `resource_patch` → `gate_unconfigured`), 다섯째 `gate_rejected` 는 approval-variant 에
   짧은 포트포워드로 닿아 `resource_patch` 를 띄우고 forward-auth 헤더로 거절한다. 각 배포의 `mcp_tool_refusals_total`
   차에서 다섯 사유가 각 1 이고, 거절 배포의 `gate_unreachable` 차가 0 이며, 배포마다 sum(refusals) 의 차 ==
   `mcp_tool_calls_total{result="refused"}` 의 차(AC2 불변식)
 
 ### 시나리오 3: 게이트 대기와 처리 지연의 분리
 
-- **사전 조건**: 표면 구현 · 승인을 일부러 지연시킬 수 있는 gatekeeper 픽스처
+- **사전 조건**: 표면 구현 · 승인을 일부러 지연시킬 수 있는 PocketAide 픽스처
 - **실행 단계**: 즉답 도구(`ping`)와 승인이 수 초 걸리는 게이트 대상 도구를 호출한다
 - **기대 결과**: 두 계열이 따로 기록되고, 승인 대기가 길어져도 **처리 지연 계열은 그만큼
   커지지 않는다**

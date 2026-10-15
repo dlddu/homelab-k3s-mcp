@@ -41,7 +41,7 @@ import httpx
 from mcp.shared.exceptions import McpError
 
 from _auth_variant import API_KEY
-from _gatekeeper import _ephemeral_port, decide, gatekeeper_url, wait_for_pending
+from _approval_gate import _ephemeral_port, decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, port_forward, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -64,7 +64,7 @@ TOKEN = "gk-ac11-needle-6b3d90f4c2ae"
 SCALE_TARGET_REPLICAS = 2
 FIXTURE_REPLICAS = 0
 
-#: 판정까지의 상한. 이 배포의 `GATEKEEPER_TIMEOUT_SECONDS` 는 기본 300 초이고, 이 파일은
+#: 판정까지의 상한. 이 배포의 `APPROVAL_GATE_TIMEOUT_SECONDS` 는 기본 300 초이고, 이 파일은
 #: 만료를 기다리지 않고 거부를 **내린다** — 시나리오 11 (a) 가 요구하는 것이 거절이다.
 DECISION_BUDGET = 60.0
 
@@ -401,7 +401,7 @@ async def run() -> None:
     _fixtures()
 
     print("--- approval-gate/시나리오 11 (사전 읽기는 메타데이터뿐) ---")
-    with gatekeeper_url() as gate, port_forward(
+    with approval_url() as gate, port_forward(
         VARIANT_NAMESPACE, VARIANT_SERVICE, 80, _ephemeral_port(), ready_path="/healthz"
     ) as url, port_forward(
         VARIANT_NAMESPACE, VARIANT_SERVICE, 8099, _ephemeral_port(),

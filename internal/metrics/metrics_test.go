@@ -12,8 +12,8 @@ import (
 
 	dto "github.com/prometheus/client_model/go"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 )
 
 var testTools = []string{"ping", "resource_get", "resource_patch"}
@@ -139,10 +139,10 @@ func TestGateWaitIsObservedApartFromHandlerLatency(t *testing.T) {
 	m.Emit(ctx, eventlog.Record{Tool: "ping", Result: eventlog.ResultSuccess, Duration: 2 * time.Millisecond})
 	m.Emit(ctx, eventlog.Record{Tool: "resource_patch", Result: eventlog.ResultSuccess,
 		Duration: 3 * time.Millisecond, GateWait: 90 * time.Second,
-		Gate: eventlog.Gate{RequestID: "req-1", Decision: string(gatekeeper.VerdictApproved)}})
+		Gate: eventlog.Gate{RequestID: "req-1", Decision: string(approvalgate.VerdictApproved)}})
 	m.Emit(ctx, eventlog.Record{Tool: "resource_patch", Result: eventlog.ResultRefused, Reason: eventlog.ReasonGateRejected,
 		Duration: time.Millisecond, GateWait: 40 * time.Second,
-		Gate: eventlog.Gate{RequestID: "req-2", Decision: string(gatekeeper.VerdictRejected)}})
+		Gate: eventlog.Gate{RequestID: "req-2", Decision: string(approvalgate.VerdictRejected)}})
 
 	durations := family(t, m, "mcp_tool_duration_seconds")
 	if got := durations["tool=resource_patch"].GetHistogram().GetSampleSum(); got > 0.01 {
@@ -160,8 +160,8 @@ func TestGateWaitIsObservedApartFromHandlerLatency(t *testing.T) {
 	if got := family(t, m, "mcp_gate_wait_seconds")["decision=rejected"].GetHistogram().GetSampleSum(); got != 40 {
 		t.Errorf("gate_wait{rejected} sum = %v, want 40", got)
 	}
-	if got := len(family(t, m, "mcp_gate_wait_seconds")); got != len(gatekeeper.Verdicts) {
-		t.Errorf("gate_wait series = %d, want %d verdicts", got, len(gatekeeper.Verdicts))
+	if got := len(family(t, m, "mcp_gate_wait_seconds")); got != len(approvalgate.Verdicts) {
+		t.Errorf("gate_wait series = %d, want %d verdicts", got, len(approvalgate.Verdicts))
 	}
 	if got := histogramCount(t, m, "mcp_gate_wait_seconds", "decision=approved"); got != 1 {
 		t.Errorf("gate_wait{approved} count = %d, want 1", got)

@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -124,8 +124,8 @@ func parsePortForwardPayload(obj map[string]any) ([]byte, *rpcErr) {
 // first, for the reason attachPairs states. The pair the call exercises is
 // create on ⟨pods plural⟩/portforward — forwarding is something the call does to
 // the pod, so the resource name hangs the subresource off the coordinate.
-func portForwardPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+func portForwardPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")

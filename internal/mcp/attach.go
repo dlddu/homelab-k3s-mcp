@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -93,8 +93,8 @@ func parseAttachTarget(obj map[string]any) (attachArgs, *rpcErr) {
 // first, for the reason execPairs states. The pair the call exercises is
 // create on ⟨pods plural⟩/attach — attaching is something the call does to the
 // pod, so the resource name hangs the subresource off the coordinate.
-func attachPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+func attachPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")

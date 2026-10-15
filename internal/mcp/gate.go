@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -24,7 +24,7 @@ var gatedVerbs = map[string]bool{
 }
 
 type toolDeclaration struct {
-	pairs []gatekeeper.Pair
+	pairs []approvalgate.Pair
 
 	noResourcePermission *noResourcePermission
 
@@ -34,7 +34,7 @@ type toolDeclaration struct {
 	// name none and lie. What it may not do is consult discovery — the gate has
 	// to reach its verdict before the apiserver is touched, so the resource name
 	// comes from the kind by apimachinery's own guess.
-	resolve func(json.RawMessage) ([]gatekeeper.Pair, error)
+	resolve func(json.RawMessage) ([]approvalgate.Pair, error)
 
 	// target derives the object this call addresses, so the gate can read it
 	// before describing it (AC3's verb detail, AC6's precondition). It is
@@ -179,7 +179,7 @@ var toolRegistry = map[string]toolEntry{
 
 	"dear_baby_reset_user": {
 		decl: toolDeclaration{
-			pairs: []gatekeeper.Pair{
+			pairs: []approvalgate.Pair{
 				{Verb: "list", Resource: "pods"},
 				{Verb: "create", Resource: "pods/exec"},
 			},
@@ -294,7 +294,7 @@ type toolEntry struct {
 	collectionGate bool
 }
 
-func (d toolDeclaration) callPairs(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+func (d toolDeclaration) callPairs(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 	if d.resolve == nil {
 		return d.pairs, nil
 	}
@@ -305,7 +305,7 @@ func (d toolDeclaration) callPairs(rawArgs json.RawMessage) ([]gatekeeper.Pair, 
 // it may run unattended. A documented exemption short-circuits the answer but
 // does not erase the pairs — Exemptions still names what is passing through
 // ungated.
-func (d toolDeclaration) gatedPairs(sensitiveKinds []string, rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+func (d toolDeclaration) gatedPairs(sensitiveKinds []string, rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 	if d.outsideGate != "" {
 		return nil, nil
 	}
@@ -316,7 +316,7 @@ func (d toolDeclaration) gatedPairs(sensitiveKinds []string, rawArgs json.RawMes
 	if d.alwaysGated != "" {
 		return pairs, nil
 	}
-	var gated []gatekeeper.Pair
+	var gated []approvalgate.Pair
 	for _, p := range pairs {
 		if gatedVerbs[p.Verb] || readIsSensitive(p, sensitiveKinds) {
 			gated = append(gated, p)
@@ -330,8 +330,8 @@ func (d toolDeclaration) gatedPairs(sensitiveKinds []string, rawArgs json.RawMes
 // than discovery's answer, because a sensitive read has to be refused with the
 // kubernetes call count still at zero (prd-resource-generic AC16) — asking the
 // cluster what "Secret" is called would already be one.
-func genericPairs(verb string) func(json.RawMessage) ([]gatekeeper.Pair, error) {
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+func genericPairs(verb string) func(json.RawMessage) ([]approvalgate.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")
@@ -346,7 +346,7 @@ func genericPairs(verb string) func(json.RawMessage) ([]gatekeeper.Pair, error) 
 		if err != nil {
 			return nil, err
 		}
-		return []gatekeeper.Pair{{Verb: verb, Resource: resource}}, nil
+		return []approvalgate.Pair{{Verb: verb, Resource: resource}}, nil
 	}
 }
 
@@ -356,9 +356,9 @@ func genericPairs(verb string) func(json.RawMessage) ([]gatekeeper.Pair, error) 
 // scenario 8 asks for a negative or missing replicas to be refused without one
 // ever being made. Pair resolution is the only thing that runs earlier, and a
 // resolve error is already a refusal (authorize turns it into -32602).
-func updatePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
+func updatePairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 	generic := genericPairs("update")
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")
@@ -373,9 +373,9 @@ func updatePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 // deletePairs is genericPairs("delete") with AC10's own argument checks run
 // first, for the reason updatePairs states. Scenario 10 wants a selector-only
 // call refused at argument validation.
-func deletePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
+func deletePairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 	generic := genericPairs("delete")
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")
@@ -391,9 +391,9 @@ func deletePairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 // argument checks run first, for the reason updatePairs states — and with more
 // at stake: the argument this one rejects is a missing namespace, which is the
 // widest deletion the tool could be asked to approve.
-func deleteCollectionPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
+func deleteCollectionPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 	generic := genericPairs("deletecollection")
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")
@@ -434,7 +434,7 @@ func genericCollectionTarget() func(json.RawMessage) (*k8s.CollectionTargetRef, 
 	}
 }
 
-func readIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
+func readIsSensitive(p approvalgate.Pair, sensitiveKinds []string) bool {
 	if p.Verb != "get" && p.Verb != "watch" {
 		return false
 	}
@@ -445,7 +445,7 @@ func readIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
 // no verb attached. Two callers need it and they need different verbs: the read
 // gate asks about get and watch, and the context masker asks about writes.
 // Splitting it keeps one normalisation rather than two that can drift.
-func resourceIsSensitive(p gatekeeper.Pair, sensitiveKinds []string) bool {
+func resourceIsSensitive(p approvalgate.Pair, sensitiveKinds []string) bool {
 	// A subresource is judged by the object it hangs off: reading
 	// secrets/<anything> is still reading a Secret, and matching the whole
 	// string would let a subresource name walk straight past this.
@@ -583,8 +583,8 @@ const gateTargetKind = "⟨kind⟩"
 
 // GatePairs reports the kubernetes permissions the gate exercises on its own
 // behalf, before any verdict exists (prd-approval-gate AC11).
-func GatePairs() []gatekeeper.Pair {
-	return []gatekeeper.Pair{
+func GatePairs() []approvalgate.Pair {
+	return []approvalgate.Pair{
 		{Verb: "get", Resource: gateTargetKind},
 		{Verb: "list", Resource: gateTargetKind},
 	}
@@ -592,7 +592,7 @@ func GatePairs() []gatekeeper.Pair {
 
 // authorize runs the gate for one tool call. It is called by the dispatcher
 // before the handler, never by a handler (AC1).
-func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*gatekeeper.Decision, *k8s.TargetState, *rpcErr) {
+func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*approvalgate.Decision, *k8s.TargetState, *rpcErr) {
 	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, rawArgs)
 	if err != nil {
 		// A call whose pair cannot be named is a call whose gating cannot be
@@ -615,7 +615,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	var approved *k8s.TargetState
 	var ref *k8s.TargetRef
 
-	call := gatekeeper.Call{
+	call := approvalgate.Call{
 		Tool: name,
 		Pair: gated[0],
 		Describe: func(ctx context.Context) (string, error) {
@@ -654,7 +654,6 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		"pairs", pairsText(gated),
 		"request_id", decision.RequestID,
 		"external_id", decision.ExternalID,
-		"processed_by_id", decision.ProcessedByID,
 		"auto_approved", decision.AutoApproved,
 	)
 	return decision, approved, nil
@@ -667,7 +666,7 @@ type approvedTargetKey struct{}
 // target: the tools whose pairs are constants address no object this layer can
 // name, and inventing one would be worse than describing the call from its
 // arguments alone.
-func (h *Handler) readGateTarget(ctx context.Context, decl toolDeclaration, gated []gatekeeper.Pair, rawArgs json.RawMessage) (*k8s.TargetRef, *k8s.TargetState, error) {
+func (h *Handler) readGateTarget(ctx context.Context, decl toolDeclaration, gated []approvalgate.Pair, rawArgs json.RawMessage) (*k8s.TargetRef, *k8s.TargetState, error) {
 	if decl.target == nil {
 		return nil, nil, nil
 	}
@@ -697,7 +696,7 @@ func (h *Handler) readGateTarget(ctx context.Context, decl toolDeclaration, gate
 // A read cannot protect the interval after it returns. Update carries the
 // approved version into its PUT as well; other verbs still need their own
 // atomic conditions (doc-tracker.md).
-func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decision *gatekeeper.Decision, gated []gatekeeper.Pair, ref *k8s.TargetRef, approved *k8s.TargetState) *rpcErr {
+func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decision *approvalgate.Decision, gated []approvalgate.Pair, ref *k8s.TargetRef, approved *k8s.TargetState) *rpcErr {
 	if ref == nil || approved == nil {
 		return nil
 	}
@@ -728,7 +727,7 @@ func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decis
 // rather than summarised (AC3), with two exceptions the same AC names: a write
 // to a sensitive kind has its values masked first, and a verb whose detail
 // cannot be read off the arguments gets that detail from the target.
-func approvalContext(name string, gated []gatekeeper.Pair, rawArgs json.RawMessage, sensitiveKinds []string, ref *k8s.TargetRef, state *k8s.TargetState) string {
+func approvalContext(name string, gated []approvalgate.Pair, rawArgs json.RawMessage, sensitiveKinds []string, ref *k8s.TargetRef, state *k8s.TargetState) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "tool: %s\n", name)
 	fmt.Fprintf(&b, "rbac: %s\n", pairsText(gated))
@@ -823,7 +822,7 @@ func kubeletHighPowerEndpoint(path string) string {
 // argumentsBlock renders the verbatim-arguments tail every approval context
 // ends with. Shared rather than copied so the two context builders cannot
 // drift on whether a Secret write gets masked.
-func argumentsBlock(gated []gatekeeper.Pair, rawArgs json.RawMessage, sensitiveKinds []string) string {
+func argumentsBlock(gated []approvalgate.Pair, rawArgs json.RawMessage, sensitiveKinds []string) string {
 	args := strings.TrimSpace(string(rawArgs))
 	if args == "" || args == "null" {
 		args = "(none)"
@@ -909,7 +908,7 @@ func genericTarget() func(json.RawMessage) (*k8s.TargetRef, error) {
 // question is asked of the resolved pairs rather than the declaration because a
 // generic tool's verb is the same for every call while its kind is not, and it
 // is the verb that decides this.
-func changesState(gated []gatekeeper.Pair) bool {
+func changesState(gated []approvalgate.Pair) bool {
 	for _, p := range gated {
 		if gatedVerbs[p.Verb] {
 			return true
@@ -923,7 +922,7 @@ func changesState(gated []gatekeeper.Pair) bool {
 // nothing to do there; writes of an ordinary kind keep their body in full,
 // because AC16 rests the distinction on whether the content is a credential
 // rather than on what the call does.
-func writesASensitiveKind(gated []gatekeeper.Pair, sensitiveKinds []string) bool {
+func writesASensitiveKind(gated []approvalgate.Pair, sensitiveKinds []string) bool {
 	for _, p := range gated {
 		if gatedVerbs[p.Verb] && resourceIsSensitive(p, sensitiveKinds) {
 			return true
@@ -1064,7 +1063,7 @@ func maskedValue(value any, encoded bool) string {
 	return fmt.Sprintf("(masked, %dB)", size)
 }
 
-func pairsText(pairs []gatekeeper.Pair) string {
+func pairsText(pairs []approvalgate.Pair) string {
 	parts := make([]string, 0, len(pairs))
 	for _, p := range pairs {
 		parts = append(parts, p.String())
@@ -1074,7 +1073,7 @@ func pairsText(pairs []gatekeeper.Pair) string {
 
 // annotateAutoApproval marks a result that reached kubernetes without a human
 // looking at it (AC9).
-func annotateAutoApproval(result any, decision *gatekeeper.Decision) any {
+func annotateAutoApproval(result any, decision *approvalgate.Decision) any {
 	if decision == nil || !decision.AutoApproved {
 		return result
 	}
@@ -1082,7 +1081,7 @@ func annotateAutoApproval(result any, decision *gatekeeper.Decision) any {
 	if !ok {
 		return result
 	}
-	notice := fmt.Sprintf("[auto-approved by gatekeeper without human review — request %s]", decision.RequestID)
+	notice := fmt.Sprintf("[auto-approved by PocketAide without human review — request %s]", decision.RequestID)
 	if content, ok := m["content"].([]any); ok {
 		m["content"] = append(content, map[string]any{"type": "text", "text": notice})
 	}
