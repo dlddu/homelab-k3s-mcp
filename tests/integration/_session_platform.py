@@ -218,6 +218,29 @@ RECLAIM_POLL = 2.0
 
 
 @contextlib.contextmanager
+def control_plane() -> Iterator[str]:
+    with port_forward(
+        NAMESPACE,
+        CONTROL_PLANE_SERVICE,
+        CONTROL_PLANE_PORT,
+        CONTROL_PLANE_LOCAL_PORT,
+        ready_path=HEALTHZ_PATH,
+    ) as url:
+        yield url
+
+
+def delete_and_reclaim(url: str, session: dict) -> None:
+    """A 404 counts as success: the file under test may already have deleted it."""
+    deleted = httpx.delete(f"{url}{SESSIONS_PATH}/{session['id']}", timeout=120.0)
+    assert deleted.status_code in (204, 404), (
+        f"deleting session {session['id']} returned "
+        f"{deleted.status_code}: {deleted.text.strip()}"
+    )
+    if session.get("pod"):
+        wait_for_pod_gone(session["pod"])
+
+
+@contextlib.contextmanager
 def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
     """Create one real shell session, yield ``(control_plane_url, session)``.
 
@@ -226,41 +249,33 @@ def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
     stays valid for the body: a caller that needs to make the workload produce
     output can post to it without going through the tool under test.
     """
-    with port_forward(
-        NAMESPACE,
-        CONTROL_PLANE_SERVICE,
-        CONTROL_PLANE_PORT,
-        CONTROL_PLANE_LOCAL_PORT,
-        ready_path=HEALTHZ_PATH,
-    ) as url:
-        response = httpx.post(
-            f"{url}{SESSIONS_PATH}",
-            json={"name": name, "workloadType": SHELL_WORKLOAD},
-            timeout=CREATE_TIMEOUT,
-        )
-        assert response.status_code == 201, (
-            f"creating a shell session returned {response.status_code}: "
-            f"{response.text.strip()}"
-        )
-        session = response.json()
-        assert session.get("state") == "active", session
-        assert session.get("pod"), (
-            f"a created session must name its workload pod: {session}"
-        )
+    with control_plane() as url:
+        session = create_shell_session(url, name)
         try:
             yield url, session
         finally:
-            deleted = httpx.delete(
-                f"{url}{SESSIONS_PATH}/{session['id']}", timeout=120.0
-            )
-            assert deleted.status_code in (204, 404), (
-                f"deleting session {session['id']} returned "
-                f"{deleted.status_code}: {deleted.text.strip()}"
-            )
-            _wait_for_pod_gone(session["pod"])
+            delete_and_reclaim(url, session)
 
 
-def _wait_for_pod_gone(pod: str, timeout: float = RECLAIM_TIMEOUT) -> None:
+def create_shell_session(url: str, name: str) -> dict:
+    response = httpx.post(
+        f"{url}{SESSIONS_PATH}",
+        json={"name": name, "workloadType": SHELL_WORKLOAD},
+        timeout=CREATE_TIMEOUT,
+    )
+    assert response.status_code == 201, (
+        f"creating a shell session returned {response.status_code}: "
+        f"{response.text.strip()}"
+    )
+    session = response.json()
+    assert session.get("state") == "active", session
+    assert session.get("pod"), (
+        f"a created session must name its workload pod: {session}"
+    )
+    return session
+
+
+def wait_for_pod_gone(pod: str, timeout: float = RECLAIM_TIMEOUT) -> None:
     """Block until the session's pod is actually gone from the namespace.
 
     Deleting a session returns as soon as the control plane has issued the pod

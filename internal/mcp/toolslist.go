@@ -826,6 +826,38 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "session_create",
+      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers, so this call BLOCKS — typically seconds, up to a few minutes on a cold image pull — and returns the session already 'active' with its 'pod', ready for session_write and session_read. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, 'claude-code' runs the Claude Code CLI one prompt per write, 'approval-gated' runs the agent behind a human approval gate; a type whose image the platform does not have configured is refused. 'model' applies to the agent types only and defaults to the platform default. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Display name. Leading and trailing whitespace is trimmed; at least one non-whitespace character is required."
+          },
+          "workloadType": {
+            "type": "string",
+            "enum": ["shell", "claude-code", "approval-gated"],
+            "description": "Workload the session runs. Defaults to 'shell'. Immutable after creation."
+          },
+          "model": {
+            "type": "string",
+            "description": "Model for a 'claude-code' or 'approval-gated' session. Omit to use the platform default. Not allowed for 'shell'."
+          }
+        },
+        "required": ["name"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Create Session",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "session_list",
       "description": "List the sessions the session-platform control plane holds. The control plane is reachable only from inside the cluster, so this tool is the way to see the inventory without an ingress or a port-forward. Takes no arguments. Returns each session's id, name, workloadType (shell | claude-code), state (active | idle | snapshot), pod (absent while a session is snapshotted and its pods are reclaimed), createdAt and lastAccess. Listing is passive: it does not promote an idle session, restore a snapshot, or refresh lastAccess. An empty control plane returns an empty list, not an error. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
@@ -891,6 +923,28 @@ const toolsListJSON = `{
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "session_delete",
+      "description": "Delete a session-platform session. Its accumulated output and workload state are discarded and its pods are reclaimed; this cannot be undone. Deleting does NOT activate the session first: an idle session is not promoted and a snapshotted one is not restored just to be deleted. The call returns once the control plane has removed the session and issued the pod deletion, so the pod may linger in Terminating for its grace period. Refusals arrive distinguished: an unknown id is a not-found error (already deleted or never existed — nothing to retry), while a conflict means another lifecycle operation such as a snapshot or restore holds the session and the delete is worth retrying once it finishes. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list or session_create."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Delete Session",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": true,
         "openWorldHint": true
       }
     }

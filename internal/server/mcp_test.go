@@ -110,7 +110,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"github_commit_status_create",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
-		"session_list", "session_read", "session_write",
+		"session_create", "session_list", "session_read", "session_write", "session_delete",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("len(tools) = %d, want %d", len(tools), len(want))
@@ -1765,6 +1765,228 @@ func TestSessionWriteUnavailableReturnsToolError(t *testing.T) {
 	survivor := callTool(t, app, 184, "ping", map[string]any{})
 	if at(t, survivor, "result", "isError") != false ||
 		at(t, survivor, "result", "content", 0, "text") != "pong" {
+		t.Fatalf("ping did not survive the refusal: %v", survivor)
+	}
+}
+
+func TestToolsListAdvertisesSessionCreate(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	create := findTool(t, toolsList(t, app), "session_create")
+
+	props := at(t, create, "inputSchema", "properties").(map[string]any)
+	for _, key := range []string{"name", "workloadType", "model"} {
+		if _, ok := props[key]; !ok {
+			t.Fatalf("inputSchema is missing %s: %v", key, props)
+		}
+	}
+	required, _ := at(t, create, "inputSchema", "required").([]any)
+	if len(required) != 1 || required[0] != "name" {
+		t.Fatalf("required = %v, want [name]", required)
+	}
+	enum, _ := at(t, create, "inputSchema", "properties", "workloadType", "enum").([]any)
+	if fmt.Sprint(enum) != "[shell claude-code approval-gated]" {
+		t.Fatalf("workloadType enum = %v", enum)
+	}
+
+	if at(t, create, "annotations", "title") != "Create Session" ||
+		at(t, create, "annotations", "readOnlyHint") != false ||
+		at(t, create, "annotations", "destructiveHint") != false ||
+		at(t, create, "annotations", "idempotentHint") != false ||
+		at(t, create, "annotations", "openWorldHint") != true {
+		t.Fatalf("annotations = %v", create["annotations"])
+	}
+}
+
+func TestSessionCreateReturnsTheActiveSession(t *testing.T) {
+	fake := &fakeSessionPlatform{createResponse: func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error) {
+		return &sessionplatform.Session{
+			ID: "s-9", Name: req.Name, WorkloadType: "claude-code", State: "active",
+			Pod: "session-s-9", CreatedAt: "2026-10-16T00:00:00Z", LastAccess: "2026-10-16T00:00:00Z",
+		}, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 190, "session_create", map[string]any{
+		"name": "agent", "workloadType": "claude-code", "model": "sonnet",
+	})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	if at(t, body, "result", "structuredContent", "session", "id") != "s-9" ||
+		at(t, body, "result", "structuredContent", "session", "state") != "active" ||
+		at(t, body, "result", "structuredContent", "session", "pod") != "session-s-9" {
+		t.Fatalf("structuredContent = %v", at(t, body, "result", "structuredContent"))
+	}
+
+	want := sessionplatform.CreateRequest{Name: "agent", WorkloadType: "claude-code", Model: "sonnet"}
+	if len(fake.createCalls) != 1 || fake.createCalls[0] != want {
+		t.Fatalf("createCalls = %+v, want one %+v", fake.createCalls, want)
+	}
+}
+
+func TestSessionCreateRejectsBadArguments(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args map[string]any
+		want string
+	}{
+		{name: "missing name", args: map[string]any{}, want: "name is required"},
+		{name: "blank name", args: map[string]any{"name": "   "}, want: "name is required"},
+		{name: "numeric name", args: map[string]any{"name": 7}, want: "name must be a string"},
+		{name: "unknown workload", args: map[string]any{"name": "x", "workloadType": "bash"}, want: "workloadType must be one of"},
+		{name: "numeric model", args: map[string]any{"name": "x", "model": 3}, want: "model must be a string"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeSessionPlatform{}
+			app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+			body := callTool(t, app, 191, "session_create", tc.args)
+			message, _ := at(t, body, "error", "message").(string)
+			if !strings.Contains(message, tc.want) {
+				t.Fatalf("error message = %q, want it to contain %q", message, tc.want)
+			}
+			if len(fake.createCalls) != 0 {
+				t.Fatalf("createCalls = %+v, want none", fake.createCalls)
+			}
+		})
+	}
+}
+
+func TestSessionCreateSurfacesControlPlaneRefusalAsInvalidArgument(t *testing.T) {
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid input"}`))
+	}))
+	defer control.Close()
+
+	t.Setenv("SESSION_PLATFORM_ENDPOINT", control.URL)
+	client, err := sessionplatform.FromEnv()
+	if err != nil || client == nil {
+		t.Fatalf("FromEnv() = (%v, %v), want a client", client, err)
+	}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), client)
+
+	body := callTool(t, app, 192, "session_create", map[string]any{"name": "scratch", "model": "sonnet"})
+	if at(t, body, "result", "isError") != true {
+		t.Fatalf("isError = %v, want a tool error", at(t, body, "result", "isError"))
+	}
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if !strings.Contains(text, "invalid argument") || !strings.Contains(text, "invalid input") {
+		t.Fatalf("text = %q, want an invalid-argument refusal carrying the control plane's reason", text)
+	}
+}
+
+func TestSessionCreateUnavailableReturnsToolError(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 193, "session_create", map[string]any{"name": "scratch"})
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if at(t, body, "result", "isError") != true || !strings.Contains(text, "session platform unavailable") {
+		t.Fatalf("result = %v", at(t, body, "result"))
+	}
+
+	survivor := callTool(t, app, 194, "ping", map[string]any{})
+	if at(t, survivor, "result", "content", 0, "text") != "pong" {
+		t.Fatalf("ping did not survive the refusal: %v", survivor)
+	}
+}
+
+func TestToolsListAdvertisesSessionDelete(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	del := findTool(t, toolsList(t, app), "session_delete")
+
+	required, _ := at(t, del, "inputSchema", "required").([]any)
+	if len(required) != 1 || required[0] != "id" {
+		t.Fatalf("required = %v, want [id]", required)
+	}
+	if at(t, del, "annotations", "title") != "Delete Session" ||
+		at(t, del, "annotations", "readOnlyHint") != false ||
+		at(t, del, "annotations", "destructiveHint") != true ||
+		at(t, del, "annotations", "idempotentHint") != true ||
+		at(t, del, "annotations", "openWorldHint") != true {
+		t.Fatalf("annotations = %v", del["annotations"])
+	}
+}
+
+func TestSessionDeleteReportsTheDeletedSession(t *testing.T) {
+	fake := &fakeSessionPlatform{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 195, "session_delete", map[string]any{"id": "s-9"})
+	if at(t, body, "result", "isError") != false ||
+		at(t, body, "result", "structuredContent", "id") != "s-9" ||
+		at(t, body, "result", "structuredContent", "deleted") != true {
+		t.Fatalf("result = %v", at(t, body, "result"))
+	}
+	if len(fake.deleteCalls) != 1 || fake.deleteCalls[0] != "s-9" {
+		t.Fatalf("deleteCalls = %v, want [s-9]", fake.deleteCalls)
+	}
+	if fake.listCalls != 0 || len(fake.readCalls) != 0 || len(fake.writeCalls) != 0 {
+		t.Fatalf("delete touched other endpoints: list=%d read=%v write=%v",
+			fake.listCalls, fake.readCalls, fake.writeCalls)
+	}
+}
+
+func TestSessionDeleteRejectsBadArguments(t *testing.T) {
+	for _, args := range []map[string]any{{}, {"id": ""}, {"id": 9}} {
+		fake := &fakeSessionPlatform{}
+		app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+		body := callTool(t, app, 196, "session_delete", args)
+		message, _ := at(t, body, "error", "message").(string)
+		if !strings.Contains(message, "id is required") {
+			t.Fatalf("args %v: error message = %q", args, message)
+		}
+		if len(fake.deleteCalls) != 0 {
+			t.Fatalf("args %v: deleteCalls = %v, want none", args, fake.deleteCalls)
+		}
+	}
+}
+
+func TestSessionDeleteSurfacesRefusalsDistinctly(t *testing.T) {
+	var status int
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":"refused"}`))
+	}))
+	defer control.Close()
+
+	t.Setenv("SESSION_PLATFORM_ENDPOINT", control.URL)
+	client, err := sessionplatform.FromEnv()
+	if err != nil || client == nil {
+		t.Fatalf("FromEnv() = (%v, %v), want a client", client, err)
+	}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), client)
+
+	texts := map[int]string{}
+	for _, code := range []int{http.StatusNotFound, http.StatusConflict} {
+		status = code
+		body := callTool(t, app, 197, "session_delete", map[string]any{"id": "s-1"})
+		if at(t, body, "result", "isError") != true {
+			t.Fatalf("status %d: isError = %v", code, at(t, body, "result", "isError"))
+		}
+		texts[code], _ = at(t, body, "result", "content", 0, "text").(string)
+	}
+	if !strings.Contains(texts[http.StatusNotFound], "not found") ||
+		strings.Contains(texts[http.StatusNotFound], "retry") {
+		t.Fatalf("not found text = %q", texts[http.StatusNotFound])
+	}
+	if !strings.Contains(texts[http.StatusConflict], "retry after") {
+		t.Fatalf("conflict text = %q", texts[http.StatusConflict])
+	}
+}
+
+func TestSessionDeleteUnavailableReturnsToolError(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 198, "session_delete", map[string]any{"id": "s-1"})
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if at(t, body, "result", "isError") != true || !strings.Contains(text, "session platform unavailable") {
+		t.Fatalf("result = %v", at(t, body, "result"))
+	}
+
+	survivor := callTool(t, app, 199, "ping", map[string]any{})
+	if at(t, survivor, "result", "content", 0, "text") != "pong" {
 		t.Fatalf("ping did not survive the refusal: %v", survivor)
 	}
 }

@@ -223,6 +223,20 @@ var toolRegistry = map[string]toolEntry{
 		}},
 		handle: (*Handler).opensearchDocumentDelete,
 	},
+	"session_create": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "creates a session through the session platform API; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).sessionCreate,
+	},
+	"session_delete": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "deletes a session through the session platform API; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).sessionDelete,
+	},
 	"session_read": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
 			kind:   touchesNothing,

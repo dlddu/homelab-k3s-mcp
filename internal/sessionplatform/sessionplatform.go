@@ -1,6 +1,7 @@
 // Package sessionplatform talks to the session-platform control plane's
-// in-cluster REST API: it reads the session inventory, reads the accumulated
-// workload output of a single session, and injects input into one. The control
+// in-cluster REST API: it creates and deletes sessions, reads the session
+// inventory, reads the accumulated workload output of a single session, and
+// injects input into one. The control
 // plane is only reachable from inside the cluster, so this package is what opens
 // it to MCP clients without an ingress or a port-forward.
 package sessionplatform
@@ -14,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -27,7 +29,14 @@ const (
 	sessionsPath = "/api/v1/sessions"
 
 	httpClientTimeout = 10 * time.Second
+	createTimeout     = 5 * time.Minute
 )
+
+var workloadTypes = []string{"shell", "claude-code", "approval-gated"}
+
+// sessionPath renders the control plane's per-session endpoint,
+// DELETE /api/v1/sessions/{id}.
+func sessionPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) }
 
 // readPath renders the control plane's per-session read endpoint,
 // POST /api/v1/sessions/{id}/read.
@@ -66,6 +75,9 @@ const (
 	// output history is full, so further writes are refused for good while
 	// the output already accumulated stays readable.
 	kindQuotaExhausted
+	// kindConflict is the control plane's 409: another lifecycle operation
+	// holds the session.
+	kindConflict
 )
 
 // Error is the error type returned by Service.
@@ -88,6 +100,8 @@ func (e *Error) Error() string {
 		return "session platform payload too large, retrying will not help: " + e.msg
 	case kindQuotaExhausted:
 		return "session platform output quota exhausted, retrying will not help (existing output is still readable): " + e.msg
+	case kindConflict:
+		return "session platform conflict, retry after the in-progress lifecycle operation finishes: " + e.msg
 	default:
 		return "session platform api error: " + e.msg
 	}
@@ -100,6 +114,7 @@ func invalidArgument(msg string) *Error { return &Error{kind: kindInvalidArgumen
 func busy(msg string) *Error            { return &Error{kind: kindBusy, msg: msg} }
 func tooLarge(msg string) *Error        { return &Error{kind: kindTooLarge, msg: msg} }
 func quotaExhausted(msg string) *Error  { return &Error{kind: kindQuotaExhausted, msg: msg} }
+func conflict(msg string) *Error        { return &Error{kind: kindConflict, msg: msg} }
 
 // Unavailable reports whether this is the "not configured" kind — the one
 // the dispatcher records as a refusal, not an error (prd-event-log AC4).
@@ -144,6 +159,12 @@ type WriteResult struct {
 	Path    string  `json:"path"`
 }
 
+type CreateRequest struct {
+	Name         string `json:"name"`
+	WorkloadType string `json:"workloadType,omitempty"`
+	Model        string `json:"model,omitempty"`
+}
+
 // Service talks to the control plane on behalf of the session tools.
 //
 // ListSessions is a passive read: it never promotes an idle session, restores a
@@ -151,6 +172,8 @@ type WriteResult struct {
 // control plane activates the target before serving either, which is why their
 // results carry the branch they took.
 type Service interface {
+	CreateSession(ctx context.Context, req CreateRequest) (*Session, error)
+	DeleteSession(ctx context.Context, id string) error
 	ListSessions(ctx context.Context) ([]Session, error)
 	ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error)
 	WriteSession(ctx context.Context, id, payload string) (*WriteResult, error)
@@ -167,6 +190,16 @@ func NewUnavailable(reason string) *Unavailable {
 		reason = "session platform endpoint is not configured"
 	}
 	return &Unavailable{reason: reason}
+}
+
+// CreateSession always fails with the configured reason.
+func (u *Unavailable) CreateSession(context.Context, CreateRequest) (*Session, error) {
+	return nil, unavailable(u.reason)
+}
+
+// DeleteSession always fails with the configured reason.
+func (u *Unavailable) DeleteSession(context.Context, string) error {
+	return unavailable(u.reason)
 }
 
 // ListSessions always fails with the configured reason.
@@ -189,6 +222,7 @@ type Client struct {
 	endpoint  string
 	userAgent string
 	http      *http.Client
+	create    *http.Client
 }
 
 // FromEnv builds a Client from SESSION_PLATFORM_ENDPOINT, the control plane's
@@ -207,7 +241,86 @@ func FromEnv() (*Client, error) {
 		endpoint:  strings.TrimRight(endpoint, "/"),
 		userAgent: version.Name + "/" + version.Version,
 		http:      &http.Client{Timeout: httpClientTimeout},
+		create:    &http.Client{Timeout: createTimeout},
 	}, nil
+}
+
+func (c *Client) CreateSession(ctx context.Context, req CreateRequest) (*Session, error) {
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, invalidArgument("name must contain a non-whitespace character")
+	}
+	if req.WorkloadType != "" && !slices.Contains(workloadTypes, req.WorkloadType) {
+		return nil, invalidArgument(fmt.Sprintf("workloadType must be one of %s, got %q",
+			strings.Join(workloadTypes, ", "), req.WorkloadType))
+	}
+
+	endpoint := c.endpoint + sessionsPath
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+	httpReq.Header.Set("Accept", "application/json")
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.create.Do(httpReq)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("post %s: %v", endpoint, err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	message := controlPlaneMessage(respBody, resp.Status)
+	switch {
+	case resp.StatusCode == http.StatusBadRequest:
+		return nil, invalidArgument(message)
+	case resp.StatusCode == http.StatusRequestEntityTooLarge:
+		return nil, tooLarge(message)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+
+	var created Session
+	if err := json.Unmarshal(respBody, &created); err != nil {
+		return nil, apiError(fmt.Sprintf("parse created session: %v", err))
+	}
+	return &created, nil
+}
+
+func (c *Client) DeleteSession(ctx context.Context, id string) error {
+	if id == "" {
+		return invalidArgument("session id is required")
+	}
+
+	endpoint := c.endpoint + sessionPath(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, endpoint, nil)
+	if err != nil {
+		return apiError(fmt.Sprintf("build request: %v", err))
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return apiError(fmt.Sprintf("delete %s: %v", endpoint, err))
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	message := controlPlaneMessage(respBody, resp.Status)
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return notFound(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusConflict:
+		return conflict(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+	return nil
 }
 
 // ListSessions returns every session the control plane holds. It issues exactly
