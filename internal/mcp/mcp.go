@@ -648,8 +648,8 @@ func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 
 // sessionFields renders one session for a tool result. A snapshotted session has
 // had its pods reclaimed, so the control plane omits `pod`; keep it omitted
-// rather than reporting an empty name as if a pod existed. All three session
-// tools report a session the same way, so they share this.
+// rather than reporting an empty name as if a pod existed. Every session tool
+// reports a session the same way, so they share this.
 func sessionFields(s sessionplatform.Session) map[string]any {
 	fields := map[string]any{
 		"id":           s.ID,
@@ -732,6 +732,57 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 		"path":    result.Path,
 		"session": sessionFields(result.Session),
 	}), nil
+}
+
+func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	var req sessionplatform.CreateRequest
+	for key, dst := range map[string]*string{
+		"name": &req.Name, "workloadType": &req.WorkloadType, "model": &req.Model,
+	} {
+		v, present := obj[key]
+		if !present || v == nil {
+			continue
+		}
+		str, ok := v.(string)
+		if !ok {
+			return nil, errf(-32602, "%s must be a string", key)
+		}
+		*dst = str
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		return nil, errf(-32602, "name is required and must contain a non-whitespace character")
+	}
+	switch req.WorkloadType {
+	case "", "shell", "claude-code", "approval-gated":
+	default:
+		return nil, errf(-32602, "workloadType must be one of shell, claude-code, approval-gated")
+	}
+
+	created, err := h.sessionPlatform.CreateSession(ctx, req)
+	if err != nil {
+		return toolError(ctx, err), nil
+	}
+	return successResult(map[string]any{"session": sessionFields(*created)}), nil
+}
+
+func (h *Handler) sessionDelete(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	if err := h.sessionPlatform.DeleteSession(ctx, *id); err != nil {
+		return toolError(ctx, err), nil
+	}
+	return successResult(map[string]any{"id": *id, "deleted": true}), nil
 }
 
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {

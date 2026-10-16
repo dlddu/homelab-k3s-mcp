@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // recordedRequest is one request the control plane stub saw. The AC2 case reads
@@ -842,5 +844,231 @@ func TestUnavailableRefusesWrite(t *testing.T) {
 	}
 	if err.Error() != "session platform unavailable: session platform endpoint is not configured" {
 		t.Fatalf("error = %q", err.Error())
+	}
+}
+
+// --- session_create / session_delete ---
+
+type lifecycleRequest struct {
+	method string
+	path   string
+	body   string
+}
+
+func lifecycleStub(t *testing.T, status int, body string, delay time.Duration) (*Client, *[]lifecycleRequest) {
+	t.Helper()
+
+	var seen []lifecycleRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		seen = append(seen, lifecycleRequest{method: r.Method, path: r.URL.Path, body: string(raw)})
+		time.Sleep(delay)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	}))
+	t.Cleanup(srv.Close)
+
+	return &Client{
+		endpoint:  srv.URL,
+		userAgent: "homelab-k3s-mcp/test",
+		http:      srv.Client(),
+		create:    srv.Client(),
+	}, &seen
+}
+
+const createdShell = `{"id":"s-9","name":"scratch","workloadType":"shell","state":"active",
+  "pod":"session-s-9","auxiliaryPods":[],"createdAt":"2026-10-16T00:00:00Z",
+  "lastAccess":"2026-10-16T00:00:00Z"}`
+
+func TestCreateSessionReturnsTheActiveSession(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusCreated, createdShell, 0)
+
+	got, err := c.CreateSession(context.Background(), CreateRequest{Name: "scratch", WorkloadType: "shell"})
+	if err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	want := Session{
+		ID: "s-9", Name: "scratch", WorkloadType: "shell", State: "active",
+		Pod: "session-s-9", CreatedAt: "2026-10-16T00:00:00Z", LastAccess: "2026-10-16T00:00:00Z",
+	}
+	if *got != want {
+		t.Fatalf("session = %+v, want %+v", *got, want)
+	}
+
+	if len(*seen) != 1 {
+		t.Fatalf("requests = %+v, want exactly one", *seen)
+	}
+	req := (*seen)[0]
+	if req.method != http.MethodPost || req.path != sessionsPath {
+		t.Fatalf("request = %s %s, want POST %s", req.method, req.path, sessionsPath)
+	}
+	if req.body != `{"name":"scratch","workloadType":"shell"}` {
+		t.Fatalf("body = %s", req.body)
+	}
+}
+
+// The control plane's defaults (shell, platform-default) apply only to fields
+// that are absent, so an empty string must not be sent as a value.
+func TestCreateSessionOmitsUnsetFields(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusCreated, createdShell, 0)
+
+	if _, err := c.CreateSession(context.Background(), CreateRequest{Name: "scratch"}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if body := (*seen)[0].body; body != `{"name":"scratch"}` {
+		t.Fatalf("body = %s, want only the name", body)
+	}
+
+	if _, err := c.CreateSession(context.Background(), CreateRequest{
+		Name: "agent", WorkloadType: "claude-code", Model: "sonnet",
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if body := (*seen)[1].body; body != `{"name":"agent","workloadType":"claude-code","model":"sonnet"}` {
+		t.Fatalf("body = %s", body)
+	}
+}
+
+func TestCreateSessionRejectsBadRequestsBeforeTheWire(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		req  CreateRequest
+	}{
+		{name: "empty name", req: CreateRequest{}},
+		{name: "blank name", req: CreateRequest{Name: " \t\n"}},
+		{name: "unknown workload", req: CreateRequest{Name: "scratch", WorkloadType: "bash"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, seen := lifecycleStub(t, http.StatusCreated, createdShell, 0)
+
+			got, err := c.CreateSession(context.Background(), tc.req)
+			if got != nil {
+				t.Fatalf("session = %+v, want nil", got)
+			}
+			var e *Error
+			if !errors.As(err, &e) || e.kind != kindInvalidArgument {
+				t.Fatalf("error = %v, want a kindInvalidArgument *Error", err)
+			}
+			if len(*seen) != 0 {
+				t.Fatalf("requests = %+v, want none", *seen)
+			}
+		})
+	}
+}
+
+func TestCreateSessionMapsControlPlaneRefusals(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		kind   errKind
+	}{
+		{status: http.StatusBadRequest, kind: kindInvalidArgument},
+		{status: http.StatusRequestEntityTooLarge, kind: kindTooLarge},
+		{status: http.StatusInternalServerError, kind: kindAPI},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			c, _ := lifecycleStub(t, tc.status, `{"error":"invalid input"}`, 0)
+
+			_, err := c.CreateSession(context.Background(), CreateRequest{Name: "scratch", Model: "sonnet"})
+			var e *Error
+			if !errors.As(err, &e) || e.kind != tc.kind {
+				t.Fatalf("error = %v, want kind %d", err, tc.kind)
+			}
+			if !strings.Contains(err.Error(), "invalid input") {
+				t.Fatalf("error = %q, want the control plane's reason carried through", err.Error())
+			}
+		})
+	}
+}
+
+func TestCreateSessionOutlastsTheOrdinaryRequestTimeout(t *testing.T) {
+	c, _ := lifecycleStub(t, http.StatusCreated, createdShell, 200*time.Millisecond)
+	c.http = &http.Client{Timeout: 50 * time.Millisecond}
+
+	if _, err := c.CreateSession(context.Background(), CreateRequest{Name: "scratch"}); err != nil {
+		t.Fatalf("CreateSession: %v, want it to wait on its own budget", err)
+	}
+}
+
+func TestFromEnvCreateBudgetExceedsTheControlPlanesReadyWait(t *testing.T) {
+	t.Setenv("SESSION_PLATFORM_ENDPOINT", "http://control-plane.session-platform.svc.cluster.local")
+	c, err := FromEnv()
+	if err != nil || c == nil {
+		t.Fatalf("FromEnv() = (%v, %v)", c, err)
+	}
+	const controlPlaneReadyWait = 2 * time.Minute
+	if c.create.Timeout <= controlPlaneReadyWait {
+		t.Fatalf("create timeout = %s, want more than %s", c.create.Timeout, controlPlaneReadyWait)
+	}
+	if c.http.Timeout != httpClientTimeout {
+		t.Fatalf("request timeout = %s, want %s unchanged", c.http.Timeout, httpClientTimeout)
+	}
+}
+
+func TestDeleteSessionIssuesOneDelete(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusNoContent, "", 0)
+
+	if err := c.DeleteSession(context.Background(), "s-9"); err != nil {
+		t.Fatalf("DeleteSession: %v", err)
+	}
+	want := []lifecycleRequest{{method: http.MethodDelete, path: sessionsPath + "/s-9"}}
+	if len(*seen) != 1 || (*seen)[0] != want[0] {
+		t.Fatalf("requests = %+v, want %+v", *seen, want)
+	}
+}
+
+func TestDeleteSessionRefusalsAreDistinct(t *testing.T) {
+	seen := map[errKind]string{}
+	for _, tc := range []struct {
+		status    int
+		kind      errKind
+		retryable bool
+	}{
+		{status: http.StatusNotFound, kind: kindNotFound},
+		{status: http.StatusConflict, kind: kindConflict, retryable: true},
+		{status: http.StatusInternalServerError, kind: kindAPI},
+	} {
+		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
+
+		err := c.DeleteSession(context.Background(), "s-1")
+		var e *Error
+		if !errors.As(err, &e) || e.kind != tc.kind {
+			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
+		}
+		if tc.retryable != strings.Contains(err.Error(), "retry after") {
+			t.Fatalf("status %d: error = %q, retryable = %v", tc.status, err.Error(), tc.retryable)
+		}
+		for kind, text := range seen {
+			if text == err.Error() {
+				t.Fatalf("kinds %d and %d read the same: %q", kind, tc.kind, text)
+			}
+		}
+		seen[tc.kind] = err.Error()
+	}
+}
+
+func TestDeleteSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusNoContent, "", 0)
+
+	err := c.DeleteSession(context.Background(), "")
+	var e *Error
+	if !errors.As(err, &e) || e.kind != kindInvalidArgument {
+		t.Fatalf("error = %v, want a kindInvalidArgument *Error", err)
+	}
+	if len(*seen) != 0 {
+		t.Fatalf("requests = %+v, want none", *seen)
+	}
+}
+
+func TestUnavailableRefusesCreateAndDelete(t *testing.T) {
+	svc := NewUnavailable("")
+
+	created, err := svc.CreateSession(context.Background(), CreateRequest{Name: "scratch"})
+	var e *Error
+	if created != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("CreateSession = (%+v, %v), want a kindUnavailable *Error", created, err)
+	}
+	if err := svc.DeleteSession(context.Background(), "s-1"); !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("DeleteSession = %v, want a kindUnavailable *Error", err)
 	}
 }

@@ -61,9 +61,11 @@ EXPECTED_TOOLS = {
     "opensearch_search",
     "opensearch_document_put",
     "opensearch_document_delete",
+    "session_create",
     "session_list",
     "session_read",
     "session_write",
+    "session_delete",
 }
 
 # Must match GITHUB_APP_INSTALLATION_ID in the CI "Create test GitHub App secret"
@@ -116,10 +118,14 @@ def parse_env_resource(result) -> tuple[str, str]:
 
 @contextlib.asynccontextmanager
 async def open_session(
-    url: str, headers: dict[str, str] | None = None
+    url: str, headers: dict[str, str] | None = None, timeout: float = 30.0
 ) -> AsyncIterator[ClientSession]:
     mcp_url = f"{url}/mcp"
-    async with streamablehttp_client(mcp_url, headers=headers) as (read, write, _):
+    async with streamablehttp_client(mcp_url, headers=headers, timeout=timeout) as (
+        read,
+        write,
+        _,
+    ):
         async with ClientSession(read, write) as session:
             yield session
 

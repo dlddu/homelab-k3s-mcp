@@ -352,13 +352,37 @@ type writeCall struct {
 type fakeSessionPlatform struct {
 	mu sync.Mutex
 
-	listCalls  int
-	readCalls  []readCall
-	writeCalls []writeCall
+	createCalls []sessionplatform.CreateRequest
+	deleteCalls []string
+	listCalls   int
+	readCalls   []readCall
+	writeCalls  []writeCall
 
-	listResponse  func() ([]sessionplatform.Session, error)
-	readResponse  func(id string, offset int64) (*sessionplatform.ReadResult, error)
-	writeResponse func(id, payload string) (*sessionplatform.WriteResult, error)
+	createResponse func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
+	deleteResponse func(id string) error
+	listResponse   func() ([]sessionplatform.Session, error)
+	readResponse   func(id string, offset int64) (*sessionplatform.ReadResult, error)
+	writeResponse  func(id, payload string) (*sessionplatform.WriteResult, error)
+}
+
+func (f *fakeSessionPlatform) CreateSession(_ context.Context, req sessionplatform.CreateRequest) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.createCalls = append(f.createCalls, req)
+	if f.createResponse != nil {
+		return f.createResponse(req)
+	}
+	return &sessionplatform.Session{ID: "s-new", Name: req.Name, State: "active", Pod: "session-s-new"}, nil
+}
+
+func (f *fakeSessionPlatform) DeleteSession(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.deleteCalls = append(f.deleteCalls, id)
+	if f.deleteResponse != nil {
+		return f.deleteResponse(id)
+	}
+	return nil
 }
 
 func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {
