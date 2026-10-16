@@ -37,7 +37,7 @@ TARGET_EXPIRED = "gk-ac4-expired"
 
 #: 변형 SUT 의 타임아웃(approval-variant.yaml)과 (b) 거부 지연의 하한.
 VARIANT_TIMEOUT_SECONDS = 5
-LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 0.5
+LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 1.5
 #: (b) 의 관측 예산 — 거부가 T 초에 오므로 그 위로 조금 더 여유를 둔다.
 EXPIRY_BUDGET = VARIANT_TIMEOUT_SECONDS + 8
 

@@ -120,7 +120,7 @@ jobs:
     # dlddu/pocket-aide 커밋이다. 이 한 줄이 그 의존의 유일한 핀이다.
     env:
       CGO_ENABLED: '0'
-      POCKET_AIDE_SHA: 828954dc7da6c99baf5276b940edffb1a6be9996
+      POCKET_AIDE_SHA: c737170270203165cb3cb018086f566add28f7d5
     steps:
       - uses: actions/checkout@v4
 

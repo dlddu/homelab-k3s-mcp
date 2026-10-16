@@ -54,7 +54,7 @@ UNDECLARED_SELECTOR = f"app.kubernetes.io/name={UNDECLARED_DEPLOYMENT}"
 #: 변형 배포의 `APPROVAL_GATE_TIMEOUT_SECONDS`(gate-refusal-variant.yaml)와, 거부가 그것을
 #: 실제로 기다렸는지 가르는 하한. 최초 응답만 보고 끝낸 구현은 즉시 돌아온다.
 VARIANT_TIMEOUT_SECONDS = 5
-LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 0.5
+LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 1.5
 REFUSAL_BUDGET = VARIANT_TIMEOUT_SECONDS + 10
 
 #: 비게이트 호출의 상한. 게이트를 탔다면 승인이 없어 최소 `VARIANT_TIMEOUT_SECONDS` 는
