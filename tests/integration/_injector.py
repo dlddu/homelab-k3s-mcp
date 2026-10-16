@@ -1,16 +1,16 @@
 """시나리오 5 의 409·5xx 를 만드는 결함 주입기의 클라이언트.
 
-주입기 자체는 ``tests/k8s/kind/gatekeeper-injector.yaml`` 이고, 실물 gatekeeper 가
+주입기 자체는 ``tests/k8s/kind/pocket-aide-injector.yaml`` 이고, 실물 PocketAide 가
 쓰는 SQLite 파일에 **마커 한정** ``BEFORE INSERT`` 트리거를 걸었다 걷는다. 허용
 범위는 ``docs/e2e-mocking-policy.md`` 의 「실환경 주입 판정」 조건 C1~C5 다.
 
-이것이 ``_gatekeeper.py`` 와 **다른 파일인 이유**: 저쪽은 승인·거절을 사람 대신
+이것이 ``_approval_gate.py`` 와 **다른 파일인 이유**: 저쪽은 승인·거절을 사람 대신
 내리는 게이트 조작이고, 이쪽은 게이트 상대를 고장 내는 결함 주입이다. 한 파일에
 두면 승인 댄스를 쓰는 여덟 파일이 주입기 상수까지 함께 읽게 된다.
 
-응답은 주입하지 않는다 — 409 의 status·본문은 실물 ``store.isUniqueViolation``
-(고유 인덱스 ``Request_externalId_key``)을 탄 실물 핸들러가, 500 은 실물
-``httpx.InternalError`` 가 만든다. 주입이 만드는 것은 **전제**뿐이다(C1).
+응답은 주입하지 않는다 — 409 의 status·본문은 실물 ``approvals.isUniqueViolation``
+(``approval_requests`` 의 ``UNIQUE (caller_key_id, external_id)``)을 탄 실물 핸들러가,
+500 은 실물 「create failed」 분기가 만든다. 주입이 만드는 것은 **전제**뿐이다(C1).
 """
 
 from __future__ import annotations
@@ -20,10 +20,10 @@ from collections.abc import Iterator
 
 import httpx
 
-from _gatekeeper import GATEKEEPER_NAMESPACE, _ephemeral_port
+from _approval_gate import POCKET_AIDE_NAMESPACE, _ephemeral_port
 from _helpers import port_forward
 
-INJECTOR_SERVICE = "gatekeeper-injector"
+INJECTOR_SERVICE = "pocket-aide-injector"
 
 #: 주입 모드. ``conflict`` 는 같은 ``externalId`` 의 그림자 행을 먼저 넣어 본
 #: INSERT 가 진짜 고유 인덱스 위반으로 죽게 하고(→ 실물 409), ``error`` 는
@@ -36,11 +36,11 @@ INJECT_ERROR = "error"
 def injector_url() -> Iterator[str]:
     """주입기 제어 API 의 로컬 URL.
 
-    ``gatekeeper_url`` 과 같은 이유로 로컬 포트를 매번 새로 고른다 — 레인마다
+    ``approval_url`` 과 같은 이유로 로컬 포트를 매번 새로 고른다 — 레인마다
     이 포워드를 따로 열기 때문에 고정 포트면 둘째 레인이 점유 단언에서 멈춘다.
     """
     with port_forward(
-        GATEKEEPER_NAMESPACE,
+        POCKET_AIDE_NAMESPACE,
         INJECTOR_SERVICE,
         8082,
         _ephemeral_port(),

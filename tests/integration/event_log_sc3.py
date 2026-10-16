@@ -1,13 +1,13 @@
 """``AUTO_APPROVE`` 표기 — 자동 승인과 사람 승인은 판정 필드가 같고 표기 필드만 다르다.
 
 검증 시나리오: test-event-log.md#시나리오 3
-실행 대상: gatekeeper-variant
+실행 대상: approval-variant
 
 표기 필드가 정보를 더한다는 것은 그것이 빠졌을 때 두 줄이 같아진다는 것으로만 보인다.
 
-자동 승인은 이 변형에서만 발화한다(``approval_gate_sc9.py`` 가 같은 손잡이로 세 모드를 잰다 —
-gatekeeper 쪽 사용자 설정이고 create 본문의 userId 가 그 사용자여야 하는데 그 id 를 물고 있는 배포가
-이것뿐이다). 모드를 바꾸므로 ``병렬 레인:`` 은 선언하지 않는다.
+자동 승인은 이 변형에서만 켠다(``approval_gate_sc9.py`` 가 같은 손잡이로 세 모드를 잰다 —
+PocketAide 쪽 사용자 설정이고, 그 사용자가 등록한 호출자가 이 배포뿐이다). 모드를 바꾸므로
+``병렬 레인:`` 은 선언하지 않는다.
 """
 
 from __future__ import annotations
@@ -17,12 +17,12 @@ import json
 import subprocess
 
 from _eventlog import exactly_one_new, records, select, wait_for_new
-from _gatekeeper import decide, gatekeeper_url, set_auto_response, wait_for_pending
+from _approval_gate import decide, approval_url, set_auto_response, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
-VARIANT_NAMESPACE = "homelab-k3s-mcp-gatekeeper-variant"
-VARIANT_DEPLOYMENT = "homelab-k3s-mcp-gatekeeper-variant"
+VARIANT_NAMESPACE = "homelab-k3s-mcp-approval-variant"
+VARIANT_DEPLOYMENT = "homelab-k3s-mcp-approval-variant"
 
 TARGET_AUTO = "el-s3-auto-approved"
 TARGET_MANUAL = "el-s3-human-approved"
@@ -118,7 +118,7 @@ async def run() -> None:
     _config_map(TARGET_MANUAL)
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         try:
             async with open_session(url) as session:
                 print("--- event-log/시나리오 3 (AUTO_APPROVE 켠 경우) ---")

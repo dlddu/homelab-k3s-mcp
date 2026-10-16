@@ -63,7 +63,7 @@
     `resource_port_forward`, `resource_proxy`, `dear_baby_reset_user`, `session_write`,
     `session_delete`.
   - **변경 동사는 사람의 사전 승인을 거친다** — `apply`·`delete`·`scale`·`exec`에 해당하는
-    도구 호출은 gatekeeper(`dlddu/gatekeeper`)의 판정이 `APPROVED`일 때만 클러스터에
+    도구 호출은 PocketAide(`dlddu/pocket-aide`)의 판정이 `APPROVED`일 때만 클러스터에
     도달한다. `destructiveHint`가 클라이언트에 대한 광고에 그치는 데 반해, 이 게이트는
     서버 쪽에서 실행 자체를 막는다. 승인이 확인되지 않은 모든 경우(거절·만료·타임아웃·
     통신 실패·미설정)는 거부다.
@@ -77,7 +77,7 @@
     게이트 하나이고, 게이트에 결함이 나면 남는 방어선이 없다. 이는 **의도된 트레이드오프**다
     — 근거와 비용은 `doc-tracker/`의 「수용된 위험」에 적는다.
 - **관련 도구/구성**: 전 도구 공통(인증), `internal/auth`, `k8s/rbac.yaml`,
-  도구 어노테이션(`destructiveHint`), 승인 게이트(`internal/gatekeeper`,
+  도구 어노테이션(`destructiveHint`), 승인 게이트(`internal/approvalgate`,
   `prd-approval-gate.md`)
 
 ### V4: 운영 지식의 축적·검색
@@ -170,3 +170,4 @@
 | 2026-09-21 | **V6(서버 행위의 감사 가능성) 추가** — 기존 다섯 가치 어디에도 "서버가 자기 행위를 남긴다"가 없었다. V3(막는다)·V4(사람이 쓰는 문서)·V2(운영자에게 주는 관측 자격증명)와 각각 경계를 그었다. 범위는 **감사 기록 + 메트릭**이고 분산 트레이싱은 뺐다. 보존처는 가치에서 정하지 않고 「stdout 너머」만 걸어 PRD로 넘긴다. **이 가치는 PRD·AC·테스트가 0인 채로 선다** — 가치가 구현·문서보다 앞서는 첫 사례이며, 그 공백은 `doc-tracker/2026-09.md`의 「PRD 없는 가치」에 위험으로 등재했다. **⟨같은 날 위 행으로 정정됨 — 이 행은 정정 이전의 기록이다.⟩** |
 | 2026-10-16 | V5 관련 도구에 `session_create`·`session_delete` 추가, V3 파괴적 표기 목록에 `session_delete` 추가 — 세션 생명주기(생성·삭제)를 도구 표면으로 연다. 새 가치 추가 없음 — 앱 기능의 도구화(V5)와 기본값 안전(V3)의 구현체다. |
 | 2026-09-19 | V2에 commit status 목표와 「토큰째 내주기 vs 도구가 대신 행사」 원칙 추가 — `github_commit_status_create` 신설(`prd-github-commit-status.md`)과 `github_app_installation_token`의 `statuses: write` 배제 — 읽기는 계속 발급(그 PRD AC5)의 근거. 새 가치 추가 없음 — 둘 다 최소권한 자격증명(V2)과 기본값 안전(V3)의 구현체다. |
+| 2026-10-15 | V3 근거 (1) 「사람의 사전 승인」의 상대를 gatekeeper 에서 PocketAide(`dlddu/pocket-aide`)로 고쳤다 — 승인 게이트(`prd-approval-gate`)의 백엔드 교체를 따라간 것이고, 가치의 내용(변경 동사는 사람 승인을 거쳐야 클러스터에 닿는다)과 새 가치 수는 바뀌지 않는다. |

@@ -20,7 +20,7 @@ import subprocess
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -183,7 +183,7 @@ async def run() -> None:
     _delete_secret(WRITE_SECRET)
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- approval-gate/시나리오 10 (읽기: context 는 비고 응답에는 있다) ---")
             await test_read_context_is_clean_but_the_response_carries_the_value(session, gate)

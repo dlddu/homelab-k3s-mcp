@@ -3,7 +3,7 @@
 #
 # No deployment in this harness can produce the scenario's precondition:
 # k8s/rbac.yaml binds the primary's ServiceAccount to cluster-admin, and every
-# other variant (auth-fixture, oidc-fixture, gatekeeper-variant) binds its own
+# other variant (auth-fixture, oidc-fixture, approval-variant) binds its own
 # SA to the same cluster-admin. Narrowing k8s/rbac.yaml itself is an
 # operational-manifest change, outside the e2e lens; so the missing grant is
 # created here, in a deployment of its own, and nowhere else.
@@ -16,10 +16,10 @@
 #
 # Auth stays ON (MCP_API_KEYS, the throwaway key of auth-fixture.yaml), like
 # commit-status-variant.yaml, so this file adds no GATE entry to
-# docs/e2e-mocking-policy.md. The gate secret ci.yml creates in this namespace
-# carries the primary's values (direct gatekeeper URL, API key, no
-# GATEKEEPER_USER_ID): the e2e decides its approvals by hand, so the 300 s
-# default timeout applies and no auto-response mode can engage.
+# docs/e2e-mocking-policy.md. The gate env carries the primary's values (direct
+# PocketAide URL, default 300 s timeout), and ci.yml registers this namespace's
+# ServiceAccount under an OIDC subject of its own whose auto-response mode no e2e
+# changes: the e2e decides its approvals by hand.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -119,11 +119,14 @@ spec:
             # e2e can reuse _auth_variant.API_KEY.
             - name: MCP_API_KEYS
               value: ci-e2e-key
-          envFrom:
-            # Created by ci.yml's "Seed the gatekeeper e2e user" step for THIS
-            # namespace, with the primary's values.
-            - secretRef:
-                name: homelab-k3s-mcp-gatekeeper
+            - name: APPROVAL_GATE_URL
+              value: http://pocket-aide.pocket-aide.svc.cluster.local:8080
+            - name: APPROVAL_GATE_POLL_INTERVAL_SECONDS
+              value: "1"
+          volumeMounts:
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -157,6 +160,14 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token
 ---
 apiVersion: v1
 kind: Service

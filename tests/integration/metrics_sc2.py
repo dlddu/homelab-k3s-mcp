@@ -14,7 +14,7 @@ import httpx
 from mcp.shared.exceptions import McpError
 
 from _auth_variant import API_KEY, GRAFANA_REFUSAL
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import EXPECTED_TOOLS, base_url, open_session, port_forward, wait_for_healthz
 from _metrics import Snapshot, delta, metrics_url, scrape
 
@@ -22,8 +22,8 @@ AUTH_NAMESPACE = "homelab-k3s-mcp-auth"
 AUTH_DEPLOYMENT = "homelab-k3s-mcp-auth"
 AUTH_METRICS_LOCAL_PORT = 19091
 
-GATE_NAMESPACE = "homelab-k3s-mcp-gatekeeper-variant"
-GATE_DEPLOYMENT = "homelab-k3s-mcp-gatekeeper-variant"
+GATE_NAMESPACE = "homelab-k3s-mcp-approval-variant"
+GATE_DEPLOYMENT = "homelab-k3s-mcp-approval-variant"
 GATE_LOCAL_PORT = 18087
 GATE_METRICS_LOCAL_PORT = 19092
 
@@ -145,7 +145,7 @@ async def test_gate_unconfigured(session, before: Snapshot, metrics: str) -> tup
 
 async def test_gate_rejected_is_not_unreachable() -> str:
     _config_map(TARGET_REJECTED)
-    with metrics_url(GATE_NAMESPACE, GATE_DEPLOYMENT, GATE_METRICS_LOCAL_PORT) as metrics, gatekeeper_url() as gate:
+    with metrics_url(GATE_NAMESPACE, GATE_DEPLOYMENT, GATE_METRICS_LOCAL_PORT) as metrics, approval_url() as gate:
         before = scrape(metrics)
         with port_forward(GATE_NAMESPACE, GATE_DEPLOYMENT, 80, GATE_LOCAL_PORT, "/healthz") as url:
             async with open_session(url) as session:
@@ -193,7 +193,7 @@ async def run() -> None:
             reasons.append(reason)
         _assert_invariant(start, snapshot, AUTH_DEPLOYMENT)
 
-    print("--- metrics/시나리오 2 (게이트 거절 ≠ 통신 실패 — gatekeeper-variant) ---")
+    print("--- metrics/시나리오 2 (게이트 거절 ≠ 통신 실패 — approval-variant) ---")
     reasons.append(await test_gate_rejected_is_not_unreachable())
 
     print("--- metrics/시나리오 2 (다섯 사유가 갈린다) ---")

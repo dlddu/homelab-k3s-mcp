@@ -9,14 +9,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
 type createGate struct {
-	calls     []gatekeeper.Call
+	calls     []approvalgate.Call
 	contexts  []string
-	decisions []*gatekeeper.Decision
+	decisions []*approvalgate.Decision
 	failAt    int
 	err       error
 	duplicate bool
@@ -24,7 +24,7 @@ type createGate struct {
 	before    func(int)
 }
 
-func (g *createGate) Authorize(ctx context.Context, call gatekeeper.Call) (*gatekeeper.Decision, error) {
+func (g *createGate) Authorize(ctx context.Context, call approvalgate.Call) (*approvalgate.Decision, error) {
 	g.calls = append(g.calls, call)
 	if g.before != nil {
 		g.before(len(g.calls))
@@ -41,7 +41,7 @@ func (g *createGate) Authorize(ctx context.Context, call gatekeeper.Call) (*gate
 	if g.duplicate {
 		id = 1
 	}
-	d := &gatekeeper.Decision{RequestID: fmt.Sprintf("req-%d", id), ExternalID: fmt.Sprintf("ext-%d", id), AutoApproved: g.auto}
+	d := &approvalgate.Decision{RequestID: fmt.Sprintf("req-%d", id), ExternalID: fmt.Sprintf("ext-%d", id), AutoApproved: g.auto}
 	g.decisions = append(g.decisions, d)
 	return d, nil
 }
@@ -65,7 +65,7 @@ func (c *createK8s) CreateResource(_ context.Context, ref k8s.CreateRef) (*k8s.R
 	return &k8s.ResourceResult{}, nil
 }
 
-func createHandler(t *testing.T, gate gatekeeper.Gate) (*Handler, *createK8s, *stateReader) {
+func createHandler(t *testing.T, gate approvalgate.Gate) (*Handler, *createK8s, *stateReader) {
 	t.Helper()
 	h, _, reader := testHandlerReading(t, gate, toolRegistry, newStateReader())
 	service := &createK8s{}
@@ -121,11 +121,11 @@ func TestMultiDocCreateRequiresApprovalPerDoc(t *testing.T) {
 	if len(reader.reads) != 0 {
 		t.Fatal("create read a nonexistent target")
 	}
-	for i, want := range []gatekeeper.Pair{{Verb: "create", Resource: "deployments"}, {Verb: "create", Resource: "services"}} {
+	for i, want := range []approvalgate.Pair{{Verb: "create", Resource: "deployments"}, {Verb: "create", Resource: "services"}} {
 		if gate.calls[i].Pair != want {
 			t.Errorf("pair %d = %v, want %v", i, gate.calls[i].Pair, want)
 		}
-		if err := gate.decisions[i].Consume(); !errors.Is(err, gatekeeper.ErrConsumed) {
+		if err := gate.decisions[i].Consume(); !errors.Is(err, approvalgate.ErrConsumed) {
 			t.Errorf("decision %d was not consumed by its write", i)
 		}
 	}
@@ -140,7 +140,7 @@ func TestMultiDocCreateRequiresApprovalPerDoc(t *testing.T) {
 
 func TestMultiDocCreateRejectionCreatesNothing(t *testing.T) {
 	for _, reason := range []error{errors.New("REJECTED"), errors.New("EXPIRED"), context.DeadlineExceeded,
-		gatekeeper.ErrNotConfigured, errors.New("gatekeeper HTTP 500"), errors.New("network unavailable")} {
+		approvalgate.ErrNotConfigured, errors.New("approval backend HTTP 500"), errors.New("network unavailable")} {
 		t.Run(reason.Error(), func(t *testing.T) {
 			gate := &createGate{failAt: 2, err: reason}
 			h, service, reader := createHandler(t, gate)
@@ -229,7 +229,7 @@ func TestCreateNeedsDistinctFreshApprovals(t *testing.T) {
 	if _, rerr := callTool(t, h, "resource_create", createArgs(t, createTwo)); rerr == nil || service.count() != 0 {
 		t.Fatal("duplicate approval authorized a batch")
 	}
-	decision := &gatekeeper.Decision{RequestID: "one-use"}
+	decision := &approvalgate.Decision{RequestID: "one-use"}
 	replay := &scriptedGate{decision: decision}
 	h, service, _ = createHandler(t, replay)
 	args := createArgs(t, map[string]any{"apiVersion": "v1", "kind": "Namespace", "metadata": map[string]any{"name": "one"}})

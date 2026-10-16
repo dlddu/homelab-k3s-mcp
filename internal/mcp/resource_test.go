@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -15,7 +15,7 @@ const restartPatch = `{"spec":{"template":{"metadata":{"annotations":{"kubectl.k
 
 func approvingHandler(t *testing.T) (*Handler, *countingK8s) {
 	t.Helper()
-	return testHandler(t, &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}, toolRegistry)
+	return testHandler(t, &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}, toolRegistry)
 }
 
 // AC9. The refusals share this test because a tool that accepts a fifth name
@@ -103,7 +103,7 @@ func TestRestartPatchTouchesOnlyAnnotation(t *testing.T) {
 
 // AC1/AC9.
 func TestRestartPatchIsGatedLikeAnyPatch(t *testing.T) {
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), toolRegistry)
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api",` +
 		`"patchType":"strategic","patch":` + restartPatch + `}`
 
@@ -125,7 +125,7 @@ const (
 
 // AC3/AC10/AC16.
 func TestSecretWriteContextRedactsValues(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _ := testHandler(t, gate, toolRegistry)
 
 	args := `{"apiVersion":"v1","kind":"Secret","namespace":"ops","name":"api","patchType":"merge",` +
@@ -153,7 +153,7 @@ func TestSecretWriteContextRedactsValues(t *testing.T) {
 // The control group for the case above: a masker that hid everything would
 // pass a leak test and fail the operator.
 func TestOrdinaryWriteKeepsItsBodyInTheContext(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _ := testHandler(t, gate, toolRegistry)
 
 	args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","patchType":"merge",` +
@@ -170,7 +170,7 @@ func TestOrdinaryWriteKeepsItsBodyInTheContext(t *testing.T) {
 // A JSON patch carries its value beside a path rather than under a data key, so
 // a masker that only walks for the field name lets this shape straight through.
 func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _ := testHandler(t, gate, toolRegistry)
 
 	args := `{"apiVersion":"v1","kind":"Secret","namespace":"ops","name":"api","patchType":"json",` +
@@ -200,7 +200,7 @@ func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
 func TestUpdateScaleBounds(t *testing.T) {
 	for _, replicas := range []int64{3, 0, 1} {
 		t.Run(fmt.Sprintf("replicas=%d", replicas), func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 			args := fmt.Sprintf(
 				`{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api",`+
@@ -243,7 +243,7 @@ func TestUpdateScaleBounds(t *testing.T) {
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 
 			_, rerr := callTool(t, h, "resource_update", tc.args)
@@ -270,7 +270,7 @@ func TestUpdateScaleBounds(t *testing.T) {
 // Every refusal also asserts the gate was never called (deletePairs).
 func TestDeleteIsSingleObjectOnly(t *testing.T) {
 	t.Run("named object", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, fake := testHandler(t, gate, toolRegistry)
 		args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app","gracePeriodSeconds":0}`
 
@@ -321,7 +321,7 @@ func TestDeleteIsSingleObjectOnly(t *testing.T) {
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 
 			_, rerr := callTool(t, h, "resource_delete", tc.args)
@@ -345,7 +345,7 @@ func TestDeleteIsSingleObjectOnly(t *testing.T) {
 // gate was not called, and a tool that was never gated would pass every one of
 // them.
 func TestDeleteIsRefusedWithoutApproval(t *testing.T) {
-	h, fake := testHandler(t, gatekeeper.NewUnavailable(nil), toolRegistry)
+	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), toolRegistry)
 	args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app"}`
 
 	if _, rerr := callTool(t, h, "resource_delete", args); rerr == nil {
@@ -498,7 +498,7 @@ func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
 	})
 
 	t.Run("runs once approved", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, fake := testHandler(t, gate, toolRegistry)
 		if _, rerr := callTool(t, h, "resource_watch", secret); rerr != nil {
 			t.Fatalf("tools/call = %v, want the approved watch to run", rerr)
@@ -526,7 +526,7 @@ func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
 // AC12.
 func TestExecStreamsAndCaps(t *testing.T) {
 	t.Run("runs and hands the pod, the container and the command to the cluster", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, fake := testHandler(t, gate, toolRegistry)
 
 		outcome := &k8s.ExecOutcome{
@@ -576,7 +576,7 @@ func TestExecStreamsAndCaps(t *testing.T) {
 	})
 
 	t.Run("stream truncation is marked, not silent", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, fake := testHandler(t, gate, toolRegistry)
 		fake.execOutcome = &k8s.ExecOutcome{
 			Stdout:          strings.Repeat("y", 100),
@@ -611,7 +611,7 @@ func TestExecStreamsAndCaps(t *testing.T) {
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 			_, rerr := callTool(t, h, "resource_exec", tc.args)
 			if rerr == nil {
@@ -630,7 +630,7 @@ func TestExecStreamsAndCaps(t *testing.T) {
 // The shared table over every gated tool carries the exec case (AC6).
 func TestExecContextCarriesTheCommand(t *testing.T) {
 	reader := newStateReader()
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	args := `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","container":"chatty","command":["echo","hi"]}`

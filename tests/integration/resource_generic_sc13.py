@@ -18,7 +18,7 @@ import uuid
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import count_requests, decide, gatekeeper_url, wait_for_pending
+from _approval_gate import count_requests, decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -227,7 +227,7 @@ async def run() -> None:
     _ensure_pod()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         _GATE = gate
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 13 (3초 창은 기존 스트림이다) ---")

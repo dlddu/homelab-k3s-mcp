@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
@@ -223,23 +223,23 @@ func buildSessionPlatformService() sessionplatform.Service {
 }
 
 // buildGate wires the approval gate (prd-approval-gate AC5).
-func buildGate() (gatekeeper.Gate, []string) {
-	cfg, err := gatekeeper.FromEnv()
+func buildGate() (approvalgate.Gate, []string) {
+	cfg, err := approvalgate.FromEnv()
 	if err != nil {
 		slog.Error("invalid approval gate config; gated calls will be refused", "error", err)
-		return gatekeeper.NewUnavailable(err), nil
+		return approvalgate.NewUnavailable(err), nil
 	}
 	if cfg == nil {
-		slog.Warn("GATEKEEPER_BASE_URL not set: gated calls will be refused")
-		return gatekeeper.NewUnavailable(nil), nil
+		slog.Warn("APPROVAL_GATE_URL not set: gated calls will be refused")
+		return approvalgate.NewUnavailable(nil), nil
 	}
 	slog.Info("approval gate enabled",
 		"timeout", cfg.Timeout,
 		"poll_interval", cfg.PollInterval,
 		"gated_kinds", cfg.GatedKinds,
-		"push_notifications", cfg.UserID != "",
+		"url", cfg.BaseURL,
 	)
-	return gatekeeper.New(*cfg, version.Name), cfg.GatedKinds
+	return approvalgate.New(*cfg, version.Name), cfg.GatedKinds
 }
 
 // buildGateReader gives the gate its own kubernetes read surface (AC11).

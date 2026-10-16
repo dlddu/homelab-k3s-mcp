@@ -23,7 +23,7 @@ import json
 import subprocess
 import time
 
-from _gatekeeper import decide, gatekeeper_url, get_request, wait_for_pending
+from _approval_gate import decide, approval_url, get_request, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -127,7 +127,7 @@ async def run() -> None:
     _wait_quiet("deployment", DEPLOYMENT)
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 9 (merge·strategic·json·apply) ---")
             spec_before = _deployment()["spec"]

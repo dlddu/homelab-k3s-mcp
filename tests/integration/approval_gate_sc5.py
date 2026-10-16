@@ -1,17 +1,18 @@
 """모든 실패는 거부로 수렴한다 — 여덟 경로 전부가 도구 에러이고 k8s 는 안 움직인다.
 
 검증 시나리오: test-approval-gate.md#시나리오 5
-실행 대상: gatekeeper-variant
+실행 대상: approval-variant
 
-이 파일이 `gatekeeper-variant` 를 상대로 도는 이유는 그 배포만
-`GATEKEEPER_TIMEOUT_SECONDS=5` 라 만료·타임아웃 경로를 초 단위로 관측할 수 있기
-때문이다(primary 는 기본 300초다). 미설정·연결 실패 셋은 env 가 배포당이라
+이 파일이 `approval-variant` 를 상대로 도는 이유는 그 배포만
+`APPROVAL_GATE_TIMEOUT_SECONDS=5` 라 만료·타임아웃 경로를 초 단위로 관측할 수 있기
+때문이다(primary 는 기본 300초다). 미설정·연결 실패 셋은 env·볼륨이 배포당이라
 그 배포로는 만들 수 없어, `tests/k8s/kind/gate-broken-variant.yaml` 의 전용
 배포 셋에 이 파일 자신의 포트포워드로 닿는다 — `github_commit_status_sc4.py`
 가 `commit-status-variant` 에 닿는 것과 같은 형태다.
 
-**409·5xx 를 만드는 수단.** 실물 gatekeeper 는 자기 고유 인덱스
-(`Request_externalId_key`)와 자기 `httpx.InternalError` 로만 409·500 을 내고,
+**409·5xx 를 만드는 수단.** 실물 PocketAide 는 자기 고유 제약
+(`approval_requests` 의 `UNIQUE (caller_key_id, external_id)`)과 자기 「create failed」
+분기로만 409·500 을 내고,
 MCP 의 `randomExternalID` 는 16바이트 난수라 클라이언트가 스스로 충돌을 만들 수
 없다. 그래서 `docs/e2e-mocking-policy.md` 의 「실환경 주입 판정」이 확정한 수단을
 쓴다 — 실물 DB 에 **마커 한정** `BEFORE INSERT` 트리거를 걸어 실물 핸들러가 자기
@@ -21,11 +22,11 @@ MCP 의 `randomExternalID` 는 16바이트 난수라 클라이언트가 스스�
 가 `triggers: [] · shadow_rows: 0` 인지 케이스마다 확인한다.
 
 **만료와 「판정 없음」이 두 경로인 이유.** 이 배포에서 클라이언트의 폴링 마감과
-gatekeeper 의 만료는 같은 `GATEKEEPER_TIMEOUT_SECONDS` 에서 파생해 사실상 같은
+PocketAide 의 만료는 같은 `APPROVAL_GATE_TIMEOUT_SECONDS` 에서 파생해 사실상 같은
 순간에 닫히고, 어느 쪽이 먼저인지는 타이머 경주다(`approval_gate_sc4.py` (b) 가
 같은 사실을 적는다). 그래서 둘을 **서로 다른 관측면**으로 가른다 — 「판정 없음」은
 *클라이언트가* 판정 없이 마감했다는 것(거부 지연 ≥ 타임아웃, 판정 없음)이고,
-`EXPIRED` 는 *gatekeeper 기록이* 만료로 전이했다는 것이다. 도구 에러의 문면은
+`EXPIRED` 는 *PocketAide 기록이* 만료로 읽힌다는 것이다. 도구 에러의 문면은
 그 둘 어디에도 쓰지 않는다.
 
 **k8s 호출 0 의 관측.** 시나리오가 정한 대로 대상 객체의 불변으로 잰다 — 여덟
@@ -42,11 +43,11 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import (
+from _approval_gate import (
     count_requests,
     create_records,
     decide,
-    gatekeeper_url,
+    approval_url,
     get_request,
     trace_url,
     wait_for_pending,
@@ -73,8 +74,8 @@ TARGET_NO_VERDICT = "gk-ac5-no-verdict"
 TARGET_CONFLICT = "gk-ac5-conflict"
 TARGET_SERVER_ERROR = "gk-ac5-server-error"
 TARGET_UNREACHABLE = "gk-ac5-unreachable"
-TARGET_NO_BASE_URL = "gk-ac5-no-base-url"
-TARGET_NO_API_KEY = "gk-ac5-no-api-key"
+TARGET_NO_URL = "gk-ac5-no-url"
+TARGET_NO_TOKEN = "gk-ac5-no-token"
 
 #: 읽기 대조군이 읽는 비민감 대상. 게이트가 죽은 조건에서도 살아 있어야 한다.
 TARGET_CONTROL = "gk-ac5-control"
@@ -86,24 +87,24 @@ ALL_TARGETS = (
     TARGET_CONFLICT,
     TARGET_SERVER_ERROR,
     TARGET_UNREACHABLE,
-    TARGET_NO_BASE_URL,
-    TARGET_NO_API_KEY,
+    TARGET_NO_URL,
+    TARGET_NO_TOKEN,
     TARGET_CONTROL,
 )
 
-#: 변형 SUT 의 타임아웃(gatekeeper-variant.yaml)과 「판정 없음」 지연의 하한.
+#: 변형 SUT 의 타임아웃(approval-variant.yaml)과 「판정 없음」 지연의 하한.
 VARIANT_TIMEOUT_SECONDS = 5
-LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 0.5
+LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 1.5
 EXPIRY_BUDGET = VARIANT_TIMEOUT_SECONDS + 8
 
 BROKEN_NAMESPACE = "homelab-k3s-mcp-gate-broken"
-#: 이 레인이 도는 동안 열려 있는 다른 포워드(_gatekeeper 8095·8096, ci.yml 의 그룹
+#: 이 레인이 도는 동안 열려 있는 다른 포워드(_approval_gate 8096, ci.yml 의 그룹
 #: 포워드 8080·8088·8089·8090·8092·8093, github_commit_status_sc4 18084,
 #: _session_platform 18083, platform_auth_safety 18080-18082)와 겹치지 않는 자리.
 BROKEN_VARIANTS = {
     TARGET_UNREACHABLE: ("homelab-k3s-mcp-gate-unreachable", 18085),
-    TARGET_NO_BASE_URL: ("homelab-k3s-mcp-gate-no-base-url", 18086),
-    TARGET_NO_API_KEY: ("homelab-k3s-mcp-gate-no-api-key", 18087),
+    TARGET_NO_URL: ("homelab-k3s-mcp-gate-no-url", 18086),
+    TARGET_NO_TOKEN: ("homelab-k3s-mcp-gate-no-token", 18087),
 }
 
 
@@ -199,7 +200,7 @@ async def test_rejected_verdict_refuses(session, gate) -> None:
 # --- (2) EXPIRED ------------------------------------------------------------
 
 async def test_expired_record_refuses(session, gate) -> None:
-    """판정을 내리지 않으면 gatekeeper 기록이 EXPIRED 로 전이하고 호출은 거부된다.
+    """판정을 내리지 않으면 PocketAide 기록이 EXPIRED 로 읽히고 호출은 거부된다.
 
     여기서 단언하는 것은 **기록 쪽 얼굴**이다(만료 평가가 조회 시점에 일어나는 것은
     실물에서만 관측된다). 클라이언트 쪽 얼굴은 (3) 이 잰다.
@@ -248,8 +249,8 @@ async def test_no_verdict_within_timeout_refuses(session, gate) -> None:
     assert record["status"] != "APPROVED", (
         f"아무도 승인하지 않았는데 기록이 {record['status']} 다"
     )
-    assert record.get("processedById") in (None, ""), (
-        f"판정한 사람이 없어야 하는데 처리자가 {record.get('processedById')!r} 다"
+    assert record.get("decision_mode") not in ("manual", "auto"), (
+        f"판정이 없어야 하는데 기록의 판정 방식이 {record.get('decision_mode')!r} 다"
     )
     assert_target_untouched(TARGET_NO_VERDICT, "판정 없음")
     print(f"(3) ok: 판정 없이 {wall:.1f}초(≥{LATENCY_FLOOR}) 뒤 거부, 대상 불변")
@@ -260,12 +261,12 @@ async def test_no_verdict_within_timeout_refuses(session, gate) -> None:
 async def test_external_id_conflict_refuses(session, gate, inject, trace) -> None:
     """409 — 실물 고유 인덱스 위반이 실물 핸들러의 409 를 내고 거부로 수렴한다.
 
-    C1: status·본문은 실물 `store.isUniqueViolation` → 실물 핸들러가 만든다. 주입은
+    C1: status·본문은 실물 `approvals.isUniqueViolation` → 실물 핸들러가 만든다. 주입은
     충돌이라는 **전제**만 만들고 응답을 흉내 내지 않는다. C2: 트리거는 이 대상
     이름(마커)이 context 에 든 INSERT 에만 걸린다. C4: 아래에서 잔여 0 을 단언한다.
 
     「진짜 409 였다」의 증거 둘 — ⑴ 클라이언트가 본 문면이 `(409)` 이고, ⑵ 그 마커의
-    요청이 gatekeeper 에 **한 건도 저장되지 않았다**(INSERT 가 실제로 실패했다).
+    요청이 PocketAide 에 **한 건도 저장되지 않았다**(INSERT 가 실제로 실패했다).
     프록시 기록에는 create 시도가 남으므로 「보내지도 않았다」와 구별된다.
     """
     with injected(inject, INJECT_CONFLICT, TARGET_CONFLICT):
@@ -324,7 +325,7 @@ async def test_server_error_refuses(session, gate, inject) -> None:
 async def _refuse_on_broken_variant(target: str, path: str, expected: str) -> None:
     """게이트가 죽은 배포에서 ⑴ 쓰기는 거부되고 ⑵ 읽기 대조군은 살아 있다.
 
-    셋 다 `gatekeeper.FromEnv` 의 서로 다른 분기에서 나오고, `main.go` 가 그것을
+    미설정 둘은 `approvalgate.FromEnv` 의 서로 다른 분기에서 나오고, `main.go` 가 그것을
     `NewUnavailable` 로 바꿔 **`Describe` 를 부르지 않고** 거부한다. 그 「부르지
     않음」이 AC5 의 핵심이라 대상 불변을 함께 잰다 — 사전 읽기조차 없었다면 대상은
     당연히 그대로다.
@@ -373,20 +374,22 @@ async def assert_reads_survive(session, path: str) -> None:
 
 async def test_unreachable_gate_refuses() -> None:
     """(6) 연결 실패 — 백엔드에 닿지 못해도 변경은 전부 멈춘다."""
-    await _refuse_on_broken_variant(TARGET_UNREACHABLE, "연결 실패", "refusing")
-
-
-async def test_missing_base_url_refuses() -> None:
-    """(7) `GATEKEEPER_BASE_URL` 미설정 — `FromEnv` 의 그 분기 문면이 그대로 온다."""
     await _refuse_on_broken_variant(
-        TARGET_NO_BASE_URL, "BASE_URL 미설정", "GATEKEEPER_BASE_URL is not"
+        TARGET_UNREACHABLE, "연결 실패", "approval request failed"
     )
 
 
-async def test_missing_api_key_refuses() -> None:
-    """(8) `GATEKEEPER_API_KEY` 미설정 — 반대쪽 분기 문면이 그대로 온다."""
+async def test_missing_url_refuses() -> None:
+    """(7) `APPROVAL_GATE_URL` 미설정 — `FromEnv` 의 그 분기 문면이 그대로 온다."""
     await _refuse_on_broken_variant(
-        TARGET_NO_API_KEY, "API_KEY 미설정", "GATEKEEPER_API_KEY is not"
+        TARGET_NO_URL, "URL 미설정", "APPROVAL_GATE_URL is not"
+    )
+
+
+async def test_missing_token_refuses() -> None:
+    """(8) 서비스 어카운트 토큰 미마운트 — 토큰을 읽는 분기 문면이 그대로 온다."""
+    await _refuse_on_broken_variant(
+        TARGET_NO_TOKEN, "토큰 미마운트", "approval gate service account token"
     )
 
 
@@ -396,7 +399,7 @@ async def run() -> None:
         _config_map(name, SENTINEL)
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate, trace_url() as trace, injector_url() as inject:
+    with approval_url() as gate, trace_url() as trace, injector_url() as inject:
         start = injector_state(inject)
         assert start["triggers"] == [] and start["shadow_rows"] == 0, (
             f"시작부터 주입 잔여가 있다 — 앞 실행이 걷지 않았다: {start}"
@@ -417,10 +420,10 @@ async def run() -> None:
 
         print("--- approval-gate/시나리오 5 (6) 연결 실패 ---")
         await test_unreachable_gate_refuses()
-        print("--- approval-gate/시나리오 5 (7) BASE_URL 미설정 ---")
-        await test_missing_base_url_refuses()
-        print("--- approval-gate/시나리오 5 (8) API_KEY 미설정 ---")
-        await test_missing_api_key_refuses()
+        print("--- approval-gate/시나리오 5 (7) URL 미설정 ---")
+        await test_missing_url_refuses()
+        print("--- approval-gate/시나리오 5 (8) 토큰 미마운트 ---")
+        await test_missing_token_refuses()
 
         end = injector_state(inject)
         assert end["triggers"] == [] and end["shadow_rows"] == 0, (

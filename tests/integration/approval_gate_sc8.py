@@ -5,12 +5,14 @@
 병렬 레인: gate-screens
 
 요청
-id 와 external_id 는 gatekeeper 레코드와 대조해 같은 값임까지 확인한다(로그 한
+id 와 external_id 는 PocketAide 레코드와 대조해 같은 값임까지 확인한다(로그 한
 줄이 어느 승인 요청의 것인지 대조 없이는 알 수 없다).
 
-거부 절의 processedById 는 일부러 단언하지 않는다 — 거부된 요청은 처리자가
-gatekeeper 에서는 남지만 SUT 는 실행하지 않았으므로 granted 라인이 아예 없다.
-「거부에 거부 사유가 남는다」가 그 절의 계약이다.
+판정자는 로그 필드가 아니다 — PocketAide 는 누가 판정했는지를 호출자에게 알려 주지
+않고, 판정할 수 있는 사람은 그 호출자를 등록한 사용자 하나뿐이다. 그래서 승인 절의
+「판정자」는 두 면을 맞춰 잰다: 로그의 ``auto_approved=false`` 와 레코드의
+``decision_mode=manual``(사람이 앱에서 내렸다). 거부 절은 「거부에 거부 사유가
+남는다」가 계약이다.
 """
 
 from __future__ import annotations
@@ -21,7 +23,7 @@ import subprocess
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, get_request, wait_for_pending
+from _approval_gate import decide, approval_url, get_request, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -81,11 +83,12 @@ async def run() -> None:
     wait_for_healthz(url)
 
     print("--- approval-gate/시나리오 8 (승인 실행 1회·거부 1회) ---")
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             granted_task = _patch(session, TARGET_GRANTED)
             granted_row = await wait_for_pending(gate, TARGET_GRANTED)
             decided = await decide(gate, granted_row["id"], "APPROVED")
+            assert decided["decision_mode"] == "manual", decided
             granted = await granted_task
             assert granted.isError is False, granted
 
@@ -114,8 +117,7 @@ async def run() -> None:
         for expected in (
             "tool=resource_patch",
             "patch on configmaps",
-            f"external_id={get_request(gate, granted_row['id'])['externalId']}",
-            f"processed_by_id={decided['processedById']}",
+            f"external_id={get_request(gate, granted_row['id'])['external_id']}",
             "auto_approved=false",
         ):
             assert expected in granted_line, f"granted 라인에 {expected!r} 이 없다"

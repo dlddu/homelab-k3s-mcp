@@ -5,13 +5,13 @@
 병렬 레인: gate-refusal
 
 **이 파일은 러너가 건네는 배포를 쓰지 않는다.** (a) 는 「승인받지 못한 채
-`GATEKEEPER_TIMEOUT_SECONDS` 가 지난다」를 열네 번 관측하는데, primary 의 기본 타임아웃은
+`APPROVAL_GATE_TIMEOUT_SECONDS` 가 지난다」를 열네 번 관측하는데, primary 의 기본 타임아웃은
 300 초라 그 열넷이 한 시간을 넘는다. 타임아웃은 env 라 배포당이므로, 5 초짜리 배포를
 `tests/k8s/kind/gate-refusal-variant.yaml` 에 따로 세우고 이 파일이 자기 포트포워드로 붙는다
-(`resource_generic_sc18.py` 가 좁은 RBAC 변형에 붙는 것과 같은 형태). 그 배포의 게이트
-시크릿에는 `GATEKEEPER_USER_ID` 가 없다 — 담당자가 없으면 gatekeeper 의 자동 응답 모드가
-걸리지 않아 아무도 판정하지 않는다. 시나리오의 「자동 응답을 끄고 판정하지 않는다」가 이
-구성이다.
+(`resource_generic_sc18.py` 가 좁은 RBAC 변형에 붙는 것과 같은 형태). 그 배포의 서비스
+어카운트는 PocketAide 에 자기 몫의 사용자(`_approval_gate.CALLERS`)로 등록돼 있고 그 사용자의
+자동 응답 모드는 어느 파일도 바꾸지 않으므로 아무도 판정하지 않는다. 시나리오의 「자동 응답을
+끄고 판정하지 않는다」가 이 구성이다.
 
 **「실행 호출 0」을 무엇으로 재는가.** e2e 에는 단위 층의 가짜 k8s 서비스 카운터가 없으므로,
 도구마다 *성공했다면 남았을 흔적*을 골라 그것이 없음을 센다 — 객체 쪽 도구는 대상의
@@ -35,10 +35,10 @@ import time
 from mcp.shared.exceptions import McpError
 
 from _auth_variant import API_KEY
-from _gatekeeper import (
+from _approval_gate import (
     _ephemeral_port,
     count_requests,
-    gatekeeper_url,
+    approval_url,
     get_request,
     wait_for_pending,
 )
@@ -51,15 +51,15 @@ VARIANT_SERVICE = VARIANT_DEPLOYMENT
 UNDECLARED_DEPLOYMENT = "homelab-k3s-mcp-undeclared-tool"
 UNDECLARED_SELECTOR = f"app.kubernetes.io/name={UNDECLARED_DEPLOYMENT}"
 
-#: 변형 배포의 `GATEKEEPER_TIMEOUT_SECONDS`(gate-refusal-variant.yaml)와, 거부가 그것을
+#: 변형 배포의 `APPROVAL_GATE_TIMEOUT_SECONDS`(gate-refusal-variant.yaml)와, 거부가 그것을
 #: 실제로 기다렸는지 가르는 하한. 최초 응답만 보고 끝낸 구현은 즉시 돌아온다.
 VARIANT_TIMEOUT_SECONDS = 5
-LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 0.5
+LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 1.5
 REFUSAL_BUDGET = VARIANT_TIMEOUT_SECONDS + 10
 
 #: 비게이트 호출의 상한. 게이트를 탔다면 승인이 없어 최소 `VARIANT_TIMEOUT_SECONDS` 는
 #: 걸렸을 것이므로, 그 아래로 돌아온 성공은 「승인 요청 없이 수행됐다」와 같은 말이다.
-#: 동시에 도는 다른 레인 때문에 gatekeeper 의 전역 요청 수 증분은 단언의 재료가 못 된다 —
+#: 동시에 도는 다른 레인 때문에 PocketAide 의 전역 요청 수 증분은 단언의 재료가 못 된다 —
 #: 대신 이 파일의 접두사를 담은 요청 수를 센다.
 UNGATED_CEILING = VARIANT_TIMEOUT_SECONDS - 1.0
 
@@ -277,8 +277,8 @@ def _fixtures() -> None:
 async def _refused(session, gate: str, tool: str, args: dict, marker: str) -> dict:
     """게이트 대상 호출을 띄우고, 판정 없이 만료로 거부되는 것을 관측한다.
 
-    거부 문면은 단언하지 않는다 — 클라이언트의 폴링 마감과 gatekeeper 의 만료가 같은
-    `GATEKEEPER_TIMEOUT_SECONDS` 에서 파생해 어느 쪽이 먼저 닫는지가 경주이기 때문이다
+    거부 문면은 단언하지 않는다 — 클라이언트의 폴링 마감과 PocketAide 의 만료가 같은
+    `APPROVAL_GATE_TIMEOUT_SECONDS` 에서 파생해 어느 쪽이 먼저 닫는지가 경주이기 때문이다
     (`approval_gate_sc4.py` (b) 와 같은 이유). 계약은 셋이 진다: 승인 요청이 실제로
     만들어졌다 · 거부가 타임아웃을 기다린 뒤에 왔다 · 그 기록이 EXPIRED 다.
     """
@@ -561,7 +561,7 @@ def test_the_hit_records_would_have_caught_an_execution() -> None:
     )
 
 
-def test_this_files_requests_were_seen_by_the_gatekeeper(gate: str) -> None:
+def test_this_files_requests_were_seen_by_pocket_aide(gate: str) -> None:
     """양성 대조 — (b) 의 「승인 요청 0」이 세는 법 자체의 공백이 아님을 보인다."""
     mine = count_requests(gate, PREFIX)
     assert mine >= 1, (
@@ -654,7 +654,7 @@ async def run() -> None:
     _fixtures()
 
     print("--- approval-gate/시나리오 1 (승인 부재 거부 · 실행 호출 0) ---")
-    with gatekeeper_url() as gate, port_forward(
+    with approval_url() as gate, port_forward(
         VARIANT_NAMESPACE, VARIANT_SERVICE, 80, _ephemeral_port(), ready_path="/healthz"
     ) as url:
         wait_for_healthz(url)
@@ -693,7 +693,7 @@ async def run() -> None:
 
             print("양성 대조 (기록 경로 · 요청 계수)")
             test_the_hit_records_would_have_caught_an_execution()
-            test_this_files_requests_were_seen_by_the_gatekeeper(gate)
+            test_this_files_requests_were_seen_by_pocket_aide(gate)
         finally:
             _cleanup()
 

@@ -18,7 +18,7 @@ import json
 import subprocess
 
 from _eventlog import exactly_one_new, records, select, wait_for_new
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _metrics import delta, metrics_url, scrape
 
@@ -111,7 +111,7 @@ async def run() -> None:
     wait_for_healthz(url)
     _config_map(TARGET_GATED)
     try:
-        with metrics_url(SERVER_NAMESPACE, SERVER_DEPLOYMENT, METRICS_LOCAL_PORT) as metrics, gatekeeper_url() as gate:
+        with metrics_url(SERVER_NAMESPACE, SERVER_DEPLOYMENT, METRICS_LOCAL_PORT) as metrics, approval_url() as gate:
             async with open_session(url) as session:
                 print("--- metrics/시나리오 3 (즉답 도구 — 처리 지연만) ---")
                 await test_an_immediate_tool_is_only_a_duration(session, metrics)

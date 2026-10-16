@@ -1,38 +1,40 @@
 # Fault injector for test-approval-gate.md#시나리오 5 (409·5xx), armed per test lane.
 #
-# WHAT THIS IS NOT. It is not a gatekeeper stub and not a fidelity switch. The
-# 409 status/body come from the real gatekeeper's own store.isUniqueViolation
-# (the Request_externalId_key unique index) and the 500 from its own
-# httpx.InternalError. What this pod creates is the *precondition* — a unique
+# WHAT THIS IS NOT. It is not a PocketAide stub and not a fidelity switch. The
+# 409 status/body come from the real PocketAide's own approvals.isUniqueViolation
+# (the UNIQUE (caller_key_id, external_id) constraint of approval_requests →
+# 409 "externalId already used by this caller key") and the 500 from its own
+# "create failed" branch. What this pod creates is the *precondition* — a unique
 # collision, a storage abort — never the response. That distinction is the
 # whole basis of the verdict in docs/e2e-mocking-policy.md
 # 「실환경 주입 판정 (3번 결과, 2026-09-26)」, whose conditions C1~C5 this file
 # and tests/integration/approval_gate_sc5.py must both stay inside.
 #
-# WHY A SEPARATE DEPLOYMENT rather than a sidecar on gatekeeper: the smallest
-# way to honour C3 is to leave gatekeeper-fixture.yaml untouched.
+# WHY A SEPARATE DEPLOYMENT rather than a sidecar on PocketAide: the smallest
+# way to honour C3 is to leave pocket-aide-fixture.yaml untouched.
 # The kind cluster is single-node (ci.yml runs `kind create cluster` with no
 # config), and a ReadWriteOnce PVC may be mounted by several pods **on the same
-# node**, so this pod can open the same /app/data/gatekeeper.db the gatekeeper
-# container is serving from. The shape — ConfigMap script + Deployment +
-# Service — is the one gatekeeper-trace already uses in the fixture next door.
+# node**, so this pod can open the same /data/pocket-aide.db the PocketAide
+# container is serving from.
 #
-# SQLite concurrency: gatekeeper pins the rollback journal (sha-762fafe) with
-# busy_timeout=5000, so a second writer is a supported configuration; this
-# process only holds the write lock for the few milliseconds a CREATE/DROP
-# TRIGGER takes.
+# SQLite concurrency: PocketAide opens the file with journal_mode=DELETE and
+# busy_timeout=5000 (backend/internal/db), so a second writer is a supported
+# configuration; this process only holds the write lock for the few
+# milliseconds a CREATE/DROP TRIGGER takes. The file is opened mode=rw so this
+# pod can never be the one that creates it — until PocketAide has migrated it,
+# /state fails and the pod is simply not Ready.
 #
-# uid 1001 matches the gatekeeper container, and fsGroup 1001 matches the
-# fixture's own securityContext — the db file and its journal are written by
-# that uid, so the injector has to be that uid to write them back.
+# uid 65532 matches the PocketAide container (distroless nonroot), and fsGroup
+# 65532 matches the fixture's own securityContext — the db file and its journal
+# are written by that uid, so the injector has to be that uid to write them back.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: gatekeeper-injector-script
-  namespace: gatekeeper
+  name: pocket-aide-injector-script
+  namespace: pocket-aide
 data:
   injector.py: |
-    """Marker-scoped fault injection into the real gatekeeper SQLite store.
+    """Marker-scoped fault injection into the real PocketAide SQLite store.
 
     Control API (the e2e reaches it through a port-forward):
 
@@ -58,18 +60,24 @@ data:
     import uuid
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    DB_PATH = os.environ.get("GATEKEEPER_DB", "/app/data/gatekeeper.db")
+    DB_PATH = os.environ.get("POCKET_AIDE_DB", "/data/pocket-aide.db")
+    TABLE = "approval_requests"
     SHADOW_NAME = "e2e-shadow"
     TRIGGERS = ("e2e_collide", "e2e_fail")
 
-    # The columns the shadow row fills. They are the NOT NULL columns without a
-    # default in gatekeeper's Request table at sha-762fafe; `arm` verifies the
-    # shape by probe rather than trusting this list.
-    SHADOW_COLUMNS = ("id", "externalId", "context", "requesterName", "status", "updatedAt")
+    # The NOT NULL columns without a default in approval_requests
+    # (backend/migrations/0012_approval_gate.up.sql); `arm` verifies the shape
+    # by probe rather than trusting this list.
+    SHADOW_COLUMNS = (
+        "id", "user_id", "caller_key_id", "external_id", "context",
+        "requester_name", "status", "created_at",
+    )
 
 
     def connect():
-        conn = sqlite3.connect(DB_PATH, timeout=10.0, isolation_level=None)
+        conn = sqlite3.connect(
+            f"file:{DB_PATH}?mode=rw", uri=True, timeout=10.0, isolation_level=None
+        )
         conn.execute("PRAGMA busy_timeout = 10000")
         return conn
 
@@ -81,7 +89,7 @@ data:
 
     def delete_shadow_rows(conn):
         cur = conn.execute(
-            'DELETE FROM "Request" WHERE requesterName = ?', (SHADOW_NAME,)
+            f'DELETE FROM "{TABLE}" WHERE requester_name = ?', (SHADOW_NAME,)
         )
         return cur.rowcount if cur.rowcount and cur.rowcount > 0 else 0
 
@@ -96,7 +104,7 @@ data:
 
     def shadow_rows(conn):
         row = conn.execute(
-            'SELECT COUNT(*) FROM "Request" WHERE requesterName = ?', (SHADOW_NAME,)
+            f'SELECT COUNT(*) FROM "{TABLE}" WHERE requester_name = ?', (SHADOW_NAME,)
         ).fetchone()
         return int(row[0])
 
@@ -105,12 +113,13 @@ data:
         columns = ", ".join(f'"{c}"' for c in SHADOW_COLUMNS)
         conn.execute(
             f'''
-            CREATE TRIGGER "e2e_collide" BEFORE INSERT ON "Request"
+            CREATE TRIGGER "e2e_collide" BEFORE INSERT ON "{TABLE}"
             WHEN instr(NEW.context, '{marker}') > 0
             BEGIN
-              INSERT INTO "Request"({columns})
-              VALUES (NEW.id || '-shadow', NEW."externalId", '{SHADOW_NAME}',
-                      '{SHADOW_NAME}', 'PENDING', NEW."updatedAt");
+              INSERT INTO "{TABLE}"({columns})
+              VALUES (NEW.id || '-shadow', NEW.user_id, NEW.caller_key_id,
+                      NEW.external_id, '{SHADOW_NAME}', '{SHADOW_NAME}',
+                      'PENDING', NEW.created_at);
             END
             '''
         )
@@ -119,7 +128,7 @@ data:
     def create_error_trigger(conn, marker):
         conn.execute(
             f'''
-            CREATE TRIGGER "e2e_fail" BEFORE INSERT ON "Request"
+            CREATE TRIGGER "e2e_fail" BEFORE INSERT ON "{TABLE}"
             WHEN instr(NEW.context, '{marker}') > 0
             BEGIN
               SELECT RAISE(ABORT, 'e2e injected storage failure');
@@ -137,11 +146,12 @@ data:
         """
         probe_id = f"e2e-probe-{uuid.uuid4().hex}"
         columns = ", ".join(f'"{c}"' for c in SHADOW_COLUMNS)
+        placeholders = ", ".join("?" for _ in SHADOW_COLUMNS)
         conn.execute("BEGIN IMMEDIATE")
         try:
             conn.execute(
-                f'INSERT INTO "Request"({columns}) VALUES (?, ?, ?, ?, ?, ?)',
-                (probe_id, probe_id, f"probe {marker}", SHADOW_NAME, "PENDING", 0),
+                f'INSERT INTO "{TABLE}"({columns}) VALUES ({placeholders})',
+                (probe_id, 0, 0, probe_id, f"probe {marker}", SHADOW_NAME, "PENDING", 0),
             )
         except sqlite3.Error as exc:
             return str(exc)
@@ -253,31 +263,32 @@ data:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gatekeeper-injector
-  namespace: gatekeeper
+  name: pocket-aide-injector
+  namespace: pocket-aide
   labels:
-    app: gatekeeper-injector
+    app: pocket-aide-injector
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 spec:
   replicas: 1
-  # The PVC is ReadWriteOnce and gatekeeper itself holds it. Recreate keeps a
+  # The PVC is ReadWriteOnce and PocketAide itself holds it. Recreate keeps a
   # second injector replica from ever being scheduled while the first drains.
   strategy:
     type: Recreate
   selector:
     matchLabels:
-      app: gatekeeper-injector
+      app: pocket-aide-injector
   template:
     metadata:
       labels:
-        app: gatekeeper-injector
+        app: pocket-aide-injector
     spec:
+      automountServiceAccountToken: false
       nodeSelector:
         kubernetes.io/arch: arm64
       securityContext:
-        runAsUser: 1001
-        runAsGroup: 1001
-        fsGroup: 1001
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
       containers:
         - name: injector
           image: python:3.12-slim
@@ -290,7 +301,7 @@ spec:
             - name: script
               mountPath: /script
             - name: data
-              mountPath: /app/data
+              mountPath: /data
           readinessProbe:
             httpGet:
               path: /state
@@ -306,22 +317,22 @@ spec:
       volumes:
         - name: script
           configMap:
-            name: gatekeeper-injector-script
+            name: pocket-aide-injector-script
         - name: data
           persistentVolumeClaim:
-            claimName: gatekeeper-pvc
+            claimName: pocket-aide
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: gatekeeper-injector
-  namespace: gatekeeper
+  name: pocket-aide-injector
+  namespace: pocket-aide
   labels:
-    app: gatekeeper-injector
+    app: pocket-aide-injector
 spec:
   type: ClusterIP
   selector:
-    app: gatekeeper-injector
+    app: pocket-aide-injector
   ports:
     - name: control
       port: 8082

@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -14,7 +14,7 @@ import (
 // gives back.
 func TestPortForwardMakesOneRoundTrip(t *testing.T) {
 	t.Run("hands the coordinate, the port and the payload to the cluster", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, fake := testHandler(t, gate, toolRegistry)
 
 		args := `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","port":8080,"payload":"GET / HTTP/1.0\r\n\r\n","readSeconds":3}`
@@ -147,7 +147,7 @@ func TestPortForwardRefusalsCostNoApproval(t *testing.T) {
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 			_, rerr := callTool(t, h, "resource_port_forward", tc.args)
 			if rerr == nil {
@@ -173,7 +173,7 @@ func TestPortForwardRefusalsCostNoApproval(t *testing.T) {
 // endpoint from reaching a database.
 func TestPortForwardContextCarriesPortAndPayload(t *testing.T) {
 	reader := newStateReader()
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	args := `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","port":6379,"payload":"FLUSHALL\r\n"}`

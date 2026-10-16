@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
@@ -53,7 +53,7 @@ func (g secretGrafana) CreateToken(context.Context) (*grafana.Credentials, error
 	return &grafana.Credentials{Token: g.token, MetricsURL: "https://metrics.example.test", MetricsUser: "1"}, nil
 }
 
-func recordedHandler(t *testing.T, gate gatekeeper.Gate) (*Handler, *countingK8s, *recordingSink) {
+func recordedHandler(t *testing.T, gate approvalgate.Gate) (*Handler, *countingK8s, *recordingSink) {
 	t.Helper()
 	h, fake := testHandler(t, gate, toolRegistry)
 	sink := &recordingSink{}
@@ -158,12 +158,12 @@ func (failingGitHub) CreateCommitStatus(context.Context, github.CommitStatusInpu
 func TestRefusalRecordsCarryTheirReason(t *testing.T) {
 	coordinate := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1"}`
 	patch := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`
-	verdict := func(v gatekeeper.Verdict, id string) error {
-		return &gatekeeper.Refusal{Verdict: v, RequestID: id, Err: errors.New("refusing resource_patch: " + string(v))}
+	verdict := func(v approvalgate.Verdict, id string) error {
+		return &approvalgate.Refusal{Verdict: v, RequestID: id, Err: errors.New("refusing resource_patch: " + string(v))}
 	}
 	cases := []struct {
 		name    string
-		gate    gatekeeper.Gate
+		gate    approvalgate.Gate
 		tool    string
 		args    string
 		reason  eventlog.Reason
@@ -172,15 +172,15 @@ func TestRefusalRecordsCarryTheirReason(t *testing.T) {
 	}{
 		{name: "unknown tool", gate: &scriptedGate{}, tool: "no_such_tool", reason: eventlog.ReasonInvalidInput, rpc: true},
 		{name: "bad coordinate", gate: &scriptedGate{}, tool: "resource_get", args: `{"kind":"ConfigMap"}`, reason: eventlog.ReasonInvalidInput, rpc: true},
-		{name: "gate rejected", gate: &scriptedGate{err: verdict(gatekeeper.VerdictRejected, "req-1")}, tool: "resource_patch", args: patch,
+		{name: "gate rejected", gate: &scriptedGate{err: verdict(approvalgate.VerdictRejected, "req-1")}, tool: "resource_patch", args: patch,
 			reason: eventlog.ReasonGateRejected, gateRec: eventlog.Gate{RequestID: "req-1", Decision: "rejected"}, rpc: true},
-		{name: "gate expired", gate: &scriptedGate{err: verdict(gatekeeper.VerdictExpired, "req-2")}, tool: "resource_patch", args: patch,
+		{name: "gate expired", gate: &scriptedGate{err: verdict(approvalgate.VerdictExpired, "req-2")}, tool: "resource_patch", args: patch,
 			reason: eventlog.ReasonGateExpired, gateRec: eventlog.Gate{RequestID: "req-2", Decision: "expired"}, rpc: true},
-		{name: "gate timeout", gate: &scriptedGate{err: verdict(gatekeeper.VerdictTimeout, "req-3")}, tool: "resource_patch", args: patch,
+		{name: "gate timeout", gate: &scriptedGate{err: verdict(approvalgate.VerdictTimeout, "req-3")}, tool: "resource_patch", args: patch,
 			reason: eventlog.ReasonGateTimeout, gateRec: eventlog.Gate{RequestID: "req-3", Decision: "timeout"}, rpc: true},
-		{name: "gate unreachable", gate: &scriptedGate{err: verdict(gatekeeper.VerdictUnreachable, "")}, tool: "resource_patch", args: patch,
+		{name: "gate unreachable", gate: &scriptedGate{err: verdict(approvalgate.VerdictUnreachable, "")}, tool: "resource_patch", args: patch,
 			reason: eventlog.ReasonGateUnreachable, gateRec: eventlog.Gate{Decision: "unreachable"}, rpc: true},
-		{name: "gate unconfigured", gate: gatekeeper.NewUnavailable(nil), tool: "resource_patch", args: patch,
+		{name: "gate unconfigured", gate: approvalgate.NewUnavailable(nil), tool: "resource_patch", args: patch,
 			reason: eventlog.ReasonGateUnconfigured, gateRec: eventlog.Gate{Decision: "unconfigured"}, rpc: true},
 		{name: "gate answered with prose only", gate: &scriptedGate{err: errors.New("something went wrong")}, tool: "resource_patch", args: patch,
 			reason: eventlog.ReasonGateUnreachable, rpc: true},
@@ -214,7 +214,7 @@ func TestApprovedRecordsCarryTheRequestIdAndTheAutoApprovalFlag(t *testing.T) {
 	patch := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`
 	for name, auto := range map[string]bool{"human": false, "auto": true} {
 		t.Run(name, func(t *testing.T) {
-			h, _, sink := recordedHandler(t, &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-" + name, AutoApproved: auto}})
+			h, _, sink := recordedHandler(t, &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-" + name, AutoApproved: auto}})
 			if _, rerr := callTool(t, h, "resource_patch", patch); rerr != nil {
 				t.Fatalf("resource_patch = %v", rerr)
 			}
@@ -231,7 +231,7 @@ func TestApprovedRecordsCarryTheRequestIdAndTheAutoApprovalFlag(t *testing.T) {
 // approval the backend granted (AC7): the verdict stays "approved", the
 // reason says the call was refused by the gate all the same.
 func TestASpentApprovalIsRefusedWithTheVerdictKept(t *testing.T) {
-	decision := &gatekeeper.Decision{RequestID: "req-spent"}
+	decision := &approvalgate.Decision{RequestID: "req-spent"}
 	if err := decision.Consume(); err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestRecordsCarryNoCredentialsPayloadsOrBodies(t *testing.T) {
 		rawJWT     = "eyJhbGciOiJSUzI1NiJ9.RAW-JWT-THAT-MUST-STAY-OUT.sig"
 	)
 
-	approved := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-ac3"}}
+	approved := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-ac3"}}
 	h, fake, sink := recordedHandler(t, approved)
 	h.github = secretGitHub{token: ghToken}
 	h.grafana = secretGrafana{token: grafanaTok}
@@ -314,7 +314,7 @@ func TestRecordsCarryNoCredentialsPayloadsOrBodies(t *testing.T) {
 	// A Secret write carries the data in the request body; the approval
 	// gate is scripted to approve so the call runs end to end.
 	// An approval is spent by the exec above (AC7), so the patch needs its own.
-	approved.decision = &gatekeeper.Decision{RequestID: "req-ac3-patch"}
+	approved.decision = &approvalgate.Decision{RequestID: "req-ac3-patch"}
 	secretArgs := `{"apiVersion":"v1","kind":"Secret","namespace":"default","name":"s-1","patchType":"merge","patch":{"data":{"password":"` + secretData + `"}}}`
 	call("resource_patch", secretArgs)
 	if got := fake.patch(); !strings.Contains(string(got.Patch), secretData) {

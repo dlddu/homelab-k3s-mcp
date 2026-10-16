@@ -8,7 +8,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -67,7 +67,7 @@ func confine(inner k8s.Service, tool string, d toolDeclaration, rawArgs json.Raw
 	if err != nil {
 		return nil, err
 	}
-	allowed := make(map[gatekeeper.Pair]bool, len(pairs))
+	allowed := make(map[approvalgate.Pair]bool, len(pairs))
 	for _, p := range pairs {
 		allowed[p] = true
 	}
@@ -85,7 +85,7 @@ type confinedService struct {
 	inner k8s.Service
 	tool  string
 
-	allowed   map[gatekeeper.Pair]bool
+	allowed   map[approvalgate.Pair]bool
 	discovery bool
 }
 
@@ -96,10 +96,10 @@ func (c *confinedService) permit(verb, apiVersion, kind, subresource string) err
 	if err != nil {
 		return fmt.Errorf("refusing %s: %s", c.tool, err.Error())
 	}
-	return c.allow(gatekeeper.Pair{Verb: verb, Resource: resource})
+	return c.allow(approvalgate.Pair{Verb: verb, Resource: resource})
 }
 
-func (c *confinedService) allow(p gatekeeper.Pair) error {
+func (c *confinedService) allow(p approvalgate.Pair) error {
 	if c.allowed[p] {
 		return nil
 	}
@@ -112,14 +112,14 @@ func (c *confinedService) allow(p gatekeeper.Pair) error {
 // declaredText renders what the call was allowed to do, so a refusal says
 // which of the two mistakes it caught: a declaration that is missing a pair,
 // or a handler exercising one it should not.
-func declaredText(allowed map[gatekeeper.Pair]bool, discovery bool) string {
+func declaredText(allowed map[approvalgate.Pair]bool, discovery bool) string {
 	if len(allowed) == 0 {
 		if discovery {
 			return "discovery only"
 		}
 		return "no kubernetes access"
 	}
-	pairs := make([]gatekeeper.Pair, 0, len(allowed))
+	pairs := make([]approvalgate.Pair, 0, len(allowed))
 	for p := range allowed {
 		pairs = append(pairs, p)
 	}
@@ -204,7 +204,7 @@ func (c *confinedService) DeleteCollection(ctx context.Context, ref k8s.DeleteCo
 // only the exec half would have its selector read pass unnoticed, which is the
 // silent gap the two-pair check closes.
 func (c *confinedService) ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*k8s.ExecOutcome, error) {
-	for _, p := range []gatekeeper.Pair{{Verb: "list", Resource: "pods"}, {Verb: "create", Resource: "pods/exec"}} {
+	for _, p := range []approvalgate.Pair{{Verb: "list", Resource: "pods"}, {Verb: "create", Resource: "pods/exec"}} {
 		if err := c.allow(p); err != nil {
 			return nil, err
 		}

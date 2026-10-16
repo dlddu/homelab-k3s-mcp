@@ -358,6 +358,15 @@ spec:
                       path: ca.crt
         - name: sa-proxied
           emptyDir: {}
+        # 게이트 자격증명은 SA 디렉터리의 복사본이 아니라 kubelet 이 회전시키는 실물이다 —
+        # 위 sa-real 과 audience 가 달라(pocket-aide) 서로 대신할 수 없다.
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token
         - name: certs
           emptyDir: {}
         - name: script
@@ -477,13 +486,16 @@ spec:
               value: 127.0.0.1
             - name: KUBERNETES_SERVICE_PORT
               value: "8443"
-          envFrom:
-            # ci.yml 의 "Seed the gatekeeper e2e user" 스텝이 이 네임스페이스에 만든다.
-            - secretRef:
-                name: homelab-k3s-mcp-gatekeeper
+            - name: APPROVAL_GATE_URL
+              value: http://pocket-aide.pocket-aide.svc.cluster.local:8080
+            - name: APPROVAL_GATE_POLL_INTERVAL_SECONDS
+              value: "1"
           volumeMounts:
             - name: sa-proxied
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+              readOnly: true
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
               readOnly: true
           startupProbe:
             httpGet:

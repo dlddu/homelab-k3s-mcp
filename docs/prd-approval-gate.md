@@ -1,6 +1,6 @@
 # PRD: approval-gate (승인 게이트 공통)
 
-일부 도구 호출이 실행되기 **전에**, gatekeeper(`dlddu/gatekeeper`)의 사람 승인을 받아야만
+일부 도구 호출이 실행되기 **전에**, PocketAide(`dlddu/pocket-aide`)의 사람 승인을 받아야만
 통과하는 공통 경계.
 
 개별 도구가 아니라 **동사와 종류에 걸리는 횡단 관심사**다. `prd-platform-auth-safety`가
@@ -88,12 +88,21 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
 
 | 환경 변수 | 필수 | 설명 |
 |-----------|------|------|
-| `GATEKEEPER_BASE_URL` | O | gatekeeper 백엔드 주소 (예: `http://gatekeeper.gatekeeper.svc:3000`) |
-| `GATEKEEPER_API_KEY` | O | `x-api-key` 헤더 값. `POST /api/requests`와 `GET /api/requests/{id}` 양쪽에 필요 |
-| `GATEKEEPER_USER_ID` | X | 푸시 알림을 받을 사용자. 미지정 시 알림 없이 웹 UI 확인에만 의존 |
-| `GATEKEEPER_TIMEOUT_SECONDS` | X | 승인 대기 상한. 기본 300 |
-| `GATEKEEPER_POLL_INTERVAL_SECONDS` | X | 판정 폴링 주기. 기본 2 |
+| `APPROVAL_GATE_URL` | O | PocketAide 백엔드 주소 (예: `http://pocket-aide.pocket-aide.svc.cluster.local:8080`). 없으면 게이트는 미구성이고 게이트 대상 호출은 전부 거부된다(AC5) |
+| `APPROVAL_GATE_TOKEN_FILE` | X | Bearer 로 보낼 서비스 어카운트 토큰 파일. 기본 `/var/run/secrets/pocket-aide/token`(`k8s/deployment.yaml` 의 projected 볼륨, audience `pocket-aide`). **요청마다 다시 읽는다** — kubelet 이 제자리에서 회전시키기 때문이다. URL 없이 이것만 있거나, 파일을 읽을 수 없거나 비어 있으면 구성 오류다 |
+| `APPROVAL_GATE_TIMEOUT_SECONDS` | X | 승인 대기 상한. 기본 300 |
+| `APPROVAL_GATE_POLL_INTERVAL_SECONDS` | X | 판정 폴링 주기. 기본 2 |
 | `RESOURCE_GATED_KINDS` | X | 민감 종류. 기본 `v1/Secret` |
+
+**PocketAide 쪽 등록이 함께 있어야 한다.** PocketAide 는 이 서버를 API 키가 아니라 **쿠버네티스
+서비스 어카운트**로 알아본다 — 받은 토큰을 kube-apiserver TokenReview(audience
+`K8S_TOKEN_AUDIENCE`, 기본 `pocket-aide` · `K8S_CALLER_AUTH=true` 일 때만)로 검증해 `namespace/name` 을 얻고, 그것이
+PocketAide 앱 「승인 게이트 설정」에서 **서비스 어카운트 호출자로 등록돼 있을 때만** 받아들인다
+(`POST /api/approval-keys` 에 `kind`=`k8s_sa` · `service_account`, 운영은 `homelab-k3s-mcp/homelab-k3s-mcp`). 등록이 없으면
+생성 요청이 401 로 거부되고, PocketAide 의 서비스 어카운트에 `system:auth-delegator` 가 없으면 503
+이다 — 둘 다 AC5 의 거부다. 승인 요청은 **그 호출자를 등록한 사용자의 것**이 되고, 그 사용자만
+판정할 수 있으며 그 사용자의 자동 응답 모드(AC9)가 적용된다. 푸시 알림도 그 사용자에게 간다 —
+그래서 「알림 받을 사용자」 설정이 이 서버 쪽에는 없다.
 
 ## Acceptance Criteria
 
@@ -101,7 +110,7 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
 - **설명**: 각 도구는 자신이 행사하는 `(verb, resource[/subresource])` 쌍을 선언하고,
   게이트는 **도구 이름이 아니라 그 쌍**으로 판정한다. 상태를 바꾸는 verb
   (`create`·`update`·`patch`·`delete`·`create pods/exec`)는 **예외 없이** 게이트 대상이며,
-  민감 종류의 `get`·`watch`도 같다. 이들은 gatekeeper 판정이 `APPROVED`인 경우에만
+  민감 종류의 `get`·`watch`도 같다. 이들은 PocketAide 판정이 `APPROVED`인 경우에만
   쿠버네티스 API에 도달한다.
 
   판정은 **verb에만** 걸리고 패치 내용이나 경로를 보지 않는다. 대상 종류를 보는 것은
@@ -138,12 +147,14 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
   검사를 통과하고, 각 도구의 정상 호출이 호출 제한에 걸리지 않는다(선언이 실제 행사와 같다).
 
 ### AC2: 승인 요청 생성
-- **설명**: 게이트 대상 호출은 `POST /api/requests`로 승인 요청을 만든다. `x-api-key` 헤더,
-  `externalId`(호출마다 고유), `context`(AC3), `requesterName`,
-  `timeoutSeconds`(`GATEKEEPER_TIMEOUT_SECONDS`)를 보낸다. `GATEKEEPER_USER_ID`가 있으면
-  `userId`를 함께 보내 푸시 알림이 가게 한다.
+- **설명**: 게이트 대상 호출은 `POST /api/external/approvals`로 승인 요청을 만든다.
+  `Authorization: Bearer <서비스 어카운트 토큰>` 헤더와, 본문에 `externalId`(호출마다 고유),
+  `context`(AC3), `requesterName`, `timeoutSeconds`(`APPROVAL_GATE_TIMEOUT_SECONDS`) **넷만** 보낸다.
+  누가 판정할지는 본문에 싣지 않는다 — PocketAide 가 토큰의 서비스 어카운트로 그것을 등록한 사용자를
+  찾는다(「구성」). 그 사용자에게 가는 푸시 알림도 PocketAide 의 몫이다.
 - **달성 가치**: V3
-- **검증 방법**: 요청 본문에 위 필드가 모두 담기고, `externalId`가 호출마다 달라진다.
+- **검증 방법**: 요청 본문의 키가 위 넷과 정확히 같고 Bearer 헤더가 실리며, `externalId`가 호출마다
+  달라진다. 만들어진 요청은 이 서버의 서비스 어카운트를 등록한 사용자의 것으로 보인다.
 
 ### AC3: 판정 가능한 context
 - **설명**: `context`는 운영자가 **푸시 알림과 승인 화면만 보고** 판단할 수 있어야 한다.
@@ -184,24 +195,26 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
   `exec`의 명령 인자가 잘리거나 `[...]`로 축약되지 않는다.
 
 ### AC4: 판정 폴링
-- **설명**: 요청 생성 후 `GET /api/requests/{id}`를 `GATEKEEPER_POLL_INTERVAL_SECONDS`
+- **설명**: 요청 생성 후 `GET /api/external/approvals/{id}`를 `APPROVAL_GATE_POLL_INTERVAL_SECONDS`
   주기로 폴링해 판정을 기다린다. `APPROVED`면 실행하고, `REJECTED`·`EXPIRED`면 거부한다.
-  gatekeeper는 만료를 백그라운드로 처리하지 않고 **조회 시점에 평가**하므로
-  (`expiresAt` 경과 + `PENDING` → `EXPIRED` 전이), 폴링 없이 최초 응답만 믿으면 만료를
-  영영 관측하지 못한다.
+  PocketAide는 만료를 백그라운드로 처리하지 않고 **조회 시점에 평가**하므로
+  (`expiresAt` 이 지난 `PENDING` 을 `EXPIRED` 로 읽는다 — 저장된 상태는 바뀌지 않는다), 폴링 없이
+  최초 응답만 믿으면 만료를 영영 관측하지 못한다. 생성 응답이 이미 `APPROVED`·`REJECTED` 이면
+  자동 응답이 내린 판정이므로 폴링하지 않는다(AC9).
 - **달성 가치**: V3
 - **검증 방법**: `PENDING` → `APPROVED` 전이가 폴링으로 관측되고 실행이 이어진다.
   `timeoutSeconds`가 지난 요청을 폴링하면 `EXPIRED`로 관측되고 거부된다.
 
 ### AC5: Fail-closed
 - **설명**: 승인이 확인되지 않은 모든 경우는 거부다. 구체적으로 — `REJECTED`, `EXPIRED`,
-  `GATEKEEPER_TIMEOUT_SECONDS` 내 판정 없음, `externalId` 충돌(409), gatekeeper 5xx,
-  네트워크 오류·타임아웃, `GATEKEEPER_BASE_URL`/`GATEKEEPER_API_KEY` 미설정. 어느 경우든
-  쿠버네티스 API를 호출하지 않고 에러를 반환한다.
+  `APPROVAL_GATE_TIMEOUT_SECONDS` 내 판정 없음, `externalId` 충돌(409), PocketAide 5xx(TokenReview 를
+  할 수 없는 503 포함), 서비스 어카운트 미등록(401), 네트워크 오류·타임아웃, `APPROVAL_GATE_URL`
+  미설정, 서비스 어카운트 토큰을 읽을 수 없음. 어느 경우든 쿠버네티스 API를 호출하지 않고 에러를
+  반환한다.
 
   이는 이 서버의 기존 graceful degradation 원칙과 어긋나지 않는다. 통합이 미설정이면
   **해당 도구만** 에러를 반환하고 서버는 계속 산다는 원칙은 그대로이며, 여기서는 그
-  "해당 도구"가 게이트 대상 호출 전체일 뿐이다. gatekeeper가 죽어 있으면 **클러스터를
+  "해당 도구"가 게이트 대상 호출 전체일 뿐이다. PocketAide가 죽어 있으면 **클러스터를
   바꾸는 일은 전부 멈추고** 읽기(`list`, 비게이트 종류의 `get`)만 남는다. 이는 의도된
   것이다 — 승인 경로가 죽었는데 변경이 나가면 게이트가 있으나 마나다.
 - **달성 가치**: V3
@@ -249,21 +262,27 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
 
 ### AC8: 감사 기록
 - **설명**: 게이트 대상 호출마다 요청 id, `externalId`, 도구·동사·대상 좌표, 판정 결과,
-  판정자(`processedById`), 실행 결과를 서버 로그에 남긴다. 승인 기록 없이 실행된 게이트
-  대상 호출은 로그상 존재할 수 없다.
+  판정 주체(사람인가 자동 응답인가 — `auto_approved`), 실행 결과를 서버 로그에 남긴다. 승인 기록
+  없이 실행된 게이트 대상 호출은 로그상 존재할 수 없다.
+
+  판정한 **사람의 식별자는 로그 필드가 아니다.** PocketAide 는 판정자를 호출자에게 알려 주지 않고,
+  판정할 수 있는 사람은 이 서버의 서비스 어카운트를 등록한 사용자 하나뿐이다(「구성」). 그래서
+  「누가 승인했는가」는 요청 id 로 PocketAide 의 처리 이력(판정 방식 `manual`/`auto` 와 시각)을
+  찾아 그 등록 사용자로 읽는다 — 서버 로그의 요청 id 가 그 대조의 열쇠다.
 - **달성 가치**: V3
-- **검증 방법**: 승인 후 실행한 호출의 로그에 요청 id와 판정자가 남고, 거부된 호출은
-  거부 사유와 함께 남는다.
+- **검증 방법**: 승인 후 실행한 호출의 로그에 요청 id·`externalId`·`auto_approved=false` 가 남고 같은
+  요청의 PocketAide 기록이 사람의 판정(`manual`)이다. 거부된 호출은 거부 사유와 함께 남는다.
 
 ### AC9: 자동 응답 모드의 가시화
-- **설명**: gatekeeper는 사용자별 `autoResponseMode`(`AUTO_APPROVE`/`AUTO_REJECT`)를 지원하며,
-  `AUTO_APPROVE`가 켜져 있으면 사람이 보지 않은 채 승인이 떨어진다. 이는 게이트를 사실상
-  무력화하는 경로이므로 숨기지 않는다. 요청 생성 응답의 `autoApproved`/`autoRejected`를
-  로그에 남기고, 자동 승인으로 통과한 실행은 **도구 응답 본문에도** 자동 승인이었음을
-  표기한다.
+- **설명**: PocketAide는 사용자별 자동 응답(`auto_response` = `AUTO_APPROVE`/`AUTO_REJECT`)을
+  지원하며, 그 사용자가 등록한 호출자의 요청에 **생성 시점에** 적용된다. `AUTO_APPROVE`가 켜져
+  있으면 사람이 보지 않은 채 승인이 떨어진다. 이는 게이트를 사실상 무력화하는 경로이므로 숨기지
+  않는다. 생성 응답의 상태가 이미 `APPROVED`(자동 승인)·`REJECTED`(자동 거부)이면 그것을 로그에
+  남기고(`auto_approved=true` · 거부 사유 `approval auto-rejected`), 자동 승인으로 통과한 실행은
+  **도구 응답 본문에도** 자동 승인이었음을 표기한다.
 - **달성 가치**: V3
-- **검증 방법**: `AUTO_APPROVE` 사용자로 게이트 대상 호출을 수행하면 응답에 자동 승인 표기가
-  포함되고, 로그에도 남는다.
+- **검증 방법**: 호출자를 등록한 사용자의 모드가 `AUTO_APPROVE` 일 때 게이트 대상 호출을 수행하면
+  응답에 자동 승인 표기가 포함되고, 로그에도 남는다.
 
 ### AC10: 자격증명 값은 응답에만 담긴다
 - **설명**: 민감 종류의 값은 읽기에서는 응답으로 나오고 쓰기에서는 요청으로 들어온다.
@@ -326,7 +345,7 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
 
   이 읽기 기반의 완료는 `resource_delete_collection` 등록이나 AC11 전체 완료가 아니다.
   승인 context의 수/앞 20개 이름, 0건의 승인 생략, 실행 직전 대상 비교와 실제
-  `deletecollection` 호출, 승인 1건당 실행 1회, 실물 apiserver/gatekeeper 검증은 후속 범위다.
+  `deletecollection` 호출, 승인 1건당 실행 1회, 실물 apiserver/승인 백엔드 검증은 후속 범위다.
 - **달성 가치**: V3
 - **검증 방법**: 게이트가 승인 전에 행사하는 쌍이 위 표와 같고 그 밖의 쌍이 없다(요청 기록
   관측 — `rbac.yaml` 대조는 AC19와 함께 없어졌다). Secret 읽기 승인을 **거절**한 뒤 서버

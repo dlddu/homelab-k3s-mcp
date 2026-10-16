@@ -20,7 +20,7 @@ import subprocess
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -202,7 +202,7 @@ async def test_a_sensitive_kind_needs_approval_and_keeps_its_caps(session, gate)
     row = await wait_for_pending(gate, WATCH_SECRET)
     await decide(gate, row["id"], "APPROVED")
     # 승인 **직후**가 스트림이 열리는 시점이 아니다. 서버는 판정을 폴링으로 알아채고
-    # (`internal/gatekeeper::defaultPollInterval` = 2s, `GATEKEEPER_POLL_INTERVAL_SECONDS`
+    # (`internal/approvalgate::defaultPollInterval` = 2s, `APPROVAL_GATE_POLL_INTERVAL_SECONDS`
     # 로 조정 가능), 그 뒤에야 watch 를 연다. 게이트 없는 위쪽 Deployment 케이스처럼
     # 한 번만 흔들면 그 변경이 **스트림이 서기 전에** 끝나 버리고, 뒤늦게 열린 창은
     # 이미 흔들린 상태의 합성 ADDED 하나만 본다(CI run 35370872555 의 실패가 정확히
@@ -237,7 +237,7 @@ async def run() -> None:
     _seed()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 6 (창 안의 MODIFIED) ---")
             since = await test_a_modification_lands_inside_the_window(session)

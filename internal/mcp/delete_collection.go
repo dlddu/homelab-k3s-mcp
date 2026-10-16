@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -105,7 +105,7 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 		}), nil
 	}
 
-	decision, err := h.askGate(ctx, gatekeeper.Call{
+	decision, err := h.askGate(ctx, approvalgate.Call{
 		Tool: name,
 		Pair: gated[0],
 		Describe: func(context.Context) (string, error) {
@@ -132,7 +132,6 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 		"targets", len(approved.Targets),
 		"request_id", decision.RequestID,
 		"external_id", decision.ExternalID,
-		"processed_by_id", decision.ProcessedByID,
 		"auto_approved", decision.AutoApproved,
 	)
 
@@ -150,8 +149,8 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 func (h *Handler) confirmCollectionUnchanged(
 	ctx context.Context,
 	name string,
-	decision *gatekeeper.Decision,
-	gated []gatekeeper.Pair,
+	decision *approvalgate.Decision,
+	gated []approvalgate.Pair,
 	ref *k8s.CollectionTargetRef,
 	approved *k8s.CollectionTargetState,
 ) *rpcErr {
@@ -196,7 +195,7 @@ func sameTargets(approved, current []k8s.CollectionTarget) bool {
 // collectionApprovalContext renders what the operator sees for a collection delete.
 func collectionApprovalContext(
 	name string,
-	gated []gatekeeper.Pair,
+	gated []approvalgate.Pair,
 	rawArgs json.RawMessage,
 	sensitiveKinds []string,
 	ref *k8s.CollectionTargetRef,

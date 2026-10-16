@@ -1,4 +1,4 @@
-package gatekeeper
+package approvalgate
 
 import (
 	"context"
@@ -6,13 +6,15 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 )
 
-// fakeBackend is a gatekeeper stand-in. Verdicts are scripted per poll so a
+// fakeBackend is a PocketAide stand-in. Verdicts are scripted per poll so a
 // test can make a request sit in PENDING before it settles, which is the only
 // way to observe that polling actually happens (AC4).
 type fakeBackend struct {
@@ -25,23 +27,23 @@ type fakeBackend struct {
 	polls    int
 
 	createdBodies []createRequestBody
-	createdKeys   []string
-	polledKeys    []string
+	createdAuth   []string
+	polledAuth    []string
 	pollDelay     time.Duration
 }
 
 func (f *fakeBackend) handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /api/requests", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/external/approvals", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		f.createdKeys = append(f.createdKeys, r.Header.Get("x-api-key"))
+		f.createdAuth = append(f.createdAuth, r.Header.Get("authorization"))
 
 		var body createRequestBody
 		_ = json.NewDecoder(r.Body).Decode(&body)
 		f.createdBodies = append(f.createdBodies, body)
 
-		if f.createStatus != 0 && f.createStatus != http.StatusOK {
+		if f.createStatus != 0 && f.createStatus != http.StatusCreated {
 			w.WriteHeader(f.createStatus)
 			_, _ = w.Write([]byte(`{}`))
 			return
@@ -50,12 +52,13 @@ func (f *fakeBackend) handler() http.Handler {
 			_, _ = w.Write([]byte(f.createBody))
 			return
 		}
-		_, _ = w.Write([]byte(`{"id":"req-1","externalId":"` + body.ExternalID + `","status":"PENDING"}`))
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"id":"req-1","status":"PENDING","createdAt":1,"expiresAt":301}`))
 	})
-	mux.HandleFunc("GET /api/requests/{id}", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("GET /api/external/approvals/{id}", func(w http.ResponseWriter, r *http.Request) {
 		f.mu.Lock()
 		delay := f.pollDelay
-		f.polledKeys = append(f.polledKeys, r.Header.Get("x-api-key"))
+		f.polledAuth = append(f.polledAuth, r.Header.Get("authorization"))
 		idx := f.polls
 		f.polls++
 		var verdict requestResponse
@@ -80,6 +83,16 @@ func (f *fakeBackend) pollCount() int {
 	return f.polls
 }
 
+// tokenFile writes a projected-token stand-in and returns its path.
+func tokenFile(t *testing.T, token string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(path, []byte(token+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func newTestClient(t *testing.T, backend *fakeBackend, tune func(*Client)) (*Client, *httptest.Server) {
 	t.Helper()
 	srv := httptest.NewServer(backend.handler())
@@ -87,8 +100,7 @@ func newTestClient(t *testing.T, backend *fakeBackend, tune func(*Client)) (*Cli
 
 	c := New(Config{
 		BaseURL:      srv.URL,
-		APIKey:       "test-key",
-		UserID:       "user-7",
+		TokenFile:    tokenFile(t, "sa-token"),
 		Timeout:      2 * time.Second,
 		PollInterval: time.Millisecond,
 		GatedKinds:   []string{"v1/Secret"},
@@ -115,9 +127,10 @@ func describedCall(describe func(context.Context) (string, error)) Call {
 	}
 }
 
-// AC2: the approval request carries every field, authenticated with the API key.
+// AC2: the approval request carries every field, authenticated with the
+// service account token.
 func TestAuthorizeSendsTheDocumentedRequestBody(t *testing.T) {
-	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved, ProcessedByID: "op-1"}}}
+	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
 
 	if _, err := client.Authorize(context.Background(), sampleCall()); err != nil {
@@ -140,14 +153,31 @@ func TestAuthorizeSendsTheDocumentedRequestBody(t *testing.T) {
 	if body.TimeoutSeconds != 2 {
 		t.Errorf("timeoutSeconds = %d, want 2", body.TimeoutSeconds)
 	}
-	if body.UserID != "user-7" {
-		t.Errorf("userId = %q, want user-7 so the push notification is sent", body.UserID)
+	if backend.createdAuth[0] != "Bearer sa-token" {
+		t.Errorf("create authorization = %q, want the service account token", backend.createdAuth[0])
 	}
-	if backend.createdKeys[0] != "test-key" {
-		t.Errorf("x-api-key = %q, want test-key", backend.createdKeys[0])
+	if backend.polledAuth[0] != "Bearer sa-token" {
+		t.Errorf("poll authorization = %q, want the service account token", backend.polledAuth[0])
 	}
-	if backend.polledKeys[0] != "test-key" {
-		t.Errorf("poll x-api-key = %q, want test-key", backend.polledKeys[0])
+}
+
+// The kubelet rotates the projected token in place; a token read once at
+// startup would stop working about an hour later.
+func TestTokenIsReadPerRequest(t *testing.T) {
+	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
+	client, _ := newTestClient(t, backend, nil)
+
+	if _, err := client.Authorize(context.Background(), sampleCall()); err != nil {
+		t.Fatalf("Authorize() = %v", err)
+	}
+	if err := os.WriteFile(client.cfg.TokenFile, []byte("rotated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Authorize(context.Background(), sampleCall()); err != nil {
+		t.Fatalf("Authorize() = %v", err)
+	}
+	if got := backend.createdAuth[1]; got != "Bearer rotated" {
+		t.Errorf("authorization after rotation = %q, want the rotated token", got)
 	}
 }
 
@@ -171,7 +201,7 @@ func TestPendingBecomesApprovedThroughPolling(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{
 		{ID: "req-1", Status: StatusPending},
 		{ID: "req-1", Status: StatusPending},
-		{ID: "req-1", Status: StatusApproved, ProcessedByID: "op-9"},
+		{ID: "req-1", Status: StatusApproved},
 	}}
 	client, _ := newTestClient(t, backend, nil)
 
@@ -182,8 +212,8 @@ func TestPendingBecomesApprovedThroughPolling(t *testing.T) {
 	if backend.pollCount() < 3 {
 		t.Errorf("polls = %d, want at least 3 (the verdict only appears on the third)", backend.pollCount())
 	}
-	if decision.ProcessedByID != "op-9" {
-		t.Errorf("processedById = %q, want op-9 recorded for the audit log", decision.ProcessedByID)
+	if decision.AutoApproved {
+		t.Error("AutoApproved = true for a verdict observed by polling; only a create-time verdict is automatic")
 	}
 }
 
@@ -238,6 +268,25 @@ func TestEveryFailurePathRefuses(t *testing.T) {
 			verdict: VerdictUnreachable,
 		},
 		{
+			name:    "service account not accepted",
+			backend: &fakeBackend{createStatus: http.StatusUnauthorized},
+			want:    "401",
+			verdict: VerdictUnreachable,
+		},
+		{
+			name:    "service account verification unavailable",
+			backend: &fakeBackend{createStatus: http.StatusServiceUnavailable},
+			want:    "returned 503",
+			verdict: VerdictUnreachable,
+		},
+		{
+			name:    "token file vanished",
+			backend: &fakeBackend{},
+			tune:    func(c *Client) { c.cfg.TokenFile = filepath.Join(os.TempDir(), "no-such-approval-token") },
+			want:    "service account token",
+			verdict: VerdictUnreachable,
+		},
+		{
 			name:    "backend 5xx",
 			backend: &fakeBackend{createStatus: http.StatusInternalServerError},
 			want:    "returned 500",
@@ -264,7 +313,7 @@ func TestEveryFailurePathRefuses(t *testing.T) {
 		},
 		{
 			name:      "auto rejected",
-			backend:   &fakeBackend{createBody: `{"id":"req-1","status":"REJECTED","autoRejected":true}`},
+			backend:   &fakeBackend{createBody: `{"id":"req-1","status":"REJECTED"}`},
 			want:      "auto-rejected",
 			verdict:   VerdictRejected,
 			requestID: "req-1",
@@ -295,7 +344,7 @@ func TestEveryFailurePathRefuses(t *testing.T) {
 // AC2 (prd-event-log): the refusals that never reach the backend carry their
 // own verdict.
 func TestRefusalsBeforeAVerdictAreTypedToo(t *testing.T) {
-	unreachable := New(Config{BaseURL: "http://127.0.0.1:1", APIKey: "k", Timeout: time.Second, PollInterval: time.Millisecond}, "homelab-k3s-mcp")
+	unreachable := New(Config{BaseURL: "http://127.0.0.1:1", TokenFile: tokenFile(t, "t"), Timeout: time.Second, PollInterval: time.Millisecond}, "homelab-k3s-mcp")
 	cases := map[string]struct {
 		gate    Gate
 		call    Call
@@ -334,7 +383,7 @@ func (unavailableReader) Unavailable() bool { return true }
 func TestUnreachableBackendRefuses(t *testing.T) {
 	client := New(Config{
 		BaseURL:      "http://127.0.0.1:1",
-		APIKey:       "k",
+		TokenFile:    tokenFile(t, "t"),
 		Timeout:      time.Second,
 		PollInterval: time.Millisecond,
 	}, "homelab-k3s-mcp")
@@ -344,7 +393,7 @@ func TestUnreachableBackendRefuses(t *testing.T) {
 	}
 }
 
-// AC5: this is the state a deployment without GATEKEEPER_* env is in.
+// AC5: this is the state a deployment without APPROVAL_GATE_URL is in.
 //
 // The second assertion is the property Call.Describe exists for: a gate with
 // nobody to ask must not reach the renderer, because that is where the
@@ -406,7 +455,7 @@ func TestApprovalIsSpentOnce(t *testing.T) {
 
 // AC9: an approval nobody looked at is still an approval.
 func TestAutoApprovalIsReported(t *testing.T) {
-	backend := &fakeBackend{createBody: `{"id":"req-1","status":"APPROVED","autoApproved":true,"processedById":"auto"}`}
+	backend := &fakeBackend{createBody: `{"id":"req-1","status":"APPROVED"}`}
 	client, _ := newTestClient(t, backend, nil)
 
 	decision, err := client.Authorize(context.Background(), sampleCall())
@@ -423,35 +472,51 @@ func TestAutoApprovalIsReported(t *testing.T) {
 
 func TestFromEnv(t *testing.T) {
 	t.Run("unset is not an error", func(t *testing.T) {
-		t.Setenv("GATEKEEPER_BASE_URL", "")
-		t.Setenv("GATEKEEPER_API_KEY", "")
+		t.Setenv("APPROVAL_GATE_URL", "")
+		t.Setenv("APPROVAL_GATE_TOKEN_FILE", "")
 		cfg, err := FromEnv()
 		if err != nil || cfg != nil {
 			t.Fatalf("FromEnv() = (%v, %v), want (nil, nil)", cfg, err)
 		}
 	})
 
-	t.Run("half configured is an error", func(t *testing.T) {
-		t.Setenv("GATEKEEPER_BASE_URL", "http://gatekeeper")
-		t.Setenv("GATEKEEPER_API_KEY", "")
+	t.Run("token file without a URL is an error", func(t *testing.T) {
+		t.Setenv("APPROVAL_GATE_URL", "")
+		t.Setenv("APPROVAL_GATE_TOKEN_FILE", tokenFile(t, "t"))
 		if _, err := FromEnv(); err == nil {
-			t.Fatal("FromEnv() = nil error, want a complaint about the missing API key")
+			t.Fatal("FromEnv() = nil error, want a complaint about the missing URL")
+		}
+	})
+
+	t.Run("unreadable token is an error", func(t *testing.T) {
+		t.Setenv("APPROVAL_GATE_URL", "http://pocket-aide")
+		t.Setenv("APPROVAL_GATE_TOKEN_FILE", filepath.Join(t.TempDir(), "missing"))
+		if _, err := FromEnv(); err == nil {
+			t.Fatal("FromEnv() = nil error, want a complaint about the unreadable token")
+		}
+		t.Setenv("APPROVAL_GATE_TOKEN_FILE", tokenFile(t, " "))
+		if _, err := FromEnv(); err == nil {
+			t.Fatal("FromEnv() = nil error, want a complaint about the empty token")
 		}
 	})
 
 	t.Run("defaults and overrides", func(t *testing.T) {
-		t.Setenv("GATEKEEPER_BASE_URL", "http://gatekeeper/")
-		t.Setenv("GATEKEEPER_API_KEY", "k")
-		t.Setenv("GATEKEEPER_TIMEOUT_SECONDS", "")
-		t.Setenv("GATEKEEPER_POLL_INTERVAL_SECONDS", "")
+		path := tokenFile(t, "t")
+		t.Setenv("APPROVAL_GATE_URL", "http://pocket-aide/")
+		t.Setenv("APPROVAL_GATE_TOKEN_FILE", path)
+		t.Setenv("APPROVAL_GATE_TIMEOUT_SECONDS", "")
+		t.Setenv("APPROVAL_GATE_POLL_INTERVAL_SECONDS", "")
 		t.Setenv("RESOURCE_GATED_KINDS", "")
 
 		cfg, err := FromEnv()
 		if err != nil {
 			t.Fatalf("FromEnv() = %v", err)
 		}
-		if cfg.BaseURL != "http://gatekeeper" {
+		if cfg.BaseURL != "http://pocket-aide" {
 			t.Errorf("BaseURL = %q, want the trailing slash trimmed", cfg.BaseURL)
+		}
+		if cfg.TokenFile != path {
+			t.Errorf("TokenFile = %q, want %q", cfg.TokenFile, path)
 		}
 		if cfg.Timeout != defaultTimeout || cfg.PollInterval != defaultPollInterval {
 			t.Errorf("timeouts = (%v, %v), want the documented defaults", cfg.Timeout, cfg.PollInterval)
@@ -460,12 +525,12 @@ func TestFromEnv(t *testing.T) {
 			t.Errorf("GatedKinds = %v, want [%s]", cfg.GatedKinds, defaultGatedKind)
 		}
 
-		t.Setenv("GATEKEEPER_TIMEOUT_SECONDS", "0")
+		t.Setenv("APPROVAL_GATE_TIMEOUT_SECONDS", "0")
 		if _, err := FromEnv(); err == nil {
 			t.Error("FromEnv() accepted a zero timeout, which would mean 'never wait for approval'")
 		}
 
-		t.Setenv("GATEKEEPER_TIMEOUT_SECONDS", "30")
+		t.Setenv("APPROVAL_GATE_TIMEOUT_SECONDS", "30")
 		t.Setenv("RESOURCE_GATED_KINDS", "v1/Secret, example.com/v1/Credential")
 		cfg, err = FromEnv()
 		if err != nil {
@@ -476,6 +541,15 @@ func TestFromEnv(t *testing.T) {
 		}
 		if len(cfg.GatedKinds) != 2 {
 			t.Errorf("GatedKinds = %v, want both kinds", cfg.GatedKinds)
+		}
+	})
+
+	t.Run("token file defaults to the projected volume", func(t *testing.T) {
+		t.Setenv("APPROVAL_GATE_URL", "http://pocket-aide")
+		t.Setenv("APPROVAL_GATE_TOKEN_FILE", "")
+		_, err := FromEnv()
+		if err == nil || !strings.Contains(err.Error(), DefaultTokenFile) {
+			t.Fatalf("FromEnv() = %v, want it to look for %s", err, DefaultTokenFile)
 		}
 	})
 }

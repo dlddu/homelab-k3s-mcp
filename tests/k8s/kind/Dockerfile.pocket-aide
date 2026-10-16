@@ -1,0 +1,4 @@
+FROM gcr.io/distroless/static-debian12:nonroot
+ARG BINARY
+COPY ${BINARY} /usr/local/bin/${BINARY}
+USER nonroot:nonroot

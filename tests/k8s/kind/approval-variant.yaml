@@ -1,23 +1,25 @@
-# Gatekeeper-wired SUT variant for the approval-gate e2e
-# (approval_gate_sc{2,4,9}.py) and resource_generic_sc17.py.
+# PocketAide-wired SUT variant for the approval-gate e2e
+# (approval_gate_sc{2,4,5,9}.py), event_log_sc{2,3,5}.py and resource_generic_sc17.py.
 #
-# The primary kind deployment can carry the gate too, but three observation
+# The primary kind deployment carries the gate too, but three observation
 # designs need their own env values, and env is per deployment:
 #
-# * GATEKEEPER_TIMEOUT_SECONDS=5 with GATEKEEPER_POLL_INTERVAL_SECONDS=1 --
+# * APPROVAL_GATE_TIMEOUT_SECONDS=5 with APPROVAL_GATE_POLL_INTERVAL_SECONDS=1 --
 #   scenario 4(b) observes an expired verdict in seconds instead of waiting out
 #   the 300 s default. Which of the expiry and the client deadline fires is a
 #   timer tie in the client.
-# * GATEKEEPER_USER_ID -- auto-response modes (scenario 9) engage only when the
-#   create body carries a users.id, and ids are cuid values a fixture cannot
-#   know in advance. ci.yml seeds the user through the forward-auth path and
-#   pins the discovered id into the secret this deployment consumes.
+# * APPROVAL_GATE_URL points at the recording proxy (pocket-aide-trace), not at
+#   PocketAide directly, so scenario 2 can assert the create contract. The
+#   primary keeps pointing straight at the pocket-aide Service: its scenarios
+#   need no request-body observation, and a shorter path is one less thing to
+#   break.
 # * RESOURCE_GATED_KINDS -- see the env comment below.
 #
-# GATEKEEPER_BASE_URL points at the recording proxy (gatekeeper-trace), not at
-# gatekeeper directly, so scenario 2 can assert the create contract. The
-# primary keeps pointing straight at the gatekeeper Service: its scenarios need
-# no request-body observation, and a shorter path is one less thing to break.
+# Auto-response modes (scenario 9) are a setting of the PocketAide user who
+# registered the caller, so what isolates them is ownership, not env: ci.yml
+# registers this namespace's ServiceAccount under its own OIDC subject
+# (tests/integration/_approval_gate.py CALLERS), and flipping that user's mode
+# cannot reach any other deployment's requests.
 #
 # The dedicated ClusterRoleBinding exists for the same reason the primary's
 # does (k8s/rbac.yaml): authorization is per ServiceAccount, and the primary's
@@ -25,26 +27,26 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: homelab-k3s-mcp-gatekeeper-variant
+  name: homelab-k3s-mcp-approval-variant
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: homelab-k3s-mcp
-  namespace: homelab-k3s-mcp-gatekeeper-variant
+  namespace: homelab-k3s-mcp-approval-variant
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: homelab-k3s-mcp:gatekeeper-variant-workloads
+  name: homelab-k3s-mcp:approval-variant-workloads
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 roleRef:
   apiGroup: rbac.authorization.k8s.io
@@ -53,15 +55,15 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: homelab-k3s-mcp
-    namespace: homelab-k3s-mcp-gatekeeper-variant
+    namespace: homelab-k3s-mcp-approval-variant
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: homelab-k3s-mcp-gatekeeper-variant
-  namespace: homelab-k3s-mcp-gatekeeper-variant
+  name: homelab-k3s-mcp-approval-variant
+  namespace: homelab-k3s-mcp-approval-variant
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 spec:
@@ -69,12 +71,12 @@ spec:
   revisionHistoryLimit: 3
   selector:
     matchLabels:
-      app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+      app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
       app.kubernetes.io/component: server
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+        app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
         app.kubernetes.io/component: server
         app.kubernetes.io/part-of: homelab-k3s-mcp-tests
     spec:
@@ -103,12 +105,14 @@ spec:
             - name: LOG_LEVEL
               value: info
             # 등재: docs/e2e-mocking-policy.md — 대체 검증은 auth-fixture.yaml(인증을 켠 변형)
-            # mock-exception: GATE — 이 변형의 검증 대상은 gatekeeper 왕복이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
+            # mock-exception: GATE — 이 변형의 검증 대상은 PocketAide 왕복이지 인증이 아니다. env 는 배포당이라 기본 배포의 완화를 물려받을 수 없어 여기서 다시 내린다.
             - name: MCP_AUTH_DISABLED
               value: "1"
-            - name: GATEKEEPER_TIMEOUT_SECONDS
+            - name: APPROVAL_GATE_URL
+              value: http://pocket-aide-trace.pocket-aide.svc.cluster.local:8080
+            - name: APPROVAL_GATE_TIMEOUT_SECONDS
               value: "5"
-            - name: GATEKEEPER_POLL_INTERVAL_SECONDS
+            - name: APPROVAL_GATE_POLL_INTERVAL_SECONDS
               value: "1"
             # This list is per deployment. It cannot go on the primary:
             # resource_generic_sc1.py reads the same CRD there and would start
@@ -118,9 +122,10 @@ spec:
             # deployment serves.
             - name: RESOURCE_GATED_KINDS
               value: v1/Secret,homelab-k3s-mcp.test/v1/ResourceGenericSample
-          envFrom:
-            - secretRef:
-                name: homelab-k3s-mcp-gatekeeper
+          volumeMounts:
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -154,20 +159,28 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: homelab-k3s-mcp-gatekeeper-variant
-  namespace: homelab-k3s-mcp-gatekeeper-variant
+  name: homelab-k3s-mcp-approval-variant
+  namespace: homelab-k3s-mcp-approval-variant
   labels:
-    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
     app.kubernetes.io/component: server
     app.kubernetes.io/part-of: homelab-k3s-mcp-tests
 spec:
   type: ClusterIP
   selector:
-    app.kubernetes.io/name: homelab-k3s-mcp-gatekeeper-variant
+    app.kubernetes.io/name: homelab-k3s-mcp-approval-variant
     app.kubernetes.io/component: server
   ports:
     - name: http

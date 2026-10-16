@@ -15,8 +15,8 @@
 배선된 주 배포(`homelab-k3s-mcp` 네임스페이스), `auth-variant`는 인증을 켜고 자격증명을
 하나도 붙이지 않은 변형(`tests/k8s/kind/auth-fixture.yaml`), `oauth-variant`는 실 OIDC
 발급자(dex)를 가리키도록 `MCP_OAUTH_*`를 세팅한 변형(`tests/k8s/kind/oidc-fixture.yaml`의
-`homelab-k3s-mcp-oauth`), `gatekeeper-variant`는 실물 gatekeeper 를 기록 프록시 뒤에
-두고 승인 타임아웃을 5초로 줄인 변형(`tests/k8s/kind/gatekeeper-variant.yaml`)이다.
+`homelab-k3s-mcp-oauth`), `approval-variant`는 실물 PocketAide 를 기록 프록시 뒤에
+두고 승인 타임아웃을 5초로 줄인 변형(`tests/k8s/kind/approval-variant.yaml`)이다.
 
 ## 병렬 레인
 
@@ -47,7 +47,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 
 NOT_MATCHING_UNIT = {"_helpers.py", "run_all.py", "check_ac_mapping.py"}
 
-GROUPS = ("primary", "auth-variant", "oauth-variant", "gatekeeper-variant")
+GROUPS = ("primary", "auth-variant", "oauth-variant", "approval-variant")
 
 DEFAULT_ORDER = 50
 

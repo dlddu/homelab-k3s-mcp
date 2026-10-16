@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"log/slog"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -14,7 +14,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 	if rerr != nil {
 		return nil, rerr
 	}
-	decisions := make([]*gatekeeper.Decision, 0, len(docs))
+	decisions := make([]*approvalgate.Decision, 0, len(docs))
 	seenRequests := map[string]bool{}
 	seenExternal := map[string]bool{}
 	for _, doc := range docs {
@@ -22,7 +22,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 		if err != nil || len(pairs) != 1 || pairs[0] != doc.pair || pairs[0].Verb != "create" || entry.decl.target != nil {
 			return nil, errf(-32603, "create must declare exactly its document's create permission and no existing target")
 		}
-		decision, err := h.askGate(ctx, gatekeeper.Call{
+		decision, err := h.askGate(ctx, approvalgate.Call{
 			Tool: name,
 			Pair: doc.pair,
 			Describe: func(context.Context) (string, error) {
@@ -46,7 +46,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 	created := []any{}
 	var failed any
 	unattempted := []any{}
-	executed := []*gatekeeper.Decision{}
+	executed := []*approvalgate.Decision{}
 	for i, doc := range docs {
 		var failure string
 		if err := ctx.Err(); err != nil {
@@ -55,9 +55,9 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 			failure = err.Error()
 		} else {
 			d := decisions[i]
-			slog.Info("approval granted", "tool", name, "pairs", pairsText([]gatekeeper.Pair{doc.pair}),
+			slog.Info("approval granted", "tool", name, "pairs", pairsText([]approvalgate.Pair{doc.pair}),
 				"request_id", d.RequestID, "external_id", d.ExternalID,
-				"processed_by_id", d.ProcessedByID, "auto_approved", d.AutoApproved)
+				"auto_approved", d.AutoApproved)
 			executed = append(executed, d)
 			noteGate(ctx, d)
 			result, callErr := h.invoke(ctx, name, entry, doc.raw)
