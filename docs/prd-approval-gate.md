@@ -96,9 +96,9 @@ AC3가 이 문서에서 가장 무거운 AC인 이유다.
 
 **PocketAide 쪽 등록이 함께 있어야 한다.** PocketAide 는 이 서버를 API 키가 아니라 **쿠버네티스
 서비스 어카운트**로 알아본다 — 받은 토큰을 kube-apiserver TokenReview(audience
-`APPROVAL_SERVICE_ACCOUNT_AUDIENCE`, 기본 `pocket-aide`)로 검증해 `namespace/name` 을 얻고, 그것이
+`K8S_TOKEN_AUDIENCE`, 기본 `pocket-aide` · `K8S_CALLER_AUTH=true` 일 때만)로 검증해 `namespace/name` 을 얻고, 그것이
 PocketAide 앱 「승인 게이트 설정」에서 **서비스 어카운트 호출자로 등록돼 있을 때만** 받아들인다
-(`POST /api/approval-keys/service-accounts`, 운영은 `homelab-k3s-mcp/homelab-k3s-mcp`). 등록이 없으면
+(`POST /api/approval-keys` 에 `kind`=`k8s_sa` · `service_account`, 운영은 `homelab-k3s-mcp/homelab-k3s-mcp`). 등록이 없으면
 생성 요청이 401 로 거부되고, PocketAide 의 서비스 어카운트에 `system:auth-delegator` 가 없으면 503
 이다 — 둘 다 AC5 의 거부다. 승인 요청은 **그 호출자를 등록한 사용자의 것**이 되고, 그 사용자만
 판정할 수 있으며 그 사용자의 자동 응답 모드(AC9)가 적용된다. 푸시 알림도 그 사용자에게 간다 —

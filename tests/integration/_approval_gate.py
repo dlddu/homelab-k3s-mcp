@@ -360,9 +360,9 @@ def register_callers(url: str) -> None:
     with httpx.Client(timeout=10.0) as client:
         for account, owner in CALLERS.items():
             response = client.post(
-                f"{url}/api/approval-keys/service-accounts",
+                f"{url}/api/approval-keys",
                 headers=_headers(owner),
-                json={"name": f"e2e {account}", "service_account": account},
+                json={"name": f"e2e {account}", "kind": "k8s_sa", "service_account": account},
             )
             if response.status_code == 201:
                 print(f"registered {account} -> {owner}")

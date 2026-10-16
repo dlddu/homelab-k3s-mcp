@@ -131,7 +131,7 @@ spec:
               drop:
                 - ALL
       volumes:
-        # audience 는 PocketAide 의 APPROVAL_SERVICE_ACCOUNT_AUDIENCE(기본 pocket-aide)와
+        # audience 는 PocketAide 의 K8S_TOKEN_AUDIENCE(기본 pocket-aide)와
         # 같아야 한다. 기본 마운트 토큰(audience = apiserver)을 보내지 않는 이유는, 그 토큰을
         # 받은 쪽이 이 서버를 사칭해 apiserver 를 부를 수 있기 때문이다.
         - name: pocket-aide-token

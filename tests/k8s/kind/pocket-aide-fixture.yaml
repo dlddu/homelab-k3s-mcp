@@ -113,8 +113,12 @@ spec:
             - name: OIDC_REDIRECT_URI
               value: http://127.0.0.1/e2e-callback
             # k8s/deployment.yaml 의 pocket-aide-token 볼륨 audience 와 같아야 한다.
-            - name: APPROVAL_SERVICE_ACCOUNT_AUDIENCE
+            - name: K8S_CALLER_AUTH
+              value: "true"
+            - name: K8S_TOKEN_AUDIENCE
               value: pocket-aide
+            - name: K8S_TOKEN_ISSUER
+              value: https://kubernetes.default.svc.cluster.local
           volumeMounts:
             - name: data
               mountPath: /data
