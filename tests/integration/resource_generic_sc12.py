@@ -28,7 +28,7 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, list_requests, wait_for_pending
+from _approval_gate import decide, approval_url, list_requests, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -207,7 +207,7 @@ async def run() -> None:
     _group("grown", GROWN)
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 12 (namespace 누락) ---")
             await test_a_call_without_a_namespace_asks_nobody(session, gate)

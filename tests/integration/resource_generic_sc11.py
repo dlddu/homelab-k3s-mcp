@@ -25,7 +25,7 @@ import asyncio
 import subprocess
 import time
 
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -154,7 +154,7 @@ async def run() -> None:
     wait_for_healthz(url)
     pod = _pod_name()
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 11 (stdout·stderr 분리) ---")
             await test_stdout_and_stderr_come_back_separately(session, gate, pod)

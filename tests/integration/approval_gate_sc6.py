@@ -9,7 +9,7 @@
 
 승인 시점의 상태와 실행 시점의 상태를 갈라 놓는 창은 사람이 판정을 누르기 전의 창이다.
 
-이 파일이 더하는 것은 **실물 apiserver 와 실물 gatekeeper 로 같은 계약이 성립하는가**이고,
+이 파일이 더하는 것은 **실물 apiserver 와 실물 PocketAide 로 같은 계약이 성립하는가**이고,
 그래서 여기서는 호출 횟수가 아니라 **관측 가능한 결과**를 단언한다.
 """
 
@@ -21,7 +21,7 @@ import subprocess
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -310,7 +310,7 @@ async def run() -> None:
     _seed()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- approval-gate/시나리오 6 (patch) ---")
             await test_patch_is_refused_when_the_target_moved(session, gate)

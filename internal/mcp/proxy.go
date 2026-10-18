@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -182,8 +182,8 @@ func parseProxyBody(obj map[string]any) ([]byte, *rpcErr) {
 // takes its verb as a constant. The resource name is apimachinery's guess from
 // the kind, for the reason genericPairs states — the gate has to reach its
 // verdict before the apiserver is touched.
-func proxyPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
-	return func(rawArgs json.RawMessage) ([]gatekeeper.Pair, error) {
+func proxyPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
+	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 		obj, ok := decodeObject(rawArgs)
 		if !ok {
 			return nil, fmt.Errorf("arguments must be an object")
@@ -196,7 +196,7 @@ func proxyPairs() func(json.RawMessage) ([]gatekeeper.Pair, error) {
 		if err != nil {
 			return nil, err
 		}
-		return []gatekeeper.Pair{{
+		return []approvalgate.Pair{{
 			Verb:     k8s.ProxyVerbForMethod(args.method),
 			Resource: resource,
 		}}, nil

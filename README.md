@@ -107,3 +107,22 @@ local development or trusted-network testing, never in production.
 
 See `docs/prd-platform-auth-safety.md` (AC7, AC8) for the product requirements
 behind this behavior.
+
+## Approval gate
+
+State-changing calls (and reads of sensitive kinds such as Secrets) wait for a
+human approval in [PocketAide](https://github.com/dlddu/pocket-aide) before they
+reach the cluster. The server reaches it at `APPROVAL_GATE_URL` and authenticates
+with its own Kubernetes ServiceAccount token, projected by `k8s/deployment.yaml`
+for the audience `pocket-aide` — there is no API key. Two things must exist on
+the PocketAide side:
+
+- the ServiceAccount `homelab-k3s-mcp/homelab-k3s-mcp` registered as a caller in
+  the PocketAide app (approval gate settings → service account caller). Requests
+  then belong to the user who registered it; only that user can decide them, and
+  that user's auto-response mode applies;
+- PocketAide's own ServiceAccount bound to `system:auth-delegator`, so it can
+  verify the token with a TokenReview.
+
+Without either, every gated call is refused (fail-closed); reads that are not
+gated keep working. See `docs/prd-approval-gate.md` for the contract.

@@ -29,7 +29,7 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import count_requests, decide, gatekeeper_url, wait_for_pending
+from _approval_gate import count_requests, decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -294,7 +294,7 @@ async def run() -> None:
     _serving_pod_and_service()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 15 (파드 GET — get on pods/proxy) ---")
             await test_a_pod_get_spends_get_and_the_target_answers(session, gate)

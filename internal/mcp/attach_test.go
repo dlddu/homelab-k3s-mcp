@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -13,7 +13,7 @@ import (
 // gives back.
 func TestAttachJoinsTheRunningProcess(t *testing.T) {
 	t.Run("hands the coordinate, the container and the window to the cluster", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, fake := testHandler(t, gate, toolRegistry)
 
 		result, rerr := callTool(t, h, "resource_attach", `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","container":"chatty","readSeconds":3}`)
@@ -127,7 +127,7 @@ func TestAttachRefusalsCostNoApproval(t *testing.T) {
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 			_, rerr := callTool(t, h, "resource_attach", tc.args)
 			if rerr == nil {
@@ -151,7 +151,7 @@ func TestAttachRefusalsCostNoApproval(t *testing.T) {
 // operator is approving a coordinate rather than an action.
 func TestAttachContextCarriesTheStdin(t *testing.T) {
 	reader := newStateReader()
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 	args := `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","container":"chatty","stdin":"shutdown now\n"}`

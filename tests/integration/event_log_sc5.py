@@ -1,7 +1,7 @@
 """Secret 본문·스트림 페이로드 비노출 — 응답에는 있고 레코드에는 없다, 같은 실행에서.
 
 검증 시나리오: test-event-log.md#시나리오 5
-실행 대상: gatekeeper-variant
+실행 대상: approval-variant
 
 primary 의 수동 댄스(`wait_for_pending` → `decide`)를 쓰지 않는 것은 승인 2회를 사람 대신 폴링으로
 맞추는 경주가 되기 때문이다 — 이 파일이 재는 것은 승인 절차가 아니라 승인 **뒤에** 쓰인 레코드다.
@@ -20,12 +20,12 @@ import json
 import subprocess
 import time
 
-from _gatekeeper import gatekeeper_url, set_auto_response
+from _approval_gate import approval_url, set_auto_response
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
-VARIANT_NAMESPACE = "homelab-k3s-mcp-gatekeeper-variant"
-VARIANT_DEPLOYMENT = "homelab-k3s-mcp-gatekeeper-variant"
+VARIANT_NAMESPACE = "homelab-k3s-mcp-approval-variant"
+VARIANT_DEPLOYMENT = "homelab-k3s-mcp-approval-variant"
 
 RECORD_MARK = 'msg="tool call"'
 
@@ -193,7 +193,7 @@ async def run() -> None:
     _fixtures()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         set_auto_response(gate, "AUTO_APPROVE")
         try:
             async with open_session(url) as session:

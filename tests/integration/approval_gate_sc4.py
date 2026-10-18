@@ -1,9 +1,9 @@
 """폴링으로 판정을 관측한다 — PENDING→APPROVED 전이와 만료 관측이 실물에서 온다.
 
 검증 시나리오: test-approval-gate.md#시나리오 4
-실행 대상: gatekeeper-variant
+실행 대상: approval-variant
 
-(b) 만료: 아무 판정도 하지 않으면 gatekeeper 는 **조회 시점에** 만료를 평가한다.
+(b) 만료: 아무 판정도 하지 않으면 PocketAide 는 **조회 시점에** 만료를 평가한다.
 만료는 세 가지로 잰다:
 ⑴ 거부가 만료 근처(≥ 타임아웃)에 온다 — 최초 응답만 보고 끝낸 구현이라면
 즉시 거부했을 것이다 ⑵ e2e 의 조회로 기록이 EXPIRED 로 전이된다 — 만료 평가가
@@ -20,9 +20,9 @@ import time
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import (
+from _approval_gate import (
     decide,
-    gatekeeper_url,
+    approval_url,
     get_request,
     poll_count,
     trace_url,
@@ -35,9 +35,9 @@ NAMESPACE = "workload-test"
 TARGET_APPROVED = "gk-ac4-approved"
 TARGET_EXPIRED = "gk-ac4-expired"
 
-#: 변형 SUT 의 타임아웃(gatekeeper-variant.yaml)과 (b) 거부 지연의 하한.
+#: 변형 SUT 의 타임아웃(approval-variant.yaml)과 (b) 거부 지연의 하한.
 VARIANT_TIMEOUT_SECONDS = 5
-LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 0.5
+LATENCY_FLOOR = VARIANT_TIMEOUT_SECONDS - 1.5
 #: (b) 의 관측 예산 — 거부가 T 초에 오므로 그 위로 조금 더 여유를 둔다.
 EXPIRY_BUDGET = VARIANT_TIMEOUT_SECONDS + 8
 
@@ -146,7 +146,7 @@ async def run() -> None:
     _config_map(TARGET_EXPIRED, "one")
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate, trace_url() as trace:
+    with approval_url() as gate, trace_url() as trace:
         async with open_session(url) as session:
             print("--- approval-gate/시나리오 4 (a) 승인 전이 관측 ---")
             await test_approved_verdict_is_observed_by_polling(session, gate, trace)

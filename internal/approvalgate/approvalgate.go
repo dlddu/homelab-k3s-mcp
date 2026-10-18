@@ -1,9 +1,9 @@
-// Package gatekeeper talks to the gatekeeper (dlddu/gatekeeper) approval
-// backend so that a tool call can be held until a human decides on it.
+// Package approvalgate talks to the PocketAide (dlddu/pocket-aide) approval
+// gate so that a tool call can be held until a human decides on it.
 //
 // Which calls have to come through here is not decided in this package — that
 // is the declaration table in internal/mcp.
-package gatekeeper
+package approvalgate
 
 import (
 	"bytes"
@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -25,9 +26,12 @@ const (
 	defaultTimeout      = 300 * time.Second
 	defaultPollInterval = 2 * time.Second
 	defaultGatedKind    = "v1/Secret"
+	// DefaultTokenFile is where k8s/deployment.yaml projects this server's
+	// service account token for the approval backend's audience.
+	DefaultTokenFile = "/var/run/secrets/pocket-aide/token"
 )
 
-// Verdicts as reported by the gatekeeper backend.
+// Verdicts as reported by the approval backend.
 const (
 	StatusPending  = "PENDING"
 	StatusApproved = "APPROVED"
@@ -36,7 +40,7 @@ const (
 )
 
 // ErrNotConfigured is the refusal used when the gate has no backend to ask (AC5).
-var ErrNotConfigured = errors.New("approval gate is not configured (GATEKEEPER_BASE_URL/GATEKEEPER_API_KEY): refusing")
+var ErrNotConfigured = errors.New("approval gate is not configured (APPROVAL_GATE_URL): refusing")
 
 // Verdict is how the gate answered, as the record names it (prd-event-log
 // AC2). Rejected and expired are the backend's own words, timeout is this client
@@ -103,9 +107,10 @@ func (p Pair) String() string { return p.Verb + " on " + p.Resource }
 
 // Config is the gate's environment-provided configuration.
 type Config struct {
-	BaseURL      string
-	APIKey       string
-	UserID       string
+	BaseURL string
+	// TokenFile holds the service account token sent as the bearer. It is
+	// read on every request because the kubelet rotates it in place.
+	TokenFile    string
 	Timeout      time.Duration
 	PollInterval time.Duration
 	// GatedKinds are the sensitive kinds whose reads are gated too, in
@@ -118,35 +123,49 @@ type Config struct {
 // not configured at all, which the caller turns into a refusing gate rather
 // than a fatal error.
 func FromEnv() (*Config, error) {
-	base := strings.TrimRight(strings.TrimSpace(os.Getenv("GATEKEEPER_BASE_URL")), "/")
-	key := strings.TrimSpace(os.Getenv("GATEKEEPER_API_KEY"))
-	if base == "" && key == "" {
+	base := strings.TrimRight(strings.TrimSpace(os.Getenv("APPROVAL_GATE_URL")), "/")
+	tokenFile := strings.TrimSpace(os.Getenv("APPROVAL_GATE_TOKEN_FILE"))
+	if base == "" {
+		if tokenFile != "" {
+			return nil, errors.New("APPROVAL_GATE_TOKEN_FILE is set but APPROVAL_GATE_URL is not")
+		}
 		return nil, nil
 	}
-	if base == "" {
-		return nil, errors.New("GATEKEEPER_API_KEY is set but GATEKEEPER_BASE_URL is not")
+	if tokenFile == "" {
+		tokenFile = DefaultTokenFile
 	}
-	if key == "" {
-		return nil, errors.New("GATEKEEPER_BASE_URL is set but GATEKEEPER_API_KEY is not")
+	if _, err := readToken(tokenFile); err != nil {
+		return nil, err
 	}
 
-	timeout, err := durationFromEnv("GATEKEEPER_TIMEOUT_SECONDS", defaultTimeout)
+	timeout, err := durationFromEnv("APPROVAL_GATE_TIMEOUT_SECONDS", defaultTimeout)
 	if err != nil {
 		return nil, err
 	}
-	poll, err := durationFromEnv("GATEKEEPER_POLL_INTERVAL_SECONDS", defaultPollInterval)
+	poll, err := durationFromEnv("APPROVAL_GATE_POLL_INTERVAL_SECONDS", defaultPollInterval)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Config{
 		BaseURL:      base,
-		APIKey:       key,
-		UserID:       strings.TrimSpace(os.Getenv("GATEKEEPER_USER_ID")),
+		TokenFile:    tokenFile,
 		Timeout:      timeout,
 		PollInterval: poll,
 		GatedKinds:   gatedKindsFromEnv(),
 	}, nil
+}
+
+func readToken(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("approval gate service account token: %w", err)
+	}
+	token := strings.TrimSpace(string(raw))
+	if token == "" {
+		return "", fmt.Errorf("approval gate service account token %s is empty", path)
+	}
+	return token, nil
 }
 
 func durationFromEnv(key string, fallback time.Duration) (time.Duration, error) {
@@ -215,10 +234,9 @@ func (c Call) describe(ctx context.Context) (string, error) {
 
 // Decision is an observed APPROVED verdict. It is spendable exactly once (AC7).
 type Decision struct {
-	RequestID     string
-	ExternalID    string
-	ProcessedByID string
-	AutoApproved  bool
+	RequestID    string
+	ExternalID   string
+	AutoApproved bool
 
 	mu   sync.Mutex
 	used bool
@@ -264,7 +282,7 @@ func (u *Unavailable) Authorize(context.Context, Call) (*Decision, error) {
 	return nil, refuse(VerdictUnconfigured, "", u.reason)
 }
 
-// Client is the live gate backed by the gatekeeper HTTP API.
+// Client is the live gate backed by PocketAide's external approval API.
 type Client struct {
 	cfg       Config
 	http      *http.Client
@@ -300,16 +318,11 @@ type createRequestBody struct {
 	Context        string `json:"context"`
 	RequesterName  string `json:"requesterName"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
-	UserID         string `json:"userId,omitempty"`
 }
 
 type requestResponse struct {
-	ID            string `json:"id"`
-	ExternalID    string `json:"externalId"`
-	Status        string `json:"status"`
-	ProcessedByID string `json:"processedById"`
-	AutoApproved  bool   `json:"autoApproved"`
-	AutoRejected  bool   `json:"autoRejected"`
+	ID     string `json:"id"`
+	Status string `json:"status"`
 }
 
 // Authorize implements Gate.
@@ -335,17 +348,12 @@ func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
 		return nil, err
 	}
 
-	// An auto-response is settled at creation time; polling a decided request
-	// only confirms what the create response already said.
-	switch {
-	case created.AutoApproved && created.Status == StatusApproved:
-		return &Decision{
-			RequestID:     created.ID,
-			ExternalID:    externalID,
-			ProcessedByID: created.ProcessedByID,
-			AutoApproved:  true,
-		}, nil
-	case created.AutoRejected:
+	// PocketAide applies its auto-response mode only at creation, so a request
+	// that is already decided in the create response was decided by no human.
+	switch created.Status {
+	case StatusApproved:
+		return &Decision{RequestID: created.ID, ExternalID: externalID, AutoApproved: true}, nil
+	case StatusRejected:
 		return nil, refuse(VerdictRejected, created.ID, fmt.Errorf("refusing %s: approval auto-rejected (request %s)", call.Tool, created.ID))
 	}
 
@@ -358,19 +366,20 @@ func (c *Client) create(ctx context.Context, call Call, approvalContext, externa
 		Context:        approvalContext,
 		RequesterName:  c.requester,
 		TimeoutSeconds: int(c.cfg.Timeout / time.Second),
-		UserID:         c.cfg.UserID,
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
 		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: %w", call.Tool, err))
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/api/requests", bytes.NewReader(raw))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.cfg.BaseURL+"/api/external/approvals", bytes.NewReader(raw))
 	if err != nil {
 		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: %w", call.Tool, err))
 	}
 	req.Header.Set("content-type", "application/json")
-	req.Header.Set("x-api-key", c.cfg.APIKey)
+	if err := c.authorize(req); err != nil {
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: %w", call.Tool, err))
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -380,6 +389,9 @@ func (c *Client) create(ctx context.Context, call Call, approvalContext, externa
 
 	if resp.StatusCode == http.StatusConflict {
 		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: approval request id collided (409)", call.Tool))
+	}
+	if resp.StatusCode == http.StatusUnauthorized {
+		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: approval backend did not accept this server's service account (401) — is it registered as a caller in PocketAide?", call.Tool))
 	}
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		return nil, refuse(VerdictUnreachable, "", fmt.Errorf("refusing %s: approval backend returned %d", call.Tool, resp.StatusCode))
@@ -407,12 +419,7 @@ func (c *Client) poll(ctx context.Context, call Call, requestID, externalID stri
 
 		switch state.Status {
 		case StatusApproved:
-			return &Decision{
-				RequestID:     requestID,
-				ExternalID:    externalID,
-				ProcessedByID: state.ProcessedByID,
-				AutoApproved:  state.AutoApproved,
-			}, nil
+			return &Decision{RequestID: requestID, ExternalID: externalID}, nil
 		case StatusRejected:
 			return nil, refuse(VerdictRejected, requestID, fmt.Errorf("refusing %s: approval rejected (request %s)", call.Tool, requestID))
 		case StatusExpired:
@@ -436,11 +443,13 @@ func (c *Client) poll(ctx context.Context, call Call, requestID, externalID stri
 }
 
 func (c *Client) get(ctx context.Context, requestID string) (*requestResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+"/api/requests/"+requestID, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.cfg.BaseURL+"/api/external/approvals/"+url.PathEscape(requestID), nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("x-api-key", c.cfg.APIKey)
+	if err := c.authorize(req); err != nil {
+		return nil, err
+	}
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -456,6 +465,15 @@ func (c *Client) get(ctx context.Context, requestID string) (*requestResponse, e
 		return nil, fmt.Errorf("unreadable approval poll response: %w", err)
 	}
 	return &decoded, nil
+}
+
+func (c *Client) authorize(req *http.Request) error {
+	token, err := readToken(c.cfg.TokenFile)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("authorization", "Bearer "+token)
+	return nil
 }
 
 // randomExternalID gives every call its own id, so two identical calls are two

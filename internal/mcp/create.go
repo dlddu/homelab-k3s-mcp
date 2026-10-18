@@ -8,7 +8,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilyaml "k8s.io/apimachinery/pkg/util/yaml"
@@ -18,7 +18,7 @@ import (
 type createDocument struct {
 	ref  k8s.CreateRef
 	raw  json.RawMessage
-	pair gatekeeper.Pair
+	pair approvalgate.Pair
 }
 
 func parseCreateDocuments(raw json.RawMessage) ([]createDocument, *rpcErr) {
@@ -93,12 +93,12 @@ func parseCreateDocuments(raw json.RawMessage) ([]createDocument, *rpcErr) {
 	return documents, nil
 }
 
-func createPairs(raw json.RawMessage) ([]gatekeeper.Pair, error) {
+func createPairs(raw json.RawMessage) ([]approvalgate.Pair, error) {
 	docs, rerr := parseCreateDocuments(raw)
 	if rerr != nil {
 		return nil, errors.New(rerr.message)
 	}
-	pairs := make([]gatekeeper.Pair, len(docs))
+	pairs := make([]approvalgate.Pair, len(docs))
 	for i, doc := range docs {
 		pairs[i] = doc.pair
 	}

@@ -4,7 +4,7 @@
 실행 대상: primary
 병렬 레인: gate-objects
 
-이 파일이 더하는 것은 **실물 apiserver 와 실물 gatekeeper 에서 같은 계약이 성립하는가**이다.
+이 파일이 더하는 것은 **실물 apiserver 와 실물 PocketAide 에서 같은 계약이 성립하는가**이다.
 
 게이트는 문서 순서대로 하나씩 묻는다.
 """
@@ -17,7 +17,7 @@ import subprocess
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 
 NAMESPACE = "workload-test"
@@ -212,7 +212,7 @@ async def run() -> None:
     _clean()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 7 (단건 생성과 409) ---")
             await test_the_first_create_lands_and_the_second_is_refused_with_409(session, gate)

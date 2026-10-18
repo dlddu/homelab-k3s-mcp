@@ -34,6 +34,8 @@ patches:
                 env:
                   - name: GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES
                     value: homelab-k3s-mcp/
+                  - name: APPROVAL_GATE_POLL_INTERVAL_SECONDS
+                    value: "1"
 
 configMapGenerator:
   - name: homelab-k3s-mcp-oauth

@@ -3,13 +3,14 @@
 # for, for two unrelated reasons.
 #
 #  * homelab-k3s-mcp-gate-refusal -- (a) and (b). The scenario asks that gated
-#    calls be left unapproved until GATEKEEPER_TIMEOUT_SECONDS expires, and the
+#    calls be left unapproved until APPROVAL_GATE_TIMEOUT_SECONDS expires, and the
 #    primary's 300 s default would make one file spend over an hour waiting. The
 #    timeout is env, so it is per deployment; five seconds is long enough that a
 #    verdict could arrive if anything were answering and short enough that
-#    fourteen calls fit in a lane. The gate secret ci.yml creates here carries no
-#    GATEKEEPER_USER_ID on purpose -- with no assignee, gatekeeper's auto-response
-#    mode cannot engage and nobody decides, which is what "자동 응답을 끄고
+#    fourteen calls fit in a lane. ci.yml registers this namespace's
+#    ServiceAccount in PocketAide under an OIDC subject of its own
+#    (tests/integration/_approval_gate.py CALLERS) whose auto-response mode no
+#    e2e ever changes, so nobody decides -- which is what "자동 응답을 끄고
 #    판정하지 않는다" asks for.
 #
 #  * homelab-k3s-mcp-undeclared-tool -- (c). It runs the e2e_undeclared_tool
@@ -112,17 +113,16 @@ spec:
             # e2e can reuse _auth_variant.API_KEY.
             - name: MCP_API_KEYS
               value: ci-e2e-key
-            # env wins over envFrom for the same key, which is what makes the
-            # short wait a property of this deployment rather than of the
-            # secret ci.yml shares with the other variants.
-            - name: GATEKEEPER_TIMEOUT_SECONDS
+            - name: APPROVAL_GATE_URL
+              value: http://pocket-aide.pocket-aide.svc.cluster.local:8080
+            - name: APPROVAL_GATE_TIMEOUT_SECONDS
               value: "5"
-          envFrom:
-            # Created by ci.yml's "Seed the gatekeeper e2e user" step for THIS
-            # namespace: the direct gatekeeper URL and API key, and no
-            # GATEKEEPER_USER_ID.
-            - secretRef:
-                name: homelab-k3s-mcp-gatekeeper
+            - name: APPROVAL_GATE_POLL_INTERVAL_SECONDS
+              value: "1"
+          volumeMounts:
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -156,6 +156,16 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        # k8s/deployment.yaml 의 pocket-aide-token 과 같은 projected 토큰 — PocketAide 가 이
+        # 네임스페이스의 SA 를 호출자로 알아보는 유일한 자격증명이다.
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token
 ---
 apiVersion: v1
 kind: Service
@@ -234,9 +244,14 @@ spec:
             # process alive long enough to reach it.
             - name: MCP_API_KEYS
               value: ci-e2e-key
-          envFrom:
-            - secretRef:
-                name: homelab-k3s-mcp-gatekeeper
+            - name: APPROVAL_GATE_URL
+              value: http://pocket-aide.pocket-aide.svc.cluster.local:8080
+            - name: APPROVAL_GATE_TIMEOUT_SECONDS
+              value: "5"
+          volumeMounts:
+            - name: pocket-aide-token
+              mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
           # No probes. The container never listens, and a startupProbe would
           # only add its own failure reason on top of the exit this variant is
           # meant to show.
@@ -253,3 +268,11 @@ spec:
             capabilities:
               drop:
                 - ALL
+      volumes:
+        - name: pocket-aide-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token

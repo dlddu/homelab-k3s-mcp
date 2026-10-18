@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
@@ -45,7 +45,7 @@ type Handler struct {
 
 	// gate holds gated calls until a human decides. It is never nil — an
 	// unconfigured deployment gets a gate that refuses (prd-approval-gate AC5).
-	gate gatekeeper.Gate
+	gate approvalgate.Gate
 
 	// gateReader is the gate's own read surface (prd-approval-gate AC11);
 	// k8s.TargetReader holds why it is separate. Never nil — a deployment without
@@ -72,7 +72,7 @@ type Handler struct {
 type Option func(*Handler)
 
 // WithGate installs the approval gate.
-func WithGate(gate gatekeeper.Gate, sensitiveKinds []string) Option {
+func WithGate(gate approvalgate.Gate, sensitiveKinds []string) Option {
 	return func(h *Handler) {
 		if gate != nil {
 			h.gate = gate
@@ -128,7 +128,7 @@ func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Servi
 		grafana:         grafanaSvc,
 		opensearch:      osSvc,
 		sessionPlatform: sessionSvc,
-		gate:            gatekeeper.NewUnavailable(nil),
+		gate:            approvalgate.NewUnavailable(nil),
 		gateReader:      k8s.NewUnavailableTargetReader("the approval gate has no kubernetes client to read a target with"),
 		sensitiveKinds:  []string{defaultSensitiveKind},
 		registry:        toolRegistry,
@@ -197,7 +197,7 @@ func (e *rpcErr) reasonOf() eventlog.Reason {
 // afterVerdict marks a refusal that came after the gate had approved (AC6, AC7).
 // The record keeps the backend's verdict and says the gate layer withheld the
 // approval anyway — that is the case Reason and Gate.Decision differ for.
-func (e *rpcErr) afterVerdict(decision *gatekeeper.Decision) *rpcErr {
+func (e *rpcErr) afterVerdict(decision *approvalgate.Decision) *rpcErr {
 	e.reason = eventlog.ReasonGateRejected
 	e.gate = gateOf(decision)
 	return e
@@ -211,20 +211,20 @@ func (e *rpcErr) afterVerdict(decision *gatekeeper.Decision) *rpcErr {
 // that could not be read.
 func gateRefusal(err error) *rpcErr {
 	e := errf(-32603, "%s", err.Error())
-	var refusal *gatekeeper.Refusal
+	var refusal *approvalgate.Refusal
 	if !errors.As(err, &refusal) {
 		e.reason = eventlog.ReasonGateUnreachable
 		return e
 	}
 	e.gate = eventlog.Gate{RequestID: refusal.RequestID, Decision: string(refusal.Verdict)}
 	switch refusal.Verdict {
-	case gatekeeper.VerdictRejected:
+	case approvalgate.VerdictRejected:
 		e.reason = eventlog.ReasonGateRejected
-	case gatekeeper.VerdictExpired:
+	case approvalgate.VerdictExpired:
 		e.reason = eventlog.ReasonGateExpired
-	case gatekeeper.VerdictTimeout:
+	case approvalgate.VerdictTimeout:
 		e.reason = eventlog.ReasonGateTimeout
-	case gatekeeper.VerdictUnconfigured:
+	case approvalgate.VerdictUnconfigured:
 		e.reason = eventlog.ReasonGateUnconfigured
 	case "":
 		e.reason = eventlog.ReasonInvalidInput
@@ -235,13 +235,13 @@ func gateRefusal(err error) *rpcErr {
 }
 
 // gateOf renders an approval for the record (prd-event-log AC2).
-func gateOf(decision *gatekeeper.Decision) eventlog.Gate {
+func gateOf(decision *approvalgate.Decision) eventlog.Gate {
 	if decision == nil {
 		return eventlog.Gate{}
 	}
 	return eventlog.Gate{
 		RequestID:    decision.RequestID,
-		Decision:     string(gatekeeper.VerdictApproved),
+		Decision:     string(approvalgate.VerdictApproved),
 		AutoApproved: decision.AutoApproved,
 	}
 }
@@ -271,7 +271,7 @@ func noteFrom(ctx context.Context) *callNote {
 }
 
 // noteGate records the approval a gated path is about to execute under.
-func noteGate(ctx context.Context, decision *gatekeeper.Decision) {
+func noteGate(ctx context.Context, decision *approvalgate.Decision) {
 	if note := noteFrom(ctx); note != nil {
 		g := gateOf(decision)
 		if note.gate.RequestID != "" {
@@ -406,7 +406,7 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 // it is measured once, here, whichever of the three gated paths asked
 // (prd-metrics AC3). The gate's own answer is untouched — this only notes
 // how long it took.
-func (h *Handler) askGate(ctx context.Context, call gatekeeper.Call) (*gatekeeper.Decision, error) {
+func (h *Handler) askGate(ctx context.Context, call approvalgate.Call) (*approvalgate.Decision, error) {
 	begin := time.Now()
 	decision, err := h.gate.Authorize(ctx, call)
 	if note := noteFrom(ctx); note != nil {

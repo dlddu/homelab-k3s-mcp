@@ -12,7 +12,7 @@ from mcp.shared.exceptions import McpError
 
 from _auth_variant import API_KEY, GRAFANA_REFUSAL
 from _eventlog import exactly_one_new, records, select, wait_for_new
-from _gatekeeper import gatekeeper_url, list_requests
+from _approval_gate import approval_url, list_requests
 from _helpers import base_url, open_session, wait_for_healthz
 
 AUTH_NAMESPACE = "homelab-k3s-mcp-auth"
@@ -77,7 +77,7 @@ async def test_gate_refusal_without_a_backend(session, gate: str) -> dict[str, s
     assert record["reason"] == "gate_unconfigured", record
     assert record["gate.decision"] == "unconfigured" and record["gate.request_id"] == "", record
     strays = [r for r in list_requests(gate) if TARGET_GATED in r.get("context", "")]
-    assert not strays, f"백엔드가 없는 배포의 호출이 gatekeeper 에 요청을 만들었다: {strays}"
+    assert not strays, f"백엔드가 없는 배포의 호출이 PocketAide 에 요청을 만들었다: {strays}"
     return record
 
 
@@ -100,7 +100,7 @@ async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url, headers={"Authorization": f"Bearer {API_KEY}"}) as session:
             print("--- event-log/시나리오 7 (입력 검증 거부) ---")
             invalid = await test_invalid_input_is_refused_before_any_handler(session)

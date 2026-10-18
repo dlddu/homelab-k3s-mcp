@@ -5,9 +5,9 @@
 병렬 레인: gate-screens
 
 시나리오의 단위 근거는 전부 **가짜 게이트**를 상대로 돈다 — 화면을 만드는 함수의 반환값을
-그 자리에서 읽으므로, 만들어진 화면과 **gatekeeper 가 실제로 받아 사람에게 내건 화면**이
+그 자리에서 읽으므로, 만들어진 화면과 **PocketAide 가 실제로 받아 사람에게 내건 화면**이
 갈라져도 초록이다. 이 파일이 재는 것이 그 갈라짐이다: 여기서 읽는 `context` 는 kind 에 뜬
-실물 gatekeeper 의 요청 레코드에서 되가져온 것이고, 그래서 직렬화·전송·저장을 통과한 뒤에도
+실물 PocketAide 의 요청 레코드에서 되가져온 것이고, 그래서 직렬화·전송·저장을 통과한 뒤에도
 상세가 남아 있는지를 말한다.
 
 **판정은 전부 거부(REJECTED)다.** 이 시나리오가 재는 것은 화면이지 호출의 효과가 아니고,
@@ -40,7 +40,7 @@ from dataclasses import dataclass
 
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import count_requests, decide, gatekeeper_url, wait_for_pending
+from _approval_gate import count_requests, decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE, kubectl_jsonpath
 
@@ -523,7 +523,7 @@ async def run() -> None:
     _fixtures()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- approval-gate/시나리오 3 (create — 매니페스트 전문) ---")
             await test_create_shows_the_manifest_it_would_apply(session, gate)

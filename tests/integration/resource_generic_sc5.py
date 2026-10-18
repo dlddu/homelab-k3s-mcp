@@ -23,7 +23,7 @@ import time
 from mcp import ClientSession
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import decide, gatekeeper_url, wait_for_pending
+from _approval_gate import decide, approval_url, wait_for_pending
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import (
     CRASHLOOP_MARKER,
@@ -353,8 +353,8 @@ async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
 
     성공만 보면 공허하다 — 게이트를 아예 달지 않은 서버도 통과시킨다. 그래서 같은 세션에서
     게이트 대상(`v1/Secret` 읽기)이 **거부**되는 것을 나란히 봐서, 이 배포에 게이트가 실제로
-    서 있는데도 위 호출들이 지나갔다는 것으로 만든다. 이 배포에는 실물 gatekeeper 가 서 있으므로
-    (``tests/k8s/kind/gatekeeper-fixture.yaml``) 거부는 사람 판정을 대신 태워 관측한다 —
+    서 있는데도 위 호출들이 지나갔다는 것으로 만든다. 이 배포에는 실물 PocketAide 가 서 있으므로
+    (``tests/k8s/kind/pocket-aide-fixture.yaml``) 거부는 사람 판정을 대신 태워 관측한다 —
     생성된 승인 요청을 **거절**하면 클라이언트가 즉시 물러난다. 거절이라 `EXPIRED` 의 5초
     대기도 승인 댄스도 필요 없고, 「승인되면 값이 온다」와 섞이지 않는다.
 
@@ -371,7 +371,7 @@ async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
     assert _lines(payload["text"]), payload
 
     _control_secret()
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         task = asyncio.create_task(
             session.call_tool(
                 "resource_get",

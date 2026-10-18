@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
 )
 
 // slowGate approves after a delay, standing in for the operator taking their
@@ -17,7 +17,7 @@ type slowGate struct {
 	delay time.Duration
 }
 
-func (g *slowGate) Authorize(ctx context.Context, call gatekeeper.Call) (*gatekeeper.Decision, error) {
+func (g *slowGate) Authorize(ctx context.Context, call approvalgate.Call) (*approvalgate.Decision, error) {
 	time.Sleep(g.delay)
 	return g.scriptedGate.Authorize(ctx, call)
 }
@@ -26,7 +26,7 @@ func (g *slowGate) Authorize(ctx context.Context, call gatekeeper.Call) (*gateke
 // made where the call is timed.
 func TestGateWaitIsRecordedApartFromTheCallsDuration(t *testing.T) {
 	const wait = 60 * time.Millisecond
-	gate := &slowGate{scriptedGate: scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-slow"}}, delay: wait}
+	gate := &slowGate{scriptedGate: scriptedGate{decision: &approvalgate.Decision{RequestID: "req-slow"}}, delay: wait}
 	h, _, sink := recordedHandler(t, gate)
 	patch := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`
 	if _, rerr := callTool(t, h, "resource_patch", patch); rerr != nil {
@@ -53,7 +53,7 @@ func TestGateWaitIsRecordedApartFromTheCallsDuration(t *testing.T) {
 
 func TestARefusedGatedCallStillCarriesItsWait(t *testing.T) {
 	const wait = 40 * time.Millisecond
-	refusal := &gatekeeper.Refusal{Verdict: gatekeeper.VerdictRejected, RequestID: "req-no", Err: errors.New("refusing resource_patch: approval rejected (request req-no)")}
+	refusal := &approvalgate.Refusal{Verdict: approvalgate.VerdictRejected, RequestID: "req-no", Err: errors.New("refusing resource_patch: approval rejected (request req-no)")}
 	gate := &slowGate{scriptedGate: scriptedGate{err: refusal}, delay: wait}
 	h, _, sink := recordedHandler(t, gate)
 	patch := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`

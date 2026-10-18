@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -15,7 +15,7 @@ const collectionArgs = `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops",
 // approval request for nothing wastes an operator's attention, and a
 // deletecollection that ran without one is a gated verb reaching the cluster unjudged.
 func TestEmptySelectionAsksNobodyAndDeletesNothing(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	empty := newCollectionReader()
 	empty.state = k8s.CollectionTargetState{ResourceVersion: "500", Targets: nil}
 	h, fake, lister := testHandlerListing(t, gate, toolRegistry, newStateReader(), empty)
@@ -41,7 +41,7 @@ func TestEmptySelectionAsksNobodyAndDeletesNothing(t *testing.T) {
 // A context that named the selector but not its members would be asking someone
 // to approve a number they cannot see.
 func TestCollectionContextCarriesCountAndNames(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerListing(t, gate, toolRegistry, newStateReader(),
 		newCollectionReader("api-1", "api-2", "api-3"))
 
@@ -63,7 +63,7 @@ func TestCollectionContextTruncatesNamesButNotTheCount(t *testing.T) {
 	for i := 0; i < 25; i++ {
 		names = append(names, fmt.Sprintf("cm-%02d", i))
 	}
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _, _ := testHandlerListing(t, gate, toolRegistry, newStateReader(), newCollectionReader(names...))
 
 	if _, rerr := callTool(t, h, "resource_delete_collection", collectionArgs); rerr != nil {
@@ -87,7 +87,7 @@ func TestCollectionContextTruncatesNamesButNotTheCount(t *testing.T) {
 // The operator approved a list of names, so a list with a different name on it
 // is a different approval.
 func TestCollectionThatGrewAfterApprovalIsRefused(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	lister := newCollectionReader("api-1", "api-2")
 	grown := collectionState("api-1", "api-2", "api-3")
 	lister.next = &grown
@@ -109,7 +109,7 @@ func TestCollectionThatGrewAfterApprovalIsRefused(t *testing.T) {
 // apiserver reads an absent namespace on a collection delete as every namespace,
 // so this is the widest deletion the tool could make.
 func TestCollectionWithoutNamespaceIsRefusedBeforeAnyApproval(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, lister := testHandlerListing(t, gate, toolRegistry, newStateReader(), newCollectionReader())
 
 	_, rerr := callTool(t, h, "resource_delete_collection", `{"apiVersion":"v1","kind":"ConfigMap","labelSelector":"app=api"}`)
@@ -135,7 +135,7 @@ func TestCollectionWithoutNamespaceIsRefusedBeforeAnyApproval(t *testing.T) {
 // approval screen and the request is an approval for one thing and a deletion
 // of another.
 func TestApprovedCollectionDeleteSendsTheSelectorsUnchanged(t *testing.T) {
-	gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, lister := testHandlerListing(t, gate, toolRegistry, newStateReader(), newCollectionReader("api-1"))
 
 	if _, rerr := callTool(t, h, "resource_delete_collection",

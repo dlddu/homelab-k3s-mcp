@@ -1,7 +1,7 @@
 """값이 새는 경로가 막혀 있다 — 목록·민감 종류·스트림 넷·노드 프록시·직접 watch.
 
 검증 시나리오: test-resource-generic.md#시나리오 17
-실행 대상: gatekeeper-variant
+실행 대상: approval-variant
 
 Go 단위가 이 계약의 조각들을 이미 단언한다 — ``internal/mcp/resource_test.go`` 의 민감 종류
 분기와 ``internal/mcp/gate_test.go`` 의 ``TestOrdinaryReadsAndSecretListsStayUngated`` ·
@@ -11,18 +11,19 @@ Go 단위가 이 계약의 조각들을 이미 단언한다 — ``internal/mcp/r
 
 **primary 에 (b) 의 env 를 세울 수 없는 두 번째 이유.** ``RESOURCE_GATED_KINDS`` 를 primary 에
 세우면 같은 픽스처 CRD 를 읽는 ``resource_generic_sc1.py`` 의 전제가 흔들린다. 그래서 이미 서
-있는 이 변형(``tests/k8s/kind/gatekeeper-variant.yaml``)의 env 한 줄로 세웠다. 이 변형의 SA 는 primary 와
+있는 이 변형(``tests/k8s/kind/approval-variant.yaml``)의 env 한 줄로 세웠다. 이 변형의 SA 는 primary 와
 **같은** ``cluster-admin`` 바인딩이므로(``k8s/rbac.yaml``, 2026-09-14 개정), (d) 의 「``watch``
 는 이제 부여되어 403 이 아니다」도 운영과 같은 권한 위에서 관측된다.
 
-**미승인은 사람 없이 만든다 — 이 변형의 ``AUTO_REJECT`` 모드로.** 이 배포는 ``GATEKEEPER_USER_ID``
-를 물고 있어 gatekeeper 의 자동 응답 모드가 실제로 발화한다(그래서 ``approval_gate_sc9.py`` 가
-여기서 돈다). 판정을 직접 내리는 댄스(``wait_for_pending`` → ``decide``)를 쓰지 않는 것은 이
-배포의 ``GATEKEEPER_TIMEOUT_SECONDS`` 가 5 초라, 호출마다 그 5 초 창 안에서 폴링과 판정을 끝내야
+**미승인은 사람 없이 만든다 — 이 변형의 ``AUTO_REJECT`` 모드로.** 이 배포의 서비스 어카운트는
+PocketAide 에 자기 몫의 사용자로 등록돼 있어 그 사용자의 자동 응답 모드가 이 배포의 요청에만
+걸린다(그래서 ``approval_gate_sc9.py`` 가 여기서 돈다). 판정을 직접 내리는 댄스
+(``wait_for_pending`` → ``decide``)를 쓰지 않는 것은 이 배포의 ``APPROVAL_GATE_TIMEOUT_SECONDS``
+가 5 초라, 호출마다 그 5 초 창 안에서 폴링과 판정을 끝내야
 하는 경주를 만들기 때문이다. 자동 거부는 그 창을 없앤다 — **그리고 기록은 그대로 남아** 화면
 (``context``)을 되읽을 수 있다. 화면을 집는 기준은 **호출 직전에 없던 기록 id 이면서 그 호출의
-마커를 담은 것**이다(``_refuse``). 둘 다 필요하다: 이 게이트는 배포 넷이 공유해 같은 문자열을 담은
-남의 옛 기록이 있을 수 있고, primary 그룹이 이 그룹과 겹쳐 돌아 그사이 남이 거부한 기록도 생긴다.
+마커를 담은 것**이다(``_refuse``). 둘 다 필요하다: 이 사용자의 기록에는 같은 그룹의 다른 파일이
+남긴, 같은 문자열을 담은 옛 기록이 있을 수 있다.
 
 **토큰은 픽스처가 박는 상수다.** 시나리오가 말하는 「고유 난수」의 요점은 매 실행 새로 뽑히는
 것이 아니라 **그 문자열이 이 레포의 다른 어디에도 없어서**, 어떤 응답에서 발견되면 그것이 이
@@ -53,7 +54,7 @@ import time
 import httpx
 from mcp.shared.exceptions import McpError
 
-from _gatekeeper import gatekeeper_url, list_requests, set_auto_response
+from _approval_gate import approval_url, list_requests, set_auto_response
 from _helpers import base_url, open_session, wait_for_healthz
 from _workload import NAMESPACE
 
@@ -81,7 +82,7 @@ SAMPLE = "resource-generic-selected"
 #: 이것이 없으면 「그 종류가 막혔다」와 「그 도구가 막혔다」가 구별되지 않는다.
 CONTROL_MAP = "rg-ac17-control"
 
-VARIANT_NAMESPACE = "homelab-k3s-mcp-gatekeeper-variant"
+VARIANT_NAMESPACE = "homelab-k3s-mcp-approval-variant"
 VARIANT_SERVICE_ACCOUNT = "homelab-k3s-mcp"
 
 EXEC_COMMAND = ["sh", "-c", f"cat {TOKEN_PATH}"]
@@ -503,7 +504,7 @@ async def run() -> None:
     _fixtures()
     wait_for_healthz(url)
 
-    with gatekeeper_url() as gate:
+    with approval_url() as gate:
         async with open_session(url) as session:
             print("--- resource-generic/시나리오 17 (a) 목록은 게이트를 타지 않는다 ---")
             await test_the_secret_list_passes_ungated_and_carries_no_values(session, gate)

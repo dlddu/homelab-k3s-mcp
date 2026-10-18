@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/gatekeeper"
+	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
@@ -32,7 +32,7 @@ func TestProxyAllPathsGated(t *testing.T) {
 	}
 	for _, tc := range methods {
 		t.Run(tc.method+" on "+tc.kind+" spends "+tc.pair, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 
 			if _, rerr := callTool(t, h, "resource_proxy", tc.args); rerr != nil {
@@ -133,7 +133,7 @@ func TestProxyAllPathsGated(t *testing.T) {
 func TestProxyKubeletHighPowerPathFlagged(t *testing.T) {
 	t.Run("a node exec path is marked and still runs", func(t *testing.T) {
 		reader := newStateReader()
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, fake, _ := testHandlerReading(t, gate, toolRegistry, reader)
 
 		args := `{"apiVersion":"v1","kind":"Node","name":"worker-1","method":"GET","path":"/exec/ops/api/app?command=id"}`
@@ -162,7 +162,7 @@ func TestProxyKubeletHighPowerPathFlagged(t *testing.T) {
 			"/portforward/ops/api", "/run/ops/api/app", "/logs/messages",
 			"/containerLogs/ops/api/app",
 		} {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, _, _ := testHandlerReading(t, gate, toolRegistry, newStateReader())
 			args := `{"apiVersion":"v1","kind":"Node","name":"worker-1","method":"GET","path":"` + path + `"}`
 			if _, rerr := callTool(t, h, "resource_proxy", args); rerr != nil {
@@ -175,7 +175,7 @@ func TestProxyKubeletHighPowerPathFlagged(t *testing.T) {
 	})
 
 	t.Run("an observation endpoint carries the path but no marking", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, _, _ := testHandlerReading(t, gate, toolRegistry, newStateReader())
 		args := `{"apiVersion":"v1","kind":"Node","name":"worker-1","method":"GET","path":"/healthz"}`
 		if _, rerr := callTool(t, h, "resource_proxy", args); rerr != nil {
@@ -191,7 +191,7 @@ func TestProxyKubeletHighPowerPathFlagged(t *testing.T) {
 	})
 
 	t.Run("the same path on a pod is not a kubelet endpoint", func(t *testing.T) {
-		gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 		h, _, _ := testHandlerReading(t, gate, toolRegistry, newStateReader())
 		args := `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","method":"GET","path":"/exec"}`
 		if _, rerr := callTool(t, h, "resource_proxy", args); rerr != nil {
@@ -263,7 +263,7 @@ func TestProxyRefusalsCostNoApproval(t *testing.T) {
 	}
 	for _, tc := range refusals {
 		t.Run(tc.name, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake := testHandler(t, gate, toolRegistry)
 			_, rerr := callTool(t, h, "resource_proxy", tc.args)
 			if rerr == nil {
@@ -295,7 +295,7 @@ func TestProxyPortReachesTheChosenPort(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gate := &scriptedGate{decision: &gatekeeper.Decision{RequestID: "req-1"}}
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 			h, fake, _ := testHandlerReading(t, gate, toolRegistry, newStateReader())
 			args := `{"apiVersion":"v1","kind":"` + tc.kind + `","namespace":"ops","name":"api","method":"GET","path":"/metrics","port":` + tc.port + `}`
 			result, rerr := callTool(t, h, "resource_proxy", args)
