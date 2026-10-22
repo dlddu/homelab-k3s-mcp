@@ -54,6 +54,10 @@ func (u *Unavailable) CreateCommitStatus(context.Context, CommitStatusInput) (*C
 	return nil, unavailable(u.reason)
 }
 
+func (u *Unavailable) CheckCommitStatus(CommitStatusInput) error {
+	return unavailable(u.reason)
+}
+
 func contextPrefixesFromEnv() []string {
 	var prefixes []string
 	for _, raw := range strings.Split(os.Getenv(contextPrefixesEnv), ",") {
@@ -119,11 +123,15 @@ func (c *Client) checkContextPrefix(statusContext string) error {
 		statusContext, strings.Join(c.statusContextPrefixes, ", ")))
 }
 
-func (c *Client) CreateCommitStatus(ctx context.Context, in CommitStatusInput) (*CommitStatus, error) {
+func (c *Client) CheckCommitStatus(in CommitStatusInput) error {
 	if err := validateCommitStatusInput(in); err != nil {
-		return nil, err
+		return err
 	}
-	if err := c.checkContextPrefix(in.Context); err != nil {
+	return c.checkContextPrefix(in.Context)
+}
+
+func (c *Client) CreateCommitStatus(ctx context.Context, in CommitStatusInput) (*CommitStatus, error) {
+	if err := c.CheckCommitStatus(in); err != nil {
 		return nil, err
 	}
 

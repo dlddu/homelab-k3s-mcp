@@ -223,3 +223,27 @@ func TestCommitStatusDiscardsItsToken(t *testing.T) {
 		t.Errorf("revoke requests = %d, want 1 (%+v)", got, fake.requests)
 	}
 }
+
+func TestCheckCommitStatusRefusesWhatCreateWouldWithoutGitHub(t *testing.T) {
+	fake := &fakeGitHub{installation: map[string]any{"statuses": "write"}}
+	c := statusClient(t, fake, "homelab-k3s-mcp/")
+
+	if err := c.CheckCommitStatus(validInput()); err != nil {
+		t.Fatalf("CheckCommitStatus(valid) = %v, want nil", err)
+	}
+	short := validInput()
+	short.SHA = "abc1234"
+	foreign := validInput()
+	foreign.Context = "ci/build"
+	for label, in := range map[string]CommitStatusInput{"short sha": short, "foreign context": foreign} {
+		if err := c.CheckCommitStatus(in); err == nil {
+			t.Errorf("CheckCommitStatus(%s) = nil, want the refusal CreateCommitStatus gives", label)
+		}
+	}
+	if got := len(fake.requests); got != 0 {
+		t.Errorf("upstream saw %d requests (%+v), want 0", got, fake.requests)
+	}
+	if err := NewUnavailable("").CheckCommitStatus(validInput()); err == nil || !strings.Contains(err.Error(), "github app unavailable") {
+		t.Errorf("unavailable CheckCommitStatus = %v, want an unavailable-class error", err)
+	}
+}

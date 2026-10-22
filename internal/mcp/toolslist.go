@@ -666,7 +666,7 @@ const toolsListJSON = `{
     },
     {
       "name": "github_commit_status_create",
-      "description": "Write one commit status on a commit in a repository the server's GitHub App is installed on. The caller never receives a credential: the server mints an installation token scoped to that one repository and to statuses: write, spends it on this single call, and discards it. The owner is the installation account and is not a parameter. Only contexts starting with one of the prefixes in GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES may be written, and a deployment without that setting refuses every call. Requires GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
+      "description": "Write one commit status on a commit in a repository the server's GitHub App is installed on. The caller never receives a credential: the server mints an installation token scoped to that one repository and to statuses: write, spends it on this single call, and discards it. The owner is the installation account and is not a parameter. Only contexts starting with one of the prefixes in GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES may be written, and a deployment without that setting refuses every call. Every call that passes those checks requires human approval before anything is sent to GitHub, because a status can satisfy a required check or stand in for a manual approval. Requires GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {

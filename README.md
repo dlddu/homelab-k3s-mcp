@@ -112,7 +112,9 @@ behind this behavior.
 
 State-changing calls (and reads of sensitive kinds such as Secrets) wait for a
 human approval in [PocketAide](https://github.com/dlddu/pocket-aide) before they
-reach the cluster. The server reaches it at `APPROVAL_GATE_URL` and authenticates
+reach the cluster. One write outside the cluster waits too: `github_commit_status_create`,
+because a commit status can satisfy a required check or stand in for a manual
+approval. The server reaches it at `APPROVAL_GATE_URL` and authenticates
 with its own Kubernetes ServiceAccount token, projected by `k8s/deployment.yaml`
 for the audience `pocket-aide` — there is no API key. Two things must exist on
 the PocketAide side:

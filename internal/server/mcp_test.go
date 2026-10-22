@@ -13,6 +13,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
+	"github.com/dlddu/homelab-k3s-mcp/internal/mcp"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
@@ -766,7 +767,9 @@ func TestToolsListAdvertisesCommitStatus(t *testing.T) {
 
 func TestCommitStatusDispatches(t *testing.T) {
 	fake := &fakeGitHub{}
-	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	gate := &approvingGate{}
+	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform(),
+		mcp.WithGate(gate, nil))
 
 	sha := "0123456789abcdef0123456789abcdef01234567"
 	body := callTool(t, app, 73, "github_commit_status_create", map[string]any{
@@ -787,6 +790,24 @@ func TestCommitStatusDispatches(t *testing.T) {
 	if in := fake.statuses[0]; in.Repository != "homelab-k3s-mcp" || in.State != "success" ||
 		in.Context != "homelab-k3s-mcp/e2e" || in.SHA != sha {
 		t.Errorf("service input = %+v, want the arguments as sent", in)
+	}
+}
+
+func TestCommitStatusIsRefusedWithoutApproval(t *testing.T) {
+	fake := &fakeGitHub{}
+	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 75, "github_commit_status_create", map[string]any{
+		"repository": "homelab-k3s-mcp",
+		"sha":        "0123456789abcdef0123456789abcdef01234567",
+		"state":      "success",
+		"context":    "homelab-k3s-mcp/e2e",
+	})
+	if _, ok := body["error"]; !ok {
+		t.Fatalf("body = %v, want the gate's refusal", body)
+	}
+	if len(fake.statuses) != 0 {
+		t.Errorf("service saw %d calls, want 0", len(fake.statuses))
 	}
 }
 

@@ -14,12 +14,18 @@ commit status는 브랜치 보호의 필수 검사(required status check)가 읽
 **읽기**(`statuses: read`)는 위조 위험이 없으므로 토큰 도구에서 그대로 발급한다 — 이 도구는
 쓰기만 맡는다.
 
+context 네임스페이스(AC4)는 **남의** context 를 지킬 뿐이다. 허용 접두사 안의 context 도 사람의
+판정을 대신하는 신호일 수 있다 — reconciler 의 수동 승인은 사람이 승인하면 `review/manual-approval`
+같은 context 에 `success` 를 적고, 실행기는 그 status 를 보고 실행한다. 에이전트가 그 status 를 스스로
+적으면 사람의 승인이 없었는데 있었던 것이 된다. 그래서 쓰기는 **사람 승인 뒤에만** 일어난다(AC7).
+
 ## 달성 가치
 - **V2: 단명·최소권한 자격증명** — commit status 쓰기가 운영자 손에 토큰으로 들어오지 않는다.
   서버 안에서 발급하는 토큰도 `statuses: write` 하나와 대상 repo 하나로 좁혀지고 응답에 실리지
   않는다.
 - **V3: 안전한 운영(Safe-by-default)** — 쓸 수 있는 context를 서버가 정한 네임스페이스로 제한해
   다른 시스템의 검사를 위조하지 못하게 하고, 네임스페이스가 설정되지 않으면 기록하지 않는다.
+  네임스페이스 안의 쓰기도 PocketAide 의 사람 승인을 받아야 GitHub 에 닿는다(AC7).
 
 ## 도구 개요
 - 입력
@@ -35,6 +41,8 @@ commit status는 브랜치 보호의 필수 검사(required status check)가 읽
   - `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_INSTALLATION_ID`, `GITHUB_APP_PRIVATE_KEY` — 토큰 도구와 공유
   - `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES` — 쓸 수 있는 context 접두사 목록(쉼표 구분). 예:
     `homelab-k3s-mcp/,reconciler/`
+  - 승인 게이트 구성(`APPROVAL_GATE_URL` 외 — [prd-approval-gate 「구성」](prd-approval-gate.md)). 게이트가
+    미구성이면 AC3~AC5 를 통과한 호출이 전부 거부된다(AC7)
 - GitHub 쪽 전제: App 권한에 **Commit statuses: Read and write**가 있고 설치 소유자가 그 권한
   변경을 승인했을 것. 2026-09-19 실측 기준 **현재 설치에는 이 권한이 없다**(`statuses: write` 요청이
   422 — "not granted to this installation").
@@ -54,11 +62,6 @@ App에 `statuses` 권한을 **먼저** 부여하면, 그 순간부터 `permissio
 `doc-tracker/` 「수용된 위험」의 「배포 순서 역전」 행).
 
 ## 범위 밖 (근거와 함께)
-- **승인 게이트(PocketAide)를 타지 않는다.** 게이트의 보증은 「승인 없이는 **클러스터 상태**가
-  바뀌지 않는다」이고(values V3), commit status는 클러스터 밖 GitHub의 추가 전용(append-only)
-  기록이라 그 범위가 아니다. 위조 위험은 게이트 대신 AC4의 context 네임스페이스가 막는다. 그래서
-  `doc-tracker/`의 「게이트 밖 예외」(클러스터 쓰기 중 게이트를 타지 않는 것) 계수에도 들어가지
-  않는다.
 - **status 조회·목록·삭제는 다루지 않는다.** GitHub API에 status 삭제는 없고, 조회는
   `github_app_installation_token`에서 `statuses: read` 토큰을 받아 한다(그 PRD AC5).
 - **check run(`checks` 권한)은 다루지 않는다.** 다른 API·다른 권한이다. 토큰 도구에서 `checks: write`
@@ -114,3 +117,27 @@ App에 `statuses` 권한을 **먼저** 부여하면, 그 순간부터 `permissio
   파괴적이지 않지만, 외부 시스템에 쓰는 도구임은 클라이언트가 알 수 있어야 한다.
 - **달성 가치**: V3
 - **검증 방법**: `tools/list` 응답의 이 도구 어노테이션이 위 세 값이다.
+
+### AC7: 사람 승인 뒤에만 기록한다 (승인 게이트)
+- **설명**: AC3·AC4·AC5 를 통과한 호출은 GitHub 에 무엇이든 보내기 **전에** — 설치 토큰 발급도
+  포함해 — PocketAide 의 승인을 받는다. 이 도구는 쿠버네티스 권한을 행사하지 않으므로 verb 표가 고르지
+  못하고, [prd-approval-gate 「클러스터 밖 쓰기 게이트」](prd-approval-gate.md)가 이름으로 지정한다.
+  배경 절의 이유 그대로다 — commit status 는 필수 검사를 통과시키고 사람의 승인 그 자체를 나타내는
+  신호로도 쓰이므로, 승인 없이 적을 수 있으면 접두사 제한 안에서 사람의 판정을 위조할 수 있다.
+
+  순서는 **입력 검증(AC3) → 접두사(AC4) → 미설정(AC5) → 승인 → 토큰 발급·기록**이다. 앞의 셋에서
+  거부되는 호출은 승인 요청을 만들지 않는다 — 실행될 수 없는 쓰기를 사람에게 묻지 않는다. 그 거부는
+  지금처럼 도구 에러로 돌아온다.
+
+  승인 `context` 는 도구 이름, 동작(`write a GitHub commit status`), 요청 시각, 그리고 **인자 전문**
+  (`repository`·`sha`·`state`·`context`·`description`·`target_url`)이다. 인자에는 자격증명이 없으므로
+  가리지 않는다. owner 는 설치 계정이고 인자가 아니므로 싣지 않는다.
+
+  `prd-approval-gate` 의 AC2(요청 생성)·AC4(폴링)·AC5(fail-closed)·AC7(1승인 1실행)·AC8(감사
+  기록)·AC9(자동 응답 표기)가 그대로 적용된다. 게이트의 거부는 다른 게이트 대상 도구와 같이 JSON-RPC
+  에러다. AC6(TOCTOU)은 적용 대상이 없다 — status 는 추가 전용이라 승인 시점에 읽어 둘 상태가 없고,
+  승인된 인자 그대로 한 번 기록한다. AC11 도 마찬가지로 게이트는 이 경로에서 쿠버네티스를 읽지 않는다.
+- **달성 가치**: V3
+- **검증 방법**: 승인을 거절하거나 게이트가 미구성이면 도구가 거부되고 상류 요청 수가 0 이다(토큰
+  발급 요청 포함). 승인하면 AC1 대로 기록되고, 그 승인 요청의 `context` 에 위 구성 요소가 모두 있다.
+  AC3·AC4 로 거부되는 호출은 승인 요청을 하나도 만들지 않는다. 같은 승인으로 두 번째 기록은 거부된다.

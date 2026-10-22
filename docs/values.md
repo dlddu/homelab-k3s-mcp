@@ -67,6 +67,9 @@
     도달한다. `destructiveHint`가 클라이언트에 대한 광고에 그치는 데 반해, 이 게이트는
     서버 쪽에서 실행 자체를 막는다. 승인이 확인되지 않은 모든 경우(거절·만료·타임아웃·
     통신 실패·미설정)는 거부다.
+  - **클러스터 밖에서 사람의 판정을 대신하는 쓰기도 승인을 거친다** — GitHub commit status 는
+    필수 검사와 수동 승인 신호를 통과시키므로 `github_commit_status_create` 는 승인 뒤에만 기록한다
+    (`prd-approval-gate` 「클러스터 밖 쓰기 게이트」, `prd-github-commit-status` AC7).
   - **Secret은 읽기도 쓰기도 승인을 거친다** — `v1/Secret`은 verb와 무관하게 게이트를
     통과해야 실행된다(`prd-resource-generic` AC16). `list`만 예외인데, Table 표현이
     apiserver에서 만들어져 값이 전송되지 않기 때문이다(AC17).
@@ -171,3 +174,4 @@
 | 2026-10-16 | V5 관련 도구에 `session_create`·`session_delete` 추가, V3 파괴적 표기 목록에 `session_delete` 추가 — 세션 생명주기(생성·삭제)를 도구 표면으로 연다. 새 가치 추가 없음 — 앱 기능의 도구화(V5)와 기본값 안전(V3)의 구현체다. |
 | 2026-09-19 | V2에 commit status 목표와 「토큰째 내주기 vs 도구가 대신 행사」 원칙 추가 — `github_commit_status_create` 신설(`prd-github-commit-status.md`)과 `github_app_installation_token`의 `statuses: write` 배제 — 읽기는 계속 발급(그 PRD AC5)의 근거. 새 가치 추가 없음 — 둘 다 최소권한 자격증명(V2)과 기본값 안전(V3)의 구현체다. |
 | 2026-10-15 | V3 근거 (1) 「사람의 사전 승인」의 상대를 gatekeeper 에서 PocketAide(`dlddu/pocket-aide`)로 고쳤다 — 승인 게이트(`prd-approval-gate`)의 백엔드 교체를 따라간 것이고, 가치의 내용(변경 동사는 사람 승인을 거쳐야 클러스터에 닿는다)과 새 가치 수는 바뀌지 않는다. |
+| 2026-10-23 | V3 게이트 범위를 클러스터 밖 쓰기 하나로 넓혔다 — `github_commit_status_create` 를 승인 게이트에 넣었다(`prd-github-commit-status` AC7). commit status 는 필수 검사뿐 아니라 reconciler 수동 승인 같은 **사람 판정의 신호**로도 쓰여, 허용 접두사 안에서도 에이전트가 승인 없이 적으면 그 판정을 위조할 수 있다. 보증 문장 「승인 없이는 클러스터 상태가 바뀌지 않는다」는 그대로 두고, 클러스터 밖은 문서가 이름으로 지정한 도구만 게이트를 탄다. 새 가치 추가 없음. |
