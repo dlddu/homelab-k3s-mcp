@@ -15,11 +15,13 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import uuid
 from typing import Any
 
 import httpx
 from mcp import ClientSession
 
+from _approval_gate import approval_url, call_with_verdict
 from _helpers import base_url, open_session, wait_for_healthz
 
 # tests/k8s/kind/github-mock.yaml 의 admin 표면. 포트 8093 은 ci.yml 의
@@ -42,6 +44,17 @@ ARGUMENTS = {
     "description": "e2e status write",
     "target_url": "https://example.invalid/run/1",
 }
+
+
+def marked(arguments: dict[str, Any]) -> dict[str, Any]:
+    return {**arguments, "description": f"{arguments['description']} {uuid.uuid4().hex[:12]}"}
+
+
+async def approved_call(session: ClientSession, gate: str, arguments: dict[str, Any]):
+    _, task = await call_with_verdict(
+        session, gate, "github_commit_status_create", arguments, arguments["description"]
+    )
+    return await task
 
 
 def status_path(sha: str) -> str:
@@ -70,9 +83,10 @@ def refusal_text(result) -> str:
     return block.text
 
 
-async def test_github_commit_status_ac1_writes_the_status(session: ClientSession) -> None:
+async def test_github_commit_status_ac1_writes_the_status(session: ClientSession, gate: str) -> None:
     reset_recorded()
-    result = await session.call_tool("github_commit_status_create", dict(ARGUMENTS))
+    arguments = marked(ARGUMENTS)
+    result = await approved_call(session, gate, arguments)
     assert result.isError is False, result
 
     posts = recorded("POST", status_path(SHA))
@@ -81,7 +95,7 @@ async def test_github_commit_status_ac1_writes_the_status(session: ClientSession
     assert sent == {
         "state": ARGUMENTS["state"],
         "context": ARGUMENTS["context"],
-        "description": ARGUMENTS["description"],
+        "description": arguments["description"],
         "target_url": ARGUMENTS["target_url"],
     }, sent
 
@@ -95,15 +109,13 @@ async def test_github_commit_status_ac1_writes_the_status(session: ClientSession
 
 
 async def test_github_commit_status_ac1_surfaces_github_error(
-    session: ClientSession,
+    session: ClientSession, gate: str
 ) -> None:
     """The recorded write is the control: without it a locally produced error
     that happened to contain "422" would pass.
     """
     reset_recorded()
-    result = await session.call_tool(
-        "github_commit_status_create", {**ARGUMENTS, "sha": UNPROCESSABLE_SHA}
-    )
+    result = await approved_call(session, gate, marked({**ARGUMENTS, "sha": UNPROCESSABLE_SHA}))
     text = refusal_text(result)
     assert "422" in text, text
     assert f"No commit found for SHA: {UNPROCESSABLE_SHA}" in text, text
@@ -116,16 +128,17 @@ async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
 
-    async with open_session(url) as session:
-        print("--- github-commit-status/AC1 ---")
-        try:
-            await test_github_commit_status_ac1_writes_the_status(session)
-            await test_github_commit_status_ac1_surfaces_github_error(session)
-        finally:
-            # The request log is shared mock state; the lane runs one file at a
-            # time, so leaving records behind would leak into the next file.
-            reset_recorded()
-        print("ok: github-commit-status/AC1")
+    with approval_url() as gate:
+        async with open_session(url) as session:
+            print("--- github-commit-status/AC1 ---")
+            try:
+                await test_github_commit_status_ac1_writes_the_status(session, gate)
+                await test_github_commit_status_ac1_surfaces_github_error(session, gate)
+            finally:
+                # The request log is shared mock state; the lane runs one file at a
+                # time, so leaving records behind would leak into the next file.
+                reset_recorded()
+            print("ok: github-commit-status/AC1")
 
 
 if __name__ == "__main__":

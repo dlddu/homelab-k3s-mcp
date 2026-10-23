@@ -27,6 +27,7 @@ type toolDeclaration struct {
 	pairs []approvalgate.Pair
 
 	noResourcePermission *noResourcePermission
+	externalWrite        *externalWrite
 
 	// resolve derives the pair from one call's own arguments, for the generic
 	// tools whose resource is an argument rather than a constant. A static table
@@ -81,6 +82,8 @@ const (
 	// 대상이다". The pair a proxy call spends does not say what it does — only
 	// the path does — so there is no method whose approval can be skipped.
 	gatedEveryMethodByAC15 = "prd-resource-generic AC15 — 경로가 호출을 한정하므로 메서드와 무관하게 전부 게이트 대상"
+
+	gatedCommitStatusByAC7 = "prd-github-commit-status AC7 — status 가 필수 검사와 수동 승인 신호를 통과시키므로 사람 승인 뒤에만 기록"
 )
 
 // toolRegistry binds each tool's handler to the pairs it exercises. Handler and
@@ -196,10 +199,17 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).githubAppInstallationToken,
 	},
 	"github_commit_status_create": {
-		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
-			kind:   touchesNothing,
-			reason: "writes a GitHub commit status; reaches GitHub, never the apiserver",
-		}},
+		decl: toolDeclaration{
+			noResourcePermission: &noResourcePermission{
+				kind:   touchesNothing,
+				reason: "writes a GitHub commit status; reaches GitHub, never the apiserver",
+			},
+			externalWrite: &externalWrite{
+				action:   "write a GitHub commit status",
+				reason:   gatedCommitStatusByAC7,
+				precheck: (*Handler).githubCommitStatusPrecheck,
+			},
+		},
 		handle: (*Handler).githubCommitStatusCreate,
 	},
 	"opensearch_search": {

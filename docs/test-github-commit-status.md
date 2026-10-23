@@ -7,6 +7,7 @@
 - AC4: context 네임스페이스 제한 (fail-closed) (PRD: github_commit_status_create)
 - AC5: 미설정 시 graceful 거부 (PRD: github_commit_status_create)
 - AC6: 비파괴·외부 쓰기 광고 (PRD: github_commit_status_create)
+- AC7: 사람 승인 뒤에만 기록한다 (승인 게이트) (PRD: github_commit_status_create)
 
 ## 픽스처
 
@@ -32,10 +33,21 @@
 `id` 가 1(≠0)인 것은 의도된 선택이다 — 스텁이 0 을 돌려주면 도구가 `id` 를 **파싱하지 못한**
 경우의 Go 제로값과 구분되지 않아, 「도구 응답의 `id` 가 스텁 응답과 같다」가 공허하게 통과한다.
 
+### 승인 게이트 (2026-10-23 — AC7)
+
+primary 배포는 실물 PocketAide 에 묶여 있다(`test-approval-gate.md` 「픽스처」 — 호출자
+`homelab-k3s-mcp/homelab-k3s-mcp` 의 주인은 `e2e-primary`, 자동 응답은 꺼져 있다). 그래서 GitHub 에 닿는
+호출 — 시나리오 1·2 의 호출, 3 의 양성 대조 호출, 4(a) 의 허용 호출, 7 — 은 도구 호출을 띄운 뒤 `_approval_gate.wait_for_pending`
+으로 그 승인 요청을 찾아 `decide` 로 판정한다. 요청 격리 마커는 **호출마다 다른 `description`** 이다 —
+`sha` 는 파일끼리 같은 값을 쓰므로 마커가 되지 못한다(시나리오 3 만은 실행마다 무작위 `sha` 를 마커로
+쓴다 — 거부되는 케이스에는 `description` 을 덧붙일 자리가 없다). AC3·AC4·AC5 로 거부되는 호출(시나리오 3
+의 여섯 케이스, 4 의 거부 호출, 5)은 승인 요청을 만들지 않으므로 판정할 것이 없다.
+
 ## 테스트 시나리오
 
 ### 시나리오 1: status 기록과 GitHub 오류 전달
-- **사전 조건**: github-mock 구성, `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES=homelab-k3s-mcp/`
+- **사전 조건**: github-mock 구성, `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES=homelab-k3s-mcp/`, 각 호출의
+  승인 요청은 승인한다(「승인 게이트」)
 - **실행 단계**: (a) `repository=test`, 40자 `sha`, `state=success`,
   `context=homelab-k3s-mcp/e2e`, `description`, `target_url`로 호출. (b) 스텁이 422를 돌려주도록
   정한 SHA로 같은 호출
@@ -69,7 +81,8 @@
 - **사전 조건**: 시나리오 1과 동일, 스텁 요청 카운터 초기화
 - **실행 단계**: 다음 여섯 호출 — `repository` 누락 · `sha=abc1234`(축약) · `state=ok` ·
   `context` 누락 · 141자 `description` · `target_url=ftp://x`
-- **기대 결과**: 여섯 모두 도구 에러이고 스텁 요청 카운터가 0이다(토큰 발급 요청도 0)
+- **기대 결과**: 여섯 모두 도구 에러이고 스텁 요청 카운터가 0이다(토큰 발급 요청도 0). 입력 검증이
+  승인 요청보다 앞서므로(AC7) 승인 요청도 만들어지지 않는다
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `TestCommitStatusValidatesBeforeGitHub`(표 기반 6행 — 각 행이 상류 요청 수 0을
   단언한다, 2026-09-20 착지). 통합 e2e 는 `tests/integration/github_commit_status_sc3.py` 가 여섯
@@ -112,3 +125,22 @@
   세 힌트를 이름으로 단언, 2026-09-20 착지). 통합 e2e 는
   `tests/integration/github_commit_status_sc6.py` 가 배포된 서버의 `tools/list` 에서 세 힌트를
   한 벌로 되읽는다
+
+### 시나리오 7: 사람 승인 뒤에만 기록한다
+- **사전 조건**: 시나리오 1과 동일한 배포(primary — 실물 PocketAide, 자동 응답 꺼짐), 스텁 요청 기록 초기화
+- **실행 단계**: (a) 유효한 호출을 띄우고, 그 승인 요청이 PENDING 으로 보이면 **거절**한다. (b) 같은
+  인자(새 마커)로 다시 띄우고 **승인**한다. (c) 접두사 밖 `context=ci/build` 로 호출한다
+- **기대 결과**: (a) 도구 호출이 게이트 거부로 끝나고 스텁 요청이 0이다(토큰 발급 요청 포함). 그 승인
+  요청의 `context` 에 `tool: github_commit_status_create`, `action: write a GitHub commit status`, 인자
+  여섯(`repository`·`sha`·`state`·`context`·`description`·`target_url`)이 있다. (b) `statuses/{sha}` 에
+  기록이 정확히 1건 생긴다. (c) 도구 에러이고, 그 호출의 마커를 담은 승인 요청이 0건이며 스텁 요청도 0이다
+- **검증 AC**: AC7
+- **자동화**: Go 단위 `internal/mcp/external_gate_test.go` 의
+  `TestCommitStatusIsRefusedBeforeGitHubWithoutApproval`·`TestCommitStatusRejectedByTheOperatorIsNotWritten`·
+  `TestApprovedCommitStatusIsWrittenWithAJudgeableContext`·`TestCommitStatusPrecheckRefusesWithoutAskingTheGate`·
+  `TestCommitStatusWithANonStringArgumentNeverReachesTheGate`·`TestCommitStatusApprovalCannotBeSpentTwice`·
+  `TestAutoApprovedCommitStatusSaysSo`·`TestValidateDeclarationsRejectsMalformedExternalWrites`,
+  `internal/github/commitstatus_test.go` 의 `TestCheckCommitStatusRefusesWhatCreateWouldWithoutGitHub`,
+  `internal/server/mcp_test.go` 의 `TestCommitStatusIsRefusedWithoutApproval`. 통합 e2e 는
+  `tests/integration/github_commit_status_sc7.py` 가 (a)~(c) 를 한 파일에서 잰다 — (a) 의 「상류 0」이
+  공허하지 않다는 것은 (b) 가 같은 기록 엔드포인트에 1건을 남기는 것으로 가른다
