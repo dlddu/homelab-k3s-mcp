@@ -328,19 +328,6 @@ def set_auto_response(url: str, mode: str, owner: str = VARIANT_OWNER) -> None:
     assert response.json()["auto_response"] == mode, response.json()
 
 
-async def call_with_verdict(
-    session, url: str, tool: str, arguments: dict, marker: str, status: str = "APPROVED"
-) -> tuple[dict, asyncio.Task]:
-    task = asyncio.create_task(session.call_tool(tool, arguments))
-    try:
-        row = await wait_for_pending(url, marker)
-        await decide(url, row["id"], status)
-    except BaseException:
-        task.cancel()
-        raise
-    return row, task
-
-
 def trace_records(url: str) -> list[dict]:
     """기록 프록시가 쌓아 둔 전체 기록."""
     response = httpx.get(f"{url}/records", timeout=10.0)

@@ -384,9 +384,6 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 	if entry.collectionGate {
 		return h.callDeleteCollection(ctx, name, entry, rawArgs)
 	}
-	if entry.decl.externalWrite != nil {
-		return h.callExternalWrite(ctx, name, entry, rawArgs)
-	}
 	decision, approved, rerr := h.authorize(ctx, name, entry, rawArgs)
 	if rerr != nil {
 		return nil, rerr

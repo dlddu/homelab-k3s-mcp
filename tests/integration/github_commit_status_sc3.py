@@ -13,13 +13,11 @@ from __future__ import annotations
 
 import asyncio
 import os
-import uuid
 from typing import Any
 
 import httpx
 from mcp import ClientSession
 
-from _approval_gate import approval_url, call_with_verdict, count_requests
 from _helpers import base_url, open_session, wait_for_healthz
 
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
@@ -28,7 +26,7 @@ MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/"
 # 나머지 다섯 케이스의 통과로 교차 확인되게 한다.
 VALID_ARGUMENTS = {
     "repository": "homelab-k3s-mcp",
-    "sha": (uuid.uuid4().hex + uuid.uuid4().hex)[:40],
+    "sha": "0" * 40,
     "state": "success",
     "context": "homelab-k3s-mcp/e2e",
 }
@@ -75,7 +73,7 @@ def refusal_text(result) -> str:
 
 
 async def test_github_commit_status_ac3_invalid_input_never_reaches_github(
-    session: ClientSession, gate: str
+    session: ClientSession,
 ) -> None:
     """케이스마다 재면 "다섯은 막고 하나는 흘렸다" 를 그 하나의 자리에서 잡을 수 있지만,
     상류로 새는 요청이 토큰 발급처럼 앞선 단계에서 날아갈 수도 있어 창을 좁히면 오히려 놓친다.
@@ -89,11 +87,10 @@ async def test_github_commit_status_ac3_invalid_input_never_reaches_github(
 
     leaked = recorded()
     assert leaked == [], f"invalid input reached the upstream: {leaked}"
-    assert count_requests(gate, VALID_ARGUMENTS["sha"]) == 0, "invalid input asked for approval"
 
 
 async def test_github_commit_status_ac3_recorder_sees_a_call_that_passes_validation(
-    session: ClientSession, gate: str
+    session: ClientSession,
 ) -> None:
     """위 단언은 "0 건" 이라, 로그가 어떤 이유로든 비어 있기만 하면 통과한다(스텁이
     기록을 멈췄거나, 배포가 GitHub App 미설정이라 검증 이전에 거부하거나). 유효한
@@ -102,10 +99,7 @@ async def test_github_commit_status_ac3_recorder_sees_a_call_that_passes_validat
     주장이 아니고, `POST …/statuses/{sha}` 핸들러는 아직 시나리오 1 의 몫이다.
     """
     reset_recorded()
-    _, task = await call_with_verdict(
-        session, gate, "github_commit_status_create", dict(VALID_ARGUMENTS), VALID_ARGUMENTS["sha"]
-    )
-    await task
+    await session.call_tool("github_commit_status_create", dict(VALID_ARGUMENTS))
 
     assert recorded(), (
         "a call that passes validation recorded nothing upstream — "
@@ -118,17 +112,16 @@ async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
 
-    with approval_url() as gate:
-        async with open_session(url) as session:
-            print("--- github-commit-status/AC3 ---")
-            try:
-                await test_github_commit_status_ac3_invalid_input_never_reaches_github(session, gate)
-                await test_github_commit_status_ac3_recorder_sees_a_call_that_passes_validation(
-                    session, gate
-                )
-            finally:
-                reset_recorded()
-            print("ok: github-commit-status/AC3")
+    async with open_session(url) as session:
+        print("--- github-commit-status/AC3 ---")
+        try:
+            await test_github_commit_status_ac3_invalid_input_never_reaches_github(session)
+            await test_github_commit_status_ac3_recorder_sees_a_call_that_passes_validation(
+                session
+            )
+        finally:
+            reset_recorded()
+        print("ok: github-commit-status/AC3")
 
 
 if __name__ == "__main__":

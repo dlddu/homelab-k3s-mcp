@@ -7,12 +7,13 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 )
 
-func parseCommitStatusInput(raw json.RawMessage) (github.CommitStatusInput, *rpcErr) {
-	in := github.CommitStatusInput{}
+func (h *Handler) githubCommitStatusCreate(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, isObject := decodeObject(raw)
 	if !isObject {
-		return in, errf(-32602, "arguments must be an object")
+		return nil, errf(-32602, "arguments must be an object")
 	}
+
+	in := github.CommitStatusInput{}
 	for _, field := range []struct {
 		name string
 		dest *string
@@ -30,28 +31,9 @@ func parseCommitStatusInput(raw json.RawMessage) (github.CommitStatusInput, *rpc
 		}
 		s, ok := value.(string)
 		if !ok {
-			return in, errf(-32602, "%s must be a string", field.name)
+			return nil, errf(-32602, "%s must be a string", field.name)
 		}
 		*field.dest = s
-	}
-	return in, nil
-}
-
-func (h *Handler) githubCommitStatusPrecheck(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
-	in, rerr := parseCommitStatusInput(raw)
-	if rerr != nil {
-		return nil, rerr
-	}
-	if err := h.github.CheckCommitStatus(in); err != nil {
-		return toolError(ctx, err), nil
-	}
-	return nil, nil
-}
-
-func (h *Handler) githubCommitStatusCreate(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
-	in, rerr := parseCommitStatusInput(raw)
-	if rerr != nil {
-		return nil, rerr
 	}
 
 	status, err := h.github.CreateCommitStatus(ctx, in)

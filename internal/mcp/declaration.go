@@ -1,8 +1,6 @@
 package mcp
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"sort"
 )
@@ -22,13 +20,6 @@ const (
 type noResourcePermission struct {
 	kind   noResourcePermissionKind
 	reason string
-}
-
-type externalWrite struct {
-	action string
-	reason string
-
-	precheck func(*Handler, context.Context, json.RawMessage) (any, *rpcErr)
 }
 
 // validateDeclarations enforces the startup half of prd-approval-gate AC1.
@@ -59,27 +50,7 @@ func validateDeclarations(registered map[string]toolEntry) []string {
 					"%s claims no resource permission without saying why (prd-approval-gate AC1)", name))
 			}
 		}
-		problems = append(problems, validateExternalWrite(name, d)...)
 	}
 	sort.Strings(problems)
 	return problems
-}
-
-func validateExternalWrite(name string, d toolDeclaration) []string {
-	w := d.externalWrite
-	if w == nil {
-		return nil
-	}
-	switch {
-	case d.noResourcePermission == nil || d.noResourcePermission.kind != touchesNothing:
-		return []string{fmt.Sprintf(
-			"%s declares an external write gate but is not marked as touching no kubernetes resource"+
-				" — a tool with pairs is gated by its verbs (prd-approval-gate AC1)", name)}
-	case w.action == "" || w.reason == "":
-		return []string{fmt.Sprintf(
-			"%s declares an external write gate without its action and the document that requires it", name)}
-	case w.precheck == nil:
-		return []string{fmt.Sprintf("%s declares an external write gate without a precheck", name)}
-	}
-	return nil
 }
