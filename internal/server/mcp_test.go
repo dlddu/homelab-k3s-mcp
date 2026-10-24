@@ -1804,9 +1804,8 @@ func TestToolsListAdvertisesSessionCreate(t *testing.T) {
 	if len(required) != 1 || required[0] != "name" {
 		t.Fatalf("required = %v, want [name]", required)
 	}
-	enum, _ := at(t, create, "inputSchema", "properties", "workloadType", "enum").([]any)
-	if fmt.Sprint(enum) != "[shell claude-code approval-gated]" {
-		t.Fatalf("workloadType enum = %v", enum)
+	if enum, ok := at(t, create, "inputSchema", "properties", "workloadType").(map[string]any)["enum"]; ok {
+		t.Fatalf("workloadType enum = %v, want none: the control plane decides which types it offers", enum)
 	}
 
 	if at(t, create, "annotations", "title") != "Create Session" ||
@@ -1854,7 +1853,7 @@ func TestSessionCreateRejectsBadArguments(t *testing.T) {
 		{name: "missing name", args: map[string]any{}, want: "name is required"},
 		{name: "blank name", args: map[string]any{"name": "   "}, want: "name is required"},
 		{name: "numeric name", args: map[string]any{"name": 7}, want: "name must be a string"},
-		{name: "unknown workload", args: map[string]any{"name": "x", "workloadType": "bash"}, want: "workloadType must be one of"},
+		{name: "numeric workload", args: map[string]any{"name": "x", "workloadType": 7}, want: "workloadType must be a string"},
 		{name: "numeric model", args: map[string]any{"name": "x", "model": 3}, want: "model must be a string"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

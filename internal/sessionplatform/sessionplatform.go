@@ -15,7 +15,6 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"slices"
 	"strings"
 	"time"
 
@@ -31,8 +30,6 @@ const (
 	httpClientTimeout = 10 * time.Second
 	createTimeout     = 5 * time.Minute
 )
-
-var workloadTypes = []string{"shell", "claude-code", "approval-gated"}
 
 // sessionPath renders the control plane's per-session endpoint,
 // DELETE /api/v1/sessions/{id}.
@@ -249,9 +246,8 @@ func (c *Client) CreateSession(ctx context.Context, req CreateRequest) (*Session
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, invalidArgument("name must contain a non-whitespace character")
 	}
-	if req.WorkloadType != "" && !slices.Contains(workloadTypes, req.WorkloadType) {
-		return nil, invalidArgument(fmt.Sprintf("workloadType must be one of %s, got %q",
-			strings.Join(workloadTypes, ", "), req.WorkloadType))
+	if err := c.checkWorkloadType(ctx, req.WorkloadType); err != nil {
+		return nil, err
 	}
 
 	endpoint := c.endpoint + sessionsPath

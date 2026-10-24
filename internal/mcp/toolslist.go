@@ -827,7 +827,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_create",
-      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers, so this call BLOCKS — typically seconds, up to a few minutes on a cold image pull — and returns the session already 'active' with its 'pod', ready for session_write and session_read. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, 'claude-code' runs the Claude Code CLI one prompt per write, 'approval-gated' runs the agent behind a human approval gate; a type whose image the platform does not have configured is refused. 'model' applies to the agent types only and defaults to the platform default. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers, so this call BLOCKS — typically seconds, up to a few minutes on a cold image pull — and returns the session already 'active' with its 'pod', ready for session_write and session_read. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, and the agent types (for example 'claude-code', 'approval-gated', 'minimax-code') run one prompt per write. The types available are the ones this deployment offers, read from the control plane on each call rather than fixed here; a type it does not offer is refused before anything is created, and the refusal lists the offered ones. 'model' applies to agent types only and defaults to the platform default. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -838,12 +838,12 @@ const toolsListJSON = `{
           },
           "workloadType": {
             "type": "string",
-            "enum": ["shell", "claude-code", "approval-gated"],
-            "description": "Workload the session runs. Defaults to 'shell'. Immutable after creation."
+            "minLength": 1,
+            "description": "Workload the session runs: one of the types the control plane offers (an unknown one is refused with the offered list). Defaults to 'shell'. Immutable after creation."
           },
           "model": {
             "type": "string",
-            "description": "Model for a 'claude-code' or 'approval-gated' session. Omit to use the platform default. Not allowed for 'shell'."
+            "description": "Model for an agent session. Omit to use the platform default. Not allowed for 'shell', and refused by the control plane for a type that takes no model choice."
           }
         },
         "required": ["name"],
@@ -859,7 +859,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_list",
-      "description": "List the sessions the session-platform control plane holds. The control plane is reachable only from inside the cluster, so this tool is the way to see the inventory without an ingress or a port-forward. Takes no arguments. Returns each session's id, name, workloadType (shell | claude-code), state (active | idle | snapshot), pod (absent while a session is snapshotted and its pods are reclaimed), createdAt and lastAccess. Listing is passive: it does not promote an idle session, restore a snapshot, or refresh lastAccess. An empty control plane returns an empty list, not an error. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "List the sessions the session-platform control plane holds. The control plane is reachable only from inside the cluster, so this tool is the way to see the inventory without an ingress or a port-forward. Takes no arguments. Returns each session's id, name, workloadType (shell or an agent type), state (active | idle | snapshot), pod (absent while a session is snapshotted and its pods are reclaimed), createdAt and lastAccess. Listing is passive: it does not promote an idle session, restore a snapshot, or refresh lastAccess. An empty control plane returns an empty list, not an error. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {},

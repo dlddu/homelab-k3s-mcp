@@ -17,9 +17,10 @@ from mcp.shared.exceptions import McpError
 from _helpers import base_url, open_session, wait_for_healthz
 from _session_platform import pod_names, sessions_from
 
-PROTOCOL_REFUSALS = (
-    ({"name": "   "}, "name is required"),
-    ({"name": "e2e create sc2", "workloadType": "bash"}, "workloadType must be one of"),
+PROTOCOL_REFUSALS = (({"name": "   "}, "name is required"),)
+UNOFFERED_TYPES = (
+    {"name": "e2e create sc2", "workloadType": "bash"},
+    {"name": "e2e create sc2", "workloadType": "claude-code"},
 )
 CONTROL_PLANE_REFUSAL = {"name": "e2e create sc2", "workloadType": "shell", "model": "sonnet"}
 
@@ -41,6 +42,15 @@ async def test_session_create_sc2_refusals_create_nothing(session) -> None:
             raise AssertionError(f"{arguments} was not refused as invalid params")
         assert await _snapshot(session) == before, f"{arguments} changed the platform"
         print("protocol refusal ok:", reason)
+
+    for arguments in UNOFFERED_TYPES:
+        result = await session.call_tool("session_create", arguments)
+        assert result.isError is True, result
+        text = result.content[0].text
+        assert "invalid argument" in text, text
+        assert "workloadType must be one of shell" in text, text
+        assert await _snapshot(session) == before, f"{arguments} changed the platform"
+        print("unoffered type refusal ok:", text)
 
     result = await session.call_tool("session_create", CONTROL_PLANE_REFUSAL)
     assert result.isError is True, result
