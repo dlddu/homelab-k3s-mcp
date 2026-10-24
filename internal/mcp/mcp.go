@@ -759,11 +759,6 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, errf(-32602, "name is required and must contain a non-whitespace character")
 	}
-	switch req.WorkloadType {
-	case "", "shell", "claude-code", "approval-gated":
-	default:
-		return nil, errf(-32602, "workloadType must be one of shell, claude-code, approval-gated")
-	}
 
 	created, err := h.sessionPlatform.CreateSession(ctx, req)
 	if err != nil {

@@ -93,6 +93,12 @@ rules:
   - apiGroups: ["coordination.k8s.io"]
     resources: ["leases"]
     verbs: ["create", "get", "list", "watch", "update", "patch", "delete"]
+  - apiGroups: ["networking.k8s.io"]
+    resources: ["networkpolicies"]
+    verbs: ["create", "get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["create", "get", "list", "watch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -134,7 +140,7 @@ spec:
         kubernetes.io/arch: arm64
       containers:
         - name: control-plane
-          image: ghcr.io/dlddu/session-platform:5f60249f8381d5cfecbe093bb77fc30d874697f4
+          image: ghcr.io/dlddu/session-platform:b7d9f93241fb393788bc4424d8224be461d9c107
           ports:
             - name: http
               containerPort: 8080
@@ -143,7 +149,7 @@ spec:
             - name: CP_ADDR
               value: ":8080"
             - name: DATA_PLANE_IMAGE
-              value: ghcr.io/dlddu/session-platform-data-plane:5f60249f8381d5cfecbe093bb77fc30d874697f4
+              value: ghcr.io/dlddu/session-platform-data-plane:b7d9f93241fb393788bc4424d8224be461d9c107
           readinessProbe:
             httpGet:
               path: /api/v1/healthz

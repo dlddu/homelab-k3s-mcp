@@ -925,7 +925,7 @@ func TestCreateSessionOmitsUnsetFields(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-	if body := (*seen)[1].body; body != `{"name":"agent","workloadType":"claude-code","model":"sonnet"}` {
+	if body := (*seen)[len(*seen)-1].body; body != `{"name":"agent","workloadType":"claude-code","model":"sonnet"}` {
 		t.Fatalf("body = %s", body)
 	}
 }
@@ -937,7 +937,6 @@ func TestCreateSessionRejectsBadRequestsBeforeTheWire(t *testing.T) {
 	}{
 		{name: "empty name", req: CreateRequest{}},
 		{name: "blank name", req: CreateRequest{Name: " \t\n"}},
-		{name: "unknown workload", req: CreateRequest{Name: "scratch", WorkloadType: "bash"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c, seen := lifecycleStub(t, http.StatusCreated, createdShell, 0)
