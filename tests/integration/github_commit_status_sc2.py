@@ -13,13 +13,11 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import uuid
 from typing import Any
 
 import httpx
 from mcp import ClientSession
 
-from _approval_gate import approval_url, call_with_verdict
 from _helpers import GITHUB_APP_INSTALLATION_ID, base_url, open_session, wait_for_healthz
 
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
@@ -61,40 +59,36 @@ def recorded(method: str, path: str) -> list[dict[str, Any]]:
     ]
 
 
-async def call_and_read_mint(session: ClientSession, gate: str, arguments: dict[str, Any]):
+async def call_and_read_mint(session: ClientSession, arguments: dict[str, Any]):
     """One tool call; returns (result, the single mint body it caused)."""
     reset_recorded()
-    marker = f"{arguments['description']} {uuid.uuid4().hex[:12]}"
-    _, task = await call_with_verdict(
-        session, gate, "github_commit_status_create", {**arguments, "description": marker}, marker
-    )
-    result = await task
+    result = await session.call_tool("github_commit_status_create", arguments)
     mints = recorded("POST", MINT_PATH)
     assert len(mints) == 1, f"expected exactly one mint for {arguments['sha']}, got {mints}"
     return result, json.loads(mints[0]["body"])
 
 
 async def test_github_commit_status_ac2_mints_a_narrow_token(
-    session: ClientSession, gate: str
+    session: ClientSession,
 ) -> None:
     """Checked on the success call and on the 422 call alike: the scope is
     decided before the upstream answers, so an error path that widened it
     would be just as much a violation.
     """
-    success, success_mint = await call_and_read_mint(session, gate, SUCCESS_ARGUMENTS)
+    success, success_mint = await call_and_read_mint(session, SUCCESS_ARGUMENTS)
     assert success.isError is False, success
     assert success_mint == EXPECTED_MINT_BODY, success_mint
 
-    failure, failure_mint = await call_and_read_mint(session, gate, FAILURE_ARGUMENTS)
+    failure, failure_mint = await call_and_read_mint(session, FAILURE_ARGUMENTS)
     assert failure.isError is True, failure
     assert failure_mint == EXPECTED_MINT_BODY, failure_mint
 
 
 async def test_github_commit_status_ac2_never_exposes_the_token(
-    session: ClientSession, gate: str
+    session: ClientSession,
 ) -> None:
     for arguments in (SUCCESS_ARGUMENTS, FAILURE_ARGUMENTS):
-        result, _ = await call_and_read_mint(session, gate, arguments)
+        result, _ = await call_and_read_mint(session, arguments)
 
         revocations = recorded("DELETE", REVOKE_PATH)
         assert len(revocations) == 1, revocations
@@ -112,15 +106,14 @@ async def run() -> None:
     url = base_url()
     wait_for_healthz(url)
 
-    with approval_url() as gate:
-        async with open_session(url) as session:
-            print("--- github-commit-status/AC2 ---")
-            try:
-                await test_github_commit_status_ac2_mints_a_narrow_token(session, gate)
-                await test_github_commit_status_ac2_never_exposes_the_token(session, gate)
-            finally:
-                reset_recorded()
-            print("ok: github-commit-status/AC2")
+    async with open_session(url) as session:
+        print("--- github-commit-status/AC2 ---")
+        try:
+            await test_github_commit_status_ac2_mints_a_narrow_token(session)
+            await test_github_commit_status_ac2_never_exposes_the_token(session)
+        finally:
+            reset_recorded()
+        print("ok: github-commit-status/AC2")
 
 
 if __name__ == "__main__":

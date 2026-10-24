@@ -93,7 +93,6 @@ type InstallationToken struct {
 type Service interface {
 	CreateInstallationToken(ctx context.Context, repositories []string, permissions map[string]any) (*InstallationToken, error)
 	CreateCommitStatus(ctx context.Context, in CommitStatusInput) (*CommitStatus, error)
-	CheckCommitStatus(in CommitStatusInput) error
 }
 
 // Unavailable is a Service that fails every call with the same reason.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"sync"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
@@ -231,24 +230,6 @@ func (f *fakeGitHub) CreateCommitStatus(_ context.Context, in github.CommitStatu
 		Context: in.Context,
 		SHA:     in.SHA,
 	}, nil
-}
-
-func (f *fakeGitHub) CheckCommitStatus(github.CommitStatusInput) error { return nil }
-
-type approvingGate struct {
-	mu       sync.Mutex
-	contexts []string
-}
-
-func (g *approvingGate) Authorize(ctx context.Context, call approvalgate.Call) (*approvalgate.Decision, error) {
-	text, err := call.Describe(ctx)
-	if err != nil {
-		return nil, err
-	}
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	g.contexts = append(g.contexts, text)
-	return &approvalgate.Decision{RequestID: "req-approved"}, nil
 }
 
 type fakeAWS struct {

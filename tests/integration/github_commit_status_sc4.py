@@ -14,13 +14,11 @@ from __future__ import annotations
 import asyncio
 import os
 import subprocess
-import uuid
 from typing import Any
 
 import httpx
 from mcp import ClientSession
 
-from _approval_gate import approval_url, call_with_verdict, count_requests
 from _auth_variant import API_KEY
 from _helpers import base_url, open_session, port_forward, wait_for_healthz
 
@@ -87,33 +85,24 @@ def available_replicas(namespace: str, deployment: str) -> int:
 
 
 async def test_github_commit_status_ac4_foreign_context_is_refused(
-    session: ClientSession, gate: str
+    session: ClientSession,
 ) -> None:
     """The own-prefix call right after the refusal is the positive control that
     the guard is a prefix check and not a blanket refusal — it must actually
     be written, on this same deployment, in this same session.
     """
     reset_recorded()
-    refused_marker = f"e2e foreign {uuid.uuid4().hex[:12]}"
     refused = await session.call_tool(
-        "github_commit_status_create",
-        {**BASE_ARGUMENTS, "context": FOREIGN_CONTEXT, "description": refused_marker},
+        "github_commit_status_create", {**BASE_ARGUMENTS, "context": FOREIGN_CONTEXT}
     )
     text = refusal_text(refused)
     assert f'context "{FOREIGN_CONTEXT}" is outside the allowed prefixes' in text, text
     assert ALLOWED_PREFIX in text, text
     assert recorded() == [], f"a refused context still reached the upstream: {recorded()}"
-    assert count_requests(gate, refused_marker) == 0, "a refused context still asked for approval"
 
-    accepted_marker = f"e2e own {uuid.uuid4().hex[:12]}"
-    _, task = await call_with_verdict(
-        session,
-        gate,
-        "github_commit_status_create",
-        {**BASE_ARGUMENTS, "context": OWN_CONTEXT, "description": accepted_marker},
-        accepted_marker,
+    accepted = await session.call_tool(
+        "github_commit_status_create", {**BASE_ARGUMENTS, "context": OWN_CONTEXT}
     )
-    accepted = await task
     assert accepted.isError is False, accepted
     writes = [r for r in recorded() if r["method"] == "POST" and r["path"] == STATUS_PATH]
     assert len(writes) == 1, f"the own-prefix context was not written: {recorded()}"
@@ -150,9 +139,8 @@ async def run() -> None:
 
     print("--- github-commit-status/AC4 ---")
     try:
-        with approval_url() as gate:
-            async with open_session(url) as session:
-                await test_github_commit_status_ac4_foreign_context_is_refused(session, gate)
+        async with open_session(url) as session:
+            await test_github_commit_status_ac4_foreign_context_is_refused(session)
         await test_github_commit_status_ac4_unconfigured_prefix_refuses_everything()
     finally:
         reset_recorded()

@@ -47,8 +47,6 @@ func (g secretGitHub) CreateCommitStatus(context.Context, github.CommitStatusInp
 	return nil, errors.New("unused")
 }
 
-func (secretGitHub) CheckCommitStatus(github.CommitStatusInput) error { return nil }
-
 type secretGrafana struct{ token string }
 
 func (g secretGrafana) CreateToken(context.Context) (*grafana.Credentials, error) {
@@ -152,8 +150,6 @@ func (failingGitHub) CreateInstallationToken(context.Context, []string, map[stri
 func (failingGitHub) CreateCommitStatus(context.Context, github.CommitStatusInput) (*github.CommitStatus, error) {
 	return nil, errors.New("unused")
 }
-
-func (failingGitHub) CheckCommitStatus(github.CommitStatusInput) error { return nil }
 
 // AC2 + AC4: every refusal carries one of the eight reasons, and the reasons
 // tell the classes apart — the arguments, the gate's five answers, an
