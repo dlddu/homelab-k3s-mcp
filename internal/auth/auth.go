@@ -1,5 +1,6 @@
-// Package auth implements OAuth 2.0 bearer-token protection for the MCP
-// endpoint, validating RS256 JWTs against a provider's JWKS.
+// Package auth implements bearer-token protection for the MCP endpoint: static
+// API keys, OAuth 2.0 RS256 JWTs and GitHub Actions OIDC tokens, the latter two
+// validated against their issuer's JWKS.
 package auth
 
 import (
@@ -23,6 +24,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
+	"github.com/dlddu/homelab-k3s-mcp/internal/toolscope"
 )
 
 const httpClientTimeout = 10 * time.Second
@@ -37,6 +39,8 @@ type Config struct {
 	http    *http.Client
 
 	apiKeys []string
+
+	github *githubOIDC
 
 	events eventlog.Sink
 
@@ -78,8 +82,13 @@ func FromEnv(ctx context.Context) (*Config, error) {
 	resource := os.Getenv("MCP_OAUTH_RESOURCE")
 	oauthRequested := issuer != "" || audience != "" || resource != ""
 
-	if len(apiKeys) == 0 && !oauthRequested {
-		return nil, fmt.Errorf("no authentication configured: set MCP_API_KEYS and/or MCP_OAUTH_ISSUER+MCP_OAUTH_AUDIENCE, or MCP_AUTH_DISABLED=1 to serve /mcp without auth")
+	ghIssuer := os.Getenv("MCP_GITHUB_OIDC_ISSUER")
+	ghAudience := os.Getenv("MCP_GITHUB_OIDC_AUDIENCE")
+	ghRules := os.Getenv("MCP_GITHUB_OIDC_RULES")
+	githubRequested := ghIssuer != "" || ghAudience != "" || ghRules != ""
+
+	if len(apiKeys) == 0 && !oauthRequested && !githubRequested {
+		return nil, fmt.Errorf("no authentication configured: set MCP_API_KEYS, MCP_OAUTH_ISSUER+MCP_OAUTH_AUDIENCE and/or MCP_GITHUB_OIDC_AUDIENCE+MCP_GITHUB_OIDC_RULES, or MCP_AUTH_DISABLED=1 to serve /mcp without auth")
 	}
 
 	cfg := &Config{
@@ -91,6 +100,17 @@ func FromEnv(ctx context.Context) (*Config, error) {
 		if err := cfg.configureOAuth(ctx, issuer, audience, resource); err != nil {
 			return nil, err
 		}
+	}
+
+	if githubRequested {
+		gh, err := newGitHubOIDC(ctx, ghIssuer, ghAudience, ghRules)
+		if err != nil {
+			return nil, err
+		}
+		if cfg.OAuthConfigured() && strings.TrimRight(cfg.Issuer, "/") == gh.issuer {
+			return nil, fmt.Errorf("MCP_OAUTH_ISSUER and the GitHub OIDC issuer are both %s: a token could not be told apart", gh.issuer)
+		}
+		cfg.github = gh
 	}
 
 	return cfg, nil
@@ -156,9 +176,21 @@ func getJSON(ctx context.Context, client *http.Client, url string, out any) erro
 }
 
 func (c *Config) refreshKeys(ctx context.Context) error {
+	newKeys, err := fetchRSAKeys(ctx, c.http, c.jwksURI)
+	if err != nil {
+		return err
+	}
+
+	c.mu.Lock()
+	c.keys = newKeys
+	c.mu.Unlock()
+	return nil
+}
+
+func fetchRSAKeys(ctx context.Context, client *http.Client, jwksURI string) (map[string]*rsa.PublicKey, error) {
 	var set jwks
-	if err := getJSON(ctx, c.http, c.jwksURI, &set); err != nil {
-		return fmt.Errorf("fetch %s: %w", c.jwksURI, err)
+	if err := getJSON(ctx, client, jwksURI, &set); err != nil {
+		return nil, fmt.Errorf("fetch %s: %w", jwksURI, err)
 	}
 
 	newKeys := map[string]*rsa.PublicKey{}
@@ -174,13 +206,9 @@ func (c *Config) refreshKeys(ctx context.Context) error {
 	}
 
 	if len(newKeys) == 0 {
-		return fmt.Errorf("jwks contains no usable RSA keys")
+		return nil, fmt.Errorf("jwks contains no usable RSA keys")
 	}
-
-	c.mu.Lock()
-	c.keys = newKeys
-	c.mu.Unlock()
-	return nil
+	return newKeys, nil
 }
 
 func rsaPublicKey(nStr, eStr string) (*rsa.PublicKey, error) {
@@ -297,8 +325,8 @@ func (c *Config) apiKeyIndex(raw string) int {
 	return index
 }
 
-// RequireBearer wraps next, rejecting requests that present neither a valid
-// static API key nor a valid OAuth bearer JWT.
+// RequireBearer wraps next, rejecting requests that present no valid static API
+// key, OAuth bearer JWT or GitHub Actions OIDC token.
 func (c *Config) RequireBearer(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, authErr := extractBearer(r)
@@ -309,6 +337,17 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 		if index := c.apiKeyIndex(token); index != 0 {
 			slog.Debug("mcp authenticated", "method", "api_key")
 			next.ServeHTTP(w, withPrincipal(r, eventlog.Principal{Method: "api_key", ID: strconv.Itoa(index)}))
+			return
+		}
+		if c.github != nil && c.github.issues(token) {
+			caller, tools, err := c.github.verify(r.Context(), token)
+			if err != nil {
+				c.unauthorized(w, r, "invalid_token")
+				return
+			}
+			slog.Debug("mcp authenticated", "method", githubOIDCMethod)
+			r = withPrincipal(r, eventlog.Principal{Method: githubOIDCMethod, ID: caller})
+			next.ServeHTTP(w, r.WithContext(toolscope.With(r.Context(), tools)))
 			return
 		}
 		subject, err := c.verify(r.Context(), token)

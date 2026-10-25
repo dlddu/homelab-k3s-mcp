@@ -8,6 +8,8 @@
 - AC6: 헬스·레디니스 (PRD: platform)
 - AC7: API 키 인증 (비대화형) (PRD: platform)
 - AC8: 인증 방식 구성 유연성 (PRD: platform)
+- AC9: GitHub Actions OIDC 인증 (워크플로) (PRD: platform)
+- AC10: GitHub Actions 호출자의 도구 범위 제한 (PRD: platform)
 
 ## 테스트 시나리오
 
@@ -109,3 +111,41 @@
   issuer/audience 필수 테스트를 "API 키 미설정 시에만 OAuth 필수"로 갱신). 디스커버리 조건부
   제공은 `internal/server/auth_routing_test.go::TestDiscoveryServedWhenOAuthConfigured`·
   `TestDiscoveryAbsentWhenOAuthNotConfigured`.
+
+### 시나리오 9: GitHub Actions OIDC 토큰 인증
+- **사전 조건**: 인증 활성, `MCP_GITHUB_OIDC_ISSUER`가 GitHub 클레임(`repository`·`workflow_ref`)을
+  담아 서명하는 발급자, `MCP_GITHUB_OIDC_AUDIENCE` 설정, `MCP_GITHUB_OIDC_RULES`에 레포 R 의 레포
+  규칙과 워크플로 W 규칙, 레포 N 의 워크플로 J 규칙만 등재
+- **실행 단계**: (a) R/W, R/다른 워크플로, N/J 토큰으로 요청, (b) 규칙 밖 레포·N 의 다른 워크플로·
+  N 의 `workflow_ref` 없음·다른 레포를 가리키는 `workflow_ref`·`repository` 없음·다른 audience·
+  만료·`exp` 없음·다른 키 서명 토큰으로 요청, (c) OAuth도 구성한 상태에서 OAuth JWT로 요청,
+  (d) audience 또는 규칙이 빈 구성, 잘못된 형태의 규칙, OAuth와 같은 발급자를 쓰는 구성으로 기동
+- **기대 결과**: (a) 정상 처리 + 기록 주체 `github_oidc:<레포>/<워크플로 경로>`, (b) 401
+  `invalid_token` + 응답에 토큰 미노출, (c) OAuth 경로로 통과하고 도구 범위가 걸리지 않음,
+  (d) 기동 실패
+- **검증 AC**: AC9 (일부 AC1·AC8)
+- **자동화**: Go 단위 `internal/auth/github_oidc_test.go::TestRequireBearerAcceptsGitHubOIDCAndScopesTools`,
+  `TestRequireBearerRefusesGitHubOIDC`, `TestRequireBearerKeepsOAuthUnscopedNextToGitHubOIDC`,
+  `TestFromEnvGitHubOIDCOnly`, `TestFromEnvGitHubOIDCRequiresAudienceAndRules`,
+  `TestFromEnvRefusesOneIssuerForOAuthAndGitHub`, `TestParseGitHubRules`, `TestWorkflowPath`,
+  그리고 auth·디스패처를 잇는 `internal/server/github_oidc_test.go::TestGitHubOIDCTokenFromAnotherRepositoryIsUnauthorized`.
+  배포 서버 e2e는 🚧 공백 — kind 에 GitHub 클레임을 내는 발급자가 없다(dex 는 `repository`·
+  `workflow_ref` 클레임을 낼 수 없다).
+
+### 시나리오 10: GitHub Actions 호출자는 자기 레포의 도구만 본다
+- **사전 조건**: 시나리오 9의 구성. R/W 규칙의 범위는 `["github_commit_status_create", "ping"]`,
+  R 레포 규칙의 범위는 `["opensearch_search", "ping"]`
+- **실행 단계**: (a) R/W 토큰과 R/다른 워크플로 토큰으로 허용 집합 확인, (b) W 범위만 둔 배포에서
+  `tools/list`, (c) `ping` 호출, (d) 범위 밖이지만 존재하는 `resource_delete` 호출과 존재하지 않는
+  도구 호출, (e) 서버에 없는 도구 이름을 규칙에 넣은 구성으로 기동
+- **기대 결과**: (a) R/W 는 합집합(`ping`·`github_commit_status_create`·`opensearch_search`), R/다른
+  워크플로는 레포 규칙만, (b) 정확히 `ping`·`github_commit_status_create`가 광고 순서대로, 각
+  항목의 스키마는 원래 그대로, (c) `pong`, (d) 두 호출 모두 `-32602` · `unknown tool: <name>` —
+  형태가 같고, `resource_delete` 거부 기록이 `principal=github_oidc:R/<W 경로>` · `result=refused` ·
+  `reason=invalid_input`, (e) 기동 실패(`invalid auth config`)
+- **검증 AC**: AC10
+- **자동화**: Go 단위 `internal/auth/github_oidc_test.go::TestRequireBearerAcceptsGitHubOIDCAndScopesTools`(합집합·
+  워크플로별 범위), `internal/server/github_oidc_test.go::TestGitHubOIDCCallerSeesOnlyItsTools`,
+  `TestGitHubOIDCCallerIsRefusedOutOfScopeAsIfTheToolDidNotExist`(실 auth 미들웨어 + 디스패처를
+  로컬 JWKS 발급자로 엮는다), `internal/auth/github_oidc_test.go::TestCheckToolScopes`,
+  `internal/toolscope/toolscope_test.go`. 배포 서버 e2e는 시나리오 9와 같은 이유로 🚧 공백.

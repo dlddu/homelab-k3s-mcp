@@ -49,17 +49,19 @@ tests — it never pushes.
 
 ## Authentication
 
-The `/mcp` endpoint is protected by default. Two credential paths gate it and
-they compose — configure either or both, but at least one must be present:
+The `/mcp` endpoint is protected by default. Three credential paths gate it and
+they compose — configure any combination, but at least one must be present:
 
 | Path | Env | For |
 |------|-----|-----|
 | OAuth 2.0 Bearer (RS256 JWT, JWKS-verified) | `MCP_OAUTH_ISSUER`, `MCP_OAUTH_AUDIENCE`, `MCP_OAUTH_RESOURCE` | Interactive MCP clients that run the OAuth flow |
 | Static API keys | `MCP_API_KEYS` | Non-interactive automation that cannot run OAuth |
+| GitHub Actions OIDC (RS256 JWT, JWKS-verified) | `MCP_GITHUB_OIDC_AUDIENCE`, `MCP_GITHUB_OIDC_RULES`, optional `MCP_GITHUB_OIDC_ISSUER` | Workflows in allowed repositories, each limited to its own tools |
 
 A request presents its credential as `Authorization: Bearer <credential>`. The
 middleware matches the value against the configured API keys first (constant-time
-comparison), and on no match falls back to JWT verification. Either success
+comparison). On no match, a JWT whose `iss` is the GitHub Actions issuer goes to
+GitHub OIDC verification and any other JWT to OAuth verification. Any success
 authorizes the request.
 
 If neither path is configured (and auth is not explicitly disabled), the server
@@ -100,12 +102,74 @@ Notes:
   logs only the count of configured keys.
 - **Rotation.** Add the new key, roll clients over, then drop the old key.
 
+### GitHub Actions OIDC (`MCP_GITHUB_OIDC_*`)
+
+A workflow asks GitHub for a short-lived OIDC token and presents it as the
+bearer. The server verifies the signature against the issuer's JWKS, checks
+`iss`, `aud` and `exp`, and admits the token only when a rule in
+`MCP_GITHUB_OIDC_RULES` matches it. There is no secret to store or rotate.
+
+A rule names a repository (`repository` claim, `owner/name`, case-insensitive)
+and optionally a workflow file (the path in the `workflow_ref` claim, any ref).
+A rule without `workflow` matches every workflow in that repository. When
+several rules match one token, their tools are combined:
+
+```json
+[
+  {"repository": "dlddu/reconciler", "workflow": ".github/workflows/reconcile.yml",
+   "tools": ["github_commit_status_create"]},
+  {"repository": "dlddu/reconciler", "tools": ["opensearch_search"]}
+]
+```
+
+Here `reconcile.yml` may use both tools and any other workflow in
+`dlddu/reconciler` only `opensearch_search`. The workflow display name (`name:`)
+is not used: several files may share it.
+
+A caller on this path sees only its tools in `tools/list`, and calling any
+other tool fails exactly like calling a tool that does not exist
+(`-32602 unknown tool: <name>`). Gated tools still wait for approval. API-key
+and OAuth callers are not scoped. The server refuses to start if a rule names a
+tool it does not have, has no tools, has an unknown field, or repeats another
+rule's repository and workflow, or if `MCP_OAUTH_ISSUER` is the same issuer.
+`MCP_GITHUB_OIDC_ISSUER` defaults to `https://token.actions.githubusercontent.com`;
+its discovery document and JWKS are fetched at startup, so an unreachable issuer
+stops the server.
+
+In production both values come from the Secret `homelab-k3s-mcp-github-oidc`
+(an ExternalSecret in flux-cd-apps, SSM `/flux-cd/homelab-k3s-mcp/github-oidc`),
+which `k8s/deployment.yaml` reads with `optional: true`; without it the path is
+off.
+
+Anyone who can push to an allowed repository can edit an allowed workflow file,
+or run it from another branch, and so use its tools. Grant each rule only what
+that workflow needs.
+
+In the workflow:
+
+```yaml
+permissions:
+  id-token: write
+steps:
+  - name: Call homelab-k3s-mcp
+    run: |
+      TOKEN=$(curl -sS -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+        "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=homelab-k3s-mcp" | jq -r .value)
+      curl -sS -X POST https://mcp.example/mcp \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+The call is recorded with the principal
+`github_oidc:<owner/name>/<workflow path>`.
+
 ### Disabling auth
 
 `MCP_AUTH_DISABLED=1` serves `/mcp` without any authentication. Use it only for
 local development or trusted-network testing, never in production.
 
-See `docs/prd-platform-auth-safety.md` (AC7, AC8) for the product requirements
+See `docs/prd-platform-auth-safety.md` (AC7–AC10) for the product requirements
 behind this behavior.
 
 ## Approval gate

@@ -21,6 +21,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
 	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
+	"github.com/dlddu/homelab-k3s-mcp/internal/toolscope"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
 
@@ -328,7 +329,7 @@ func (h *Handler) dispatch(ctx context.Context, method string, params json.RawMe
 	case "initialize":
 		return initializeResult(), nil
 	case "tools/list":
-		return json.RawMessage(toolsListJSON), nil
+		return toolsList(ctx), nil
 	case "tools/call":
 		return h.toolsCall(ctx, params)
 	case "ping":
@@ -376,6 +377,10 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 		return nil, errf(-32602, "missing tool name")
 	}
 	record.Tool = name
+
+	if !toolscope.Allows(ctx, name) {
+		return nil, errf(-32602, "unknown tool: %s", name)
+	}
 
 	args := params
 	rawArgs := extractArguments(args)
