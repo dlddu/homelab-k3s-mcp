@@ -55,7 +55,7 @@ func githubOIDCApp(t *testing.T) (http.Handler, func(repo string) string) {
 	t.Setenv("MCP_OAUTH_RESOURCE", "")
 	t.Setenv("MCP_GITHUB_OIDC_ISSUER", issuer.URL)
 	t.Setenv("MCP_GITHUB_OIDC_AUDIENCE", ghTestAudience)
-	t.Setenv("MCP_GITHUB_OIDC_REPOSITORIES", `{"dlddu/reconciler": ["github_commit_status_create", "ping"]}`)
+	t.Setenv("MCP_GITHUB_OIDC_RULES", `[{"repository": "dlddu/reconciler", "workflow": ".github/workflows/reconcile.yml", "tools": ["github_commit_status_create", "ping"]}]`)
 	cfg, err := auth.FromEnv(context.Background())
 	if err != nil {
 		t.Fatalf("FromEnv() = %v", err)
@@ -63,10 +63,11 @@ func githubOIDCApp(t *testing.T) (http.Handler, func(repo string) string) {
 
 	sign := func(repo string) string {
 		tok := jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{
-			"iss":        issuer.URL,
-			"aud":        ghTestAudience,
-			"exp":        time.Now().Add(5 * time.Minute).Unix(),
-			"repository": repo,
+			"iss":          issuer.URL,
+			"aud":          ghTestAudience,
+			"exp":          time.Now().Add(5 * time.Minute).Unix(),
+			"repository":   repo,
+			"workflow_ref": repo + "/.github/workflows/reconcile.yml@refs/heads/main",
 		})
 		tok.Header["kid"] = ghTestKid
 		signed, err := tok.SignedString(key)
@@ -150,7 +151,7 @@ func TestGitHubOIDCCallerIsRefusedOutOfScopeAsIfTheToolDidNotExist(t *testing.T)
 			record = line
 		}
 	}
-	for _, want := range []string{"principal=github_oidc:dlddu/reconciler", "result=refused", "reason=invalid_input"} {
+	for _, want := range []string{"principal=github_oidc:dlddu/reconciler/.github/workflows/reconcile.yml", "result=refused", "reason=invalid_input"} {
 		if !strings.Contains(record, want) {
 			t.Errorf("record %q is missing %q", record, want)
 		}

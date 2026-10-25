@@ -25,22 +25,28 @@ type githubOIDC struct {
 	audience string
 	jwksURI  string
 	http     *http.Client
-
-	// repos is keyed by the lowercased "owner/name"; GitHub treats repository
-	// names case-insensitively, and the claim carries whatever case the
-	// repository was created with.
-	repos map[string][]string
+	rules    []githubRule
 
 	mu   sync.RWMutex
 	keys map[string]*rsa.PublicKey
 }
 
+type githubRule struct {
+	// repository is the lowercased "owner/name"; GitHub treats repository
+	// names case-insensitively, and the claim carries whatever case the
+	// repository was created with.
+	repository string
+	workflow   string
+	tools      []string
+}
+
 type githubClaims struct {
-	Repository string `json:"repository"`
+	Repository  string `json:"repository"`
+	WorkflowRef string `json:"workflow_ref"`
 	jwt.RegisteredClaims
 }
 
-func newGitHubOIDC(ctx context.Context, issuer, audience, rawRepos string) (*githubOIDC, error) {
+func newGitHubOIDC(ctx context.Context, issuer, audience, rawRules string) (*githubOIDC, error) {
 	if issuer == "" {
 		issuer = defaultGitHubOIDCIssuer
 	}
@@ -48,7 +54,7 @@ func newGitHubOIDC(ctx context.Context, issuer, audience, rawRepos string) (*git
 	if audience == "" {
 		return nil, fmt.Errorf("MCP_GITHUB_OIDC_AUDIENCE is required when GitHub OIDC is enabled")
 	}
-	repos, err := parseGitHubRepositories(rawRepos)
+	rules, err := parseGitHubRules(rawRules)
 	if err != nil {
 		return nil, err
 	}
@@ -68,7 +74,7 @@ func newGitHubOIDC(ctx context.Context, issuer, audience, rawRepos string) (*git
 		audience: audience,
 		jwksURI:  metadata.JWKSURI,
 		http:     httpClient,
-		repos:    repos,
+		rules:    rules,
 	}
 	if err := g.refreshKeys(ctx); err != nil {
 		return nil, err
@@ -76,39 +82,93 @@ func newGitHubOIDC(ctx context.Context, issuer, audience, rawRepos string) (*git
 	return g, nil
 }
 
-func parseGitHubRepositories(raw string) (map[string][]string, error) {
+func parseGitHubRules(raw string) ([]githubRule, error) {
 	if strings.TrimSpace(raw) == "" {
-		return nil, fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES is required when GitHub OIDC is enabled")
+		return nil, fmt.Errorf("MCP_GITHUB_OIDC_RULES is required when GitHub OIDC is enabled")
 	}
-	var decoded map[string][]string
-	if err := json.Unmarshal([]byte(raw), &decoded); err != nil {
-		return nil, fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES must be a JSON object of \"owner/name\" to a list of tool names: %w", err)
+	var decoded []struct {
+		Repository string   `json:"repository"`
+		Workflow   string   `json:"workflow"`
+		Tools      []string `json:"tools"`
+	}
+	dec := json.NewDecoder(strings.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&decoded); err != nil {
+		return nil, fmt.Errorf(`MCP_GITHUB_OIDC_RULES must be a JSON array of {"repository", "workflow", "tools"}: %w`, err)
 	}
 	if len(decoded) == 0 {
-		return nil, fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES lists no repository")
+		return nil, fmt.Errorf("MCP_GITHUB_OIDC_RULES lists no rule")
 	}
 
-	repos := make(map[string][]string, len(decoded))
-	for repo, tools := range decoded {
-		owner, name, ok := strings.Cut(repo, "/")
-		if !ok || owner == "" || name == "" || strings.Contains(name, "/") || strings.ContainsAny(repo, " \t") {
-			return nil, fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES: %q is not an \"owner/name\" repository", repo)
+	rules := make([]githubRule, 0, len(decoded))
+	seen := map[string]bool{}
+	for i, d := range decoded {
+		where := fmt.Sprintf("MCP_GITHUB_OIDC_RULES[%d]", i)
+		owner, name, ok := strings.Cut(d.Repository, "/")
+		if !ok || owner == "" || name == "" || strings.Contains(name, "/") || strings.ContainsAny(d.Repository, " \t") {
+			return nil, fmt.Errorf("%s: repository %q is not \"owner/name\"", where, d.Repository)
 		}
-		key := strings.ToLower(repo)
-		if _, dup := repos[key]; dup {
-			return nil, fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES lists %q more than once", key)
-		}
-		if len(tools) == 0 {
-			return nil, fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES: %s lists no tool", repo)
-		}
-		for _, tool := range tools {
-			if strings.TrimSpace(tool) == "" {
-				return nil, fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES: %s lists an empty tool name", repo)
+		if d.Workflow != "" {
+			if !strings.HasPrefix(d.Workflow, ".github/workflows/") ||
+				!(strings.HasSuffix(d.Workflow, ".yml") || strings.HasSuffix(d.Workflow, ".yaml")) ||
+				strings.ContainsAny(d.Workflow, "@ \t") {
+				return nil, fmt.Errorf("%s: workflow %q is not a path like .github/workflows/<file>.yml", where, d.Workflow)
 			}
 		}
-		repos[key] = tools
+		if len(d.Tools) == 0 {
+			return nil, fmt.Errorf("%s lists no tool", where)
+		}
+		for _, tool := range d.Tools {
+			if strings.TrimSpace(tool) == "" {
+				return nil, fmt.Errorf("%s lists an empty tool name", where)
+			}
+		}
+		rule := githubRule{repository: strings.ToLower(d.Repository), workflow: d.Workflow, tools: d.Tools}
+		if seen[rule.label()] {
+			return nil, fmt.Errorf("%s repeats %s", where, rule.label())
+		}
+		seen[rule.label()] = true
+		rules = append(rules, rule)
 	}
-	return repos, nil
+	return rules, nil
+}
+
+func (r githubRule) label() string {
+	if r.workflow == "" {
+		return r.repository
+	}
+	return r.repository + "/" + r.workflow
+}
+
+func workflowPath(repository, workflowRef string) string {
+	at := strings.LastIndex(workflowRef, "@")
+	if at < 0 {
+		return ""
+	}
+	prefix := repository + "/"
+	p := workflowRef[:at]
+	if len(p) <= len(prefix) || !strings.EqualFold(p[:len(prefix)], prefix) {
+		return ""
+	}
+	return p[len(prefix):]
+}
+
+func (g *githubOIDC) toolsFor(repository, workflow string) []string {
+	repo := strings.ToLower(repository)
+	var tools []string
+	have := map[string]bool{}
+	for _, r := range g.rules {
+		if r.repository != repo || (r.workflow != "" && r.workflow != workflow) {
+			continue
+		}
+		for _, t := range r.tools {
+			if !have[t] {
+				have[t] = true
+				tools = append(tools, t)
+			}
+		}
+	}
+	return tools
 }
 
 func (g *githubOIDC) refreshKeys(ctx context.Context) error {
@@ -169,25 +229,33 @@ func (g *githubOIDC) verify(ctx context.Context, raw string) (string, []string, 
 	if err != nil {
 		return "", nil, err
 	}
-	tools, ok := g.repos[strings.ToLower(claims.Repository)]
-	if !ok {
-		slog.Warn("github oidc token from a repository not in MCP_GITHUB_OIDC_REPOSITORIES", "repository", claims.Repository)
-		return "", nil, fmt.Errorf("repository %q is not allowed", claims.Repository)
+	if claims.Repository == "" {
+		return "", nil, fmt.Errorf("token has no repository claim")
 	}
-	return claims.Repository, tools, nil
+	workflow := workflowPath(claims.Repository, claims.WorkflowRef)
+	tools := g.toolsFor(claims.Repository, workflow)
+	if len(tools) == 0 {
+		slog.Warn("github oidc token matches no MCP_GITHUB_OIDC_RULES entry", "repository", claims.Repository, "workflow", workflow)
+		return "", nil, fmt.Errorf("%s %s is not allowed", claims.Repository, workflow)
+	}
+	caller := claims.Repository
+	if workflow != "" {
+		caller += "/" + workflow
+	}
+	return caller, tools, nil
 }
 
-// GitHubOIDCRepositoryCount returns how many repositories may authenticate
-// with a GitHub Actions OIDC token.
-func (c *Config) GitHubOIDCRepositoryCount() int {
+// GitHubOIDCRuleCount returns how many MCP_GITHUB_OIDC_RULES entries admit
+// GitHub Actions OIDC tokens.
+func (c *Config) GitHubOIDCRuleCount() int {
 	if c.github == nil {
 		return 0
 	}
-	return len(c.github.repos)
+	return len(c.github.rules)
 }
 
-// CheckToolScopes reports the tool names MCP_GITHUB_OIDC_REPOSITORIES grants
-// that are not among known.
+// CheckToolScopes reports the tool names MCP_GITHUB_OIDC_RULES grants that are
+// not among known.
 func (c *Config) CheckToolScopes(known []string) error {
 	if c.github == nil {
 		return nil
@@ -197,10 +265,10 @@ func (c *Config) CheckToolScopes(known []string) error {
 		have[k] = true
 	}
 	var problems []string
-	for repo, tools := range c.github.repos {
-		for _, tool := range tools {
+	for _, r := range c.github.rules {
+		for _, tool := range r.tools {
 			if !have[tool] {
-				problems = append(problems, fmt.Sprintf("%s: %s", repo, tool))
+				problems = append(problems, fmt.Sprintf("%s: %s", r.label(), tool))
 			}
 		}
 	}
@@ -208,5 +276,5 @@ func (c *Config) CheckToolScopes(known []string) error {
 		return nil
 	}
 	sort.Strings(problems)
-	return fmt.Errorf("MCP_GITHUB_OIDC_REPOSITORIES grants tools this server does not have: %s", strings.Join(problems, ", "))
+	return fmt.Errorf("MCP_GITHUB_OIDC_RULES grants tools this server does not have: %s", strings.Join(problems, ", "))
 }

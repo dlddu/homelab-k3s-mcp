@@ -53,7 +53,7 @@ func main() {
 		slog.Info("mcp authentication enabled",
 			"api_keys", authCfg.APIKeyCount(),
 			"oauth", authCfg.OAuthConfigured(),
-			"github_oidc_repositories", authCfg.GitHubOIDCRepositoryCount(),
+			"github_oidc_rules", authCfg.GitHubOIDCRuleCount(),
 		)
 		if !authCfg.OAuthConfigured() {
 			slog.Info("MCP_OAUTH_* not set: OAuth discovery disabled")

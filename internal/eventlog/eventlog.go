@@ -25,7 +25,8 @@ type Principal struct {
 	// authentication.
 	Method string
 	// ID is the subject (jwt), the 1-based key index as text (api_key), or
-	// the "owner/name" repository the token was minted for (github_oidc).
+	// "owner/name/<workflow path>" of the workflow the token was minted for
+	// (github_oidc).
 	ID string
 }
 
@@ -41,7 +42,7 @@ var Anonymous = Principal{Method: "none"}
 var Unauthenticated = Principal{Method: "unauthenticated"}
 
 // String renders the principal for the record: "jwt:<sub>", "api_key:<n>",
-// "github_oidc:<owner/name>", "anonymous" or "unauthenticated".
+// "github_oidc:<owner/name/workflow>", "anonymous" or "unauthenticated".
 func (p Principal) String() string {
 	switch p.Method {
 	case "", "none":

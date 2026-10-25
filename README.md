@@ -56,7 +56,7 @@ they compose — configure any combination, but at least one must be present:
 |------|-----|-----|
 | OAuth 2.0 Bearer (RS256 JWT, JWKS-verified) | `MCP_OAUTH_ISSUER`, `MCP_OAUTH_AUDIENCE`, `MCP_OAUTH_RESOURCE` | Interactive MCP clients that run the OAuth flow |
 | Static API keys | `MCP_API_KEYS` | Non-interactive automation that cannot run OAuth |
-| GitHub Actions OIDC (RS256 JWT, JWKS-verified) | `MCP_GITHUB_OIDC_AUDIENCE`, `MCP_GITHUB_OIDC_REPOSITORIES`, optional `MCP_GITHUB_OIDC_ISSUER` | Workflows in allowed repositories, each limited to its own tools |
+| GitHub Actions OIDC (RS256 JWT, JWKS-verified) | `MCP_GITHUB_OIDC_AUDIENCE`, `MCP_GITHUB_OIDC_RULES`, optional `MCP_GITHUB_OIDC_ISSUER` | Workflows in allowed repositories, each limited to its own tools |
 
 A request presents its credential as `Authorization: Bearer <credential>`. The
 middleware matches the value against the configured API keys first (constant-time
@@ -106,29 +106,44 @@ Notes:
 
 A workflow asks GitHub for a short-lived OIDC token and presents it as the
 bearer. The server verifies the signature against the issuer's JWKS, checks
-`iss`, `aud` and `exp`, and admits the token only when its `repository` claim
-(`owner/name`, case-insensitive) is listed. There is no secret to store or
-rotate.
+`iss`, `aud` and `exp`, and admits the token only when a rule in
+`MCP_GITHUB_OIDC_RULES` matches it. There is no secret to store or rotate.
 
-`MCP_GITHUB_OIDC_REPOSITORIES` maps each allowed repository to the tools its
-workflows may use:
+A rule names a repository (`repository` claim, `owner/name`, case-insensitive)
+and optionally a workflow file (the path in the `workflow_ref` claim, any ref).
+A rule without `workflow` matches every workflow in that repository. When
+several rules match one token, their tools are combined:
 
-```sh
-export MCP_GITHUB_OIDC_AUDIENCE="homelab-k3s-mcp"
-export MCP_GITHUB_OIDC_REPOSITORIES='{"dlddu/reconciler": ["github_commit_status_create", "opensearch_search"]}'
+```json
+[
+  {"repository": "dlddu/reconciler", "workflow": ".github/workflows/reconcile.yml",
+   "tools": ["github_commit_status_create"]},
+  {"repository": "dlddu/reconciler", "tools": ["opensearch_search"]}
+]
 ```
+
+Here `reconcile.yml` may use both tools and any other workflow in
+`dlddu/reconciler` only `opensearch_search`. The workflow display name (`name:`)
+is not used: several files may share it.
 
 A caller on this path sees only its tools in `tools/list`, and calling any
 other tool fails exactly like calling a tool that does not exist
 (`-32602 unknown tool: <name>`). Gated tools still wait for approval. API-key
-and OAuth callers are not scoped. The server refuses to start if the map names a
-tool it does not have, lists a repository with no tools, or if
-`MCP_OAUTH_ISSUER` is the same issuer. `MCP_GITHUB_OIDC_ISSUER` defaults to
-`https://token.actions.githubusercontent.com`; its discovery document and JWKS
-are fetched at startup, so an unreachable issuer stops the server.
+and OAuth callers are not scoped. The server refuses to start if a rule names a
+tool it does not have, has no tools, has an unknown field, or repeats another
+rule's repository and workflow, or if `MCP_OAUTH_ISSUER` is the same issuer.
+`MCP_GITHUB_OIDC_ISSUER` defaults to `https://token.actions.githubusercontent.com`;
+its discovery document and JWKS are fetched at startup, so an unreachable issuer
+stops the server.
 
-The trust unit is the repository: anyone who can push a workflow to it can use
-its tools from any branch. Grant each repository only what its workflows need.
+In production both values come from the Secret `homelab-k3s-mcp-github-oidc`
+(an ExternalSecret in flux-cd-apps, SSM `/flux-cd/homelab-k3s-mcp/github-oidc`),
+which `k8s/deployment.yaml` reads with `optional: true`; without it the path is
+off.
+
+Anyone who can push to an allowed repository can edit an allowed workflow file,
+or run it from another branch, and so use its tools. Grant each rule only what
+that workflow needs.
 
 In the workflow:
 
@@ -146,7 +161,8 @@ steps:
         -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-The call is recorded with the principal `github_oidc:<owner/name>`.
+The call is recorded with the principal
+`github_oidc:<owner/name>/<workflow path>`.
 
 ### Disabling auth
 

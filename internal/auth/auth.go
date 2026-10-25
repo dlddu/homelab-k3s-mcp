@@ -84,11 +84,11 @@ func FromEnv(ctx context.Context) (*Config, error) {
 
 	ghIssuer := os.Getenv("MCP_GITHUB_OIDC_ISSUER")
 	ghAudience := os.Getenv("MCP_GITHUB_OIDC_AUDIENCE")
-	ghRepos := os.Getenv("MCP_GITHUB_OIDC_REPOSITORIES")
-	githubRequested := ghIssuer != "" || ghAudience != "" || ghRepos != ""
+	ghRules := os.Getenv("MCP_GITHUB_OIDC_RULES")
+	githubRequested := ghIssuer != "" || ghAudience != "" || ghRules != ""
 
 	if len(apiKeys) == 0 && !oauthRequested && !githubRequested {
-		return nil, fmt.Errorf("no authentication configured: set MCP_API_KEYS, MCP_OAUTH_ISSUER+MCP_OAUTH_AUDIENCE and/or MCP_GITHUB_OIDC_AUDIENCE+MCP_GITHUB_OIDC_REPOSITORIES, or MCP_AUTH_DISABLED=1 to serve /mcp without auth")
+		return nil, fmt.Errorf("no authentication configured: set MCP_API_KEYS, MCP_OAUTH_ISSUER+MCP_OAUTH_AUDIENCE and/or MCP_GITHUB_OIDC_AUDIENCE+MCP_GITHUB_OIDC_RULES, or MCP_AUTH_DISABLED=1 to serve /mcp without auth")
 	}
 
 	cfg := &Config{
@@ -103,7 +103,7 @@ func FromEnv(ctx context.Context) (*Config, error) {
 	}
 
 	if githubRequested {
-		gh, err := newGitHubOIDC(ctx, ghIssuer, ghAudience, ghRepos)
+		gh, err := newGitHubOIDC(ctx, ghIssuer, ghAudience, ghRules)
 		if err != nil {
 			return nil, err
 		}
@@ -340,13 +340,13 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 			return
 		}
 		if c.github != nil && c.github.issues(token) {
-			repo, tools, err := c.github.verify(r.Context(), token)
+			caller, tools, err := c.github.verify(r.Context(), token)
 			if err != nil {
 				c.unauthorized(w, r, "invalid_token")
 				return
 			}
 			slog.Debug("mcp authenticated", "method", githubOIDCMethod)
-			r = withPrincipal(r, eventlog.Principal{Method: githubOIDCMethod, ID: repo})
+			r = withPrincipal(r, eventlog.Principal{Method: githubOIDCMethod, ID: caller})
 			next.ServeHTTP(w, r.WithContext(toolscope.With(r.Context(), tools)))
 			return
 		}
