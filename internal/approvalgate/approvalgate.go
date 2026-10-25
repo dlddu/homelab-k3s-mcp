@@ -204,6 +204,9 @@ type Call struct {
 	Tool string
 	Pair Pair
 
+	SessionID string
+	Reason    string
+
 	// Describe renders the operator-facing text of AC3. It is a function rather
 	// than a string because building that text now reads the target from the
 	// cluster (AC3's "현재 → 목표 레플리카", AC6's precondition), and AC5 puts a
@@ -318,6 +321,8 @@ type createRequestBody struct {
 	Context        string `json:"context"`
 	RequesterName  string `json:"requesterName"`
 	TimeoutSeconds int    `json:"timeoutSeconds"`
+	SessionID      string `json:"sessionId,omitempty"`
+	Reason         string `json:"reason,omitempty"`
 }
 
 type requestResponse struct {
@@ -366,6 +371,8 @@ func (c *Client) create(ctx context.Context, call Call, approvalContext, externa
 		Context:        approvalContext,
 		RequesterName:  c.requester,
 		TimeoutSeconds: int(c.cfg.Timeout / time.Second),
+		SessionID:      call.SessionID,
+		Reason:         call.Reason,
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {

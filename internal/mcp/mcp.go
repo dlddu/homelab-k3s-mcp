@@ -316,7 +316,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, rerr := h.dispatch(r.Context(), req.Method, req.Params)
+	ctx := withSessionID(r.Context(), r.Header.Get(SessionIDHeader))
+	result, rerr := h.dispatch(ctx, req.Method, req.Params)
 	if rerr != nil {
 		writeResponse(w, errorResponse(id, rerr.code, rerr.message))
 		return
@@ -388,6 +389,17 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 	entry, ok := h.registry[name]
 	if !ok {
 		return nil, errf(-32602, "unknown tool: %s", name)
+	}
+	if entry.decl.mayAskForApproval() {
+		stripped, reason, rerr := splitReason(rawArgs)
+		if rerr != nil {
+			return nil, rerr
+		}
+		rawArgs = stripped
+		ctx = withReason(ctx, reason)
+		if rerr := h.requireReason(ctx, name, entry, rawArgs); rerr != nil {
+			return nil, rerr
+		}
 	}
 	if entry.decl.resolve != nil {
 		record.Target = recordTarget(rawArgs)

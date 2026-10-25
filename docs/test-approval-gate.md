@@ -70,16 +70,21 @@ Go 단위 테스트에서는 `httptest.Server`로 PocketAide 외부 승인 API �
 ### 시나리오 2: 요청 본문 계약
 - **사전 조건**: 실물 PocketAide 앞의 기록 프록시가 요청 본문을 기록(Authorization 값은 기록하지 않고
   스킴만 남긴다). SUT 의 서비스 어카운트가 PocketAide 에 호출자로 등록돼 있다
-- **실행 단계**: 게이트 대상 도구를 서로 다른 대상으로 2회 호출
+- **실행 단계**: 게이트 대상 도구를 서로 다른 대상으로 2회 호출(필수 인자 `reason` 을 싣고,
+  `X-Session-Platform-Session-Id` 헤더는 싣지 않는다)
 - **기대 결과**: `Authorization: Bearer` 헤더 존재. 본문의 키가 `externalId`·`context`·
-  `requesterName`·`timeoutSeconds` 넷과 **정확히** 같다(판정자를 고르는 필드는 없다). 두 호출의
+  `requesterName`·`timeoutSeconds`·`reason` 다섯과 **정확히** 같다(판정자를 고르는 필드는 없고, 값이
+  없는 선택 키 `sessionId` 는 키째 생략된다 — 세션 헤더가 실리는 경로는 시나리오 12). `reason` 은 보낸
+  인자 그대로이고 `context` 에 없다. 두 호출의
   `externalId`가 서로 다름. 만들어진 요청은 **그 SUT 의 서비스 어카운트를 등록한 사용자의 것**으로
   보인다 — 등록·토큰 볼륨·Bearer 헤더가 한 사슬로 맞았다는 관측이다
 - **검증 AC**: AC2
 - **자동화**: 통합 `tests/integration/approval_gate_sc2.py` — create 본문 계약을 기록 프록시
   기록과 PocketAide 레코드(그 주인 사용자 포함)로 잰다. Go 단위는
   `internal/approvalgate/approvalgate_test.go::TestAuthorizeSendsTheDocumentedRequestBody`·
-  `TestExternalIDDiffersPerCall` 가 본문·헤더 계약을 `httptest` 로 고정한다
+  `TestExternalIDDiffersPerCall`·`TestRequestBodyKeysWithAndWithoutTheOptionalFields`
+  가 본문·헤더 계약을 `httptest` 로 고정한다. 통합의 모든 도구 호출은 공유 세션(`_helpers.open_session`
+  → `_reason.ReasonedSession`)이 게이트 대상이 될 수 있는 도구에 `reason` 을 채워 보낸다
 
 ### 시나리오 3: context가 판정을 가능하게 한다
 - **사전 조건**: 동일
@@ -254,3 +259,39 @@ Go 단위 테스트에서는 `httptest.Server`로 PocketAide 외부 승인 API �
   취소를 검사한다. 실행: `go test ./internal/k8s -run '^TestCollectionSnapshot' -count=1`.
   이것은 실제 승인 백엔드·apiserver나 도구 경로의 증거가 아니다. 위 (a)·(b)·(c)의 실물
   시나리오와 `approval_gate_sc11.py`는 계속 대기하며, 도구 등록·승인·삭제는 이 회귀에 없다.
+
+### 시나리오 12: 이유는 언제나, 세션 ID는 헤더가 있을 때 승인 요청에 실린다
+- **사전 조건**: 시나리오 2 와 같은 기록 프록시 뒤의 실물 PocketAide. 그 PocketAide 가 `sessionId`·
+  `reason` 을 받는 판(dlddu/pocket-aide#319)이어야 한다 — 그 전의 PocketAide 는 모르는 필드를 400 으로
+  거부하므로(DisallowUnknownFields) `reason` 이 필수인 지금은 게이트 대상 호출 전부가 거부로 끝난다
+- **실행 단계**: (a) `X-Session-Platform-Session-Id: <id>` 헤더를 단 세션으로 `resource_patch` 를
+  `reason`(앞뒤 공백 포함)과 함께 호출하고 승인. (b) 같은 도구를 `reason` 없이 호출. (c) `reason` 을
+  빈 문자열·공백·숫자로 각각 호출. (d) 민감 종류(`kind=Secret`)의 `resource_get` 을 `reason` 없이,
+  비민감 종류(`kind=ConfigMap`)의 `resource_get` 을 `reason` 없이 호출. (e) 129자 세션 헤더와
+  `reason` 으로 호출하고 승인
+- **기대 결과**: (a) create 본문의 키가 `externalId`·`context`·`requesterName`·`timeoutSeconds`·
+  `reason`·`sessionId` 여섯과 **정확히** 같고, 두 값은 공백을 걷은 헤더·인자와 같다. `context` 의
+  `arguments:` 블록에 `reason` 이 없고, 패치는 `reason` 없이 대상에 적용된다. PocketAide 의 요청
+  레코드에 그 세션 id 와 이유가 남는다. 승인 로그 줄에 `session_id`·`reason` 이 있다. (b)·(c) 승인
+  요청이 생기지 않고(마커를 담은 요청 수 0) 대상이 바뀌지 않은 채 -32602 로 거부되며, (b) 의 메시지는
+  도구 이름과 「reason is required」를 담는다. (d) Secret 읽기는 (b) 와 같이 거부되고 ConfigMap 읽기는
+  승인 요청 없이 수행된다. (e) 본문에 `sessionId` 키가 **없고**(자르지 않고 버린다) `reason` 은 있으며,
+  요청은 201 로 만들어진다 — 상한을 넘는 헤더 하나가 게이트 대상 호출을 실패시키지 않는다
+- **검증 AC**: AC2, AC8
+- **자동화**: Go 단위 `internal/approvalgate/approvalgate_test.go::TestRequestBodyKeysWithAndWithoutTheOptionalFields`
+  (본문 키 집합 · `omitempty` · `context` 와 분리),
+  `internal/mcp/provenance_test.go` 의 `TestGatedCallWithoutReasonIsRefusedBeforeTheGate`(항상
+  게이트 대상 셋과 민감 종류 읽기 둘 × 없음·빈 값·공백·`null` — -32602, 게이트·사전 읽기·목록 읽기·
+  쿠버네티스 호출 0) · `TestUngatedCallsNeedNoReason` ·
+  `TestMissingReasonIsInvalidInputEvenWithAnUnconfiguredGate`(미구성 게이트보다 먼저 · 기록은
+  `refused`/`invalid_input`/판정 없음) · `TestReasonIsStrippedBeforeTheGateAndTheHandler` ·
+  `TestStrictHandlersNeverSeeReason` · `TestCollectionDeleteCarriesReasonAndSession` ·
+  `TestNonStringReasonIsInvalidParamsBeforeTheGate` · `TestOverlongReasonIsInvalidParams` ·
+  `TestUngatedCallOfAGateableToolAlsoDropsReason` ·
+  `TestReasonIsAdvertisedOnExactlyTheToolsThatMayAskForApproval`(광고 집합과 `required` = 선언 ·
+  기동 검사의 음성 대조) · `TestSessionHeaderReachesTheGateAndTheAuditLine` ·
+  `TestSessionHeaderIsDroppedWhenUnusable`,
+  `internal/server/auth_routing_test.go::TestSessionHeaderPassesAuthIntoTheApprovalRequest`(API 키
+  인증을 거친 뒤에도 헤더가 승인 요청까지 간다). 통합 `tests/integration/approval_gate_sc12.py`
+  (미작성) — `ci.yml` 의 `POCKET_AIDE_SHA` 가 dlddu/pocket-aide#319 의 main 머지 커밋으로 옮겨진 뒤에
+  쓴다(`doc-tracker` 「🚧 공백」 등재)

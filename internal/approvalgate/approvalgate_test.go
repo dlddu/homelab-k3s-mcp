@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -27,6 +29,7 @@ type fakeBackend struct {
 	polls    int
 
 	createdBodies []createRequestBody
+	createdRaw    []map[string]any
 	createdAuth   []string
 	polledAuth    []string
 	pollDelay     time.Duration
@@ -39,9 +42,13 @@ func (f *fakeBackend) handler() http.Handler {
 		defer f.mu.Unlock()
 		f.createdAuth = append(f.createdAuth, r.Header.Get("authorization"))
 
+		raw, _ := io.ReadAll(r.Body)
 		var body createRequestBody
-		_ = json.NewDecoder(r.Body).Decode(&body)
+		_ = json.Unmarshal(raw, &body)
 		f.createdBodies = append(f.createdBodies, body)
+		var keys map[string]any
+		_ = json.Unmarshal(raw, &keys)
+		f.createdRaw = append(f.createdRaw, keys)
 
 		if f.createStatus != 0 && f.createStatus != http.StatusCreated {
 			w.WriteHeader(f.createStatus)
@@ -158,6 +165,51 @@ func TestAuthorizeSendsTheDocumentedRequestBody(t *testing.T) {
 	}
 	if backend.polledAuth[0] != "Bearer sa-token" {
 		t.Errorf("poll authorization = %q, want the service account token", backend.polledAuth[0])
+	}
+}
+
+func TestRequestBodyKeysWithAndWithoutTheOptionalFields(t *testing.T) {
+	cases := []struct {
+		name      string
+		sessionID string
+		reason    string
+		want      []string
+	}{
+		{"neither", "", "", []string{"context", "externalId", "requesterName", "timeoutSeconds"}},
+		{"session only", "sess-1", "", []string{"context", "externalId", "requesterName", "sessionId", "timeoutSeconds"}},
+		{"reason only", "", "롤아웃이 멈춰 재시작한다.", []string{"context", "externalId", "reason", "requesterName", "timeoutSeconds"}},
+		{"both", "sess-1", "롤아웃이 멈춰 재시작한다.", []string{"context", "externalId", "reason", "requesterName", "sessionId", "timeoutSeconds"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
+			client, _ := newTestClient(t, backend, nil)
+			call := sampleCall()
+			call.SessionID = tc.sessionID
+			call.Reason = tc.reason
+
+			if _, err := client.Authorize(context.Background(), call); err != nil {
+				t.Fatalf("Authorize() = %v", err)
+			}
+			raw := backend.createdRaw[0]
+			got := make([]string, 0, len(raw))
+			for k := range raw {
+				got = append(got, k)
+			}
+			sort.Strings(got)
+			if strings.Join(got, ",") != strings.Join(tc.want, ",") {
+				t.Errorf("body keys = %v, want %v", got, tc.want)
+			}
+			if tc.sessionID != "" && raw["sessionId"] != tc.sessionID {
+				t.Errorf("sessionId = %v, want %q", raw["sessionId"], tc.sessionID)
+			}
+			if tc.reason != "" && raw["reason"] != tc.reason {
+				t.Errorf("reason = %v, want %q", raw["reason"], tc.reason)
+			}
+			if tc.reason != "" && strings.Contains(raw["context"].(string), tc.reason) {
+				t.Error("the reason was folded into context; it is its own field")
+			}
+		})
 	}
 }
 

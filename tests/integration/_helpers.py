@@ -29,6 +29,8 @@ import httpx
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from _reason import ReasonedSession
+
 # The complete tool surface the server advertises. Keep it complete: the
 # assertions below subtract this set from what the server returned, so a tool
 # missing *here* is not a failure, it is a silently weaker check. That has now
@@ -128,7 +130,7 @@ async def open_session(
         _,
     ):
         async with ClientSession(read, write) as session:
-            yield session
+            yield ReasonedSession(session)
 
 
 async def assert_destructive_annotation(

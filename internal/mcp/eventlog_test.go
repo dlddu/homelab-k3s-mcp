@@ -287,7 +287,7 @@ func TestRecordsCarryNoCredentialsPayloadsOrBodies(t *testing.T) {
 		if args == "" {
 			args = "{}"
 		}
-		result, rerr := h.toolsCall(ctx, json.RawMessage(`{"name":"`+name+`","arguments":`+args+`}`))
+		result, rerr := h.toolsCall(ctx, json.RawMessage(`{"name":"`+name+`","arguments":`+withTestReason(h, name, args)+`}`))
 		if rerr != nil {
 			t.Fatalf("%s = %v", name, rerr)
 		}

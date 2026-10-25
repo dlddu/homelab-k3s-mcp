@@ -74,7 +74,7 @@ OWNERS = tuple(dict.fromkeys(CALLERS.values()))
 VARIANT_OWNER = CALLERS["homelab-k3s-mcp-approval-variant/homelab-k3s-mcp"]
 
 #: 기록 프록시의 create 기록이 담는 필드 — 시나리오 2 의 요청 본문 계약 그 자체다.
-CREATE_BODY_FIELDS = ("externalId", "context", "requesterName", "timeoutSeconds")
+CREATE_BODY_FIELDS = ("externalId", "context", "requesterName", "timeoutSeconds", "reason")
 
 TRACE_LOCAL_PORT = 8096
 

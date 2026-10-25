@@ -209,7 +209,7 @@ func TestToolsListAdvertisesResourceTools(t *testing.T) {
 	// a client that is offered a selector will send one, and the refusal that
 	// follows is a worse answer than never having advertised it.
 	del := findTool(t, tools, "resource_delete")
-	wantStrSlice(t, enumStrings(t, at(t, del, "inputSchema", "required")), "apiVersion", "kind", "name")
+	wantStrSlice(t, enumStrings(t, at(t, del, "inputSchema", "required")), "apiVersion", "kind", "name", "reason")
 	props := at(t, del, "inputSchema", "properties").(map[string]any)
 	for _, absent := range []string{"labelSelector", "fieldSelector", "subresource"} {
 		if _, ok := props[absent]; ok {
@@ -221,7 +221,7 @@ func TestToolsListAdvertisesResourceTools(t *testing.T) {
 	// client offered either wrong shape will send it, and the refusal that
 	// follows is a worse answer than never having advertised it.
 	coll := findTool(t, tools, "resource_delete_collection")
-	wantStrSlice(t, enumStrings(t, at(t, coll, "inputSchema", "required")), "apiVersion", "kind", "namespace")
+	wantStrSlice(t, enumStrings(t, at(t, coll, "inputSchema", "required")), "apiVersion", "kind", "namespace", "reason")
 	collProps := at(t, coll, "inputSchema", "properties").(map[string]any)
 	for _, absent := range []string{"name", "subresource"} {
 		if _, ok := collProps[absent]; ok {

@@ -145,7 +145,8 @@ verb도 ServiceAccount는 행사할 수 있고, 막는 것은 게이트뿐이다
 
 ### AC7: 생성
 - **설명**: `resource_create`는 매니페스트를 받아 객체를 만들며 `create` verb만 행사한다.
-  인자는 `manifest` 하나다: JSON 객체 또는 YAML/JSON 문자열을 받으며, 문자열의 여러
+  인자는 `manifest` 하나다(승인 화면용 `reason` 은 디스패처가 먼저 떼어 낸다 — `prd-approval-gate`
+  AC2): JSON 객체 또는 YAML/JSON 문자열을 받으며, 문자열의 여러
   문서는 `---`로 구분한다. 각 문서는 `apiVersion`·`kind`·`metadata.name`을 명시하고,
   네임스페이스 범위 객체는 `metadata.namespace`도 명시한다(기본값을 추측하지 않는다).
   `generateName`만으로는 승인 화면의 대상 이름을 확정할 수 없어 거부한다.
