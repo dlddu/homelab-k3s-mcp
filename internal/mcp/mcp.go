@@ -19,6 +19,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
+	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
@@ -42,6 +43,7 @@ type Handler struct {
 	grafana         grafana.Service
 	opensearch      opensearch.Service
 	sessionPlatform sessionplatform.Service
+	pocketAide      pocketaide.Service
 
 	// gate holds gated calls until a human decides. It is never nil — an
 	// unconfigured deployment gets a gate that refuses (prd-approval-gate AC5).
@@ -109,6 +111,15 @@ func WithGateCollectionReader(reader k8s.CollectionTargetReader) Option {
 	}
 }
 
+// WithPocketAide installs the PocketAide notification client.
+func WithPocketAide(svc pocketaide.Service) Option {
+	return func(h *Handler) {
+		if svc != nil {
+			h.pocketAide = svc
+		}
+	}
+}
+
 // WithEventSink routes tool-call records somewhere other than the default
 // log.
 func WithEventSink(sink eventlog.Sink) Option {
@@ -128,6 +139,7 @@ func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Servi
 		grafana:         grafanaSvc,
 		opensearch:      osSvc,
 		sessionPlatform: sessionSvc,
+		pocketAide:      pocketaide.NewUnavailable(""),
 		gate:            approvalgate.NewUnavailable(nil),
 		gateReader:      k8s.NewUnavailableTargetReader("the approval gate has no kubernetes client to read a target with"),
 		sensitiveKinds:  []string{defaultSensitiveKind},

@@ -947,6 +947,32 @@ const toolsListJSON = `{
         "idempotentHint": true,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "pocket_aide_notification_send",
+      "description": "Send a plain push notification to the phone of the person who registered this server as a caller in PocketAide (dlddu/pocket-aide). The title and body arrive exactly as given on every device that person has registered; nothing is stored and no approval is created, so use it for status updates that need no decision (a long task finished, a job failed). The recipient is fixed by that registration and is not a parameter. Returns how many devices are registered (devices) and how many APNs accepted (sent); devices = 0 is not an error but means nobody was reached. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "description": "Notification title, 1 to 120 characters after trimming."
+          },
+          "body": {
+            "type": "string",
+            "description": "Optional notification body. Text beyond what fits a push payload is cut and ends with an ellipsis."
+          }
+        },
+        "required": ["title"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Send PocketAide Notification",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     }
   ]
 }`

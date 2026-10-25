@@ -34,6 +34,9 @@ SESSION_PLATFORM_REFUSAL = (
     "session platform unavailable: session platform endpoint is not configured"
 )
 K8S_REFUSAL = "kubernetes client unavailable: kubernetes integration is disabled"
+POCKET_AIDE_REFUSAL = (
+    "pocket-aide unavailable: PocketAide is not configured (APPROVAL_GATE_URL)"
+)
 
 
 async def assert_unavailable_refusal(

@@ -202,6 +202,13 @@ var toolRegistry = map[string]toolEntry{
 		}},
 		handle: (*Handler).githubCommitStatusCreate,
 	},
+	"pocket_aide_notification_send": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "sends a push notification through PocketAide; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).pocketAideNotificationSend,
+	},
 	"opensearch_search": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
 			kind:   touchesNothing,

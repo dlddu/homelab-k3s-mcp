@@ -22,6 +22,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/mcp"
 	"github.com/dlddu/homelab-k3s-mcp/internal/metrics"
 	"github.com/dlddu/homelab-k3s-mcp/internal/opensearch"
+	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
@@ -71,6 +72,7 @@ func main() {
 	grafanaSvc := buildGrafanaService()
 	osSvc := buildOpenSearchService(ctx)
 	sessionSvc := buildSessionPlatformService()
+	pocketAideSvc := buildPocketAideService()
 	gate, gatedKinds := buildGate()
 	gateReader := buildGateReader(k8sSvc)
 	gateCollectionReader := buildGateCollectionReader(k8sSvc)
@@ -83,7 +85,8 @@ func main() {
 		Addr: addr,
 		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc,
 			mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader),
-			mcp.WithGateCollectionReader(gateCollectionReader), mcp.WithEventSink(sink)),
+			mcp.WithGateCollectionReader(gateCollectionReader), mcp.WithEventSink(sink),
+			mcp.WithPocketAide(pocketAideSvc)),
 	}
 	metricsSrv := buildMetricsServer(surface)
 
@@ -219,6 +222,20 @@ func buildSessionPlatformService() sessionplatform.Service {
 		return sessionplatform.NewUnavailable("")
 	}
 	slog.Info("session platform integration loaded")
+	return client
+}
+
+func buildPocketAideService() pocketaide.Service {
+	client, err := pocketaide.FromEnv()
+	if err != nil {
+		slog.Error("failed to initialize pocket-aide client; pocket_aide_notification_send will return errors", "error", err)
+		return pocketaide.NewUnavailable(err.Error())
+	}
+	if client == nil {
+		slog.Warn("APPROVAL_GATE_URL not set: pocket_aide_notification_send tool will return errors")
+		return pocketaide.NewUnavailable("")
+	}
+	slog.Info("pocket-aide notifications enabled")
 	return client
 }
 
