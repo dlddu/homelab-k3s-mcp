@@ -9,8 +9,9 @@
   기본적으로 차단하고, 가능한 피해 범위를 구조적으로 제한한다.
 
 ## 범위
-- **포함**: OAuth Bearer 인증 게이트, 정적 API 키 인증(비대화형 자동화용), 인증 메타데이터
-  디스커버리, 하드닝된 런타임, 서버 수준 graceful degradation, 헬스/레디니스.
+- **포함**: OAuth Bearer 인증 게이트, 정적 API 키 인증(비대화형 자동화용), GitHub Actions OIDC
+  인증과 그 호출자의 도구 범위 제한, 인증 메타데이터 디스커버리, 하드닝된 런타임, 서버 수준
+  graceful degradation, 헬스/레디니스.
 - **제외**: 사용자·토큰 발급(외부 IdP 책임), 네트워크 인그레스 정책(클러스터 책임),
   도구별 동작(각 도구 PRD 참조), **클러스터 RBAC**.
 
@@ -23,8 +24,8 @@
 
 ### AC1: 인증 게이트
 - **설명**: `MCP_AUTH_DISABLED`가 설정되지 않은 한, `/mcp`는 유효한 자격증명 없이는 요청을
-  거부한다. 유효한 자격증명은 **JWKS로 서명 검증되는 Bearer JWT**(대화형, AC2) 또는
-  **설정된 정적 API 키**(비대화형, AC7) 중 하나다.
+  거부한다. 유효한 자격증명은 **JWKS로 서명 검증되는 Bearer JWT**(대화형, AC2),
+  **설정된 정적 API 키**(비대화형, AC7), **허용된 레포의 GitHub Actions OIDC 토큰**(AC9) 중 하나다.
 - **달성 가치**: V3
 - **검증 방법**: 자격증명 없음/무효 요청은 401로 거부되고(OAuth 활성 시 `WWW-Authenticate`가
   보호 리소스 메타데이터를 가리킴), 유효한 JWT 또는 유효한 API 키 요청은 정상 처리된다.
@@ -70,7 +71,8 @@
 
 ### AC8: 인증 방식 구성 유연성
 - **설명**: 인증 활성(`MCP_AUTH_DISABLED` 미설정) 상태에서 OAuth(`MCP_OAUTH_*`)와 API 키
-  (`MCP_API_KEYS`)는 **각각 독립적으로** 활성화되며 **최소 하나는** 설정되어야 한다. API 키만
+  (`MCP_API_KEYS`), GitHub Actions OIDC(`MCP_GITHUB_OIDC_*`, AC9)는 **각각 독립적으로**
+  활성화되며 **최소 하나는** 설정되어야 한다. API 키만
   설정된 자동화 전용 배포에서는 IdP/OAuth 설정 없이 인증이 활성화된다. OAuth가 미설정이면
   광고할 발급자가 없으므로 `/.well-known/oauth-protected-resource` 디스커버리 엔드포인트는
   제공되지 않는다.
@@ -78,6 +80,40 @@
 - **검증 방법**: (a) API 키만 설정 → 인증 활성 + 디스커버리 엔드포인트 미제공, (b) OAuth만 설정
   → 기존 동작(디스커버리 제공), (c) 둘 다 설정 → 둘 다 동작, (d) 둘 다 미설정이면서
   `MCP_AUTH_DISABLED`도 미설정 → **기동 실패**(무방비 노출을 안전하게 차단).
+
+### AC9: GitHub Actions OIDC 인증 (워크플로)
+- **설명**: `MCP_GITHUB_OIDC_AUDIENCE`와 `MCP_GITHUB_OIDC_REPOSITORIES`가 설정되면, `/mcp`는
+  GitHub Actions 워크플로가 발급받은 OIDC 토큰을 `Authorization: Bearer <token>`으로 받는다.
+  토큰은 발급자(`MCP_GITHUB_OIDC_ISSUER`, 기본 `https://token.actions.githubusercontent.com`)의
+  OIDC discovery로 얻은 JWKS로 **RS256 서명**을 검증하고, `iss`·`aud`(= `MCP_GITHUB_OIDC_AUDIENCE`)·
+  `exp`(필수)를 확인한 뒤, `repository` 클레임(`owner/name`, 대소문자 무시)이
+  `MCP_GITHUB_OIDC_REPOSITORIES`에 **있을 때만** 통과시킨다. 미들웨어는 API 키 대조(AC7) 다음에,
+  토큰의 `iss`가 GitHub 발급자이면 이 검증으로, 아니면 OAuth JWT 검증(AC1)으로 보낸다 — `iss`는
+  검증기를 고르는 데만 쓰고 통과 판정은 서명 검증이 한다. 어느 것도 통과하지 못하면 401
+  `invalid_token`. 호출 주체는 `github_oidc:<owner/name>`으로 기록된다(prd-event-log AC1).
+  OAuth 발급자와 GitHub 발급자가 같으면 토큰을 구분할 수 없으므로 기동을 거부한다. 이 경로는
+  디스커버리(AC2)로 광고하지 않는다 — 워크플로는 대상 서버를 미리 알고 토큰을 요청한다.
+- **달성 가치**: V3
+- **검증 방법**: (a) 허용 레포의 유효 토큰 통과, (b) 허용 목록 밖 레포·`repository` 클레임 없음·
+  다른 audience·만료·`exp` 없음·다른 키 서명은 401 `invalid_token`, (c) OAuth와 함께 구성해도
+  OAuth JWT는 OAuth 경로로 검증되고 도구 범위가 걸리지 않음, (d) audience·레포 목록 중 하나라도
+  비면 기동 실패, (e) 응답·로그에 토큰 값이 없음.
+
+### AC10: GitHub Actions 호출자의 도구 범위 제한
+- **설명**: `MCP_GITHUB_OIDC_REPOSITORIES`는 레포마다 그 레포의 워크플로가 쓸 수 있는 도구 목록을
+  준다(JSON 객체 `{"owner/name": ["도구", ...]}`). AC9로 인증된 요청은 그 목록 안에서만
+  동작한다 — `tools/list`는 목록의 도구만 **원래 광고 순서대로** 돌려주고, 목록 밖 도구의
+  `tools/call`은 존재하지 않는 도구와 **같은** JSON-RPC 오류(`-32602 unknown tool: <name>`)로
+  거부되어 범위 밖 도구의 존재가 드러나지 않는다. 그 거부는 `refused` · `invalid_input`으로
+  기록된다(prd-event-log AC2). 범위 안 도구는 다른 호출자와 똑같이 동작하며 승인 게이트
+  (prd-approval-gate)도 그대로 적용된다. API 키·OAuth 호출자에게는 범위가 걸리지 않는다.
+  목록이 이 서버에 없는 도구 이름을 담거나, 도구가 하나도 없는 레포를 담으면 기동을 거부한다
+  (오타가 조용히 「아무것도 허용하지 않음」이 되지 않게).
+- **달성 가치**: V3
+- **검증 방법**: (a) 범위가 `[A, B]`인 레포의 `tools/list`가 정확히 A·B만 광고 순서대로 반환,
+  (b) 범위 밖 도구 호출과 존재하지 않는 도구 호출의 오류 코드·메시지 형태가 같음, (c) 범위 안
+  도구 호출은 정상 처리, (d) 거부 레코드의 주체가 `github_oidc:<owner/name>`, (e) 미지의 도구
+  이름이 든 구성은 기동 실패.
 
 ## 비기능 요구사항
 - `MCP_AUTH_DISABLED`는 신뢰된 네트워크의 로컬 개발/테스트 용도로만 사용하며 운영 배포에서는
@@ -90,3 +126,11 @@
 - 키 값은 로그·에러 응답·디스커버리 메타데이터 어디에도 출력하지 않는다. 접근 로그에는 인증
   방식(`api_key`/`jwt`)만 남겨 가시성과 비밀 보호를 양립시킨다.
 - 비프로브 HTTP 요청은 메서드·경로·상태·소요시간이 로깅되어 최소한의 접근 가시성을 남긴다.
+- GitHub Actions OIDC 토큰은 **워크플로 실행마다 발급되는 단명 토큰**이라 API 키와 달리 저장·
+  로테이션할 비밀이 없다. 대신 신뢰의 단위는 **레포**다 — 그 레포에 워크플로를 푸시할 수 있는
+  사람은 — 어느 브랜치에서든 `id-token: write`로 도는 워크플로를 통해 — 그 레포에 허용된 도구를
+  쓸 수 있다. 브랜치·
+  environment 단위로 좁히는 것은 이 AC의 범위 밖이므로, 레포에 주는 도구는 그 레포의 쓰기
+  권한자 전원에게 주는 것으로 보고 최소한으로 고른다.
+- 발급자의 discovery·JWKS는 기동 시 한 번 읽고(실패하면 기동 실패 — AC2와 같은 성질), 처음 보는
+  `kid`가 오면 다시 읽는다.

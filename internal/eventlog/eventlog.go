@@ -20,10 +20,12 @@ import (
 // is never here — AC3 forbids it in any record, and the cheapest way to keep
 // a value out of every record is to never let it into the type.
 type Principal struct {
-	// Method is how the caller authenticated: "jwt", "api_key", or "none"
-	// when the deployment serves /mcp without authentication.
+	// Method is how the caller authenticated: "jwt", "api_key",
+	// "github_oidc", or "none" when the deployment serves /mcp without
+	// authentication.
 	Method string
-	// ID is the subject (jwt) or the 1-based key index as text (api_key).
+	// ID is the subject (jwt), the 1-based key index as text (api_key), or
+	// the "owner/name" repository the token was minted for (github_oidc).
 	ID string
 }
 
@@ -39,7 +41,7 @@ var Anonymous = Principal{Method: "none"}
 var Unauthenticated = Principal{Method: "unauthenticated"}
 
 // String renders the principal for the record: "jwt:<sub>", "api_key:<n>",
-// "anonymous" or "unauthenticated".
+// "github_oidc:<owner/name>", "anonymous" or "unauthenticated".
 func (p Principal) String() string {
 	switch p.Method {
 	case "", "none":

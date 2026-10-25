@@ -46,12 +46,17 @@ func main() {
 	if authCfg == nil {
 		slog.Warn("MCP_AUTH_DISABLED is set: serving /mcp without authentication")
 	} else {
+		if err := authCfg.CheckToolScopes(mcp.ToolNames()); err != nil {
+			slog.Error("invalid auth config", "error", err)
+			os.Exit(1)
+		}
 		slog.Info("mcp authentication enabled",
 			"api_keys", authCfg.APIKeyCount(),
 			"oauth", authCfg.OAuthConfigured(),
+			"github_oidc_repositories", authCfg.GitHubOIDCRepositoryCount(),
 		)
 		if !authCfg.OAuthConfigured() {
-			slog.Info("MCP_OAUTH_* not set: OAuth discovery disabled, authenticating with API keys only")
+			slog.Info("MCP_OAUTH_* not set: OAuth discovery disabled")
 		}
 	}
 
