@@ -31,6 +31,7 @@ from _approval_gate import (
     wait_for_pending,
 )
 from _helpers import base_url, open_session, wait_for_healthz
+from _reason import REASON
 
 NAMESPACE = "workload-test"
 
@@ -110,6 +111,8 @@ async def run() -> None:
             assert body["context"], body
             assert body["requesterName"], body
             assert body["timeoutSeconds"] == VARIANT_TIMEOUT_SECONDS, body
+            assert body["reason"] == REASON, body
+            assert REASON not in body["context"], body["context"]
         assert bodies[0]["externalId"] != bodies[1]["externalId"], (
             "서로 다른 대상의 두 호출이 같은 externalId 를 썼다"
         )
@@ -124,6 +127,7 @@ async def run() -> None:
                 bodies[0]["externalId"],
                 bodies[1]["externalId"],
             ), record
+            assert record["reason"] == REASON, record
             assert record["owner"] == VARIANT_OWNER, (
                 f"요청이 변형 배포를 등록한 사용자({VARIANT_OWNER})가 아니라 "
                 f"{record['owner']} 의 것으로 보인다"

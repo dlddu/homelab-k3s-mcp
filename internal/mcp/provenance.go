@@ -19,7 +19,16 @@ const (
 
 	reasonArgument = "reason"
 
-	reasonDescription = "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+	reasonDescriptionAlways        = "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
+	reasonDescriptionSensitiveOnly = "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 민감 종류(예: Secret)를 읽을 때는 필수 — 그 호출은 사람의 승인을 거친다. 그 밖의 종류에서는 쓰이지 않는다."
+)
+
+type approvalNeed int
+
+const (
+	neverApproved approvalNeed = iota
+	approvedForSensitiveKinds
+	alwaysApproved
 )
 
 type sessionIDKey struct{}
@@ -66,24 +75,51 @@ func approvalLog(ctx context.Context, level slog.Level, msg string, args ...any)
 	slog.Log(ctx, level, msg, args...)
 }
 
-var sensitiveProbe = json.RawMessage(`{"apiVersion":"v1","kind":"Secret","namespace":"probe","name":"probe"}`)
+var (
+	ordinaryProbe  = json.RawMessage(`{"apiVersion":"v1","kind":"ConfigMap","namespace":"probe","name":"probe"}`)
+	sensitiveProbe = json.RawMessage(`{"apiVersion":"v1","kind":"Secret","namespace":"probe","name":"probe"}`)
+)
 
-// mayAskForApproval resolves a per-call declaration against a Secret coordinate
-// (resolving never touches the cluster). A resolver that refuses the probe for
-// lack of its own arguments counts as asking, so a new tool errs towards
-// advertising reason rather than handing it to a handler that never declared it.
-func (d toolDeclaration) mayAskForApproval() bool {
+// approvalNeed resolves a per-call declaration against an ordinary and a
+// sensitive coordinate (resolving never touches the cluster). A resolver that
+// refuses a probe for lack of its own arguments counts as always asking, so a
+// new tool errs towards requiring reason rather than handing it to a handler
+// that never declared it.
+func (d toolDeclaration) approvalNeed() approvalNeed {
 	if d.outsideGate != "" {
-		return false
+		return neverApproved
 	}
 	if d.alwaysGated != "" {
-		return true
+		return alwaysApproved
 	}
 	if d.resolve == nil && len(d.pairs) == 0 {
-		return false
+		return neverApproved
 	}
-	gated, err := d.gatedPairs([]string{defaultSensitiveKind}, sensitiveProbe)
-	return err != nil || len(gated) > 0
+	sensitive := []string{defaultSensitiveKind}
+	if gated, err := d.gatedPairs(sensitive, ordinaryProbe); err != nil || len(gated) > 0 {
+		return alwaysApproved
+	}
+	if gated, err := d.gatedPairs(sensitive, sensitiveProbe); err != nil || len(gated) > 0 {
+		return approvedForSensitiveKinds
+	}
+	return neverApproved
+}
+
+func (d toolDeclaration) mayAskForApproval() bool { return d.approvalNeed() != neverApproved }
+
+// requireReason runs before every gate path, so the refusal costs no approval
+// request and no pre-read. A call whose pairs cannot be resolved is left to
+// the layers below to refuse in their own words.
+func (h *Handler) requireReason(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) *rpcErr {
+	if reasonFrom(ctx) != "" {
+		return nil
+	}
+	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, rawArgs)
+	if err != nil || len(gated) == 0 {
+		return nil
+	}
+	return errf(-32602, "reason is required: this %s call (%s) needs human approval, and the approval screen has to show the operator why it is being made — pass reason, one or two sentences in Korean",
+		name, pairsText(gated))
 }
 
 // splitReason re-emits every other key in its original order with its value's
@@ -175,26 +211,34 @@ func validateReasonArgument(registered map[string]toolEntry, toolsList string) e
 			continue
 		}
 		raw, advertised := tool.InputSchema.Properties[reasonArgument]
-		want := entry.decl.mayAskForApproval()
+		need := entry.decl.approvalNeed()
+		required := false
+		for _, r := range tool.InputSchema.Required {
+			if r == reasonArgument {
+				required = true
+			}
+		}
 		switch {
-		case want && !advertised:
+		case need != neverApproved && !advertised:
 			problems = append(problems, fmt.Sprintf("%s may ask for approval but does not advertise %q", tool.Name, reasonArgument))
-		case !want && advertised:
+		case need == neverApproved && advertised:
 			problems = append(problems, fmt.Sprintf("%s never asks for approval but advertises %q, which the dispatcher would pass to its handler", tool.Name, reasonArgument))
 		case advertised:
+			want := reasonDescriptionSensitiveOnly
+			if need == alwaysApproved {
+				want = reasonDescriptionAlways
+			}
 			var prop struct {
 				Type        string `json:"type"`
 				MaxLength   int    `json:"maxLength"`
 				Description string `json:"description"`
 			}
 			if err := json.Unmarshal(raw, &prop); err != nil || prop.Type != "string" ||
-				prop.MaxLength != maxReasonRunes || prop.Description != reasonDescription {
+				prop.MaxLength != maxReasonRunes || prop.Description != want {
 				problems = append(problems, fmt.Sprintf("%s advertises %q with a schema other than the shared one", tool.Name, reasonArgument))
 			}
-			for _, r := range tool.InputSchema.Required {
-				if r == reasonArgument {
-					problems = append(problems, fmt.Sprintf("%s makes %q required; it is optional", tool.Name, reasonArgument))
-				}
+			if required != (need == alwaysApproved) {
+				problems = append(problems, fmt.Sprintf("%s lists %q as required=%v, but required belongs exactly on tools whose every call needs approval", tool.Name, reasonArgument, required))
 			}
 		}
 	}

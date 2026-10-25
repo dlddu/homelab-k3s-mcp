@@ -126,18 +126,71 @@ func TestOverlongReasonIsInvalidParams(t *testing.T) {
 	}
 }
 
-func TestEmptyOrNullReasonIsNotSent(t *testing.T) {
-	for _, value := range []string{`""`, `"   "`, `null`} {
-		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
-		h, fake := testHandler(t, gate, toolRegistry)
-		args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"cm","patchType":"merge","patch":{},"reason":` + value + `}`
+// A gated call without a reason is refused before the gate is asked, before
+// the gate's own pre-read, and with nothing sent to kubernetes.
+func TestGatedCallWithoutReasonIsRefusedBeforeTheGate(t *testing.T) {
+	cases := []struct{ tool, args string }{
+		{"resource_patch", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"cm","patchType":"merge","patch":{}}`},
+		{"resource_create", `{"manifest":{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"one","namespace":"ops"}}}`},
+		{"resource_delete_collection", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","labelSelector":"app=x"}`},
+		{"resource_get", `{"apiVersion":"v1","kind":"Secret","namespace":"ops","name":"token"}`},
+		{"resource_watch", `{"apiVersion":"v1","kind":"Secret","namespace":"ops"}`},
+	}
+	for _, tc := range cases {
+		for _, reason := range []string{"", `,"reason":""`, `,"reason":"   "`, `,"reason":null`} {
+			gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
+			reader := newStateReader()
+			lister := newCollectionReader("alpha")
+			h, fake, _ := testHandlerListing(t, gate, toolRegistry, reader, lister)
+			args := tc.args[:len(tc.args)-1] + reason + "}"
 
-		if _, rerr := callTool(t, h, "resource_patch", args); rerr != nil {
-			t.Fatalf("reason=%s: %v", value, rerr)
+			_, rerr := callToolAsIs(t, h, tc.tool, args)
+			if rerr == nil || rerr.code != -32602 || !strings.Contains(rerr.message, "reason is required") || !strings.Contains(rerr.message, tc.tool) {
+				t.Errorf("%s %s: error = %+v, want -32602 naming the tool and saying reason is required", tc.tool, args, rerr)
+			}
+			if len(gate.calls) != 0 || fake.count() != 0 || len(reader.observed()) != 0 || len(lister.listed()) != 0 {
+				t.Errorf("%s %s: gate=%d kubernetes=%d reads=%d lists=%d, want all 0",
+					tc.tool, args, len(gate.calls), fake.count(), len(reader.observed()), len(lister.listed()))
+			}
 		}
-		if fake.count() != 1 || len(gate.calls) != 1 || gate.calls[0].Reason != "" {
-			t.Errorf("reason=%s: calls=%d gate=%+v, want the call to run with no reason", value, fake.count(), gate.calls)
+	}
+}
+
+// The same tools keep working without a reason when the call itself is not
+// gated: only a call that would reach a human needs one.
+func TestUngatedCallsNeedNoReason(t *testing.T) {
+	cases := []struct{ tool, args string }{
+		{"resource_get", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"cm"}`},
+		{"resource_watch", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops"}`},
+		{"resource_list", `{"apiVersion":"v1","kind":"Secret","namespace":"ops"}`},
+	}
+	for _, tc := range cases {
+		gate := &scriptedGate{err: context.Canceled}
+		h, fake := testHandler(t, gate, toolRegistry)
+		if _, rerr := callToolAsIs(t, h, tc.tool, tc.args); rerr != nil {
+			t.Errorf("%s: %v, want it to run without a reason", tc.tool, rerr)
 		}
+		if len(gate.calls) != 0 || fake.count() != 1 {
+			t.Errorf("%s: gate=%d kubernetes=%d, want an ungated call that ran", tc.tool, len(gate.calls), fake.count())
+		}
+	}
+}
+
+// The requirement is checked before the gate's own configuration: an
+// unconfigured gate refuses too, but a call missing its reason is the
+// caller's to fix first and is recorded as invalid input.
+func TestMissingReasonIsInvalidInputEvenWithAnUnconfiguredGate(t *testing.T) {
+	h, fake, sink := recordedHandler(t, approvalgate.NewUnavailable(nil))
+	_, rerr := callToolAsIs(t, h, "resource_patch", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"cm","patchType":"merge","patch":{}}`)
+	if rerr == nil || rerr.code != -32602 {
+		t.Fatalf("error = %+v, want -32602", rerr)
+	}
+	if fake.count() != 0 {
+		t.Errorf("kubernetes calls = %d, want 0", fake.count())
+	}
+	rec := lastRecord(t, sink, 1)
+	if rec.Result != "refused" || rec.Reason != "invalid_input" || rec.Gate.Decision != "" {
+		t.Errorf("record = %+v, want refused/invalid_input with no verdict", rec)
 	}
 }
 
@@ -191,9 +244,33 @@ func TestReasonIsAdvertisedOnExactlyTheToolsThatMayAskForApproval(t *testing.T) 
 		}
 	}
 
-	broken := strings.Replace(toolsListJSON, reasonDescription, "why", 1)
-	if err := validateReasonArgument(toolRegistry, broken); err == nil {
-		t.Error("a reworded reason schema passed the startup check")
+	needs := map[string]approvalNeed{
+		"resource_get": approvedForSensitiveKinds, "resource_watch": approvedForSensitiveKinds,
+	}
+	for name, entry := range toolRegistry {
+		want := neverApproved
+		if entry.decl.mayAskForApproval() {
+			want = alwaysApproved
+		}
+		if n, ok := needs[name]; ok {
+			want = n
+		}
+		if got := entry.decl.approvalNeed(); got != want {
+			t.Errorf("%s approvalNeed = %v, want %v", name, got, want)
+		}
+	}
+
+	for name, broken := range map[string]string{
+		"reworded":            strings.Replace(toolsListJSON, reasonDescriptionAlways, "why", 1),
+		"optional on a write": strings.Replace(toolsListJSON, `"required": ["manifest", "reason"]`, `"required": ["manifest"]`, 1),
+		"required on a read":  strings.Replace(toolsListJSON, `"required": ["apiVersion", "kind", "name"],`, `"required": ["apiVersion", "kind", "name", "reason"],`, 1),
+	} {
+		if broken == toolsListJSON {
+			t.Fatalf("%s: the mutation did not apply", name)
+		}
+		if err := validateReasonArgument(toolRegistry, broken); err == nil {
+			t.Errorf("%s reason schema passed the startup check", name)
+		}
 	}
 	missing := map[string]toolEntry{"resource_list": {decl: toolDeclaration{alwaysGated: "test"}, handle: reachesKubernetes}}
 	if err := validateReasonArgument(missing, toolsListJSON); err == nil || !strings.Contains(err.Error(), "does not advertise") {

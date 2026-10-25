@@ -120,7 +120,7 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 민감 종류(예: Secret)를 읽을 때는 필수 — 그 호출은 사람의 승인을 거친다. 그 밖의 종류에서는 쓰이지 않는다."
           }
         },
         "required": ["apiVersion", "kind"],
@@ -186,7 +186,7 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 민감 종류(예: Secret)를 읽을 때는 필수 — 그 호출은 사람의 승인을 거친다. 그 밖의 종류에서는 쓰이지 않는다."
           }
         },
         "required": ["apiVersion", "kind", "name"],
@@ -212,10 +212,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["manifest"],
+        "required": ["manifest", "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -265,10 +265,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["apiVersion", "kind", "name"],
+        "required": ["apiVersion", "kind", "name", "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -317,10 +317,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["apiVersion", "kind", "name", "patchType", "patch"],
+        "required": ["apiVersion", "kind", "name", "patchType", "patch", "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -361,10 +361,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["apiVersion", "kind", "name"],
+        "required": ["apiVersion", "kind", "name", "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -409,14 +409,14 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
         "required": [
           "apiVersion",
           "kind",
           "namespace"
-        ],
+        , "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -462,10 +462,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["apiVersion", "kind", "name", "command"],
+        "required": ["apiVersion", "kind", "name", "command", "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -515,10 +515,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["apiVersion", "kind", "name"],
+        "required": ["apiVersion", "kind", "name", "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -574,10 +574,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["apiVersion", "kind", "name", "port"],
+        "required": ["apiVersion", "kind", "name", "port", "reason"],
         "additionalProperties": false
       },
       "annotations": {
@@ -644,10 +644,10 @@ const toolsListJSON = `{
           "reason": {
             "type": "string",
             "maxLength": 2000,
-            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
           }
         },
-        "required": ["apiVersion", "kind", "name", "method", "path"],
+        "required": ["apiVersion", "kind", "name", "method", "path", "reason"],
         "additionalProperties": false
       },
       "annotations": {

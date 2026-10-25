@@ -510,11 +510,41 @@ func reachesKubernetes(h *Handler, ctx context.Context, _ json.RawMessage) (any,
 
 func callTool(t *testing.T, h *Handler, name string, args string) (any, *rpcErr) {
 	t.Helper()
+	return callToolAsIs(t, h, name, withTestReason(h, name, args))
+}
+
+func callToolAsIs(t *testing.T, h *Handler, name string, args string) (any, *rpcErr) {
+	t.Helper()
 	if args == "" {
 		args = "{}"
 	}
 	params := json.RawMessage(`{"name":"` + name + `","arguments":` + args + `}`)
 	return h.toolsCall(context.Background(), params)
+}
+
+const testReason = "단위 테스트가 부르는 호출이다."
+
+func withTestReason(h *Handler, name, args string) string {
+	if args == "" {
+		args = "{}"
+	}
+	entry, ok := h.registry[name]
+	if !ok || !entry.decl.mayAskForApproval() {
+		return args
+	}
+	obj, isObject := decodeObject(json.RawMessage(args))
+	if !isObject {
+		return args
+	}
+	if _, present := obj[reasonArgument]; present {
+		return args
+	}
+	body := strings.TrimSpace(args)
+	inner := strings.TrimSpace(body[1 : len(body)-1])
+	if inner == "" {
+		return `{"reason":"` + testReason + `"}`
+	}
+	return `{"reason":"` + testReason + `",` + inner + `}`
 }
 
 // AC1: what tools/list advertises and what the dispatcher can run must be the

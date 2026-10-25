@@ -397,6 +397,9 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 		}
 		rawArgs = stripped
 		ctx = withReason(ctx, reason)
+		if rerr := h.requireReason(ctx, name, entry, rawArgs); rerr != nil {
+			return nil, rerr
+		}
 	}
 	if entry.decl.resolve != nil {
 		record.Target = recordTarget(rawArgs)
