@@ -86,7 +86,7 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 
 	approved, err := h.gateCollectionReader.ListTargets(ctx, *ref)
 	if err != nil {
-		slog.Warn("approval refused", "tool", name, "pairs", pairsText(gated), "error", err.Error())
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "pairs", pairsText(gated), "error", err.Error())
 		return nil, errf(-32603, "refusing %s: the selection could not be read before approval: %s", name, err.Error())
 	}
 
@@ -106,18 +106,20 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 	}
 
 	decision, err := h.askGate(ctx, approvalgate.Call{
-		Tool: name,
-		Pair: gated[0],
+		Tool:      name,
+		Pair:      gated[0],
+		SessionID: sessionIDFrom(ctx),
+		Reason:    reasonFrom(ctx),
 		Describe: func(context.Context) (string, error) {
 			return collectionApprovalContext(name, gated, raw, h.sensitiveKinds, ref, approved), nil
 		},
 	})
 	if err != nil {
-		slog.Warn("approval refused", "tool", name, "pairs", pairsText(gated), "error", err.Error())
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "pairs", pairsText(gated), "error", err.Error())
 		return nil, gateRefusal(err)
 	}
 	if err := decision.Consume(); err != nil {
-		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
 		return nil, errf(-32603, "%s", err.Error()).afterVerdict(decision)
 	}
 
@@ -126,7 +128,7 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 	}
 	noteGate(ctx, decision)
 
-	slog.Info("approval granted",
+	approvalLog(ctx, slog.LevelInfo, "approval granted",
 		"tool", name,
 		"pairs", pairsText(gated),
 		"targets", len(approved.Targets),
@@ -156,7 +158,7 @@ func (h *Handler) confirmCollectionUnchanged(
 ) *rpcErr {
 	current, err := h.gateCollectionReader.ListTargets(ctx, *ref)
 	if err != nil {
-		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
 		return errf(-32603, "refusing %s: the approved selection could not be re-read before execution: %s", name, err.Error()).afterVerdict(decision)
 	}
 	if sameTargets(approved.Targets, current.Targets) {
@@ -168,7 +170,7 @@ func (h *Handler) confirmCollectionUnchanged(
 			"the approval was for the earlier set, so this needs a new one",
 		name, len(approved.Targets), len(current.Targets),
 	)
-	slog.Warn("approval refused",
+	approvalLog(ctx, slog.LevelWarn, "approval refused",
 		"tool", name,
 		"pairs", pairsText(gated),
 		"request_id", decision.RequestID,

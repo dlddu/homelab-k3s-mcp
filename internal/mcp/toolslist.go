@@ -116,6 +116,11 @@ const toolsListJSON = `{
           "resourceVersion": {
             "type": "string",
             "description": "Receive only changes after this version. Take it from metadata.resourceVersion of the last event of a previous window."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind"],
@@ -177,6 +182,11 @@ const toolsListJSON = `{
             "type": "integer",
             "minimum": 1,
             "description": "subresource=log only. Only return logs newer than this many seconds."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name"],
@@ -198,6 +208,11 @@ const toolsListJSON = `{
           "manifest": {
             "oneOf": [{"type": "object"}, {"type": "string", "minLength": 1}],
             "description": "One object or a YAML/JSON document stream. Coordinates come from each document; namespace is never defaulted."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["manifest"],
@@ -246,6 +261,11 @@ const toolsListJSON = `{
             "type": "integer",
             "minimum": 0,
             "description": "subresource=scale only, where it is required. 0 is allowed; negative is rejected."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name"],
@@ -293,6 +313,11 @@ const toolsListJSON = `{
           "fieldManager": {
             "type": "string",
             "description": "patchType=apply only, where it is required. Server-side apply records it as the owner of the fields this patch sets."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name", "patchType", "patch"],
@@ -332,6 +357,11 @@ const toolsListJSON = `{
             "type": "integer",
             "minimum": 0,
             "description": "Seconds to wait before the object is removed, overriding the kind's default. 0 removes it without waiting."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name"],
@@ -375,6 +405,11 @@ const toolsListJSON = `{
             "type": "integer",
             "minimum": 0,
             "description": "Seconds to wait before each object is removed, overriding the kind's default. 0 removes them without waiting."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": [
@@ -423,6 +458,11 @@ const toolsListJSON = `{
             "items": { "type": "string" },
             "minItems": 1,
             "description": "Array of argv to run, e.g. [\"echo\", \"hi\"]. The approval screen carries it verbatim."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name", "command"],
@@ -471,6 +511,11 @@ const toolsListJSON = `{
             "minimum": 1,
             "maximum": 30,
             "description": "How long to collect output before answering. Defaults to 5. The process keeps running after the window closes."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name"],
@@ -525,6 +570,11 @@ const toolsListJSON = `{
             "minimum": 1,
             "maximum": 30,
             "description": "How long to read the answer before closing. Defaults to 5. The tunnel closes when the call returns either way."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name", "port"],
@@ -590,6 +640,11 @@ const toolsListJSON = `{
             "minimum": 1,
             "maximum": 30,
             "description": "How long to read the answer before closing. Defaults to 10. A follow-mode endpoint is reachable, so this is what ends the call."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장."
           }
         },
         "required": ["apiVersion", "kind", "name", "method", "path"],

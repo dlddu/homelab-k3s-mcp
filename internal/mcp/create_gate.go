@@ -23,15 +23,17 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 			return nil, errf(-32603, "create must declare exactly its document's create permission and no existing target")
 		}
 		decision, err := h.askGate(ctx, approvalgate.Call{
-			Tool: name,
-			Pair: doc.pair,
+			Tool:      name,
+			Pair:      doc.pair,
+			SessionID: sessionIDFrom(ctx),
+			Reason:    reasonFrom(ctx),
 			Describe: func(context.Context) (string, error) {
 				ref := &k8s.TargetRef{APIVersion: doc.ref.APIVersion, Kind: doc.ref.Kind, Namespace: doc.ref.Namespace, Name: doc.ref.Name}
 				return approvalContext(name, pairs, doc.raw, h.sensitiveKinds, ref, nil), nil
 			},
 		})
 		if err != nil {
-			slog.Warn("approval refused", "tool", name, "pairs", pairsText(pairs), "error", err.Error())
+			approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "pairs", pairsText(pairs), "error", err.Error())
 			return nil, gateRefusal(err)
 		}
 		if decision == nil || decision.RequestID == "" || seenRequests[decision.RequestID] ||
@@ -55,7 +57,7 @@ func (h *Handler) callCreateBatch(ctx context.Context, name string, entry toolEn
 			failure = err.Error()
 		} else {
 			d := decisions[i]
-			slog.Info("approval granted", "tool", name, "pairs", pairsText([]approvalgate.Pair{doc.pair}),
+			approvalLog(ctx, slog.LevelInfo, "approval granted", "tool", name, "pairs", pairsText([]approvalgate.Pair{doc.pair}),
 				"request_id", d.RequestID, "external_id", d.ExternalID,
 				"auto_approved", d.AutoApproved)
 			executed = append(executed, d)

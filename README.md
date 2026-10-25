@@ -190,3 +190,12 @@ the PocketAide side:
 
 Without either, every gated call is refused (fail-closed); reads that are not
 gated keep working. See `docs/prd-approval-gate.md` for the contract.
+
+Each approval request can also show the operator where and why it came from.
+The `X-Session-Platform-Session-Id` header on `/mcp` is sent as `sessionId`, and
+the optional `reason` argument of every tool that can ask for approval is sent
+as `reason`. The dispatcher removes `reason` from the arguments before the tool
+runs, so it never reaches Kubernetes. Both are for display only and are never
+used to authorize anything. The PocketAide that receives them must already
+accept these two fields (it answers 400 to fields it does not know), so deploy
+PocketAide first.

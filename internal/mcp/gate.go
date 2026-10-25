@@ -541,7 +541,10 @@ func Validate() error {
 	if err != nil {
 		return err
 	}
-	return validateRegistry(toolRegistry, advertised)
+	if err := validateRegistry(toolRegistry, advertised); err != nil {
+		return err
+	}
+	return validateReasonArgument(toolRegistry, toolsListJSON)
 }
 
 var extraAdvertisedTools []string
@@ -623,8 +626,10 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	var ref *k8s.TargetRef
 
 	call := approvalgate.Call{
-		Tool: name,
-		Pair: gated[0],
+		Tool:      name,
+		Pair:      gated[0],
+		SessionID: sessionIDFrom(ctx),
+		Reason:    reasonFrom(ctx),
 		Describe: func(ctx context.Context) (string, error) {
 			var err error
 			ref, approved, err = h.readGateTarget(ctx, entry.decl, gated, rawArgs)
@@ -636,7 +641,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	}
 	decision, err := h.askGate(ctx, call)
 	if err != nil {
-		slog.Warn("approval refused",
+		approvalLog(ctx, slog.LevelWarn, "approval refused",
 			"tool", name,
 			"pairs", pairsText(gated),
 			"error", err.Error(),
@@ -644,7 +649,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		return nil, nil, gateRefusal(err)
 	}
 	if err := decision.Consume(); err != nil {
-		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
 		return nil, nil, errf(-32603, "%s", err.Error()).afterVerdict(decision)
 	}
 
@@ -656,7 +661,7 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 	}
 
 	// AC8: an executed gated call always leaves this record.
-	slog.Info("approval granted",
+	approvalLog(ctx, slog.LevelInfo, "approval granted",
 		"tool", name,
 		"pairs", pairsText(gated),
 		"request_id", decision.RequestID,
@@ -709,7 +714,7 @@ func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decis
 	}
 	current, err := h.gateReader.ReadTarget(ctx, *ref)
 	if err != nil {
-		slog.Warn("approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
 		return errf(-32603, "refusing %s: the approved target could not be re-read before execution: %s", name, err.Error()).afterVerdict(decision)
 	}
 	if current.ResourceVersion == approved.ResourceVersion && current.UID == approved.UID {
@@ -721,7 +726,7 @@ func (h *Handler) confirmTargetUnchanged(ctx context.Context, name string, decis
 			"(resourceVersion %s → %s); the approval was for the earlier state, so this needs a new one",
 		name, targetText(ref), approved.ResourceVersion, current.ResourceVersion,
 	)
-	slog.Warn("approval refused",
+	approvalLog(ctx, slog.LevelWarn, "approval refused",
 		"tool", name,
 		"pairs", pairsText(gated),
 		"request_id", decision.RequestID,
