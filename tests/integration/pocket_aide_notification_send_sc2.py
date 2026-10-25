@@ -3,9 +3,9 @@
 검증 시나리오: test-pocket-aide-notification-send.md#시나리오 2
 실행 대상: primary
 
-주 배포에는 PocketAide 가 배선돼 있지 않다. 그래서 유효한 제목이 미설정 거부로 끝나는 것을 함께
-단언한다 — 잘못된 제목의 거부가 그 미설정 거부와 다른 문구라는 것이, 검증이 PocketAide 설정보다
-앞선다는 이 시나리오의 주장이다.
+유효한 제목이 검증 거부로 끝나지 않는 것을 함께 단언한다 — 그 뒤의 결과(PocketAide 의 응답이든
+미설정 거부든)는 배포마다 다르고 이 시나리오의 주장이 아니다. 같은 배포에서 잘못된 제목만 검증
+거부로 끝난다는 것이, 검증이 PocketAide 보다 앞선다는 주장을 헛통과 없이 받친다.
 """
 
 from __future__ import annotations
@@ -40,9 +40,10 @@ async def test_pocket_aide_notification_send_ac2_bad_titles_refused_first(
         text = refusal_text(await session.call_tool(TOOL, arguments))
         assert text == expected, f"{label}: refusal text = {text!r}, expected {expected!r}"
 
-    text = refusal_text(await session.call_tool(TOOL, {"title": "valid"}))
-    assert "invalid notification" not in text and "pocket-aide unavailable" in text, (
-        f"a valid title should pass validation and stop at the unconfigured client: {text!r}"
+    result = await session.call_tool(TOOL, {"title": "valid"})
+    text = result.content[0].text if result.content else ""
+    assert "invalid notification" not in text, (
+        f"a valid title must pass validation: {text!r}"
     )
 
     survivor = await session.call_tool("ping", {})
