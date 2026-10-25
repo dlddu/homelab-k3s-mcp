@@ -111,6 +111,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 		"session_create", "session_list", "session_read", "session_write", "session_delete",
+		"pocket_aide_notification_send",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("len(tools) = %d, want %d", len(tools), len(want))

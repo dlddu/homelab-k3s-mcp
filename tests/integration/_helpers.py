@@ -66,6 +66,7 @@ EXPECTED_TOOLS = {
     "session_read",
     "session_write",
     "session_delete",
+    "pocket_aide_notification_send",
 }
 
 # Must match GITHUB_APP_INSTALLATION_ID in the CI "Create test GitHub App secret"
