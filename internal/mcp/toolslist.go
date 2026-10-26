@@ -701,11 +701,11 @@ const toolsListJSON = `{
           "repositories": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Optional list of repository names (without owner) to restrict the token to. Each repo must be installed for the App. Omit to grant access to all installed repos — or, for a GitHub Actions caller whose rule sets a githubToken cap, to the cap's repositories; naming a repository outside that cap is refused."
+            "description": "Optional list of repository names (without owner) to restrict the token to. Each repo must be installed for the App. Omit to grant access to all installed repos — or, for a GitHub Actions caller whose rule sets githubToken caps, to the repositories of the cap the request fits; naming repositories that fit no single cap is refused."
           },
           "permissions": {
             "type": "object",
-            "description": "Optional map of permission name to access level (e.g. { \"contents\": \"read\", \"pull_requests\": \"write\" }). Must be a subset of the App's installed permissions. A GitHub Actions caller whose rule sets a githubToken cap gets the cap's permissions when this is omitted and may not exceed them.",
+            "description": "Optional map of permission name to access level (e.g. { \"contents\": \"read\", \"pull_requests\": \"write\" }). Must be a subset of the App's installed permissions. A GitHub Actions caller whose rule sets githubToken caps gets the permissions of the cap the request fits when this is omitted and may not exceed them; a request that fits more than one cap must name both repositories and permissions.",
             "additionalProperties": { "type": "string" }
           }
         },

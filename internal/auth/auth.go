@@ -84,8 +84,8 @@ func FromEnv(ctx context.Context) (*Config, error) {
 
 	ghIssuer := os.Getenv("MCP_GITHUB_OIDC_ISSUER")
 	ghAudience := os.Getenv("MCP_GITHUB_OIDC_AUDIENCE")
-	ghRules := os.Getenv("MCP_GITHUB_OIDC_RULES")
-	githubRequested := ghIssuer != "" || ghAudience != "" || ghRules != ""
+	ghRules := GitHubRuleSources(os.Environ())
+	githubRequested := ghIssuer != "" || ghAudience != "" || len(ghRules) > 0
 
 	if len(apiKeys) == 0 && !oauthRequested && !githubRequested {
 		return nil, fmt.Errorf("no authentication configured: set MCP_API_KEYS, MCP_OAUTH_ISSUER+MCP_OAUTH_AUDIENCE and/or MCP_GITHUB_OIDC_AUDIENCE+MCP_GITHUB_OIDC_RULES, or MCP_AUTH_DISABLED=1 to serve /mcp without auth")
@@ -348,7 +348,7 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 			slog.Debug("mcp authenticated", "method", githubOIDCMethod)
 			r = withPrincipal(r, eventlog.Principal{Method: githubOIDCMethod, ID: grant.caller})
 			ctx := toolscope.With(r.Context(), grant.tools)
-			ctx = toolscope.WithTokenCap(ctx, grant.tokenCap)
+			ctx = toolscope.WithTokenCaps(ctx, grant.tokenCaps)
 			ctx = toolscope.WithSelfRepository(ctx, grant.self)
 			next.ServeHTTP(w, r.WithContext(ctx))
 			return

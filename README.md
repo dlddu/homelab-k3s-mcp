@@ -56,7 +56,7 @@ they compose — configure any combination, but at least one must be present:
 |------|-----|-----|
 | OAuth 2.0 Bearer (RS256 JWT, JWKS-verified) | `MCP_OAUTH_ISSUER`, `MCP_OAUTH_AUDIENCE`, `MCP_OAUTH_RESOURCE` | Interactive MCP clients that run the OAuth flow |
 | Static API keys | `MCP_API_KEYS` | Non-interactive automation that cannot run OAuth |
-| GitHub Actions OIDC (RS256 JWT, JWKS-verified) | `MCP_GITHUB_OIDC_AUDIENCE`, `MCP_GITHUB_OIDC_RULES`, optional `MCP_GITHUB_OIDC_ISSUER` | Workflows in allowed repositories, each limited to its own tools |
+| GitHub Actions OIDC (RS256 JWT, JWKS-verified) | `MCP_GITHUB_OIDC_AUDIENCE`, `MCP_GITHUB_OIDC_RULES` (and/or `MCP_GITHUB_OIDC_RULES_*`), optional `MCP_GITHUB_OIDC_ISSUER` | Workflows in allowed repositories, each limited to its own tools |
 
 A request presents its credential as `Authorization: Bearer <credential>`. The
 middleware matches the value against the configured API keys first (constant-time
@@ -109,6 +109,13 @@ bearer. The server verifies the signature against the issuer's JWKS, checks
 `iss`, `aud` and `exp`, and admits the token only when a rule in
 `MCP_GITHUB_OIDC_RULES` matches it. There is no secret to store or rotate.
 
+Rules may be split across `MCP_GITHUB_OIDC_RULES` and any number of
+`MCP_GITHUB_OIDC_RULES_<SUFFIX>` variables, each a JSON array of rules; the server
+reads the unsuffixed one first, then the others in name order, and treats the
+result as one list. Splitting exists because one SSM parameter holds at most
+4 KB. A rule repeated across variables stops the server at startup, like one
+repeated within a variable; an empty variable is ignored.
+
 A rule names a repository (`repository` claim, `owner/name`, case-insensitive)
 and optionally a workflow file (the path in the `workflow_ref` claim, any ref).
 A rule without `workflow` matches every workflow in that repository. When
@@ -141,10 +148,27 @@ and the highest level of each permission (`read` < `write` < `admin`):
 
 A capped caller that omits `repositories` or `permissions` gets the cap, not the
 App's whole installation, and asking for a repository, a permission or a level
-outside the cap is refused (`-32602`) without minting anything. Caps combine
-like tools: the union of the matching rules' repositories, the highest level per
-permission — so a matching rule that grants the tool without `githubToken`
-leaves that workflow unbounded.
+outside the cap is refused (`-32602`) without minting anything.
+
+`githubToken` may also be an array of caps, when a workflow needs different
+permissions on different repositories — say write on the repositories it
+changes and read on the one it installs plugins from:
+
+```json
+"githubToken": [
+  {"repositories": ["pocket-aide", "feature-doc"], "permissions": {"contents": "write", "pull_requests": "write", "metadata": "read"}},
+  {"repositories": ["plugin-marketplace"], "permissions": {"contents": "read", "metadata": "read"}}
+]
+```
+
+A request must then fit **one** cap whole: its repositories and permissions are
+checked against each cap in turn, never mixed across them, so the example cannot
+mint write on `plugin-marketplace` or one token for `pocket-aide` and
+`plugin-marketplace` together. An omitted `repositories` or `permissions` is
+filled from the cap the request fits; if it fits more than one, the request is
+ambiguous and refused — name both. When several rules match a workflow, their
+caps are collected the same way, each kept whole. A matching rule that grants
+the tool without `githubToken` leaves that workflow unbounded.
 
 Whatever the cap, a GitHub Actions caller never gets a token that can change
 its **own** repository's workflow files: a token with the `workflows`
@@ -169,7 +193,9 @@ stops the server.
 In production both values come from the Secret `homelab-k3s-mcp-github-oidc`
 (an ExternalSecret in flux-cd-apps, SSM `/flux-cd/homelab-k3s-mcp/github-oidc`),
 which `k8s/deployment.yaml` reads with `optional: true`; without it the path is
-off.
+off. More rules come from the Secret `homelab-k3s-mcp-github-oidc-claude` (SSM
+`/flux-cd/homelab-k3s-mcp/github-oidc-claude`, key `MCP_GITHUB_OIDC_RULES_CLAUDE`),
+also optional.
 
 Anyone who can push to an allowed repository can edit an allowed workflow file,
 or run it from another branch, and so use its tools. Grant each rule only what

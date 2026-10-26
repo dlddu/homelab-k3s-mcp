@@ -27,6 +27,28 @@ const (
 
 var permissionRank = map[string]int{"read": 1, "write": 2, "admin": 3}
 
+const githubRulesEnv = "MCP_GITHUB_OIDC_RULES"
+
+// GitHubRuleSources returns the rule variables set in environ.
+func GitHubRuleSources(environ []string) []RuleSource {
+	var base []RuleSource
+	var extras []RuleSource
+	for _, kv := range environ {
+		name, value, ok := strings.Cut(kv, "=")
+		if !ok || value == "" {
+			continue
+		}
+		switch {
+		case name == githubRulesEnv:
+			base = append(base, RuleSource{Name: name, Raw: value})
+		case strings.HasPrefix(name, githubRulesEnv+"_"):
+			extras = append(extras, RuleSource{Name: name, Raw: value})
+		}
+	}
+	sort.Slice(extras, func(i, j int) bool { return extras[i].Name < extras[j].Name })
+	return append(base, extras...)
+}
+
 type githubOIDC struct {
 	issuer   string
 	audience string
@@ -45,7 +67,13 @@ type githubRule struct {
 	repository string
 	workflow   string
 	tools      []string
-	token      *toolscope.TokenCap
+	tokens     []*toolscope.TokenCap
+}
+
+// RuleSource is one environment variable that holds rules.
+type RuleSource struct {
+	Name string
+	Raw  string
 }
 
 type githubClaims struct {
@@ -54,7 +82,7 @@ type githubClaims struct {
 	jwt.RegisteredClaims
 }
 
-func newGitHubOIDC(ctx context.Context, issuer, audience, rawRules string) (*githubOIDC, error) {
+func newGitHubOIDC(ctx context.Context, issuer, audience string, sources []RuleSource) (*githubOIDC, error) {
 	if issuer == "" {
 		issuer = defaultGitHubOIDCIssuer
 	}
@@ -62,7 +90,7 @@ func newGitHubOIDC(ctx context.Context, issuer, audience, rawRules string) (*git
 	if audience == "" {
 		return nil, fmt.Errorf("MCP_GITHUB_OIDC_AUDIENCE is required when GitHub OIDC is enabled")
 	}
-	rules, err := parseGitHubRules(rawRules)
+	rules, err := parseGitHubRuleSources(sources)
 	if err != nil {
 		return nil, err
 	}
@@ -91,31 +119,59 @@ func newGitHubOIDC(ctx context.Context, issuer, audience, rawRules string) (*git
 }
 
 func parseGitHubRules(raw string) ([]githubRule, error) {
-	if strings.TrimSpace(raw) == "" {
-		return nil, fmt.Errorf("MCP_GITHUB_OIDC_RULES is required when GitHub OIDC is enabled")
+	return parseGitHubRuleSources([]RuleSource{{Name: githubRulesEnv, Raw: raw}})
+}
+
+func parseGitHubRuleSources(sources []RuleSource) ([]githubRule, error) {
+	var rules []githubRule
+	seen := map[string]string{}
+	for _, src := range sources {
+		parsed, err := parseRuleSource(src)
+		if err != nil {
+			return nil, err
+		}
+		for i, rule := range parsed {
+			where := fmt.Sprintf("%s[%d]", src.Name, i)
+			if first, dup := seen[rule.label()]; dup {
+				return nil, fmt.Errorf("%s repeats %s (already in %s)", where, rule.label(), first)
+			}
+			seen[rule.label()] = where
+		}
+		rules = append(rules, parsed...)
+	}
+	if len(rules) == 0 {
+		return nil, fmt.Errorf("%s is required when GitHub OIDC is enabled", githubRulesEnv)
+	}
+	return rules, nil
+}
+
+type tokenCapJSON struct {
+	Repositories []string          `json:"repositories"`
+	Permissions  map[string]string `json:"permissions"`
+}
+
+func parseRuleSource(src RuleSource) ([]githubRule, error) {
+	if strings.TrimSpace(src.Raw) == "" {
+		return nil, fmt.Errorf("%s is empty", src.Name)
 	}
 	var decoded []struct {
-		Repository  string   `json:"repository"`
-		Workflow    string   `json:"workflow"`
-		Tools       []string `json:"tools"`
-		GitHubToken *struct {
-			Repositories []string          `json:"repositories"`
-			Permissions  map[string]string `json:"permissions"`
-		} `json:"githubToken"`
+		Repository  string          `json:"repository"`
+		Workflow    string          `json:"workflow"`
+		Tools       []string        `json:"tools"`
+		GitHubToken json.RawMessage `json:"githubToken"`
 	}
-	dec := json.NewDecoder(strings.NewReader(raw))
+	dec := json.NewDecoder(strings.NewReader(src.Raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&decoded); err != nil {
-		return nil, fmt.Errorf(`MCP_GITHUB_OIDC_RULES must be a JSON array of {"repository", "workflow", "tools", "githubToken"}: %w`, err)
+		return nil, fmt.Errorf(`%s must be a JSON array of {"repository", "workflow", "tools", "githubToken"}: %w`, src.Name, err)
 	}
 	if len(decoded) == 0 {
-		return nil, fmt.Errorf("MCP_GITHUB_OIDC_RULES lists no rule")
+		return nil, fmt.Errorf("%s lists no rule", src.Name)
 	}
 
 	rules := make([]githubRule, 0, len(decoded))
-	seen := map[string]bool{}
 	for i, d := range decoded {
-		where := fmt.Sprintf("MCP_GITHUB_OIDC_RULES[%d]", i)
+		where := fmt.Sprintf("%s[%d]", src.Name, i)
 		owner, name, ok := strings.Cut(d.Repository, "/")
 		if !ok || owner == "" || name == "" || strings.Contains(name, "/") || strings.ContainsAny(d.Repository, " \t") {
 			return nil, fmt.Errorf("%s: repository %q is not \"owner/name\"", where, d.Repository)
@@ -136,24 +192,56 @@ func parseGitHubRules(raw string) ([]githubRule, error) {
 			}
 		}
 		rule := githubRule{repository: strings.ToLower(d.Repository), workflow: d.Workflow, tools: d.Tools}
-		if d.GitHubToken != nil {
-			tokenCap, err := parseTokenCap(where, d.Tools, d.GitHubToken.Repositories, d.GitHubToken.Permissions)
+		caps, err := decodeTokenCaps(where, d.GitHubToken)
+		if err != nil {
+			return nil, err
+		}
+		own := strings.ToLower(name)
+		for j, c := range caps {
+			capWhere := where
+			if len(caps) > 1 || isJSONArray(d.GitHubToken) {
+				capWhere = fmt.Sprintf("%s.githubToken[%d]", where, j)
+			}
+			tokenCap, err := parseTokenCap(capWhere, d.Tools, c.Repositories, c.Permissions)
 			if err != nil {
 				return nil, err
 			}
-			own := strings.ToLower(name)
 			if _, workflows := tokenCap.Permissions["workflows"]; workflows && slices.Contains(tokenCap.Repositories, own) {
-				return nil, fmt.Errorf("%s: githubToken grants workflows on %s, the rule's own repository — a workflow that can rewrite its own workflow files can read every secret there", where, own)
+				return nil, fmt.Errorf("%s: githubToken grants workflows on %s, the rule's own repository — a workflow that can rewrite its own workflow files can read every secret there", capWhere, own)
 			}
-			rule.token = tokenCap
+			rule.tokens = append(rule.tokens, tokenCap)
 		}
-		if seen[rule.label()] {
-			return nil, fmt.Errorf("%s repeats %s", where, rule.label())
-		}
-		seen[rule.label()] = true
 		rules = append(rules, rule)
 	}
 	return rules, nil
+}
+
+func isJSONArray(raw json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(raw))
+	return strings.HasPrefix(trimmed, "[")
+}
+
+func decodeTokenCaps(where string, raw json.RawMessage) ([]tokenCapJSON, error) {
+	if trimmed := strings.TrimSpace(string(raw)); trimmed == "" || trimmed == "null" {
+		return nil, nil
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.DisallowUnknownFields()
+	if !isJSONArray(raw) {
+		var one tokenCapJSON
+		if err := dec.Decode(&one); err != nil {
+			return nil, fmt.Errorf(`%s: githubToken must be {"repositories", "permissions"} or an array of them: %w`, where, err)
+		}
+		return []tokenCapJSON{one}, nil
+	}
+	var many []tokenCapJSON
+	if err := dec.Decode(&many); err != nil {
+		return nil, fmt.Errorf(`%s: githubToken must be {"repositories", "permissions"} or an array of them: %w`, where, err)
+	}
+	if len(many) == 0 {
+		return nil, fmt.Errorf("%s: githubToken lists no cap", where)
+	}
+	return many, nil
 }
 
 func parseTokenCap(where string, tools, repositories []string, permissions map[string]string) (*toolscope.TokenCap, error) {
@@ -211,11 +299,11 @@ func workflowPath(repository, workflowRef string) string {
 	return p[len(prefix):]
 }
 
-func (g *githubOIDC) grantsFor(repository, workflow string) ([]string, *toolscope.TokenCap) {
+func (g *githubOIDC) grantsFor(repository, workflow string) ([]string, []*toolscope.TokenCap) {
 	repo := strings.ToLower(repository)
 	var tools []string
 	have := map[string]bool{}
-	var tokenCap *toolscope.TokenCap
+	var tokenCaps []*toolscope.TokenCap
 	unbounded := false
 	for _, r := range g.rules {
 		if r.repository != repo || (r.workflow != "" && r.workflow != workflow) {
@@ -229,39 +317,17 @@ func (g *githubOIDC) grantsFor(repository, workflow string) ([]string, *toolscop
 			if t != installationTokenTool {
 				continue
 			}
-			if r.token == nil {
+			if len(r.tokens) == 0 {
 				unbounded = true
 				continue
 			}
-			tokenCap = mergeTokenCap(tokenCap, r.token)
+			tokenCaps = append(tokenCaps, r.tokens...)
 		}
 	}
 	if unbounded {
-		tokenCap = nil
+		tokenCaps = nil
 	}
-	return tools, tokenCap
-}
-
-func mergeTokenCap(into, from *toolscope.TokenCap) *toolscope.TokenCap {
-	if into == nil {
-		into = &toolscope.TokenCap{Permissions: map[string]string{}}
-	}
-	seen := map[string]bool{}
-	for _, repo := range into.Repositories {
-		seen[repo] = true
-	}
-	for _, repo := range from.Repositories {
-		if !seen[repo] {
-			seen[repo] = true
-			into.Repositories = append(into.Repositories, repo)
-		}
-	}
-	for name, level := range from.Permissions {
-		if permissionRank[level] > permissionRank[into.Permissions[name]] {
-			into.Permissions[name] = level
-		}
-	}
-	return into
+	return tools, tokenCaps
 }
 
 func (g *githubOIDC) refreshKeys(ctx context.Context) error {
@@ -300,10 +366,10 @@ func (g *githubOIDC) issues(raw string) bool {
 }
 
 type githubGrant struct {
-	caller   string
-	tools    []string
-	tokenCap *toolscope.TokenCap
-	self     string
+	caller    string
+	tools     []string
+	tokenCaps []*toolscope.TokenCap
+	self      string
 }
 
 func (g *githubOIDC) verify(ctx context.Context, raw string) (githubGrant, error) {
@@ -333,7 +399,7 @@ func (g *githubOIDC) verify(ctx context.Context, raw string) (githubGrant, error
 		return githubGrant{}, fmt.Errorf("token has no repository claim")
 	}
 	workflow := workflowPath(claims.Repository, claims.WorkflowRef)
-	tools, tokenCap := g.grantsFor(claims.Repository, workflow)
+	tools, tokenCaps := g.grantsFor(claims.Repository, workflow)
 	if len(tools) == 0 {
 		slog.Warn("github oidc token matches no MCP_GITHUB_OIDC_RULES entry", "repository", claims.Repository, "workflow", workflow)
 		return githubGrant{}, fmt.Errorf("%s %s is not allowed", claims.Repository, workflow)
@@ -343,7 +409,7 @@ func (g *githubOIDC) verify(ctx context.Context, raw string) (githubGrant, error
 		caller += "/" + workflow
 	}
 	_, self, _ := strings.Cut(claims.Repository, "/")
-	return githubGrant{caller: caller, tools: tools, tokenCap: tokenCap, self: strings.ToLower(self)}, nil
+	return githubGrant{caller: caller, tools: tools, tokenCaps: tokenCaps, self: strings.ToLower(self)}, nil
 }
 
 // GitHubOIDCRuleCount returns how many MCP_GITHUB_OIDC_RULES entries admit

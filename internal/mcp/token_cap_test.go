@@ -175,3 +175,97 @@ func TestInstallationTokenWithoutSelfIsUnguarded(t *testing.T) {
 		t.Fatalf("API-key and OAuth callers keep the old behaviour: %v", rerr)
 	}
 }
+
+func plannerCaps() []*toolscope.TokenCap {
+	return []*toolscope.TokenCap{
+		{Repositories: []string{"dear-baby", "feature-doc"}, Permissions: map[string]string{"contents": "write", "pull_requests": "write", "metadata": "read"}},
+		{Repositories: []string{"plugin-marketplace"}, Permissions: map[string]string{"contents": "read", "metadata": "read"}},
+	}
+}
+
+func TestInstallationTokenCapListMintsWithinOneCap(t *testing.T) {
+	cases := map[string]struct {
+		args      string
+		wantRepos []string
+		wantPerms map[string]any
+	}{
+		"repositories of one cap fill its permissions": {
+			args:      `{"repositories":["plugin-marketplace"]}`,
+			wantRepos: []string{"plugin-marketplace"},
+			wantPerms: map[string]any{"contents": "read", "metadata": "read"},
+		},
+		"permissions of one cap fill its repositories": {
+			args:      `{"permissions":{"pull_requests":"write"}}`,
+			wantRepos: []string{"dear-baby", "feature-doc"},
+			wantPerms: map[string]any{"pull_requests": "write"},
+		},
+		"both named inside one cap pass unchanged": {
+			args:      `{"repositories":["Feature-Doc"],"permissions":{"contents":"write"}}`,
+			wantRepos: []string{"Feature-Doc"},
+			wantPerms: map[string]any{"contents": "write"},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			gh := &recordingTokenGitHub{}
+			h := &Handler{github: gh}
+			ctx := toolscope.WithTokenCaps(context.Background(), plannerCaps())
+			if _, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(tc.args)); rerr != nil {
+				t.Fatalf("unexpected refusal: %v", rerr)
+			}
+			if !reflect.DeepEqual(gh.repositories, tc.wantRepos) || !reflect.DeepEqual(gh.permissions, tc.wantPerms) {
+				t.Errorf("minted %v %v, want %v %v", gh.repositories, gh.permissions, tc.wantRepos, tc.wantPerms)
+			}
+		})
+	}
+}
+
+func TestInstallationTokenCapListRefusesAcrossOrAmbiguous(t *testing.T) {
+	cases := map[string]struct {
+		args string
+		want string
+	}{
+		"repositories spanning two caps": {`{"repositories":["dear-baby","plugin-marketplace"],"permissions":{"contents":"read"}}`, "fits none"},
+		"write outside the write cap":    {`{"repositories":["plugin-marketplace"],"permissions":{"contents":"write"}}`, "fits none"},
+		"repository in no cap":           {`{"repositories":["reconciler"]}`, "fits none"},
+		"empty repository list":          {`{"repositories":[]}`, "fits none"},
+		"nothing named":                  {`{}`, "ambiguous"},
+		"permissions fitting both caps":  {`{"permissions":{"contents":"read"}}`, "ambiguous"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			gh := &recordingTokenGitHub{}
+			h := &Handler{github: gh}
+			ctx := toolscope.WithTokenCaps(context.Background(), plannerCaps())
+			_, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(tc.args))
+			if rerr == nil || rerr.code != -32602 || !strings.Contains(rerr.message, tc.want) {
+				t.Fatalf("refusal = %+v, want -32602 saying %q", rerr, tc.want)
+			}
+			if !strings.Contains(rerr.message, "plugin-marketplace") && tc.want == "fits none" {
+				t.Errorf("refusal must list the caller's scopes, got %q", rerr.message)
+			}
+			if gh.calls != 0 {
+				t.Errorf("GitHub was asked for a token %d times, want 0", gh.calls)
+			}
+		})
+	}
+}
+
+func TestInstallationTokenCapListKeepsSelfGuard(t *testing.T) {
+	gh := &recordingTokenGitHub{}
+	h := &Handler{github: gh}
+	ctx := toolscope.WithTokenCaps(context.Background(), []*toolscope.TokenCap{
+		{Repositories: []string{"dear-baby"}, Permissions: map[string]string{"workflows": "write"}},
+		{Repositories: []string{"reconciler"}, Permissions: map[string]string{"contents": "read"}},
+	})
+	ctx = toolscope.WithSelfRepository(ctx, "reconciler")
+	if _, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(`{"repositories":["dear-baby"]}`)); rerr != nil {
+		t.Fatalf("workflows on another repository must pass: %v", rerr)
+	}
+	if _, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(`{"repositories":["reconciler"],"permissions":{"workflows":"write"}}`)); rerr == nil {
+		t.Fatal("workflows on the caller's own repository must stay refused")
+	}
+	if gh.calls != 1 {
+		t.Errorf("GitHub calls = %d, want 1", gh.calls)
+	}
+}
