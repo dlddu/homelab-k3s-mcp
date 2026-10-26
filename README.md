@@ -126,6 +126,36 @@ Here `reconcile.yml` may use both tools and any other workflow in
 `dlddu/reconciler` only `opensearch_search`. The workflow display name (`name:`)
 is not used: several files may share it.
 
+A rule that grants `github_app_installation_token` may also cap the tokens it
+lets a workflow mint with `githubToken` — the repositories (names without owner)
+and the highest level of each permission (`read` < `write` < `admin`):
+
+```json
+[
+  {"repository": "dlddu/reconciler", "workflow": ".github/workflows/reconciler-drift-detector.yml",
+   "tools": ["github_app_installation_token", "resource_list", "resource_get"],
+   "githubToken": {"repositories": ["plugin-marketplace", "economic-opinion-trend-monitor"],
+                   "permissions": {"contents": "read", "metadata": "read"}}}
+]
+```
+
+A capped caller that omits `repositories` or `permissions` gets the cap, not the
+App's whole installation, and asking for a repository, a permission or a level
+outside the cap is refused (`-32602`) without minting anything. Caps combine
+like tools: the union of the matching rules' repositories, the highest level per
+permission — so a matching rule that grants the tool without `githubToken`
+leaves that workflow unbounded.
+
+Whatever the cap, a GitHub Actions caller never gets a token that can change
+its **own** repository's workflow files: a token with the `workflows`
+permission — named, or implied by omitting `permissions` — that includes the
+calling repository (named, or implied by omitting `repositories`) is refused.
+A workflow that could push a workflow file to its own repository could write one
+that reads every secret held there, including keys meant for other workflows.
+Changing workflows in other repositories stays possible: name them in
+`repositories` and leave the caller's out. A rule whose cap puts `workflows` on
+its own repository stops the server at startup.
+
 A caller on this path sees only its tools in `tools/list`, and calling any
 other tool fails exactly like calling a tool that does not exist
 (`-32602 unknown tool: <name>`). Gated tools still wait for approval. API-key
