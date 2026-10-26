@@ -18,10 +18,14 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 TOOL = "pocket_aide_notification_send"
 
+REQUESTER = "e2e 하네스"
+
 CASES = [
-    ("title 누락", {}, "invalid notification: title is required"),
-    ("공백뿐인 title", {"title": "   "}, "invalid notification: title is required"),
-    ("121자 title", {"title": "가" * 121}, "invalid notification: title must be 120 characters or fewer"),
+    ("title 누락", {"requester": REQUESTER}, "invalid notification: title is required"),
+    ("공백뿐인 title", {"title": "   ", "requester": REQUESTER}, "invalid notification: title is required"),
+    ("121자 title", {"title": "가" * 121, "requester": REQUESTER}, "invalid notification: title must be 120 characters or fewer"),
+    ("requester 누락", {"title": "valid"}, "invalid notification: requester is required"),
+    ("201자 requester", {"title": "valid", "requester": "가" * 201}, "invalid notification: requester must be 200 characters or fewer"),
 ]
 
 
@@ -40,10 +44,10 @@ async def test_pocket_aide_notification_send_ac2_bad_titles_refused_first(
         text = refusal_text(await session.call_tool(TOOL, arguments))
         assert text == expected, f"{label}: refusal text = {text!r}, expected {expected!r}"
 
-    result = await session.call_tool(TOOL, {"title": "valid"})
+    result = await session.call_tool(TOOL, {"title": "valid", "requester": REQUESTER})
     text = result.content[0].text if result.content else ""
     assert "invalid notification" not in text, (
-        f"a valid title must pass validation: {text!r}"
+        f"a valid title and requester must pass validation: {text!r}"
     )
 
     survivor = await session.call_tool("ping", {})

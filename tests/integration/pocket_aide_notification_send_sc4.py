@@ -29,7 +29,7 @@ async def test_pocket_aide_notification_send_ac4_unconfigured_refusal(
     await assert_unavailable_refusal(
         session,
         "pocket_aide_notification_send",
-        {"title": "no-config-probe"},
+        {"title": "no-config-probe", "requester": "e2e 하네스"},
         POCKET_AIDE_REFUSAL,
     )
 
