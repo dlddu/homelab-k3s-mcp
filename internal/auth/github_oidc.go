@@ -146,8 +146,9 @@ func parseGitHubRuleSources(sources []RuleSource) ([]githubRule, error) {
 }
 
 type tokenCapJSON struct {
-	Repositories []string          `json:"repositories"`
-	Permissions  map[string]string `json:"permissions"`
+	Repositories        []string          `json:"repositories"`
+	ExcludeRepositories []string          `json:"excludeRepositories"`
+	Permissions         map[string]string `json:"permissions"`
 }
 
 func parseRuleSource(src RuleSource) ([]githubRule, error) {
@@ -202,11 +203,11 @@ func parseRuleSource(src RuleSource) ([]githubRule, error) {
 			if len(caps) > 1 || isJSONArray(d.GitHubToken) {
 				capWhere = fmt.Sprintf("%s.githubToken[%d]", where, j)
 			}
-			tokenCap, err := parseTokenCap(capWhere, d.Tools, c.Repositories, c.Permissions)
+			tokenCap, err := parseTokenCap(capWhere, d.Tools, c)
 			if err != nil {
 				return nil, err
 			}
-			if _, workflows := tokenCap.Permissions["workflows"]; workflows && slices.Contains(tokenCap.Repositories, own) {
+			if capGrantsWorkflowsOn(tokenCap, own) {
 				return nil, fmt.Errorf("%s: githubToken grants workflows on %s, the rule's own repository — a workflow that can rewrite its own workflow files can read every secret there", capWhere, own)
 			}
 			rule.tokens = append(rule.tokens, tokenCap)
@@ -244,7 +245,19 @@ func decodeTokenCaps(where string, raw json.RawMessage) ([]tokenCapJSON, error) 
 	return many, nil
 }
 
-func parseTokenCap(where string, tools, repositories []string, permissions map[string]string) (*toolscope.TokenCap, error) {
+func capGrantsWorkflowsOn(tokenCap *toolscope.TokenCap, own string) bool {
+	_, named := tokenCap.Permissions["workflows"]
+	workflows := named || tokenCap.Permissions == nil
+	if !workflows {
+		return false
+	}
+	if tokenCap.ExcludeRepositories != nil {
+		return !slices.Contains(tokenCap.ExcludeRepositories, own)
+	}
+	return slices.Contains(tokenCap.Repositories, own)
+}
+
+func parseTokenCap(where string, tools []string, c tokenCapJSON) (*toolscope.TokenCap, error) {
 	grants := false
 	for _, tool := range tools {
 		if tool == installationTokenTool {
@@ -254,20 +267,39 @@ func parseTokenCap(where string, tools, repositories []string, permissions map[s
 	if !grants {
 		return nil, fmt.Errorf("%s: githubToken is set but tools does not grant %s", where, installationTokenTool)
 	}
-	if len(repositories) == 0 {
-		return nil, fmt.Errorf("%s: githubToken lists no repository", where)
-	}
-	if len(permissions) == 0 {
-		return nil, fmt.Errorf("%s: githubToken lists no permission", where)
-	}
-	tokenCap := &toolscope.TokenCap{Permissions: map[string]string{}}
-	for _, repo := range repositories {
-		if repo == "" || strings.ContainsAny(repo, "/ \t") {
-			return nil, fmt.Errorf("%s: githubToken repository %q is not a bare repository name", where, repo)
+	tokenCap := &toolscope.TokenCap{}
+	switch {
+	case c.Repositories != nil && c.ExcludeRepositories != nil:
+		return nil, fmt.Errorf("%s: githubToken sets both repositories and excludeRepositories", where)
+	case c.ExcludeRepositories != nil:
+		if len(c.ExcludeRepositories) == 0 {
+			return nil, fmt.Errorf("%s: githubToken excludeRepositories is empty", where)
 		}
-		tokenCap.Repositories = append(tokenCap.Repositories, strings.ToLower(repo))
+		names, err := bareRepositoryNames(where, c.ExcludeRepositories)
+		if err != nil {
+			return nil, err
+		}
+		tokenCap.ExcludeRepositories = names
+	default:
+		if len(c.Repositories) == 0 {
+			return nil, fmt.Errorf("%s: githubToken lists no repository", where)
+		}
+		if len(c.Permissions) == 0 {
+			return nil, fmt.Errorf("%s: githubToken lists no permission", where)
+		}
+		names, err := bareRepositoryNames(where, c.Repositories)
+		if err != nil {
+			return nil, err
+		}
+		tokenCap.Repositories = names
 	}
-	for name, level := range permissions {
+	if c.Permissions != nil {
+		if len(c.Permissions) == 0 {
+			return nil, fmt.Errorf("%s: githubToken lists no permission", where)
+		}
+		tokenCap.Permissions = map[string]string{}
+	}
+	for name, level := range c.Permissions {
 		if strings.TrimSpace(name) == "" {
 			return nil, fmt.Errorf("%s: githubToken names an empty permission", where)
 		}
@@ -277,6 +309,17 @@ func parseTokenCap(where string, tools, repositories []string, permissions map[s
 		tokenCap.Permissions[name] = level
 	}
 	return tokenCap, nil
+}
+
+func bareRepositoryNames(where string, repositories []string) ([]string, error) {
+	names := make([]string, 0, len(repositories))
+	for _, repo := range repositories {
+		if repo == "" || strings.ContainsAny(repo, "/ \t") {
+			return nil, fmt.Errorf("%s: githubToken repository %q is not a bare repository name", where, repo)
+		}
+		names = append(names, strings.ToLower(repo))
+	}
+	return names, nil
 }
 
 func (r githubRule) label() string {

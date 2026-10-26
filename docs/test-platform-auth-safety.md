@@ -166,13 +166,19 @@
   (g) 상한을 배열 `[{repositories: [A, B], permissions: {contents: write, metadata: read}}, {repositories: [M],
   permissions: {contents: read, metadata: read}}]`로 바꾸고 `repositories: [M]` / `permissions: {contents: write}` /
   `repositories: [A, M]` / `repositories: [M]`, `permissions: {contents: write}` / 인자 없이 / `permissions:
-  {contents: read}`로 호출
+  {contents: read}`로 호출, (h) 상한을 `[{excludeRepositories: [R, M, I]}, {repositories: [M], permissions: {contents: read,
+  metadata: read}}]`로 바꾸고 `repositories: [A]`, `permissions: {workflows: write, administration: write}` / `repositories:
+  [A]` / `repositories: [M]` / `repositories: [I]` / 인자 없이 호출, (i) 자기 레포 R을 빼지 않은 권한 생략 제외 상한으로 기동
 - **기대 결과**: (a) A·B와 상한 권한으로 발급, (b) 요청 그대로 발급, (c) 전부 `-32602`(호출자의 범위를 밝힘)이고
   GitHub 호출 0건, (d) 전부 `-32602`(자기 레포 workflows)이고 GitHub 호출 0건, (e) 발급, (f) 기동 실패,
   (g) 앞의 둘은 들어맞는 상한에서 채워 발급(M·read / A·B·write), 다음 둘은 상한 사이에 걸치거나 넘어서
-  `-32602`(상한 목록을 밝힘), 뒤의 둘은 두 상한에 다 들어맞아 모호하므로 `-32602` — 거부는 모두 GitHub 호출 0건
+  `-32602`(상한 목록을 밝힘), 뒤의 둘은 두 상한에 다 들어맞아 모호하므로 `-32602` — 거부는 모두 GitHub 호출 0건,
+  (h) 앞의 셋은 발급(A·요청 권한 그대로 / A·권한 생략 그대로 / M·read), `repositories: [I]`는 `-32602`(제외 레포,
+  GitHub 호출 0건), 인자 없는 호출은 레포를 명시하지 않아 제외 상한에 들지 않고 M 상한 하나에만 들어맞으므로 M·read로 발급,
+  (i) 기동 실패
 - **검증 AC**: AC11
 - **자동화**: Go 단위 `internal/mcp/token_cap_test.go`(상한 적용·거부, 자기 레포 가드, 상한 뒤 가드, 상한 배열의
-  발급·거부·모호), `internal/auth/github_oidc_token_cap_test.go`(규칙 파싱·검증, 상한 배열 파싱, 여러 규칙의 상한을
+  발급·거부·모호, 제외 상한 `TestInstallationTokenExcludeCap*`·`TestInstallationTokenSingleExcludeCap`),
+  `internal/auth/github_oidc_token_cap_test.go`(규칙 파싱·검증, 상한 배열 파싱, 제외 상한 파싱·자기 레포 규칙, 여러 규칙의 상한을
   합치지 않고 모으는지, 미들웨어가 상한·자기 레포를 싣는지).
   배포 서버 e2e는 시나리오 9와 같은 이유로 🚧 공백.

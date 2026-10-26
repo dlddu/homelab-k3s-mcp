@@ -200,3 +200,47 @@ func TestParseGitHubRulesAllowsWorkflowsOnOtherRepositories(t *testing.T) {
 		t.Errorf("cap = %+v, want workflows write kept", got[0].tokens[0])
 	}
 }
+
+func TestParseGitHubRulesExcludeRepositoriesCap(t *testing.T) {
+	got, err := parseGitHubRules(`[{"repository": "dlddu/reconciler", "workflow": ".github/workflows/plan.yml",
+		"tools": ["github_app_installation_token"],
+		"githubToken": [
+			{"excludeRepositories": ["Reconciler", "plugin-marketplace", "infrastructure"]},
+			{"excludeRepositories": ["reconciler"], "permissions": {"contents": "read"}},
+			{"repositories": ["plugin-marketplace"], "permissions": {"contents": "read"}}
+		]}]`)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	all := got[0].tokens[0]
+	if want := []string{"reconciler", "plugin-marketplace", "infrastructure"}; !reflect.DeepEqual(all.ExcludeRepositories, want) {
+		t.Errorf("excludeRepositories = %v, want lowercased %v", all.ExcludeRepositories, want)
+	}
+	if all.Repositories != nil || all.Permissions != nil {
+		t.Errorf("an exclude cap without permissions leaves permissions unbounded, got %+v", all)
+	}
+	if got[0].tokens[1].Permissions["contents"] != "read" {
+		t.Errorf("an exclude cap may still bound permissions, got %+v", got[0].tokens[1])
+	}
+
+	bad := map[string]string{
+		"both repositories and exclude": `[{"repository": "dlddu/reconciler", "tools": ["github_app_installation_token"], "githubToken": {"repositories": ["a"], "excludeRepositories": ["reconciler"], "permissions": {"contents": "read"}}}]`,
+		"empty exclude":                 `[{"repository": "dlddu/reconciler", "tools": ["github_app_installation_token"], "githubToken": {"excludeRepositories": []}}]`,
+		"owner in exclude":              `[{"repository": "dlddu/reconciler", "tools": ["github_app_installation_token"], "githubToken": {"excludeRepositories": ["dlddu/reconciler"]}}]`,
+		"empty permission map":          `[{"repository": "dlddu/reconciler", "tools": ["github_app_installation_token"], "githubToken": {"excludeRepositories": ["reconciler"], "permissions": {}}}]`,
+		"own repository not excluded":   `[{"repository": "dlddu/reconciler", "tools": ["github_app_installation_token"], "githubToken": {"excludeRepositories": ["plugin-marketplace"]}}]`,
+		"own not excluded, workflows":   `[{"repository": "dlddu/reconciler", "tools": ["github_app_installation_token"], "githubToken": {"excludeRepositories": ["a"], "permissions": {"workflows": "write"}}}]`,
+	}
+	for name, raw := range bad {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseGitHubRules(raw); err == nil {
+				t.Error("want an error")
+			}
+		})
+	}
+
+	if _, err := parseGitHubRules(`[{"repository": "dlddu/reconciler", "tools": ["github_app_installation_token"],
+		"githubToken": {"excludeRepositories": ["plugin-marketplace"], "permissions": {"contents": "write"}}}]`); err != nil {
+		t.Errorf("an exclude cap without workflows need not exclude its own repository: %v", err)
+	}
+}

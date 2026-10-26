@@ -269,3 +269,102 @@ func TestInstallationTokenCapListKeepsSelfGuard(t *testing.T) {
 		t.Errorf("GitHub calls = %d, want 1", gh.calls)
 	}
 }
+
+func excludeCaps() []*toolscope.TokenCap {
+	return []*toolscope.TokenCap{
+		{ExcludeRepositories: []string{"reconciler", "plugin-marketplace", "infrastructure"}},
+		{Repositories: []string{"plugin-marketplace"}, Permissions: map[string]string{"contents": "read", "metadata": "read"}},
+	}
+}
+
+func TestInstallationTokenExcludeCapAllowsNamedRepositories(t *testing.T) {
+	cases := map[string]struct {
+		args      string
+		wantRepos []string
+		wantPerms map[string]any
+	}{
+		"any permission on a repository outside the exclusions": {
+			args:      `{"repositories":["pocket-aide","tessera"],"permissions":{"contents":"write","workflows":"write","administration":"write"}}`,
+			wantRepos: []string{"pocket-aide", "tessera"},
+			wantPerms: map[string]any{"contents": "write", "workflows": "write", "administration": "write"},
+		},
+		"omitted permissions stay omitted": {
+			args:      `{"repositories":["Dear-Baby"]}`,
+			wantRepos: []string{"Dear-Baby"},
+			wantPerms: nil,
+		},
+		"nothing named fits only the listed cap": {
+			args:      `{}`,
+			wantRepos: []string{"plugin-marketplace"},
+			wantPerms: map[string]any{"contents": "read", "metadata": "read"},
+		},
+		"an excluded repository can still fit the read cap": {
+			args:      `{"repositories":["plugin-marketplace"]}`,
+			wantRepos: []string{"plugin-marketplace"},
+			wantPerms: map[string]any{"contents": "read", "metadata": "read"},
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			gh := &recordingTokenGitHub{}
+			h := &Handler{github: gh}
+			ctx := toolscope.WithSelfRepository(toolscope.WithTokenCaps(context.Background(), excludeCaps()), "reconciler")
+			if _, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(tc.args)); rerr != nil {
+				t.Fatalf("unexpected refusal: %v", rerr)
+			}
+			if !reflect.DeepEqual(gh.repositories, tc.wantRepos) || !reflect.DeepEqual(gh.permissions, tc.wantPerms) {
+				t.Errorf("minted %v %v, want %v %v", gh.repositories, gh.permissions, tc.wantRepos, tc.wantPerms)
+			}
+		})
+	}
+}
+
+func TestInstallationTokenExcludeCapRefuses(t *testing.T) {
+	cases := map[string]string{
+		"an excluded repository":               `{"repositories":["Reconciler"],"permissions":{"contents":"read"}}`,
+		"an excluded repository among others":  `{"repositories":["pocket-aide","infrastructure"]}`,
+		"write on the read-only excluded one":  `{"repositories":["plugin-marketplace"],"permissions":{"contents":"write"}}`,
+		"an excluded and a read-only together": `{"repositories":["pocket-aide","plugin-marketplace"],"permissions":{"contents":"read"}}`,
+		"empty repository list":                `{"repositories":[]}`,
+	}
+	for name, args := range cases {
+		t.Run(name, func(t *testing.T) {
+			gh := &recordingTokenGitHub{}
+			h := &Handler{github: gh}
+			ctx := toolscope.WithTokenCaps(context.Background(), excludeCaps())
+			_, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(args))
+			if rerr == nil || rerr.code != -32602 || !strings.Contains(rerr.message, "every repository except") {
+				t.Fatalf("refusal = %+v, want -32602 describing the exclusions", rerr)
+			}
+			if gh.calls != 0 {
+				t.Errorf("GitHub was asked for a token %d times, want 0", gh.calls)
+			}
+		})
+	}
+}
+
+func TestInstallationTokenSingleExcludeCap(t *testing.T) {
+	ctx := toolscope.WithTokenCap(context.Background(), &toolscope.TokenCap{
+		ExcludeRepositories: []string{"reconciler"},
+		Permissions:         map[string]string{"contents": "read", "metadata": "read"},
+	})
+	gh := &recordingTokenGitHub{}
+	h := &Handler{github: gh}
+	if _, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(`{"repositories":["feature-doc"]}`)); rerr != nil {
+		t.Fatalf("unexpected refusal: %v", rerr)
+	}
+	if want := map[string]any{"contents": "read", "metadata": "read"}; !reflect.DeepEqual(gh.permissions, want) {
+		t.Errorf("permissions = %v, want the cap's %v", gh.permissions, want)
+	}
+	for args, want := range map[string]string{
+		`{}`: "must be named",
+		`{"repositories":["feature-doc"],"permissions":{"contents":"write"}}`: "exceeds",
+	} {
+		if _, rerr := h.githubAppInstallationToken(ctx, json.RawMessage(args)); rerr == nil || !strings.Contains(rerr.message, want) {
+			t.Errorf("%s: refusal = %+v, want %q", args, rerr, want)
+		}
+	}
+	if gh.calls != 1 {
+		t.Errorf("GitHub calls = %d, want 1", gh.calls)
+	}
+}

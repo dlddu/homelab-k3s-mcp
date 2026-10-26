@@ -34,8 +34,9 @@ func Allows(ctx context.Context, tool string) bool {
 
 // TokenCap bounds the GitHub App installation tokens a scoped caller may mint.
 type TokenCap struct {
-	Repositories []string
-	Permissions  map[string]string
+	Repositories        []string
+	ExcludeRepositories []string
+	Permissions         map[string]string
 }
 
 type tokenCapKey struct{}

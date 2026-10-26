@@ -701,7 +701,7 @@ const toolsListJSON = `{
           "repositories": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Optional list of repository names (without owner) to restrict the token to. Each repo must be installed for the App. Omit to grant access to all installed repos — or, for a GitHub Actions caller whose rule sets githubToken caps, to the repositories of the cap the request fits; naming repositories that fit no single cap is refused."
+            "description": "Optional list of repository names (without owner) to restrict the token to. Each repo must be installed for the App. Omit to grant access to all installed repos — or, for a GitHub Actions caller whose rule sets githubToken caps, to the repositories of the cap the request fits; naming repositories that fit no single cap is refused. A cap that excludes repositories instead of listing them is met only by naming the repositories."
           },
           "permissions": {
             "type": "object",

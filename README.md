@@ -170,6 +170,23 @@ ambiguous and refused — name both. When several rules match a workflow, their
 caps are collected the same way, each kept whole. A matching rule that grants
 the tool without `githubToken` leaves that workflow unbounded.
 
+A cap may name the repositories it leaves **out** instead, with
+`excludeRepositories` (and no `repositories`): every installed repository except
+those, including ones installed later. Its `permissions` may be omitted, which
+leaves the level unbounded on those repositories:
+
+```json
+"githubToken": [
+  {"excludeRepositories": ["reconciler", "plugin-marketplace", "infrastructure", "flux-cd", "flux-cd-apps"]},
+  {"repositories": ["plugin-marketplace"], "permissions": {"contents": "read", "metadata": "read"}}
+]
+```
+
+GitHub cannot be asked for "all but these", so a request fits such a cap only
+when it names its repositories. An exclusion cap that could grant `workflows`
+(no `permissions`, or `workflows` among them) must exclude the rule's own
+repository, or the server stops at startup.
+
 Whatever the cap, a GitHub Actions caller never gets a token that can change
 its **own** repository's workflow files: a token with the `workflows`
 permission — named, or implied by omitting `permissions` — that includes the
