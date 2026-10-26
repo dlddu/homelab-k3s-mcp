@@ -1005,7 +1005,7 @@ const toolsListJSON = `{
     },
     {
       "name": "pocket_aide_notification_send",
-      "description": "Send a plain push notification to the phone of the person who registered this server as a caller in PocketAide (dlddu/pocket-aide). The title and body arrive exactly as given on every device that person has registered, and PocketAide keeps the notification in that person's history together with who invoked this tool (the authenticated MCP principal, e.g. api_key:1 or jwt:<sub> — set by the server, not a parameter). No approval is created, so use it for status updates that need no decision (a long task finished, a job failed). The recipient is fixed by that registration and is not a parameter. Returns how many devices are registered (devices) and how many APNs accepted (sent); devices = 0 is not an error but means nobody was reached. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
+      "description": "Send a plain push notification to the phone of the person who registered this server as a caller in PocketAide (dlddu/pocket-aide). The title and body arrive exactly as given on every device that person has registered, and PocketAide keeps the notification in that person's history together with the requester you write. requester is required: name who is asking for this notification in your own words — the person or agent and what it is working on (e.g. \"Claude Code 세션 — dear-baby 구버전 정리\" or \"reconciler 정합성 루프\"). It is shown as written and is not verified. No approval is created, so use it for status updates that need no decision (a long task finished, a job failed). The recipient is fixed by that registration and is not a parameter. Returns how many devices are registered (devices) and how many APNs accepted (sent); devices = 0 is not an error but means nobody was reached. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1016,9 +1016,13 @@ const toolsListJSON = `{
           "body": {
             "type": "string",
             "description": "Optional notification body. Text beyond what fits a push payload is cut and ends with an ellipsis."
+          },
+          "requester": {
+            "type": "string",
+            "description": "Who is asking for this notification, written by you: the person or agent and what it is working on. 1 to 200 characters after trimming. Shown in PocketAide's notification history as written; not verified."
           }
         },
-        "required": ["title"],
+        "required": ["title", "requester"],
         "additionalProperties": false
       },
       "annotations": {

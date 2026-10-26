@@ -5,7 +5,7 @@
 - AC2: 입력 검증이 PocketAide 보다 앞선다 (PRD: pocket_aide_notification_send)
 - AC3: PocketAide 거부 사유의 구분 전달 (PRD: pocket_aide_notification_send)
 - AC4: 미설정 시 graceful 거부 (PRD: pocket_aide_notification_send)
-- AC5: 알림은 도구를 부른 인증 주체를 `requester` 로 싣는다 (PRD: pocket_aide_notification_send)
+- AC5: 알림은 호출자가 쓴 요청자를 `requester` 로 싣는다 (PRD: pocket_aide_notification_send)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e 의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -21,8 +21,8 @@
 ### 시나리오 1: 보낸 제목·본문이 등록 사용자의 기기로 가고 도달 수를 돌려받는다
 - **사전 조건**: PocketAide 에 이 서버의 ServiceAccount 가 호출자로 등록돼 있고, 등록한 사용자가
   기기 두 대를 등록해 둔 상태
-- **실행 단계**: `pocket_aide_notification_send` 를 `{title: "백업 완료", body: "스냅샷 3개"}` 로 호출 →
-  `{title: "ping"}` 으로 한 번 더 호출
+- **실행 단계**: `pocket_aide_notification_send` 를 `{title: "백업 완료", body: "스냅샷 3개", requester: "nightly 백업"}` 로 호출 →
+  `{title: "ping", requester: "nightly 백업"}` 으로 한 번 더 호출
 - **기대 결과**: 첫 결과가 `{devices: 2, sent: 2}` 이고 두 기기에 제목·본문이 그대로 도착한다.
   PocketAide 가 받은 요청은 `POST /api/external/notifications` 에 projected 토큰 Bearer 다. 둘째
   호출은 본문 없이 나간다(`requester` 는 시나리오 5). 토큰 파일이 교체되면 다음 호출이 새 토큰을 쓴다.
@@ -34,11 +34,11 @@
   기기 도달은 PocketAide 쪽(dlddu/pocket-aide `test-approval-gate.md#시나리오 19`)이 검증한다.
   통합 e2e 는 예외(실 APNs·실기기).
 
-### 시나리오 2: 잘못된 제목은 PocketAide 에 닿기 전에 거부된다
+### 시나리오 2: 잘못된 제목·요청자는 PocketAide 에 닿기 전에 거부된다
 - **사전 조건**: 서버 기동(PocketAide 설정 여부 무관)
-- **실행 단계**: `title` 없이, 공백뿐인 `title` 로, 121자 `title` 로 각각 호출 → 숫자 `title` 로 호출 →
-  직후 `ping`
-- **기대 결과**: 앞의 셋은 「invalid notification」 도구 에러이고 PocketAide 설정 여부와 무관하게 같은
+- **실행 단계**: (`requester` 는 채우고) `title` 없이, 공백뿐인 `title` 로, 121자 `title` 로 각각 호출 →
+  (`title` 은 채우고) `requester` 없이, 201자 `requester` 로 각각 호출 → 숫자 `title` 로 호출 → 직후 `ping`
+- **기대 결과**: 앞의 다섯은 「invalid notification」 도구 에러이고 PocketAide 설정 여부와 무관하게 같은
   문구다. 숫자 `title` 은 인자 오류다. PocketAide 에 요청이 나가지 않고 서버는 계속 동작한다.
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `internal/server/pocket_aide_test.go`
@@ -60,7 +60,7 @@
 
 ### 시나리오 4: 미설정 시 도구 에러
 - **사전 조건**: `APPROVAL_GATE_URL` 미설정
-- **실행 단계**: `{title: "x"}` 로 호출 → 직후 `ping`
+- **실행 단계**: `{title: "x", requester: "e2e 하네스"}` 로 호출 → 직후 `ping`
 - **기대 결과**: 서버 정상, 호출만 `pocket-aide unavailable` 도구 에러(`APPROVAL_GATE_URL` 을 이름으로
   댄다). 직후 `ping` 은 여전히 `pong`.
 - **검증 AC**: AC4
@@ -70,20 +70,18 @@
   `TestFromEnvFollowsTheApprovalGateSettings`) + 통합
   `tests/integration/pocket_aide_notification_send_sc4.py`(`실행 대상: auth-variant`)
 
-### 시나리오 5: 알림 본문의 `requester` 는 도구를 부른 인증 주체다
-- **사전 조건**: API 키 인증(`MCP_API_KEYS` 두 개)으로 뜬 배포, 앞에 요청 본문을 기록하는 PocketAide
-  (`requester` 를 받는 판 — dlddu/pocket-aide PRD-12 AC16 개정·AC17)
-- **실행 단계**: 첫째 키로 `{title: "x", requester: "spoofed"}` 호출 → 둘째 키로 같은 인자로 호출 →
-  `tools/list` 로 입력 스키마 확인. 단위 계층에서는 JWT(`jwt:<sub>`)·GitHub Actions OIDC·인증을 끈
-  배포(`anonymous`)의 주체와 200자를 넘는 주체도 넣는다
-- **기대 결과**: PocketAide 가 받은 본문의 `requester` 가 차례로 `api_key:1`·`api_key:2` 다 — 인자의
-  `"spoofed"` 는 어디에도 실리지 않는다. JWT 주체는 `jwt:<sub>`, 인증을 끈 배포는 `anonymous` 다.
-  입력 스키마 속성은 `title`·`body` 둘뿐이다. 200자를 넘는 주체는 앞 200자로 잘려 나가고 호출은
-  성공한다
+### 시나리오 5: 알림 본문의 `requester` 는 호출자가 쓴 요청자다
+- **사전 조건**: 앞에 요청 본문을 기록하는 PocketAide(`requester` 를 받는 판 — dlddu/pocket-aide PRD-12
+  AC16 개정·AC17)
+- **실행 단계**: `{title: "x", requester: "  Claude Code 세션 — dear-baby 정리  "}` 로 호출 → `tools/list` 로
+  입력 스키마 확인. 단위 계층에서는 비거나 공백뿐이거나 200자를 넘는 `requester` 와 정확히 200자인
+  `requester` 도 넣는다
+- **기대 결과**: PocketAide 가 받은 본문의 `requester` 가 공백을 걷은 「Claude Code 세션 — dear-baby 정리」다.
+  입력 스키마는 `title`·`body`·`requester` 를 속성으로 갖고 `required` 가 `title`·`requester` 다. 비거나 200자를
+  넘는 `requester` 는 보내기 전에 거부되고, 200자는 그대로 나간다
 - **검증 AC**: AC5
 - **자동화**: Go 단위 `internal/server/pocket_aide_test.go`
-  (`TestPocketAideNotificationSendNamesTheAuthenticatedCallerAsRequester` — 실제 인증 미들웨어와
-  `pocketaide.Client` 를 거쳐 상대가 받은 본문을 잰다 · `TestToolsListAdvertisesPocketAideNotificationSend`) +
-  `internal/mcp/pocket_aide_test.go` (`TestPocketAideNotificationSendPassesThePrincipalAsRequester`) +
+  (`TestPocketAideNotificationSendSendsTheRequesterTheCallerWrote` — 실제 `pocketaide.Client` 를 거쳐 상대가
+  받은 본문을 잰다 · `TestToolsListAdvertisesPocketAideNotificationSend`) +
   `internal/pocketaide/pocketaide_test.go` (`TestNotifyPostsTitleAndBodyWithTheServiceAccountToken`,
-  `TestNotifyOmitsAnEmptyBody`, `TestNotifyCutsAnOverlongRequesterInsteadOfFailing`) + 통합 (미작성)
+  `TestNotifyOmitsAnEmptyBody`, `TestNotifyRefusesAMissingOrOverlongRequesterBeforeSending`) + 통합 (미작성)

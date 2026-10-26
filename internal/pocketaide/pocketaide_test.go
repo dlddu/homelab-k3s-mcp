@@ -67,7 +67,7 @@ func TestNotifyPostsTitleAndBodyWithTheServiceAccountToken(t *testing.T) {
 	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":2,"sent":2}`}
 	client, _ := newClient(t, fake)
 
-	res, err := client.Notify(context.Background(), "  백업 완료 ", " 스냅샷 3개 ", "api_key:1")
+	res, err := client.Notify(context.Background(), "  백업 완료 ", " 스냅샷 3개 ", "  nightly 백업 크론잡  ")
 	if err != nil {
 		t.Fatalf("notify: %v", err)
 	}
@@ -82,8 +82,8 @@ func TestNotifyPostsTitleAndBodyWithTheServiceAccountToken(t *testing.T) {
 	if got.path != "/api/external/notifications" || got.auth != "Bearer sa-token-1" || got.contentType != "application/json" {
 		t.Fatalf("request = %+v", got)
 	}
-	if got.body["title"] != "백업 완료" || got.body["body"] != "스냅샷 3개" || got.body["requester"] != "api_key:1" || len(got.body) != 3 {
-		t.Fatalf("body = %v, want trimmed title, body and the requester only", got.body)
+	if got.body["title"] != "백업 완료" || got.body["body"] != "스냅샷 3개" || got.body["requester"] != "nightly 백업 크론잡" || len(got.body) != 3 {
+		t.Fatalf("body = %v, want trimmed title, body and requester only", got.body)
 	}
 }
 
@@ -91,29 +91,32 @@ func TestNotifyOmitsAnEmptyBody(t *testing.T) {
 	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":0,"sent":0}`}
 	client, _ := newClient(t, fake)
 
-	res, err := client.Notify(context.Background(), "ping", "", "jwt:operator@example.test")
+	res, err := client.Notify(context.Background(), "ping", "", "Claude Code 세션")
 	if err != nil {
 		t.Fatalf("notify: %v", err)
 	}
 	if res.Devices != 0 || res.Sent != 0 {
 		t.Fatalf("result = %+v", *res)
 	}
-	if body := fake.all()[0].body; len(body) != 2 || body["title"] != "ping" || body["requester"] != "jwt:operator@example.test" {
+	if body := fake.all()[0].body; len(body) != 2 || body["title"] != "ping" || body["requester"] != "Claude Code 세션" {
 		t.Fatalf("body = %v, want title and requester only", body)
 	}
 }
 
-func TestNotifyCutsAnOverlongRequesterInsteadOfFailing(t *testing.T) {
+func TestNotifyRefusesAMissingOrOverlongRequesterBeforeSending(t *testing.T) {
 	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":1,"sent":1}`}
 	client, _ := newClient(t, fake)
 
-	long := "jwt:" + strings.Repeat("가", pocketaide.MaxRequesterRunes)
-	if _, err := client.Notify(context.Background(), "x", "", long); err != nil {
-		t.Fatalf("notify: %v", err)
+	for _, requester := range []string{"", "   ", strings.Repeat("가", pocketaide.MaxRequesterRunes+1)} {
+		if _, err := client.Notify(context.Background(), "x", "", requester); err == nil || !strings.Contains(err.Error(), "invalid notification: requester") {
+			t.Fatalf("requester %d runes: err = %v, want a requester refusal", utf8.RuneCountInString(requester), err)
+		}
 	}
-	got, _ := fake.all()[0].body["requester"].(string)
-	if want := string([]rune(long)[:pocketaide.MaxRequesterRunes]); got != want {
-		t.Fatalf("requester = %q (%d runes), want the first %d runes", got, utf8.RuneCountInString(got), pocketaide.MaxRequesterRunes)
+	if n := len(fake.all()); n != 0 {
+		t.Fatalf("calls = %d, want none", n)
+	}
+	if _, err := client.Notify(context.Background(), "x", "", strings.Repeat("가", pocketaide.MaxRequesterRunes)); err != nil {
+		t.Fatalf("requester at the limit: %v", err)
 	}
 }
 
@@ -121,13 +124,13 @@ func TestNotifyReadsTheTokenOnEveryCall(t *testing.T) {
 	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":1,"sent":1}`}
 	client, path := newClient(t, fake)
 
-	if _, err := client.Notify(context.Background(), "one", "", "anonymous"); err != nil {
+	if _, err := client.Notify(context.Background(), "one", "", "tester"); err != nil {
 		t.Fatalf("notify: %v", err)
 	}
 	if err := os.WriteFile(path, []byte("sa-token-2"), 0o600); err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
-	if _, err := client.Notify(context.Background(), "two", "", "anonymous"); err != nil {
+	if _, err := client.Notify(context.Background(), "two", "", "tester"); err != nil {
 		t.Fatalf("notify: %v", err)
 	}
 	calls := fake.all()
