@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 	"time"
@@ -589,11 +590,81 @@ func (h *Handler) githubAppInstallationToken(ctx context.Context, raw json.RawMe
 		permissions = m
 	}
 
+	repositories, permissions, capErr := applyTokenCap(toolscope.TokenCapFrom(ctx), repositories, permissions)
+	if capErr != nil {
+		return nil, capErr
+	}
+	if guardErr := guardSelfWorkflows(toolscope.SelfRepository(ctx), repositories, permissions); guardErr != nil {
+		return nil, guardErr
+	}
+
 	token, err := h.github.CreateInstallationToken(ctx, repositories, permissions)
 	if err != nil {
 		return toolError(ctx, err), nil
 	}
 	return installationTokenResult(token), nil
+}
+
+func guardSelfWorkflows(self string, repositories []string, permissions map[string]any) *rpcErr {
+	if self == "" {
+		return nil
+	}
+	_, workflows := permissions["workflows"]
+	if permissions != nil && !workflows {
+		return nil
+	}
+	if repositories != nil && !slices.ContainsFunc(repositories, func(r string) bool { return strings.EqualFold(r, self) }) {
+		return nil
+	}
+	return errf(-32602, "a token with the workflows permission cannot include %s, the calling workflow's own repository: name the repositories without it, or pass permissions without workflows", self)
+}
+
+var permissionRank = map[string]int{"read": 1, "write": 2, "admin": 3}
+
+func applyTokenCap(tokenCap *toolscope.TokenCap, repositories []string, permissions map[string]any) ([]string, map[string]any, *rpcErr) {
+	if tokenCap == nil {
+		return repositories, permissions, nil
+	}
+	allowedRepo := map[string]bool{}
+	for _, repo := range tokenCap.Repositories {
+		allowedRepo[repo] = true
+	}
+	if repositories == nil {
+		repositories = append([]string(nil), tokenCap.Repositories...)
+	} else {
+		if len(repositories) == 0 {
+			return nil, nil, errf(-32602, "repositories must not be empty for this caller: its rule limits tokens to %s", strings.Join(tokenCap.Repositories, ", "))
+		}
+		for _, repo := range repositories {
+			if !allowedRepo[strings.ToLower(repo)] {
+				return nil, nil, errf(-32602, "repository %q is outside this caller's token scope (%s)", repo, strings.Join(tokenCap.Repositories, ", "))
+			}
+		}
+	}
+	if permissions == nil {
+		permissions = make(map[string]any, len(tokenCap.Permissions))
+		for name, level := range tokenCap.Permissions {
+			permissions[name] = level
+		}
+		return repositories, permissions, nil
+	}
+	if len(permissions) == 0 {
+		return nil, nil, errf(-32602, "permissions must not be empty for this caller: its rule caps every token's permissions")
+	}
+	for name, raw := range permissions {
+		level, ok := raw.(string)
+		if !ok {
+			return nil, nil, errf(-32602, "permission %s must be a string level", name)
+		}
+		limit, capped := tokenCap.Permissions[name]
+		if !capped {
+			return nil, nil, errf(-32602, "permission %s is outside this caller's token scope", name)
+		}
+		if permissionRank[level] == 0 || permissionRank[level] > permissionRank[limit] {
+			return nil, nil, errf(-32602, "permission %s: %q exceeds this caller's limit %q", name, level, limit)
+		}
+	}
+	return repositories, permissions, nil
 }
 
 func installationTokenResult(token *github.InstallationToken) any {

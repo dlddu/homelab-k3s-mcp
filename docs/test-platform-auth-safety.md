@@ -10,6 +10,7 @@
 - AC8: 인증 방식 구성 유연성 (PRD: platform)
 - AC9: GitHub Actions OIDC 인증 (워크플로) (PRD: platform)
 - AC10: GitHub Actions 호출자의 도구 범위 제한 (PRD: platform)
+- AC11: GitHub Actions 호출자가 받는 설치 토큰의 범위 (PRD: platform)
 
 ## 테스트 시나리오
 
@@ -149,3 +150,18 @@
   `TestGitHubOIDCCallerIsRefusedOutOfScopeAsIfTheToolDidNotExist`(실 auth 미들웨어 + 디스패처를
   로컬 JWKS 발급자로 엮는다), `internal/auth/github_oidc_test.go::TestCheckToolScopes`,
   `internal/toolscope/toolscope_test.go`. 배포 서버 e2e는 시나리오 9와 같은 이유로 🚧 공백.
+
+### 시나리오 11: GitHub Actions 호출자의 설치 토큰은 상한 안, 자기 레포 workflows는 없다
+- **사전 조건**: 레포 R(`dlddu/reconciler`)의 워크플로 W 규칙이 `github_app_installation_token`을 주고
+  `githubToken: {repositories: [A, B], permissions: {contents: write, pull_requests: write, metadata: read}}` 상한을 둔다.
+  GitHub는 발급 호출을 기록하는 가짜다.
+- **실행 단계**: (a) 인자 없이 호출, (b) `repositories: [A]`, `permissions: {contents: read}`, (c) `repositories: [R]`,
+  `permissions: {workflows: write}`, `metadata: write`, 빈 목록·빈 맵, (d) 상한 없는 규칙으로 들어온 R 호출자가
+  인자 없이 / `repositories: [R]` / `permissions: {workflows: write}`로 호출, (e) 같은 호출자가
+  `repositories: [A]`, `permissions: {workflows: write}`로 호출, (f) 상한이 R에 workflows를 주는 구성으로 기동
+- **기대 결과**: (a) A·B와 상한 권한으로 발급, (b) 요청 그대로 발급, (c) 전부 `-32602`(호출자의 범위를 밝힘)이고
+  GitHub 호출 0건, (d) 전부 `-32602`(자기 레포 workflows)이고 GitHub 호출 0건, (e) 발급, (f) 기동 실패
+- **검증 AC**: AC11
+- **자동화**: Go 단위 `internal/mcp/token_cap_test.go`(상한 적용·거부, 자기 레포 가드, 상한 뒤 가드),
+  `internal/auth/github_oidc_token_cap_test.go`(규칙 파싱·검증, 상한 합집합, 미들웨어가 상한·자기 레포를 싣는지).
+  배포 서버 e2e는 시나리오 9와 같은 이유로 🚧 공백.

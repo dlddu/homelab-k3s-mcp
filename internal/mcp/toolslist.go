@@ -694,18 +694,18 @@ const toolsListJSON = `{
     },
     {
       "name": "github_app_installation_token",
-      "description": "Mint a short-lived GitHub App installation access token (valid ~1 hour) for the installation configured on the server. Optionally scope the token to a subset of installed repositories and/or a subset of the App's permissions. Returns the token as a text/plain .env file (GITHUB_TOKEN=...) with expiry and scope as comments. Requires GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
+      "description": "Mint a short-lived GitHub App installation access token (valid ~1 hour) for the installation configured on the server. Optionally scope the token to a subset of installed repositories and/or a subset of the App's permissions. Returns the token as a text/plain .env file (GITHUB_TOKEN=...) with expiry and scope as comments. A GitHub Actions caller cannot get a token carrying the workflows permission (named, or implied by omitting permissions) for its own repository (named, or implied by omitting repositories). Requires GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "repositories": {
             "type": "array",
             "items": { "type": "string" },
-            "description": "Optional list of repository names (without owner) to restrict the token to. Each repo must be installed for the App. Omit to grant access to all installed repos."
+            "description": "Optional list of repository names (without owner) to restrict the token to. Each repo must be installed for the App. Omit to grant access to all installed repos — or, for a GitHub Actions caller whose rule sets a githubToken cap, to the cap's repositories; naming a repository outside that cap is refused."
           },
           "permissions": {
             "type": "object",
-            "description": "Optional map of permission name to access level (e.g. { \"contents\": \"read\", \"pull_requests\": \"write\" }). Must be a subset of the App's installed permissions.",
+            "description": "Optional map of permission name to access level (e.g. { \"contents\": \"read\", \"pull_requests\": \"write\" }). Must be a subset of the App's installed permissions. A GitHub Actions caller whose rule sets a githubToken cap gets the cap's permissions when this is omitted and may not exceed them.",
             "additionalProperties": { "type": "string" }
           }
         },

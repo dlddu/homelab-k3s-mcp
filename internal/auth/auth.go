@@ -340,14 +340,17 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 			return
 		}
 		if c.github != nil && c.github.issues(token) {
-			caller, tools, err := c.github.verify(r.Context(), token)
+			grant, err := c.github.verify(r.Context(), token)
 			if err != nil {
 				c.unauthorized(w, r, "invalid_token")
 				return
 			}
 			slog.Debug("mcp authenticated", "method", githubOIDCMethod)
-			r = withPrincipal(r, eventlog.Principal{Method: githubOIDCMethod, ID: caller})
-			next.ServeHTTP(w, r.WithContext(toolscope.With(r.Context(), tools)))
+			r = withPrincipal(r, eventlog.Principal{Method: githubOIDCMethod, ID: grant.caller})
+			ctx := toolscope.With(r.Context(), grant.tools)
+			ctx = toolscope.WithTokenCap(ctx, grant.tokenCap)
+			ctx = toolscope.WithSelfRepository(ctx, grant.self)
+			next.ServeHTTP(w, r.WithContext(ctx))
 			return
 		}
 		subject, err := c.verify(r.Context(), token)
