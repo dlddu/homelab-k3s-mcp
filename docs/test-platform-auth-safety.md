@@ -120,15 +120,19 @@
 - **실행 단계**: (a) R/W, R/다른 워크플로, N/J 토큰으로 요청, (b) 규칙 밖 레포·N 의 다른 워크플로·
   N 의 `workflow_ref` 없음·다른 레포를 가리키는 `workflow_ref`·`repository` 없음·다른 audience·
   만료·`exp` 없음·다른 키 서명 토큰으로 요청, (c) OAuth도 구성한 상태에서 OAuth JWT로 요청,
-  (d) audience 또는 규칙이 빈 구성, 잘못된 형태의 규칙, OAuth와 같은 발급자를 쓰는 구성으로 기동
+  (d) audience 또는 규칙이 빈 구성, 잘못된 형태의 규칙, OAuth와 같은 발급자를 쓰는 구성, 같은 규칙을
+  `MCP_GITHUB_OIDC_RULES`와 `MCP_GITHUB_OIDC_RULES_X`에 둔 구성으로 기동, (e) N/J 규칙을
+  `MCP_GITHUB_OIDC_RULES_X`로 옮긴 구성에서 (a)를 반복
 - **기대 결과**: (a) 정상 처리 + 기록 주체 `github_oidc:<레포>/<워크플로 경로>`, (b) 401
   `invalid_token` + 응답에 토큰 미노출, (c) OAuth 경로로 통과하고 도구 범위가 걸리지 않음,
-  (d) 기동 실패
+  (d) 기동 실패(중복은 먼저 나온 변수를 밝힘), (e) (a)와 같음
 - **검증 AC**: AC9 (일부 AC1·AC8)
 - **자동화**: Go 단위 `internal/auth/github_oidc_test.go::TestRequireBearerAcceptsGitHubOIDCAndScopesTools`,
   `TestRequireBearerRefusesGitHubOIDC`, `TestRequireBearerKeepsOAuthUnscopedNextToGitHubOIDC`,
   `TestFromEnvGitHubOIDCOnly`, `TestFromEnvGitHubOIDCRequiresAudienceAndRules`,
   `TestFromEnvRefusesOneIssuerForOAuthAndGitHub`, `TestParseGitHubRules`, `TestWorkflowPath`,
+  `internal/auth/github_oidc_token_cap_test.go::TestGitHubRuleSourcesReadsSuffixedVariables`·
+  `TestParseGitHubRuleSourcesCombinesVariables`(변수 분할),
   그리고 auth·디스패처를 잇는 `internal/server/github_oidc_test.go::TestGitHubOIDCTokenFromAnotherRepositoryIsUnauthorized`.
   배포 서버 e2e는 🚧 공백 — kind 에 GitHub 클레임을 내는 발급자가 없다(dex 는 `repository`·
   `workflow_ref` 클레임을 낼 수 없다).
@@ -158,10 +162,23 @@
 - **실행 단계**: (a) 인자 없이 호출, (b) `repositories: [A]`, `permissions: {contents: read}`, (c) `repositories: [R]`,
   `permissions: {workflows: write}`, `metadata: write`, 빈 목록·빈 맵, (d) 상한 없는 규칙으로 들어온 R 호출자가
   인자 없이 / `repositories: [R]` / `permissions: {workflows: write}`로 호출, (e) 같은 호출자가
-  `repositories: [A]`, `permissions: {workflows: write}`로 호출, (f) 상한이 R에 workflows를 주는 구성으로 기동
+  `repositories: [A]`, `permissions: {workflows: write}`로 호출, (f) 상한이 R에 workflows를 주는 구성으로 기동,
+  (g) 상한을 배열 `[{repositories: [A, B], permissions: {contents: write, metadata: read}}, {repositories: [M],
+  permissions: {contents: read, metadata: read}}]`로 바꾸고 `repositories: [M]` / `permissions: {contents: write}` /
+  `repositories: [A, M]` / `repositories: [M]`, `permissions: {contents: write}` / 인자 없이 / `permissions:
+  {contents: read}`로 호출, (h) 상한을 `[{excludeRepositories: [R, M, I]}, {repositories: [M], permissions: {contents: read,
+  metadata: read}}]`로 바꾸고 `repositories: [A]`, `permissions: {workflows: write, administration: write}` / `repositories:
+  [A]` / `repositories: [M]` / `repositories: [I]` / 인자 없이 호출, (i) 자기 레포 R을 빼지 않은 권한 생략 제외 상한으로 기동
 - **기대 결과**: (a) A·B와 상한 권한으로 발급, (b) 요청 그대로 발급, (c) 전부 `-32602`(호출자의 범위를 밝힘)이고
-  GitHub 호출 0건, (d) 전부 `-32602`(자기 레포 workflows)이고 GitHub 호출 0건, (e) 발급, (f) 기동 실패
+  GitHub 호출 0건, (d) 전부 `-32602`(자기 레포 workflows)이고 GitHub 호출 0건, (e) 발급, (f) 기동 실패,
+  (g) 앞의 둘은 들어맞는 상한에서 채워 발급(M·read / A·B·write), 다음 둘은 상한 사이에 걸치거나 넘어서
+  `-32602`(상한 목록을 밝힘), 뒤의 둘은 두 상한에 다 들어맞아 모호하므로 `-32602` — 거부는 모두 GitHub 호출 0건,
+  (h) 앞의 셋은 발급(A·요청 권한 그대로 / A·권한 생략 그대로 / M·read), `repositories: [I]`는 `-32602`(제외 레포,
+  GitHub 호출 0건), 인자 없는 호출은 레포를 명시하지 않아 제외 상한에 들지 않고 M 상한 하나에만 들어맞으므로 M·read로 발급,
+  (i) 기동 실패
 - **검증 AC**: AC11
-- **자동화**: Go 단위 `internal/mcp/token_cap_test.go`(상한 적용·거부, 자기 레포 가드, 상한 뒤 가드),
-  `internal/auth/github_oidc_token_cap_test.go`(규칙 파싱·검증, 상한 합집합, 미들웨어가 상한·자기 레포를 싣는지).
+- **자동화**: Go 단위 `internal/mcp/token_cap_test.go`(상한 적용·거부, 자기 레포 가드, 상한 뒤 가드, 상한 배열의
+  발급·거부·모호, 제외 상한 `TestInstallationTokenExcludeCap*`·`TestInstallationTokenSingleExcludeCap`),
+  `internal/auth/github_oidc_token_cap_test.go`(규칙 파싱·검증, 상한 배열 파싱, 제외 상한 파싱·자기 레포 규칙, 여러 규칙의 상한을
+  합치지 않고 모으는지, 미들웨어가 상한·자기 레포를 싣는지).
   배포 서버 e2e는 시나리오 9와 같은 이유로 🚧 공백.

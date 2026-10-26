@@ -590,7 +590,7 @@ func (h *Handler) githubAppInstallationToken(ctx context.Context, raw json.RawMe
 		permissions = m
 	}
 
-	repositories, permissions, capErr := applyTokenCap(toolscope.TokenCapFrom(ctx), repositories, permissions)
+	repositories, permissions, capErr := applyTokenCaps(toolscope.TokenCapsFrom(ctx), repositories, permissions)
 	if capErr != nil {
 		return nil, capErr
 	}
@@ -621,9 +621,56 @@ func guardSelfWorkflows(self string, repositories []string, permissions map[stri
 
 var permissionRank = map[string]int{"read": 1, "write": 2, "admin": 3}
 
+func applyTokenCaps(caps []*toolscope.TokenCap, repositories []string, permissions map[string]any) ([]string, map[string]any, *rpcErr) {
+	if len(caps) <= 1 {
+		var only *toolscope.TokenCap
+		if len(caps) == 1 {
+			only = caps[0]
+		}
+		return applyTokenCap(only, repositories, permissions)
+	}
+	var fitting []*toolscope.TokenCap
+	for _, c := range caps {
+		if _, _, err := applyTokenCap(c, repositories, permissions); err == nil {
+			fitting = append(fitting, c)
+		}
+	}
+	if len(fitting) == 0 {
+		return nil, nil, errf(-32602, "the request fits none of this caller's token scopes — it must fit one of them whole: %s", describeTokenCaps(caps))
+	}
+	if len(fitting) > 1 && (repositories == nil || permissions == nil) {
+		return nil, nil, errf(-32602, "the request fits more than one of this caller's token scopes, so omitted repositories or permissions are ambiguous — name both: %s", describeTokenCaps(fitting))
+	}
+	return applyTokenCap(fitting[0], repositories, permissions)
+}
+
+func describeTokenCaps(caps []*toolscope.TokenCap) string {
+	parts := make([]string, 0, len(caps))
+	for _, c := range caps {
+		perms := make([]string, 0, len(c.Permissions))
+		for name, level := range c.Permissions {
+			perms = append(perms, name+"="+level)
+		}
+		sort.Strings(perms)
+		repos := strings.Join(c.Repositories, ", ")
+		if c.ExcludeRepositories != nil {
+			repos = "every repository except " + strings.Join(c.ExcludeRepositories, ", ")
+		}
+		permText := strings.Join(perms, ", ")
+		if c.Permissions == nil {
+			permText = "any permission"
+		}
+		parts = append(parts, fmt.Sprintf("[%s: %s]", repos, permText))
+	}
+	return strings.Join(parts, " ")
+}
+
 func applyTokenCap(tokenCap *toolscope.TokenCap, repositories []string, permissions map[string]any) ([]string, map[string]any, *rpcErr) {
 	if tokenCap == nil {
 		return repositories, permissions, nil
+	}
+	if tokenCap.ExcludeRepositories != nil {
+		return applyExcludeCap(tokenCap, repositories, permissions)
 	}
 	allowedRepo := map[string]bool{}
 	for _, repo := range tokenCap.Repositories {
@@ -641,6 +688,26 @@ func applyTokenCap(tokenCap *toolscope.TokenCap, repositories []string, permissi
 			}
 		}
 	}
+	return capPermissions(tokenCap, repositories, permissions)
+}
+
+func applyExcludeCap(tokenCap *toolscope.TokenCap, repositories []string, permissions map[string]any) ([]string, map[string]any, *rpcErr) {
+	excluded := strings.Join(tokenCap.ExcludeRepositories, ", ")
+	if len(repositories) == 0 {
+		return nil, nil, errf(-32602, "repositories must be named for this caller: its rule allows every repository except %s", excluded)
+	}
+	for _, repo := range repositories {
+		if slices.Contains(tokenCap.ExcludeRepositories, strings.ToLower(repo)) {
+			return nil, nil, errf(-32602, "repository %q is excluded from this caller's token scope (every repository except %s)", repo, excluded)
+		}
+	}
+	if tokenCap.Permissions == nil {
+		return repositories, permissions, nil
+	}
+	return capPermissions(tokenCap, repositories, permissions)
+}
+
+func capPermissions(tokenCap *toolscope.TokenCap, repositories []string, permissions map[string]any) ([]string, map[string]any, *rpcErr) {
 	if permissions == nil {
 		permissions = make(map[string]any, len(tokenCap.Permissions))
 		for name, level := range tokenCap.Permissions {

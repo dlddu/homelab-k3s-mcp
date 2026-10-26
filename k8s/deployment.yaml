@@ -96,6 +96,9 @@ spec:
             - secretRef:
                 name: homelab-k3s-mcp-github-oidc
                 optional: true
+            - secretRef:
+                name: homelab-k3s-mcp-github-oidc-claude
+                optional: true
           volumeMounts:
             - name: pocket-aide-token
               mountPath: /var/run/secrets/pocket-aide

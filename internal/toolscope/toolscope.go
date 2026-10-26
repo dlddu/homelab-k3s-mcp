@@ -34,8 +34,9 @@ func Allows(ctx context.Context, tool string) bool {
 
 // TokenCap bounds the GitHub App installation tokens a scoped caller may mint.
 type TokenCap struct {
-	Repositories []string
-	Permissions  map[string]string
+	Repositories        []string
+	ExcludeRepositories []string
+	Permissions         map[string]string
 }
 
 type tokenCapKey struct{}
@@ -45,13 +46,21 @@ func WithTokenCap(ctx context.Context, tokenCap *TokenCap) context.Context {
 	if tokenCap == nil {
 		return ctx
 	}
-	return context.WithValue(ctx, tokenCapKey{}, tokenCap)
+	return WithTokenCaps(ctx, []*TokenCap{tokenCap})
 }
 
-// TokenCapFrom returns the cap WithTokenCap set, or nil when minting is unbounded.
-func TokenCapFrom(ctx context.Context) *TokenCap {
-	tokenCap, _ := ctx.Value(tokenCapKey{}).(*TokenCap)
-	return tokenCap
+// WithTokenCaps limits the installation tokens the rest of the request may mint.
+func WithTokenCaps(ctx context.Context, caps []*TokenCap) context.Context {
+	if len(caps) == 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, tokenCapKey{}, caps)
+}
+
+// TokenCapsFrom returns the caps WithTokenCaps set, or nil when minting is unbounded.
+func TokenCapsFrom(ctx context.Context) []*TokenCap {
+	caps, _ := ctx.Value(tokenCapKey{}).([]*TokenCap)
+	return caps
 }
 
 type selfRepositoryKey struct{}
