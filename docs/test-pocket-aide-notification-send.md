@@ -5,13 +5,16 @@
 - AC2: 입력 검증이 PocketAide 보다 앞선다 (PRD: pocket_aide_notification_send)
 - AC3: PocketAide 거부 사유의 구분 전달 (PRD: pocket_aide_notification_send)
 - AC4: 미설정 시 graceful 거부 (PRD: pocket_aide_notification_send)
+- AC5: 알림은 도구를 부른 인증 주체를 `requester` 로 싣는다 (PRD: pocket_aide_notification_send)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e 의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
 > (`(미작성)` 이면 아직 파일이 없다는 뜻이고, 그 표기는 `tests/integration/check_ac_mapping.py`
 > 규칙 8 이 실측 파일 집합과 대조한다). 시나리오 1 의 실제 도달은 실기기·Apple 자격 증명이 필요한
 > 외부 경계라 e2e 예외이고, 시나리오 3 은 고정된 PocketAide 픽스처(`POCKET_AIDE_SHA`)에 알림
-> 엔드포인트가 들어오기 전까지 e2e 가 관측할 대상이 없다.
+> 엔드포인트가 들어오기 전까지 e2e 가 관측할 대상이 없다. 시나리오 5 는 `requester` 를 받는
+> PocketAide 가 픽스처 핀(`POCKET_AIDE_SHA`)에 들어와야 e2e 를 쓸 수 있다 — 지금 핀은 모르는 필드를
+> 400 으로 거부한다.
 
 ## 테스트 시나리오
 
@@ -22,7 +25,7 @@
   `{title: "ping"}` 으로 한 번 더 호출
 - **기대 결과**: 첫 결과가 `{devices: 2, sent: 2}` 이고 두 기기에 제목·본문이 그대로 도착한다.
   PocketAide 가 받은 요청은 `POST /api/external/notifications` 에 projected 토큰 Bearer 다. 둘째
-  호출은 본문 없이 나간다. 토큰 파일이 교체되면 다음 호출이 새 토큰을 쓴다.
+  호출은 본문 없이 나간다(`requester` 는 시나리오 5). 토큰 파일이 교체되면 다음 호출이 새 토큰을 쓴다.
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/pocketaide/pocketaide_test.go`
   (`TestNotifyPostsTitleAndBodyWithTheServiceAccountToken`, `TestNotifyOmitsAnEmptyBody`,
@@ -66,3 +69,21 @@
   `internal/pocketaide/pocketaide_test.go` (`TestUnavailableIsTheUnconfiguredKind`,
   `TestFromEnvFollowsTheApprovalGateSettings`) + 통합
   `tests/integration/pocket_aide_notification_send_sc4.py`(`실행 대상: auth-variant`)
+
+### 시나리오 5: 알림 본문의 `requester` 는 도구를 부른 인증 주체다
+- **사전 조건**: API 키 인증(`MCP_API_KEYS` 두 개)으로 뜬 배포, 앞에 요청 본문을 기록하는 PocketAide
+  (`requester` 를 받는 판 — dlddu/pocket-aide PRD-12 AC16 개정·AC17)
+- **실행 단계**: 첫째 키로 `{title: "x", requester: "spoofed"}` 호출 → 둘째 키로 같은 인자로 호출 →
+  `tools/list` 로 입력 스키마 확인. 단위 계층에서는 JWT(`jwt:<sub>`)·GitHub Actions OIDC·인증을 끈
+  배포(`anonymous`)의 주체와 200자를 넘는 주체도 넣는다
+- **기대 결과**: PocketAide 가 받은 본문의 `requester` 가 차례로 `api_key:1`·`api_key:2` 다 — 인자의
+  `"spoofed"` 는 어디에도 실리지 않는다. JWT 주체는 `jwt:<sub>`, 인증을 끈 배포는 `anonymous` 다.
+  입력 스키마 속성은 `title`·`body` 둘뿐이다. 200자를 넘는 주체는 앞 200자로 잘려 나가고 호출은
+  성공한다
+- **검증 AC**: AC5
+- **자동화**: Go 단위 `internal/server/pocket_aide_test.go`
+  (`TestPocketAideNotificationSendNamesTheAuthenticatedCallerAsRequester` — 실제 인증 미들웨어와
+  `pocketaide.Client` 를 거쳐 상대가 받은 본문을 잰다 · `TestToolsListAdvertisesPocketAideNotificationSend`) +
+  `internal/mcp/pocket_aide_test.go` (`TestPocketAideNotificationSendPassesThePrincipalAsRequester`) +
+  `internal/pocketaide/pocketaide_test.go` (`TestNotifyPostsTitleAndBodyWithTheServiceAccountToken`,
+  `TestNotifyOmitsAnEmptyBody`, `TestNotifyCutsAnOverlongRequesterInsteadOfFailing`) + 통합 (미작성)

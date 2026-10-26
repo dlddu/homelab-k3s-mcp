@@ -236,3 +236,11 @@ display only and are never used to authorize anything.
 Deploy PocketAide first, from a build that accepts these two fields
 (dlddu/pocket-aide#319). An older PocketAide answers 400 to fields it does not
 know, and because `reason` is required, every gated call would then be refused.
+
+`pocket_aide_notification_send` uses the same address and token. Each
+notification carries `requester`: the authenticated principal of the MCP call
+(`api_key:<n>`, `jwt:<sub>`, `github_oidc:<…>`, or `anonymous`), cut to 200
+characters. It is set by the server, not by a tool argument. PocketAide stores
+it with the notification next to the registered caller. Deploy the PocketAide
+build that accepts `requester` first; an older one answers 400 to every
+notification. See `docs/prd-pocket-aide-notification-send.md` (AC5).

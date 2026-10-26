@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 )
@@ -66,7 +67,7 @@ func TestNotifyPostsTitleAndBodyWithTheServiceAccountToken(t *testing.T) {
 	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":2,"sent":2}`}
 	client, _ := newClient(t, fake)
 
-	res, err := client.Notify(context.Background(), "  백업 완료 ", " 스냅샷 3개 ")
+	res, err := client.Notify(context.Background(), "  백업 완료 ", " 스냅샷 3개 ", "api_key:1")
 	if err != nil {
 		t.Fatalf("notify: %v", err)
 	}
@@ -81,8 +82,8 @@ func TestNotifyPostsTitleAndBodyWithTheServiceAccountToken(t *testing.T) {
 	if got.path != "/api/external/notifications" || got.auth != "Bearer sa-token-1" || got.contentType != "application/json" {
 		t.Fatalf("request = %+v", got)
 	}
-	if got.body["title"] != "백업 완료" || got.body["body"] != "스냅샷 3개" || len(got.body) != 2 {
-		t.Fatalf("body = %v, want trimmed title and body only", got.body)
+	if got.body["title"] != "백업 완료" || got.body["body"] != "스냅샷 3개" || got.body["requester"] != "api_key:1" || len(got.body) != 3 {
+		t.Fatalf("body = %v, want trimmed title, body and the requester only", got.body)
 	}
 }
 
@@ -90,15 +91,29 @@ func TestNotifyOmitsAnEmptyBody(t *testing.T) {
 	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":0,"sent":0}`}
 	client, _ := newClient(t, fake)
 
-	res, err := client.Notify(context.Background(), "ping", "")
+	res, err := client.Notify(context.Background(), "ping", "", "jwt:operator@example.test")
 	if err != nil {
 		t.Fatalf("notify: %v", err)
 	}
 	if res.Devices != 0 || res.Sent != 0 {
 		t.Fatalf("result = %+v", *res)
 	}
-	if body := fake.all()[0].body; len(body) != 1 || body["title"] != "ping" {
-		t.Fatalf("body = %v, want title only", body)
+	if body := fake.all()[0].body; len(body) != 2 || body["title"] != "ping" || body["requester"] != "jwt:operator@example.test" {
+		t.Fatalf("body = %v, want title and requester only", body)
+	}
+}
+
+func TestNotifyCutsAnOverlongRequesterInsteadOfFailing(t *testing.T) {
+	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":1,"sent":1}`}
+	client, _ := newClient(t, fake)
+
+	long := "jwt:" + strings.Repeat("가", pocketaide.MaxRequesterRunes)
+	if _, err := client.Notify(context.Background(), "x", "", long); err != nil {
+		t.Fatalf("notify: %v", err)
+	}
+	got, _ := fake.all()[0].body["requester"].(string)
+	if want := string([]rune(long)[:pocketaide.MaxRequesterRunes]); got != want {
+		t.Fatalf("requester = %q (%d runes), want the first %d runes", got, utf8.RuneCountInString(got), pocketaide.MaxRequesterRunes)
 	}
 }
 
@@ -106,13 +121,13 @@ func TestNotifyReadsTheTokenOnEveryCall(t *testing.T) {
 	fake := &fakePocketAide{status: http.StatusOK, reply: `{"devices":1,"sent":1}`}
 	client, path := newClient(t, fake)
 
-	if _, err := client.Notify(context.Background(), "one", ""); err != nil {
+	if _, err := client.Notify(context.Background(), "one", "", "anonymous"); err != nil {
 		t.Fatalf("notify: %v", err)
 	}
 	if err := os.WriteFile(path, []byte("sa-token-2"), 0o600); err != nil {
 		t.Fatalf("rotate: %v", err)
 	}
-	if _, err := client.Notify(context.Background(), "two", ""); err != nil {
+	if _, err := client.Notify(context.Background(), "two", "", "anonymous"); err != nil {
 		t.Fatalf("notify: %v", err)
 	}
 	calls := fake.all()
@@ -126,7 +141,7 @@ func TestNotifyRefusesBadTitlesWithoutARequest(t *testing.T) {
 	client, _ := newClient(t, fake)
 
 	for _, title := range []string{"", "   ", strings.Repeat("가", pocketaide.MaxTitleRunes+1)} {
-		_, err := client.Notify(context.Background(), title, "")
+		_, err := client.Notify(context.Background(), title, "", "anonymous")
 		var e *pocketaide.Error
 		if !errors.As(err, &e) || e.Unavailable() || !strings.Contains(err.Error(), "invalid notification") {
 			t.Fatalf("title %q: err = %v, want an invalid-notification error", title, err)
@@ -151,7 +166,7 @@ func TestNotifyExplainsEachRefusal(t *testing.T) {
 	for _, c := range cases {
 		fake := &fakePocketAide{status: c.status, reply: c.reply}
 		client, _ := newClient(t, fake)
-		_, err := client.Notify(context.Background(), "x", "")
+		_, err := client.Notify(context.Background(), "x", "", "anonymous")
 		if err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Fatalf("status %d: err = %v, want it to mention %q", c.status, err, c.want)
 		}
@@ -163,7 +178,7 @@ func TestNotifyExplainsEachRefusal(t *testing.T) {
 }
 
 func TestUnavailableIsTheUnconfiguredKind(t *testing.T) {
-	_, err := pocketaide.NewUnavailable("").Notify(context.Background(), "x", "")
+	_, err := pocketaide.NewUnavailable("").Notify(context.Background(), "x", "", "anonymous")
 	var e *pocketaide.Error
 	if !errors.As(err, &e) || !e.Unavailable() || !strings.Contains(err.Error(), "APPROVAL_GATE_URL") {
 		t.Fatalf("err = %v, want the unconfigured kind naming APPROVAL_GATE_URL", err)
