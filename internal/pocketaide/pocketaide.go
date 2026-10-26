@@ -19,6 +19,9 @@ import (
 // MaxTitleRunes mirrors PocketAide's own limit so an over-long title is refused here, before a request is spent.
 const MaxTitleRunes = 120
 
+// MaxRequesterRunes is PocketAide's limit on requester; a longer one is cut to it, not refused.
+const MaxRequesterRunes = 200
+
 const requestTimeout = 20 * time.Second
 
 type errKind int
@@ -61,8 +64,9 @@ type Result struct {
 }
 
 // Service sends a notification to the user who registered this server as a PocketAide caller.
+// requester is the principal that invoked the tool, recorded by PocketAide beside that caller.
 type Service interface {
-	Notify(ctx context.Context, title, body string) (*Result, error)
+	Notify(ctx context.Context, title, body, requester string) (*Result, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -79,7 +83,7 @@ func NewUnavailable(reason string) *Unavailable {
 }
 
 // Notify always fails with the configured reason.
-func (u *Unavailable) Notify(context.Context, string, string) (*Result, error) {
+func (u *Unavailable) Notify(context.Context, string, string, string) (*Result, error) {
 	return nil, unavailable(u.reason)
 }
 
@@ -130,8 +134,9 @@ func readToken(path string) (string, error) {
 }
 
 type notifyRequest struct {
-	Title string `json:"title"`
-	Body  string `json:"body,omitempty"`
+	Title     string `json:"title"`
+	Body      string `json:"body,omitempty"`
+	Requester string `json:"requester"`
 }
 
 // ValidateTitle applies PocketAide's title rule; the tool calls it before
@@ -149,12 +154,12 @@ func ValidateTitle(title string) error {
 }
 
 // Notify posts one notification and reports how many devices received it.
-func (c *Client) Notify(ctx context.Context, title, body string) (*Result, error) {
+func (c *Client) Notify(ctx context.Context, title, body, requester string) (*Result, error) {
 	if err := ValidateTitle(title); err != nil {
 		return nil, err
 	}
 	title = strings.TrimSpace(title)
-	raw, err := json.Marshal(notifyRequest{Title: title, Body: strings.TrimSpace(body)})
+	raw, err := json.Marshal(notifyRequest{Title: title, Body: strings.TrimSpace(body), Requester: truncateRunes(strings.TrimSpace(requester), MaxRequesterRunes)})
 	if err != nil {
 		return nil, apiError(err.Error())
 	}
@@ -192,6 +197,13 @@ func (c *Client) Notify(ctx context.Context, title, body string) (*Result, error
 		return nil, apiError("unreadable response: " + err.Error())
 	}
 	return &out, nil
+}
+
+func truncateRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
 }
 
 func serverMessage(r io.Reader) string {

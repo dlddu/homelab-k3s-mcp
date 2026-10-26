@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 )
 
@@ -32,7 +33,7 @@ func (h *Handler) pocketAideNotificationSend(ctx context.Context, raw json.RawMe
 	if err := pocketaide.ValidateTitle(title); err != nil {
 		return toolError(ctx, err), nil
 	}
-	res, err := h.pocketAide.Notify(ctx, title, body)
+	res, err := h.pocketAide.Notify(ctx, title, body, eventlog.PrincipalFrom(ctx).String())
 	if err != nil {
 		return toolError(ctx, err), nil
 	}

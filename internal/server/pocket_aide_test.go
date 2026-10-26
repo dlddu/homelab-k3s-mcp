@@ -2,17 +2,22 @@ package server_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 	"github.com/dlddu/homelab-k3s-mcp/internal/mcp"
 	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 )
 
-type notifyCall struct{ title, body string }
+type notifyCall struct{ title, body, requester string }
 
 type fakePocketAide struct {
 	calls  []notifyCall
@@ -20,13 +25,17 @@ type fakePocketAide struct {
 	err    error
 }
 
-func (f *fakePocketAide) Notify(_ context.Context, title, body string) (*pocketaide.Result, error) {
-	f.calls = append(f.calls, notifyCall{title, body})
+func (f *fakePocketAide) Notify(_ context.Context, title, body, requester string) (*pocketaide.Result, error) {
+	f.calls = append(f.calls, notifyCall{title, body, requester})
 	return f.result, f.err
 }
 
 func pocketAideApp(svc pocketaide.Service) http.Handler {
-	return server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform(),
+	return pocketAideAppWith(nil, svc)
+}
+
+func pocketAideAppWith(authCfg *auth.Config, svc pocketaide.Service) http.Handler {
+	return server.App(authCfg, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform(),
 		mcp.WithPocketAide(svc))
 }
 
@@ -39,7 +48,7 @@ func TestToolsListAdvertisesPocketAideNotificationSend(t *testing.T) {
 	}
 	props := at(t, tool, "inputSchema", "properties").(map[string]any)
 	if len(props) != 2 || props["title"] == nil || props["body"] == nil {
-		t.Fatalf("properties = %v, want title and body", props)
+		t.Fatalf("properties = %v, want title and body only — the requester is never an argument", props)
 	}
 	if at(t, tool, "annotations", "readOnlyHint") != false ||
 		at(t, tool, "annotations", "destructiveHint") != false ||
@@ -59,7 +68,7 @@ func TestPocketAideNotificationSendReturnsDeliveryCounts(t *testing.T) {
 		at(t, body, "result", "structuredContent", "sent") != float64(1) {
 		t.Fatalf("result = %v", at(t, body, "result"))
 	}
-	if len(fake.calls) != 1 || fake.calls[0] != (notifyCall{"백업 완료", "스냅샷 3개"}) {
+	if len(fake.calls) != 1 || fake.calls[0] != (notifyCall{"백업 완료", "스냅샷 3개", "anonymous"}) {
 		t.Fatalf("calls = %v", fake.calls)
 	}
 }
@@ -71,8 +80,47 @@ func TestPocketAideNotificationSendBodyIsOptional(t *testing.T) {
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("result = %v", at(t, body, "result"))
 	}
-	if len(fake.calls) != 1 || fake.calls[0] != (notifyCall{"ping", ""}) {
+	if len(fake.calls) != 1 || fake.calls[0] != (notifyCall{"ping", "", "anonymous"}) {
 		t.Fatalf("calls = %v", fake.calls)
+	}
+}
+
+func TestPocketAideNotificationSendNamesTheAuthenticatedCallerAsRequester(t *testing.T) {
+	t.Setenv("MCP_AUTH_DISABLED", "")
+	t.Setenv("MCP_API_KEYS", "first-key,second-key")
+	t.Setenv("MCP_OAUTH_ISSUER", "")
+	t.Setenv("MCP_OAUTH_AUDIENCE", "")
+	t.Setenv("MCP_OAUTH_RESOURCE", "")
+	cfg, err := auth.FromEnv(context.Background())
+	if err != nil {
+		t.Fatalf("FromEnv() = %v", err)
+	}
+
+	var bodies []map[string]any
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&body)
+		bodies = append(bodies, body)
+		_, _ = w.Write([]byte(`{"devices":1,"sent":1}`))
+	}))
+	t.Cleanup(upstream.Close)
+	tokenPath := filepath.Join(t.TempDir(), "token")
+	if err := os.WriteFile(tokenPath, []byte("sa-token"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app := pocketAideAppWith(cfg, pocketaide.New(upstream.URL, tokenPath, upstream.Client()))
+
+	for i, key := range []string{"first-key", "second-key"} {
+		_, body := rpcAs(t, app, key, map[string]any{
+			"jsonrpc": "2.0", "id": 410 + i, "method": "tools/call",
+			"params": map[string]any{"name": "pocket_aide_notification_send", "arguments": map[string]any{"title": "x", "requester": "spoofed"}},
+		})
+		if body == nil || at(t, body, "result", "isError") != false {
+			t.Fatalf("key %d: response = %v", i+1, body)
+		}
+	}
+	if len(bodies) != 2 || bodies[0]["requester"] != "api_key:1" || bodies[1]["requester"] != "api_key:2" {
+		t.Fatalf("PocketAide received %v, want requester api_key:1 then api_key:2 — the authenticated key, never an argument", bodies)
 	}
 }
 
