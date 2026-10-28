@@ -6,12 +6,10 @@ import (
 	"time"
 )
 
-// AC13 contracts a read window and a single stdin write together, and the way
-// those two collide is not visible from AttachResource: the SPDY executor is out
-// of reach for a unit test, so a reader that ends at the payload looked correct
-// until a real round trip measured 0.016s against a readSeconds=3 window. These
-// assertions sit on the reader for that reason — they are the only place the
-// regression can be caught before a cluster is involved.
+// The way the read window and the single stdin write collide is not visible from
+// AttachResource: the SPDY executor is out of reach for a unit test, so these
+// assertions sit on the reader — the only place the regression can be caught
+// before a cluster is involved.
 func TestAttachStdinReaderHoldsTheWindow(t *testing.T) {
 	t.Run("the payload is yielded once, in order, without reaching EOF", func(t *testing.T) {
 		done := make(chan struct{})

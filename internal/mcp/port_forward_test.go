@@ -9,9 +9,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// TestPortForwardMakesOneRoundTrip covers the half of scenario 14 that does not
-// need a cluster: what the tool hands down, what pair it spends, and what it
-// gives back.
 func TestPortForwardMakesOneRoundTrip(t *testing.T) {
 	t.Run("hands the coordinate, the port and the payload to the cluster", func(t *testing.T) {
 		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
@@ -121,11 +118,10 @@ func TestPortForwardMakesOneRoundTrip(t *testing.T) {
 	})
 }
 
-// TestPortForwardRefusalsCostNoApproval is scenario 14's "상한 초과가 거부된다"
-// and its neighbours. Each has to be refused with the kubernetes call count
-// still at zero and no approval requested: this tool reaches ports a network
-// policy closed, so an argument error that costs an operator an approval prompt
-// has already spent the thing the gate exists to ration.
+// This tool reaches ports a network policy closed, so an argument error that
+// costs an operator an approval prompt has already spent the thing the gate
+// exists to ration: each refusal must come with zero kubernetes calls and no
+// approval requested.
 func TestPortForwardRefusalsCostNoApproval(t *testing.T) {
 	refusals := []struct {
 		name string
@@ -166,11 +162,9 @@ func TestPortForwardRefusalsCostNoApproval(t *testing.T) {
 	}
 }
 
-// TestPortForwardContextCarriesPortAndPayload is AC3's side of the same call,
-// and the reason AC14 names AC3 at all: the pair says "create on
-// pods/portforward" for every forward this server can make, so the port and the
-// payload are the only things on the screen that distinguish reaching a metrics
-// endpoint from reaching a database.
+// The pair says "create on pods/portforward" for every forward this server can
+// make, so the port and the payload are the only things on the screen that
+// distinguish reaching a metrics endpoint from reaching a database.
 func TestPortForwardContextCarriesPortAndPayload(t *testing.T) {
 	reader := newStateReader()
 	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}

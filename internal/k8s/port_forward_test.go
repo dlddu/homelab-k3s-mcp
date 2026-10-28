@@ -14,12 +14,6 @@ import (
 	"k8s.io/apimachinery/pkg/util/httpstream"
 )
 
-// TestRoundTripSendsOnceAndCloses drives the port-forward protocol over an
-// in-memory connection. What it is really asserting is the shape AC14 chose: one
-// write, one read, and a write half that is closed before the read starts —
-// because most of what answers on a forwarded port reads until EOF, and a call
-// that never closed its side would spend the whole window waiting for a reply
-// that is waiting for it.
 func TestRoundTripSendsOnceAndCloses(t *testing.T) {
 	conn := &fakeStreamConn{response: []byte("HTTP/1.1 200 OK\r\n\r\npong")}
 
@@ -47,9 +41,6 @@ func TestRoundTripSendsOnceAndCloses(t *testing.T) {
 		t.Error("tunnelClosed = false, want true")
 	}
 
-	// The error stream has to be created before the data stream: the apiserver
-	// pairs a data stream with an already-registered error stream and resets one
-	// that arrives alone.
 	if len(conn.order) != 2 || conn.order[0] != v1StreamTypeError || conn.order[1] != v1StreamTypeData {
 		t.Errorf("stream order = %v, want the error stream first", conn.order)
 	}
@@ -63,10 +54,6 @@ func TestRoundTripSendsOnceAndCloses(t *testing.T) {
 	}
 }
 
-// TestRoundTripSurfacesTheErrorStream is the difference between "nothing is
-// listening on that port" and "the port said nothing". The apiserver accepts the
-// streams either way and reports the refusal on the error stream, so a call that
-// ignored it would answer an empty string to a forward that never connected.
 func TestRoundTripSurfacesTheErrorStream(t *testing.T) {
 	conn := &fakeStreamConn{errorMessage: "unable to do port forwarding: socat not found"}
 
@@ -82,9 +69,8 @@ func TestRoundTripSurfacesTheErrorStream(t *testing.T) {
 	}
 }
 
-// TestRoundTripStopsAtTheByteCap covers the cap AC14 asks for on the read. The
-// time cap alone does not bound the answer: a port that streams fills memory for
-// the whole window, and the window is allowed to be 30 seconds.
+// The time cap alone does not bound the answer: a port that streams fills memory
+// for the whole window, and the window is allowed to be 30 seconds.
 func TestRoundTripStopsAtTheByteCap(t *testing.T) {
 	conn := &fakeStreamConn{response: bytes.Repeat([]byte("y"), streamMaxOutputBytes+4096)}
 
@@ -100,9 +86,8 @@ func TestRoundTripStopsAtTheByteCap(t *testing.T) {
 	}
 }
 
-// TestRoundTripEndsWhenTheWindowDoes is the other cap. A port that stays open and
-// says nothing is the normal case for plenty of protocols, and AC14 makes the
-// window the ending rather than leaving the call to hang.
+// A port that stays open and says nothing is the normal case for plenty of
+// protocols, so the window has to be what ends the call.
 func TestRoundTripEndsWhenTheWindowDoes(t *testing.T) {
 	conn := &fakeStreamConn{silent: true}
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
@@ -123,9 +108,6 @@ func TestRoundTripEndsWhenTheWindowDoes(t *testing.T) {
 	}
 }
 
-// TestPortForwardOutcomeReportsItsEncoding is about not lying. Go's JSON encoder
-// turns invalid UTF-8 into U+FFFD without a word, so a binary answer carried as a
-// string comes back looking like a string and being a different set of bytes.
 func TestPortForwardOutcomeReportsItsEncoding(t *testing.T) {
 	t.Run("text travels as itself", func(t *testing.T) {
 		body := &limitedWriter{limit: streamMaxOutputBytes}

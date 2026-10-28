@@ -11,8 +11,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// portForwardArgs is AC14's one shape: a pod coordinate, the port, the bytes to
-// send, and the read window.
 type portForwardArgs struct {
 	ref         k8s.PortForwardRef
 	port        int
@@ -20,10 +18,9 @@ type portForwardArgs struct {
 	readSeconds int
 }
 
-// parsePortForwardTarget reads AC14's arguments. Both the pair resolver and the
-// handler run it, for the reason parseAttachTarget states. Scenario 14 asks for
-// over-cap arguments to be refused, and a refusal that arrives after an operator
-// has approved reaching a port is not that refusal.
+// parsePortForwardTarget reads the port-forward arguments. Both the pair resolver and the
+// handler run it, for the reason parseAttachTarget states: a refusal that arrives
+// after an operator has approved reaching a port comes too late.
 func parsePortForwardTarget(obj map[string]any) (portForwardArgs, *rpcErr) {
 	apiVersion := optionalString(obj, "apiVersion")
 	if apiVersion == nil {
@@ -84,7 +81,7 @@ func parsePortForwardTarget(obj map[string]any) (portForwardArgs, *rpcErr) {
 }
 
 // parsePortForwardPayload reads the bytes to send. There are two spellings
-// because AC14 says bytes and JSON has no way to say them: `payload` covers the
+// because the payload is bytes and JSON has no way to say them: `payload` covers the
 // text case, which is nearly all of what is reached over a forwarded port, and
 // `payloadBase64` covers the rest without making every caller encode a plain
 // HTTP request. Passing both is refused rather than resolved in favour of one —
@@ -120,7 +117,7 @@ func parsePortForwardPayload(obj map[string]any) ([]byte, *rpcErr) {
 	return nil, nil
 }
 
-// portForwardPairs is genericPairs("create") with AC14's own argument checks run
+// portForwardPairs is genericPairs("create") with the port-forward argument checks run
 // first, for the reason attachPairs states. The pair the call exercises is
 // create on ⟨pods plural⟩/portforward — forwarding is something the call does to
 // the pod, so the resource name hangs the subresource off the coordinate.
@@ -147,7 +144,6 @@ func portForwardPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 	}
 }
 
-// resourcePortForward makes the single round trip after the approval.
 func (h *Handler) resourcePortForward(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {

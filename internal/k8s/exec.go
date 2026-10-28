@@ -20,14 +20,14 @@ import (
 // to stop the reader too.
 const streamMaxOutputBytes = 256 * 1024
 
-// execMaxDuration is AC12's running-time cap. A command may outlive it in the
+// execMaxDuration is the running-time cap. A command may outlive it in the
 // pod; the tool's job is to answer, and an unanswered call helps nobody.
 const execMaxDuration = 30 * time.Second
 
 // limitedWriter copies into a bounded buffer and, once the cap is hit, keeps
 // draining its input while marking itself full — the stream must be drained
 // (its transport would wedge otherwise) but nothing past the cap is kept, and
-// onFull stops listening (AC12).
+// onFull stops listening.
 type limitedWriter struct {
 	limit  int
 	buf    bytes.Buffer
@@ -59,14 +59,13 @@ func (w *limitedWriter) String() string { return w.buf.String() }
 // Bytes hands back what was kept without deciding it is text. The streaming
 // tools that read command output want the string; port forward reaches whatever
 // is listening on a port and has to look at the bytes before it can say whether
-// they are text at all (AC14).
+// they are text at all.
 func (w *limitedWriter) Bytes() []byte { return w.buf.Bytes() }
 
 // streamSubresourceServed answers the discovery question requireSubresource
 // answers for scale, worded for the streaming subresources — reusing it would
 // have the refusal say "has no replicas", which is about scale, not about
-// exec or attach. Discovery is not a resource permission (the scale precedent,
-// AC8), and the sentence is about what the cluster serves, not about whether
+// exec or attach. Discovery is not a resource permission (the scale precedent), and the sentence is about what the cluster serves, not about whether
 // the object exists.
 func (s *KubeService) streamSubresourceServed(ctx context.Context, gvr schema.GroupVersionResource, kind, subresource string) error {
 	dc, err := s.discoveryClient()
@@ -167,25 +166,17 @@ func (s *KubeService) ExecResource(ctx context.Context, ref ExecRef, container *
 
 // execStreamOutcome turns how the stream ended into what the response carries.
 // It takes only values so the classification can be asserted without a cluster:
-// the SPDY executor cannot be reached from a unit test, which is why this
-// decision went unwatched long enough for a real round trip to be the thing
-// that caught it.
+// the SPDY executor cannot be reached from a unit test.
 //
 // The stream reports a non-zero exit as a CodeExitError and says nothing at all
 // about a zero one — so a nil error is the success path, and reading the code
-// only out of the error leaves it unset exactly when the command worked
-// (prd-resource-generic AC12: the response's success field describes the run).
+// only out of the error leaves it unset exactly when the command worked.
 //
 // capped says a byte cap filled. That cap cancels the context to stop
 // listening, so the stream comes back cancelled rather than past its deadline;
-// treating that as a transport failure would turn AC12's "the response says it
-// was cut" into an error instead of an answer. The exit code stays unset
+// treating that as a transport failure would return an error instead of a
+// response that says it was cut. The exit code stays unset
 // because a command cut mid-stream never reported one.
-//
-// The order below is deliberate: every branch that answers correctly today
-// keeps its place, and the two new ones only catch what currently answers
-// wrongly. A cut stream with no error already reported no exit code, so
-// requiring !capped for the success branch leaves that case exactly as it was.
 func execStreamOutcome(streamErr, ctxErr error, capped bool) (exitCode *int32, timeLimited bool, err error) {
 	var codeErr utilexec.CodeExitError
 	switch {
