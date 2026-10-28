@@ -100,10 +100,6 @@ func (c *countingK8s) GetResource(context.Context, k8s.ResourceRef) (*k8s.Resour
 	return &k8s.ResourceResult{Object: map[string]any{}}, nil
 }
 
-// WatchResources records its query for the reason PatchResource records its
-// ref: the window and the resume point the tool sent are themselves the
-// assertion (AC6), and a refused call has to be visible as a call that never
-// arrived.
 func (c *countingK8s) WatchResources(_ context.Context, q k8s.WatchQuery) (*k8s.WatchResult, error) {
 	c.hit()
 	c.mu.Lock()
@@ -129,9 +125,7 @@ func (c *countingK8s) PatchResource(_ context.Context, ref k8s.PatchRef) (*k8s.R
 	return &k8s.ResourceResult{Resource: "deployments", Object: map[string]any{}}, nil
 }
 
-// UpdateResource records its ref for the same reason PatchResource does: what
-// the tool sent is the assertion (AC8), and the scale half of this tool builds
-// a body the caller never wrote.
+// The scale half of this tool builds a body the caller never wrote.
 func (c *countingK8s) UpdateResource(_ context.Context, ref k8s.UpdateRef) (*k8s.ResourceResult, error) {
 	c.hit()
 	c.mu.Lock()
@@ -156,9 +150,8 @@ func (c *countingK8s) patch() k8s.PatchRef {
 	return c.lastPatch
 }
 
-// DeleteResource records its ref for the same reason the two above do: what the
-// tool sent is the assertion (AC10), and a nil grace period and a zero one are
-// different requests that a counter cannot tell apart.
+// A nil grace period and a zero one are different requests that a counter
+// cannot tell apart.
 func (c *countingK8s) DeleteResource(_ context.Context, ref k8s.DeleteRef) (*k8s.ResourceResult, error) {
 	c.hit()
 	c.mu.Lock()
@@ -198,10 +191,6 @@ func (c *countingK8s) ExecInPod(context.Context, string, string, *string, []stri
 	return &k8s.ExecOutcome{Success: true}, nil
 }
 
-// ExecResource records what it was handed, the way UpdateResource records its
-// ref: the coordinate, the container and the command array the tool sent are
-// the assertion (AC12). execOutcome and execErr let a case script what the
-// cluster layer answers, the way updateErr does for a kind with no replicas.
 func (c *countingK8s) ExecResource(_ context.Context, ref k8s.ExecRef, container *string, command []string) (*k8s.ExecOutcome, error) {
 	c.hit()
 	c.mu.Lock()
@@ -335,8 +324,6 @@ func (c *countingK8s) attach() (k8s.AttachRef, *string, *string, int) {
 	return c.lastAttach, c.lastAttachContainer, c.lastAttachStdin, c.lastAttachReadSeconds
 }
 
-// scriptedGate answers with one prepared decision (or one refusal) and records
-// what it was asked to approve.
 type scriptedGate struct {
 	decision *approvalgate.Decision
 	err      error
@@ -397,7 +384,6 @@ func newCollectionReader(names ...string) *collectionReader {
 	return &collectionReader{state: collectionState(names...)}
 }
 
-// collectionState builds a snapshot the way ListTargets returns one.
 func collectionState(names ...string) k8s.CollectionTargetState {
 	targets := make([]k8s.CollectionTarget, 0, len(names))
 	for _, name := range names {
@@ -450,7 +436,6 @@ func (g *scriptedGate) Authorize(ctx context.Context, call approvalgate.Call) (*
 	return g.decision, nil
 }
 
-// context reports what the operator would have been shown for the nth call.
 func (g *scriptedGate) context(n int) string {
 	if n >= len(g.contexts) {
 		return ""
@@ -470,18 +455,12 @@ func testHandler(t *testing.T, gate approvalgate.Gate, registry map[string]toolE
 	return h, fake
 }
 
-// testHandlerReading is testHandler with the gate's reader in the caller's
-// hands, for the cases where what the gate read — or could not read — is the
-// assertion (AC6, AC11).
 func testHandlerReading(t *testing.T, gate approvalgate.Gate, registry map[string]toolEntry, reader *stateReader) (*Handler, *countingK8s, *stateReader) {
 	t.Helper()
 	h, fake, _ := testHandlerListing(t, gate, registry, reader, newCollectionReader())
 	return h, fake, reader
 }
 
-// testHandlerListing is testHandlerReading with the gate's *collection* reader
-// in the caller's hands too, for the reason that one exists: what the gate
-// listed — and whether it listed at all — is the assertion (AC11).
 func testHandlerListing(
 	t *testing.T,
 	gate approvalgate.Gate,
@@ -502,8 +481,6 @@ func testHandlerListing(
 	return h, fake, lister
 }
 
-// reachesKubernetes is a handler that does nothing but touch the cluster, so a
-// test can tell "the tool ran" from "the tool was refused".
 func reachesKubernetes(h *Handler, ctx context.Context, _ json.RawMessage) (any, *rpcErr) {
 	return h.apiResources(ctx)
 }
@@ -547,17 +524,12 @@ func withTestReason(h *Handler, name, args string) string {
 	return `{"reason":"` + testReason + `",` + inner + `}`
 }
 
-// AC1: what tools/list advertises and what the dispatcher can run must be the
-// same set. A name on one side only is either unreachable or — worse — a tool
-// running without anyone having declared the pairs it exercises.
 func TestProductionRegistryMatchesAdvertisedTools(t *testing.T) {
 	if err := Validate(); err != nil {
 		t.Fatalf("Validate() = %v, want the shipped registry to be consistent", err)
 	}
 }
 
-// AC1: registering a tool nobody declared has to stop startup rather than pass
-// silently.
 func TestValidateRegistryRejectsMismatches(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -584,7 +556,6 @@ func TestValidateRegistryRejectsMismatches(t *testing.T) {
 			want:       "has no handler",
 		},
 		{
-			// AC1's ⑴: an empty declaration is not a marker.
 			name:       "neither pairs nor marker",
 			registered: map[string]toolEntry{"quiet_tool": {handle: reachesKubernetes}},
 			advertised: []string{"quiet_tool"},
@@ -645,10 +616,7 @@ func TestValidateRegistryRejectsMismatches(t *testing.T) {
 	}
 }
 
-// AC1: every shipped tool is on one side of the declaration line — a pair it
-// exercises, or a marker saying it exercises none. The production registry is
-// the set this has to hold for; a count here would go stale, so this asserts
-// the property on every entry instead.
+// A count here would go stale, so this asserts the property on every entry.
 func TestProductionRegistryDeclaresEveryTool(t *testing.T) {
 	for name, entry := range toolRegistry {
 		d := entry.decl
@@ -758,8 +726,6 @@ func TestSensitiveReadsAreGated(t *testing.T) {
 	}
 }
 
-// AC1/AC3: the gate is handed the pair it is judging and a context that names
-// the tool and carries the arguments in full.
 func TestApprovedCallReachesKubernetesWithAJudgeableContext(t *testing.T) {
 	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	registry := map[string]toolEntry{
@@ -941,8 +907,6 @@ func TestOrdinaryReadsAndSecretListsStayUngated(t *testing.T) {
 	}
 }
 
-// AC5: a call whose coordinate cannot be read is a call whose pair cannot be
-// named, and an unnamed pair cannot be judged sensitive or not.
 func TestGenericCallWithoutACoordinateIsRefused(t *testing.T) {
 	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), toolRegistry)
 
@@ -954,8 +918,6 @@ func TestGenericCallWithoutACoordinateIsRefused(t *testing.T) {
 	}
 }
 
-// The declaration a generic call resolves to is the pair the approval request
-// puts in front of the reviewer, subresources included.
 func TestGenericPairsFollowTheCoordinate(t *testing.T) {
 	cases := []struct {
 		verb string
@@ -996,9 +958,6 @@ func TestSensitiveReadGateLooksThroughSubresources(t *testing.T) {
 	}
 }
 
-// AC3: the scale half of resource_update is the one place where listing the
-// arguments verbatim is not enough (approvalContext says why). The current count
-// comes from the cluster, which is the first pair AC11 declares.
 func TestContextIncludesCurrentAndTargetReplicas(t *testing.T) {
 	reader := newStateReader()
 	current := int64(3)
@@ -1035,10 +994,6 @@ func TestContextSaysSoWhenTheCurrentReplicaCountIsUnknown(t *testing.T) {
 	}
 }
 
-// AC6: what the operator approved was that object in that state. If it moved
-// while they were deciding, the approval does not describe what would now
-// happen, so the call is refused and a new approval is asked for rather than the
-// old one being stretched to cover a different object.
 func TestExecutionIsRefusedWhenTargetChangedAfterApproval(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -1083,8 +1038,6 @@ func TestExecutionIsRefusedWhenTargetChangedAfterApproval(t *testing.T) {
 			next: k8s.TargetState{ResourceVersion: "100", UID: "uid-2"},
 		},
 		{
-			// exec's pod: AC6's own paragraph is written about it, and the tool
-			// now exists to hold the case.
 			name: "exec pod recreated under the same name",
 			tool: "resource_exec",
 			args: `{"apiVersion":"v1","kind":"Pod","namespace":"ops","name":"api","command":["echo","hi"]}`,
@@ -1186,7 +1139,7 @@ func TestUnresolvableTargetIsRejectedBeforeRequest(t *testing.T) {
 	}
 }
 
-// AC5, at the seam this slice added: the gate and its reader fail independently.
+// The gate and its reader fail independently.
 // An approval backend that is up while the cluster client is down must refuse,
 // because the alternative is an approval screen describing a state nobody read.
 func TestGatedCallIsRefusedWhenTheGateCannotReadItsTarget(t *testing.T) {
