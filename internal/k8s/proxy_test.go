@@ -7,8 +7,7 @@ import (
 	"testing"
 )
 
-// TestProxyVerbFollowsTheMethod is the mapping AC15 makes the whole tool hang
-// on. A second copy is what this test exists to prevent.
+// A second copy of the verb mapping is what this test exists to prevent.
 func TestProxyVerbFollowsTheMethod(t *testing.T) {
 	for method, want := range map[string]string{
 		"GET": "get", "POST": "create", "PUT": "update",
@@ -26,8 +25,6 @@ func TestProxyVerbFollowsTheMethod(t *testing.T) {
 	}
 }
 
-// TestSplitProxyPathKeepsTheQuery covers the difference between reaching
-// kubelet's /exec with a command and asking it for a file named "?command=id".
 func TestSplitProxyPathKeepsTheQuery(t *testing.T) {
 	cases := []struct {
 		path     string
@@ -61,11 +58,6 @@ func TestSplitProxyPathKeepsTheQuery(t *testing.T) {
 	}
 }
 
-// TestProxyOutcomeReportsItsEncoding is the PortForwardOutcome reasoning applied
-// to a surface that meets it more often: /metrics is text and a container's
-// gzip is not, and Go's JSON encoder would turn the second into U+FFFD without
-// saying so. A caller must never have to guess whether a replacement character
-// was in the bytes or put there by this server.
 func TestProxyOutcomeReportsItsEncoding(t *testing.T) {
 	ref := ProxyRef{APIVersion: "v1", Kind: "Pod", Name: "api"}
 
@@ -93,8 +85,7 @@ func TestProxyOutcomeReportsItsEncoding(t *testing.T) {
 	}
 }
 
-// TestProxyOutcomeMarksACutBody is the cap's half of the same contract: a
-// follow-mode endpoint's first 256 KiB looks exactly like a complete short
+// A follow-mode endpoint's first 256 KiB looks exactly like a complete short
 // answer.
 func TestProxyOutcomeMarksACutBody(t *testing.T) {
 	body := &limitedWriter{limit: 8}
@@ -108,8 +99,6 @@ func TestProxyOutcomeMarksACutBody(t *testing.T) {
 	}
 }
 
-// TestApiserverRefusalIsToldFromTheTargets is AC18 on the one surface where the
-// two are genuinely confusable.
 func TestApiserverRefusalIsToldFromTheTargets(t *testing.T) {
 	forbidden := &http.Response{StatusCode: http.StatusForbidden}
 

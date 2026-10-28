@@ -23,7 +23,7 @@ type proxyArgs struct {
 	readSeconds int
 }
 
-// parseProxyTarget reads AC15's arguments. Both the pair resolver and the
+// parseProxyTarget reads the proxy arguments. Both the pair resolver and the
 // handler run it, for the reason parsePortForwardTarget states: authorize runs
 // before the handler, so a call the handler would reject has already cost an
 // approval request by then. That matters more here than anywhere else — this is
@@ -145,10 +145,8 @@ func parseProxyPort(obj map[string]any, kind string) (*string, *rpcErr) {
 var proxyPortName = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,13}[a-z0-9])?$`)
 
 // parseProxyBody reads the bytes to send, in the two spellings
-// parsePortForwardPayload uses and for the same reason: AC15 says a body and
-// JSON has no way to say bytes. Passing both is refused rather than resolved in
-// favour of one — a caller who sent two bodies meant one of them, and guessing
-// which would send bytes nobody approved.
+// parsePortForwardPayload uses and for the same reason, including refusing
+// both.
 func parseProxyBody(obj map[string]any) ([]byte, *rpcErr) {
 	raw, hasRaw := obj["body"]
 	encoded, hasEncoded := obj["bodyBase64"]
@@ -205,8 +203,8 @@ func proxyPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 
 // resourceProxy makes the round trip after the approval. Nothing here inspects
 // the path, and the omission is load-bearing: a refusal added at this line
-// would be the path allowlist AC15 declined to build, arriving by the back door
-// and defeating the defence AC15 chose in its place.
+// would be a path allowlist arriving by the back door, and the approval gate is
+// the defence chosen in its place.
 func (h *Handler) resourceProxy(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {

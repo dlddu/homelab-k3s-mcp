@@ -28,8 +28,7 @@ const (
 )
 
 // PortForwardResource opens a tunnel to one port of one named pod, writes the
-// payload once, reads the answer inside the caps, and closes the tunnel
-// (prd-resource-generic AC14).
+// payload once, reads the answer inside the caps, and closes the tunnel.
 //
 // What this does not do is bind a local port. client-go's portforward.PortForwarder
 // listens on localhost and proxies, which is the right shape for a persistent
@@ -82,9 +81,8 @@ func (s *KubeService) PortForwardResource(ctx context.Context, ref PortForwardRe
 	if err != nil {
 		return nil, APIError(err.Error())
 	}
-	// Closing the connection is what makes the "does not stay open" part of AC14
-	// true in code rather than only in the prose: every path out of here, including
-	// the failures below, drops the tunnel.
+	// Closing the connection here drops the tunnel on every path out of this
+	// function, including the failures below.
 	defer conn.Close()
 
 	outcome, err := roundTrip(ctx, conn, port, payload, readSeconds)
@@ -161,8 +159,8 @@ func roundTrip(ctx context.Context, conn httpstream.Connection, port int, payloa
 		// answer is whatever arrived; a read error after a close is how a
 		// closed tunnel reads, not a failure to report.
 	case <-ctx.Done():
-		// The window expiring is an ending, not an error: AC14 caps the read
-		// precisely because the far side is under no obligation to hang up.
+		// The window expiring is an ending, not an error: the far side is under no
+		// obligation to hang up.
 	}
 
 	if message := <-errCh; message != "" {
@@ -173,8 +171,6 @@ func roundTrip(ctx context.Context, conn httpstream.Connection, port int, payloa
 }
 
 // Port-forward stream headers. client-go spells these out in corev1 constants
-// that are not exported together, and the protocol names them once here rather
-// than at each of the three call sites that set them.
 const (
 	v1PortHeader       = "port"
 	v1RequestIDHeader  = "requestID"

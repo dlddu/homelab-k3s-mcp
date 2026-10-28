@@ -25,11 +25,10 @@ const (
 	ProxyMaxReadSeconds     = 30
 )
 
-// proxyKinds are the three kinds AC15 names.
 var proxyKinds = map[string]bool{"pods": true, "services": true, "nodes": true}
 
 // ProxyResource reaches one object's HTTP endpoint through the apiserver's proxy
-// subresource (prd-resource-generic AC15).
+// subresource.
 //
 // The round trip is made over the rest config's own transport rather than
 // through rest.Request's Do or Stream, and the reason is that neither of those
@@ -128,7 +127,7 @@ func (s *KubeService) ProxyResource(ctx context.Context, ref ProxyRef, method, p
 	return newProxyOutcome(ref, method, path, resp.StatusCode, buf, readSeconds), nil
 }
 
-// ProxyVerbForMethod is AC15's method → verb map, and the single place it is
+// ProxyVerbForMethod is the method → verb map, and the single place it is
 // written. The tool layer needs it before the cluster is touched (the gate has
 // to name a pair to ask about) and this layer needs it to word a 403, so a copy
 // on either side would be a copy that can drift from the declaration an operator
@@ -159,7 +158,7 @@ func proxyTargetName(ref ProxyRef) string {
 // splitProxyPath separates the path from its query so each half can be handed
 // to rest.Request the way that half is spelled. Passing the whole string as one
 // suffix segment would escape the "?" and hand the target a path with a literal
-// question mark in it — scenario 15 reaches `/exec/⟨ns⟩/⟨pod⟩/⟨c⟩?command=id`,
+// question mark in it — a call reaches `/exec/⟨ns⟩/⟨pod⟩/⟨c⟩?command=id`,
 // so that difference is the difference between running the command and asking
 // kubelet for a file that does not exist.
 func splitProxyPath(path string) ([]string, url.Values, error) {
@@ -178,7 +177,7 @@ func splitProxyPath(path string) ([]string, url.Values, error) {
 
 // apiserverRefusal tells the apiserver saying no from the proxied target saying
 // no. Both arrive as a 403 over the same connection, and they are different
-// facts: the first is this server's grant (AC18 asks for that to be said plainly
+// facts: the first is this server's grant (to be said plainly
 // rather than passed through), the second is an answer the caller asked for and
 // got. The apiserver's refusal is a JSON `Status`; a target that happens to
 // answer 403 is whatever it serves, so the body is what distinguishes them.

@@ -11,7 +11,7 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-// AttachDefaultReadSeconds and AttachMaxReadSeconds are AC13's read window.
+// AttachDefaultReadSeconds and AttachMaxReadSeconds bound the read window.
 // Attach has no natural end — the stream it joins outlives the call — so the
 // window is what turns a stream into an answer, and the cap is what keeps one
 // call from holding a connection open indefinitely. They are exported because
@@ -23,13 +23,11 @@ const (
 )
 
 // AttachResource joins the streams of the process already running in one named
-// pod's container, collects whatever it says for readSeconds, and returns it
-// (prd-resource-generic AC13).
+// pod's container, collects whatever it says for readSeconds, and returns it.
 //
 // stdin, when given, is written once right after attaching — and then the read
 // half stays open for the rest of the window, which is what attachStdinReader
-// is for. AC13 contracts both halves at once, and a reader that ends at the
-// payload makes the second half cancel the first.
+// is for.
 func (s *KubeService) AttachResource(ctx context.Context, ref AttachRef, container *string, stdin *string, readSeconds int) (*AttachOutcome, error) {
 	if readSeconds <= 0 {
 		readSeconds = AttachDefaultReadSeconds
@@ -112,8 +110,7 @@ func (s *KubeService) AttachResource(ctx context.Context, ref AttachRef, contain
 }
 
 // attachStdinReader yields the payload once and then withholds EOF until done
-// closes, which is how AC13's two halves — "collect output for readSeconds" and
-// "write stdin once right after attaching" — can both be true at the same time.
+// closes, so the read window and the single stdin write can both hold.
 //
 // Handing the stream a reader that ends at the payload makes the second half
 // cancel the first. client-go closes the remote stdin stream as soon as its copy
@@ -123,14 +120,12 @@ func (s *KubeService) AttachResource(ctx context.Context, ref AttachRef, contain
 // stdinWritten:true), so no assertion counted it. Waiting out the window here
 // keeps "write it once" literally true — the payload is still yielded exactly
 // once, in order, and never re-sent. What changes is only what the target
-// process sees afterwards: silence instead of EOF, and neither AC13 nor the PRD
-// contracts EOF.
+// process sees afterwards: silence instead of EOF, which nothing contracts.
 //
 // It is a named type rather than a closure over StreamOptions because the
 // regression has to be assertable without a cluster. The SPDY executor cannot be
 // reached from a unit test, so a decision left inside AttachResource goes
-// unwatched until a real round trip catches it — which is exactly how this one
-// survived two assessments (the execStreamOutcome precedent).
+// unwatched until a real round trip catches it.
 type attachStdinReader struct {
 	payload []byte
 	off     int

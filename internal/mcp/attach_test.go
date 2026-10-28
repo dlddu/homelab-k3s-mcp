@@ -8,9 +8,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// TestAttachJoinsTheRunningProcess covers the half of scenario 13 that does not
-// need a cluster: what the tool hands down, what pair it spends, and what it
-// gives back.
 func TestAttachJoinsTheRunningProcess(t *testing.T) {
 	t.Run("hands the coordinate, the container and the window to the cluster", func(t *testing.T) {
 		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
@@ -106,10 +103,6 @@ func TestAttachJoinsTheRunningProcess(t *testing.T) {
 	})
 }
 
-// TestAttachRefusalsCostNoApproval is scenario 13's `readSeconds=31` and its
-// neighbours. Each has to be refused with the kubernetes call count still at
-// zero: a refusal that arrives after an operator approved an attach is not the
-// refusal AC13 asked for.
 func TestAttachRefusalsCostNoApproval(t *testing.T) {
 	refusals := []struct {
 		name string
@@ -146,9 +139,8 @@ func TestAttachRefusalsCostNoApproval(t *testing.T) {
 	}
 }
 
-// TestAttachContextCarriesTheStdin is AC3's side of the same call: the approval
-// screen has to show what is about to be written into a running process, or the
-// operator is approving a coordinate rather than an action.
+// The approval screen has to show what is about to be written into a running
+// process, or the operator is approving a coordinate rather than an action.
 func TestAttachContextCarriesTheStdin(t *testing.T) {
 	reader := newStateReader()
 	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}

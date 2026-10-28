@@ -10,14 +10,14 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// parseExecTarget reads AC12's one shape. Both sides run it, for the reason
+// parseExecTarget reads the exec arguments. Both sides run it, for the reason
 // parseUpdateTarget states.
 //
 // What is deliberately absent is a container count check: whether the pod has
 // more than one container is a cluster fact no argument carries, so the
 // apiserver's own refusal (which names the candidates) is what answers
-// scenario 11's "container 누락이 거부되고 후보 이름이 제시됨" — after an approval
-// was spent, the same place scale's DaemonSet refusal lives.
+// a missing container — after an approval was spent, the same place scale's
+// DaemonSet refusal lives.
 func parseExecTarget(obj map[string]any) (k8s.ExecRef, []string, *string, *rpcErr) {
 	apiVersion := optionalString(obj, "apiVersion")
 	if apiVersion == nil {
@@ -61,7 +61,7 @@ func parseExecTarget(obj map[string]any) (k8s.ExecRef, []string, *string, *rpcEr
 	}, command, container, nil
 }
 
-// execPairs is genericPairs("create") with AC12's own argument checks run
+// execPairs is genericPairs("create") with the exec argument checks run
 // first, for the reason updatePairs states. exec is a verb the call performs on
 // the pod, so the resource name hangs the subresource off the coordinate the
 // way dear_baby_reset_user's declaration spells it.
@@ -88,7 +88,6 @@ func execPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 	}
 }
 
-// resourceExec runs one command in one named pod after the approval.
 func (h *Handler) resourceExec(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {

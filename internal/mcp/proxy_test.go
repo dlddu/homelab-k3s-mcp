@@ -10,8 +10,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// TestProxyAllPathsGated is the half of scenario 15 that does not need a
-// cluster. That *every* method is gated is the one this package could get wrong
+// That *every* method is gated is the one thing this package could get wrong
 // silently — gatedVerbs judges by verb, and a GET's verb is "get", which is
 // exactly the verb the read gate lets through unless the target is a sensitive
 // kind. A proxy GET is not a read of an object; it is an arbitrary request to
@@ -129,7 +128,6 @@ func TestProxyAllPathsGated(t *testing.T) {
 	})
 }
 
-// TestProxyKubeletHighPowerPathFlagged is AC3's side of scenario 15.
 func TestProxyKubeletHighPowerPathFlagged(t *testing.T) {
 	t.Run("a node exec path is marked and still runs", func(t *testing.T) {
 		reader := newStateReader()
@@ -231,9 +229,8 @@ func TestProxyWideningIsDocumented(t *testing.T) {
 	}
 }
 
-// TestProxyRefusalsCostNoApproval mirrors the port forward case of the same
-// name, and matters more here: this is the tool whose approval screen can show
-// a kubelet exec path, so an argument typo must not be what puts one there.
+// This is the tool whose approval screen can show a kubelet exec path, so an
+// argument typo must not be what puts one there.
 func TestProxyRefusalsCostNoApproval(t *testing.T) {
 	refusals := []struct {
 		name string

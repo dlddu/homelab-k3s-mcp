@@ -10,8 +10,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// attachArgs is AC13's one shape: a pod coordinate, an optional container, an
-// optional stdin payload, and the read window.
 type attachArgs struct {
 	ref         k8s.AttachRef
 	container   *string
@@ -19,10 +17,9 @@ type attachArgs struct {
 	readSeconds int
 }
 
-// parseAttachTarget reads AC13's arguments. Both the pair resolver and the
-// handler run it, for the reason parseExecTarget states. Scenario 13 asks for
-// `readSeconds=31` to be refused, and a refusal that arrives after an operator
-// has approved an attach is not the refusal that was asked for.
+// parseAttachTarget reads the attach arguments. Both the pair resolver and the
+// handler run it, for the reason parseExecTarget states: a refusal that arrives
+// after an operator has approved an attach comes too late.
 //
 // What is deliberately absent, as in exec, is a container count check: whether
 // the pod has more than one container is a cluster fact no argument carries,
@@ -89,7 +86,7 @@ func parseAttachTarget(obj map[string]any) (attachArgs, *rpcErr) {
 	}, nil
 }
 
-// attachPairs is genericPairs("create") with AC13's own argument checks run
+// attachPairs is genericPairs("create") with the attach argument checks run
 // first, for the reason execPairs states. The pair the call exercises is
 // create on ⟨pods plural⟩/attach — attaching is something the call does to the
 // pod, so the resource name hangs the subresource off the coordinate.
@@ -116,7 +113,6 @@ func attachPairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 	}
 }
 
-// resourceAttach joins one named pod's streams after the approval.
 func (h *Handler) resourceAttach(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
