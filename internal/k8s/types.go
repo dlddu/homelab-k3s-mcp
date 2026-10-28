@@ -29,7 +29,7 @@ func (e *Error) Error() string {
 func unavailableErr(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 
 // Unavailable reports whether this is the "not configured" kind — the one
-// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+// the dispatcher records as a refusal, not an error.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
 
 // APIError wraps an error returned by the kubernetes apiserver.
@@ -46,9 +46,7 @@ type ExecOutcome struct {
 	Stderr   string `json:"stderr"`
 	ExitCode *int32 `json:"exit_code"`
 	Success  bool   `json:"success"`
-	// AC12's caps travel beside the text: a response that says "cut" rather
-	// than silently ending early is the difference between an answer and a lie
-	// about how much the command said.
+	// The caps travel beside the text so a cut response is not read as the command's whole output.
 	StdoutTruncated bool `json:"stdout_truncated"`
 	StderrTruncated bool `json:"stderr_truncated"`
 	// TimeLimited marks the running-time cap as what stopped the call. It can
@@ -57,7 +55,7 @@ type ExecOutcome struct {
 }
 
 // ExecRef names the pod resource_exec runs a command in, addressed by
-// coordinate (prd-resource-generic AC12).
+// coordinate.
 type ExecRef struct {
 	APIVersion string
 	Kind       string
@@ -82,7 +80,6 @@ type AttachOutcome struct {
 }
 
 // AttachRef names the pod resource_attach connects to, addressed by coordinate
-// (prd-resource-generic AC13).
 type AttachRef struct {
 	APIVersion string
 	Kind       string
@@ -91,7 +88,7 @@ type AttachRef struct {
 }
 
 // PortForwardOutcome is one round trip through a tunnel that no longer exists by
-// the time this is returned (prd-resource-generic AC14).
+// the time this is returned.
 type PortForwardOutcome struct {
 	Pod      string `json:"pod"`
 	Port     int    `json:"port"`
@@ -101,18 +98,14 @@ type PortForwardOutcome struct {
 	// absence to learn the encoding is a caller that will forget to.
 	ResponseEncoding  string `json:"response_encoding"`
 	ResponseTruncated bool   `json:"response_truncated"`
-	// BytesSent reports what was written before the read, so a response can be
-	// read without the request beside it.
-	BytesSent   int `json:"bytes_sent"`
-	ReadSeconds int `json:"read_seconds"`
-	// TunnelClosed is constant true, and says so on purpose: AC14's contract is
-	// that a second round trip cannot ride this approval, and the response is
-	// where an operator reading a transcript can see that it did not.
+	BytesSent         int    `json:"bytes_sent"`
+	ReadSeconds       int    `json:"read_seconds"`
+	// TunnelClosed is constant true on purpose: a second round trip cannot ride this approval, and the response is where a transcript reader can see that.
 	TunnelClosed bool `json:"tunnel_closed"`
 }
 
 // PortForwardRef names the pod resource_port_forward opens a tunnel to, addressed
-// by coordinate (prd-resource-generic AC14).
+// by coordinate.
 type PortForwardRef struct {
 	APIVersion string
 	Kind       string
@@ -121,16 +114,12 @@ type PortForwardRef struct {
 }
 
 // ProxyOutcome is one HTTP round trip made through the apiserver's proxy
-// subresource (prd-resource-generic AC15).
+// subresource.
 type ProxyOutcome struct {
-	// Method and Verb travel together because AC15's whole shape is that the
-	// second follows the first. An operator reading a transcript should not
-	// have to reconstruct which permission a GET spent.
+	// Method and Verb travel together because the second follows the first; a transcript reader should not have to reconstruct which permission a GET spent.
 	Method string `json:"method"`
 	Verb   string `json:"verb"`
-	// Path echoes what was reached verbatim. It is the only field that says
-	// what the call did — the (verb, resource) pair cannot, which is why AC15
-	// puts the path on the approval screen instead.
+	// Path echoes what was reached verbatim. It is the only field that says what the call did; the (verb, resource) pair cannot.
 	Path string `json:"path"`
 	Name string `json:"name"`
 	// Status is the target's own HTTP status. A 404 from the proxied endpoint
@@ -145,9 +134,9 @@ type ProxyOutcome struct {
 	ReadSeconds  int    `json:"read_seconds"`
 }
 
-// ProxyRef names the object resource_proxy reaches, addressed by coordinate
-// (prd-resource-generic AC15). Unlike the other three stream refs this one is
-// not pod-only: Service and the cluster-scoped Node are AC15's targets too.
+// ProxyRef names the object resource_proxy reaches, addressed by coordinate.
+// Unlike the other three stream refs this one is not pod-only: Service and the
+// cluster-scoped Node are targets too.
 type ProxyRef struct {
 	APIVersion string
 	Kind       string

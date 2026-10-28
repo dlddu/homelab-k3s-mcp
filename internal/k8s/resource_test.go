@@ -79,7 +79,6 @@ func TestStripNoiseToleratesObjectsWithoutMetadata(t *testing.T) {
 	}
 }
 
-// AC18 names no file now; neither may this.
 func TestForbiddenBecomesAGrantStatement(t *testing.T) {
 	forbidden := apierrors.NewForbidden(
 		schema.GroupResource{Group: "", Resource: "secrets"},
@@ -429,7 +428,7 @@ func podLogRef(namespace string) ResourceRef {
 	return ResourceRef{APIVersion: "v1", Kind: "Pod", Namespace: &namespace, Name: "api-0", Subresource: "log"}
 }
 
-// AC5: the refusal has to name the containers to choose between. Asserting only
+// The refusal has to name the containers to choose between. Asserting only
 // that the call failed would hold for the message this replaces, which failed
 // without telling the caller anything they could act on.
 func TestPodLogsKeepsTheApiserversContainerCandidates(t *testing.T) {

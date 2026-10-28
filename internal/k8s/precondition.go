@@ -16,12 +16,10 @@ var metadataAccept = fmt.Sprintf(
 	metav1.SchemeGroupVersion.Version, metav1.SchemeGroupVersion.Group,
 )
 
-// partialObjectMetadataKind is the kind a PartialObjectMetadata response
-// declares.
 const partialObjectMetadataKind = "PartialObjectMetadata"
 
 // TargetRef addresses the object the gate reads on its own behalf before it
-// asks a human about it (prd-approval-gate AC11).
+// asks a human about it.
 type TargetRef struct {
 	APIVersion string
 	Kind       string
@@ -32,16 +30,14 @@ type TargetRef struct {
 	// bookkeeping; the read itself always addresses the object.
 	Subresource string
 
-	// MetadataOnly restricts the read to PartialObjectMetadata.
 	MetadataOnly bool
 }
 
 // TargetState is what the gate learns about the target.
 type TargetState struct {
-	// ResourceVersion is the precondition of AC6.
 	ResourceVersion string
 
-	// UID distinguishes a recreated object from the one that was approved (AC6).
+	// UID distinguishes a recreated object from the one that was approved.
 	UID string
 
 	// Replicas is spec.replicas when the object carries one. A
@@ -107,8 +103,6 @@ func (s *KubeService) ReadTarget(ctx context.Context, ref TargetRef) (*TargetSta
 	return readTargetState(raw, ref)
 }
 
-// readTargetState decodes what the apiserver sent.
-//
 // The decode is by hand rather than into a typed object because the two shapes
 // this has to accept — PartialObjectMetadata and an arbitrary kind's whole body
 // — have no common Go type, and the three fields wanted from either are in the

@@ -26,8 +26,8 @@ const Unregistered = "unregistered"
 var gateWaitBuckets = []float64{1, 5, 15, 30, 60, 120, 300, 600, 1800}
 
 // Metrics holds the four families on their own registry. Its own rather than
-// the default one so that what /metrics exposes is exactly the table AC4
-// closes — the process and Go runtime collectors the default registry
+// the default one so that what /metrics exposes is exactly the documented
+// table — the process and Go runtime collectors the default registry
 // carries would add label names the AC does not list.
 type Metrics struct {
 	registry *prometheus.Registry
@@ -103,7 +103,7 @@ func (m *Metrics) Emit(_ context.Context, r eventlog.Record) {
 		m.refusals.WithLabelValues(tool, string(r.Reason)).Inc()
 	default:
 		// A refused call ran no handler, so it has no handler latency to
-		// observe: AC3's "처리 지연" is the distribution of calls that did
+		// observe: the handler-latency distribution covers calls that did
 		// something, and a burst of refusals must not pull it toward zero.
 		m.duration.WithLabelValues(tool).Observe(r.Duration.Seconds())
 	}
