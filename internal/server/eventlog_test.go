@@ -12,11 +12,9 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 )
 
-// prd-event-log AC1 at the wire: the record a deployment writes to stdout
-// names the tool, the key that called it (by position, not value) and the
-// result, on one line per call. The two layers that fill it — auth and the
-// dispatcher — are only joined here, so this is where "one record per call"
-// is observed end to end rather than per package.
+// The two layers that fill the record — auth and the dispatcher — are only
+// joined here, so this is where "one record per call" is observed end to end
+// rather than per package.
 func TestToolCallIsRecordedOnStdoutWithThePrincipal(t *testing.T) {
 	var buf bytes.Buffer
 	previous := slog.Default()
@@ -61,9 +59,6 @@ func TestToolCallIsRecordedOnStdoutWithThePrincipal(t *testing.T) {
 	}
 }
 
-// prd-event-log AC4 at the wire: a tool call the auth layer turns away still
-// leaves the one record, on the same stdout and in the same shape, saying it
-// was refused for authentication — without the key that was tried (AC3).
 func TestRefusedToolCallIsRecordedOnStdoutWithoutTheCredential(t *testing.T) {
 	var buf bytes.Buffer
 	previous := slog.Default()

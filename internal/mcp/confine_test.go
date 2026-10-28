@@ -11,7 +11,7 @@ import (
 )
 
 // exercisesPair is a test tool's handler that spends exactly one named
-// permission. It exists because the call-time half of AC1 makes "the tool ran"
+// permission. It exists because call-time confinement makes "the tool ran"
 // and "the tool exercised what it declared" the same question: a fixture that
 // declares a pair and then touches something else is now refused, which is the
 // rule working rather than a test to work around.
@@ -186,10 +186,10 @@ metadata:
 	}
 }
 
-// AC1 says the gate's own pre-read (AC11) is scoped by AC11's table rather than
-// by the tool's declaration, so confining the handler must not confine the
-// reader. resource_patch declares only `patch on deployments`; the read that
-// builds AC6's precondition is a `get`, and it still has to happen.
+// The gate's own pre-read is scoped by the gate's table rather than by the
+// tool's declaration, so confining the handler must not confine the reader.
+// resource_patch declares only `patch on deployments`; the read that builds
+// the precondition is a `get`, and it still has to happen.
 func TestGateOwnReadIsNotConfinedByTheToolDeclaration(t *testing.T) {
 	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, fake, reader := testHandlerReading(t, gate, toolRegistry, newStateReader())

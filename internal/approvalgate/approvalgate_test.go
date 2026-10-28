@@ -18,7 +18,7 @@ import (
 
 // fakeBackend is a PocketAide stand-in. Verdicts are scripted per poll so a
 // test can make a request sit in PENDING before it settles, which is the only
-// way to observe that polling actually happens (AC4).
+// way to observe that polling actually happens.
 type fakeBackend struct {
 	mu sync.Mutex
 
@@ -90,7 +90,6 @@ func (f *fakeBackend) pollCount() int {
 	return f.polls
 }
 
-// tokenFile writes a projected-token stand-in and returns its path.
 func tokenFile(t *testing.T, token string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "token")
@@ -124,8 +123,6 @@ func sampleCall() Call {
 	})
 }
 
-// describedCall is sampleCall with the rendering swapped, for the cases that are
-// about when Describe runs rather than what it returns.
 func describedCall(describe func(context.Context) (string, error)) Call {
 	return Call{
 		Tool:     "resource_patch",
@@ -134,8 +131,6 @@ func describedCall(describe func(context.Context) (string, error)) Call {
 	}
 }
 
-// AC2: the approval request carries every field, authenticated with the
-// service account token.
 func TestAuthorizeSendsTheDocumentedRequestBody(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -213,8 +208,6 @@ func TestRequestBodyKeysWithAndWithoutTheOptionalFields(t *testing.T) {
 	}
 }
 
-// The kubelet rotates the projected token in place; a token read once at
-// startup would stop working about an hour later.
 func TestTokenIsReadPerRequest(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -233,7 +226,6 @@ func TestTokenIsReadPerRequest(t *testing.T) {
 	}
 }
 
-// AC2: two calls are two approvals.
 func TestExternalIDDiffersPerCall(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -248,7 +240,6 @@ func TestExternalIDDiffersPerCall(t *testing.T) {
 	}
 }
 
-// AC4: a verdict that arrives after the request was created.
 func TestPendingBecomesApprovedThroughPolling(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{
 		{ID: "req-1", Status: StatusPending},
@@ -269,7 +260,6 @@ func TestPendingBecomesApprovedThroughPolling(t *testing.T) {
 	}
 }
 
-// AC4/AC5: an EXPIRED verdict is a refusal.
 func TestExpiredVerdictIsRefused(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusExpired}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -279,8 +269,7 @@ func TestExpiredVerdictIsRefused(t *testing.T) {
 	}
 }
 
-// AC5: the table is the list the AC itself enumerates. Each row also names the
-// verdict the refusal carries for the record (prd-event-log AC2): a human reads
+// Each row names the verdict the refusal carries for the record: a human reads
 // the prose, the record reads the type, and the two must not disagree.
 func TestEveryFailurePathRefuses(t *testing.T) {
 	cases := []struct {
@@ -393,8 +382,6 @@ func TestEveryFailurePathRefuses(t *testing.T) {
 	}
 }
 
-// AC2 (prd-event-log): the refusals that never reach the backend carry their
-// own verdict.
 func TestRefusalsBeforeAVerdictAreTypedToo(t *testing.T) {
 	unreachable := New(Config{BaseURL: "http://127.0.0.1:1", TokenFile: tokenFile(t, "t"), Timeout: time.Second, PollInterval: time.Millisecond}, "homelab-k3s-mcp")
 	cases := map[string]struct {
@@ -423,15 +410,11 @@ func TestRefusalsBeforeAVerdictAreTypedToo(t *testing.T) {
 	}
 }
 
-// unavailableReader stands in for a gate reader that was never configured:
-// what internal/k8s's "not configured" error says about itself.
 type unavailableReader struct{}
 
 func (unavailableReader) Error() string     { return "kubernetes client unavailable: not configured" }
 func (unavailableReader) Unavailable() bool { return true }
 
-// AC5: a network that never answers is a refusal, not a hang that eventually
-// runs the call.
 func TestUnreachableBackendRefuses(t *testing.T) {
 	client := New(Config{
 		BaseURL:      "http://127.0.0.1:1",
@@ -445,8 +428,6 @@ func TestUnreachableBackendRefuses(t *testing.T) {
 	}
 }
 
-// AC5: this is the state a deployment without APPROVAL_GATE_URL is in.
-//
 // The second assertion is the property Call.Describe exists for: a gate with
 // nobody to ask must not reach the renderer, because that is where the
 // pre-approval cluster read lives.
@@ -465,12 +446,10 @@ func TestUnavailableGateRefuses(t *testing.T) {
 	}
 }
 
-// AC3: an approval request nobody can judge is not sent at all.
 func TestEmptyContextIsRefusedBeforeTheRequestIsMade(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
 
-	// Three ways a context can fail to say what it is approving.
 	cases := map[string]Call{
 		"blank":   describedCall(func(context.Context) (string, error) { return "   ", nil }),
 		"errored": describedCall(func(context.Context) (string, error) { return "", errors.New("target could not be read") }),
@@ -488,7 +467,7 @@ func TestEmptyContextIsRefusedBeforeTheRequestIsMade(t *testing.T) {
 	}
 }
 
-// AC7 at the client layer: Consume is the half the dispatcher spends (mcp).
+// Consume is the half the dispatcher spends (mcp).
 func TestApprovalIsSpentOnce(t *testing.T) {
 	backend := &fakeBackend{verdicts: []requestResponse{{ID: "req-1", Status: StatusApproved}}}
 	client, _ := newTestClient(t, backend, nil)
@@ -505,7 +484,6 @@ func TestApprovalIsSpentOnce(t *testing.T) {
 	}
 }
 
-// AC9: an approval nobody looked at is still an approval.
 func TestAutoApprovalIsReported(t *testing.T) {
 	backend := &fakeBackend{createBody: `{"id":"req-1","status":"APPROVED"}`}
 	client, _ := newTestClient(t, backend, nil)

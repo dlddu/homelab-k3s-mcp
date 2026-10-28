@@ -10,7 +10,6 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/k8s"
 )
 
-// restartPatch is AC9's rolling restart.
 const restartPatch = `{"spec":{"template":{"metadata":{"annotations":{"kubectl.kubernetes.io/restartedAt":"2026-09-14T12:00:00Z"}}}}}`
 
 func approvingHandler(t *testing.T) (*Handler, *countingK8s) {
@@ -18,7 +17,7 @@ func approvingHandler(t *testing.T) (*Handler, *countingK8s) {
 	return testHandler(t, &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}, toolRegistry)
 }
 
-// AC9. The refusals share this test because a tool that accepts a fifth name
+// The refusals share this test because a tool that accepts a fifth name
 // is a tool whose enum is decoration.
 func TestPatchTypes(t *testing.T) {
 	for _, patchType := range []string{"merge", "strategic", "json", "apply"} {
@@ -57,7 +56,7 @@ func TestPatchTypes(t *testing.T) {
 		{"missing patch", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"a","patchType":"merge"}`, "patch is required"},
 		{"missing name", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","patchType":"merge","patch":{}}`, "name is required"},
 		// Apply without a manager is the one the apiserver would also refuse,
-		// but its error arrives after the approval has been spent (AC7), so the
+		// but its error arrives after the approval has been spent, so the
 		// tool has to catch it first.
 		{"apply without fieldManager", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"a","patchType":"apply","patch":{}}`, "fieldManager is required"},
 		{"fieldManager outside apply", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"a","patchType":"merge","patch":{},"fieldManager":"ops"}`, "patchType=apply only"},
@@ -79,7 +78,7 @@ func TestPatchTypes(t *testing.T) {
 	}
 }
 
-// AC9. What is left here is the assertion that would have to fail first for the
+// What is left here is the assertion that would have to fail first for the
 // replaced pods to be carrying anything the caller did not send.
 func TestRestartPatchTouchesOnlyAnnotation(t *testing.T) {
 	h, fake := approvingHandler(t)
@@ -101,7 +100,6 @@ func TestRestartPatchTouchesOnlyAnnotation(t *testing.T) {
 	}
 }
 
-// AC1/AC9.
 func TestRestartPatchIsGatedLikeAnyPatch(t *testing.T) {
 	h, fake := testHandler(t, approvalgate.NewUnavailable(nil), toolRegistry)
 	args := `{"apiVersion":"apps/v1","kind":"Deployment","namespace":"ops","name":"api",` +
@@ -123,7 +121,6 @@ const (
 	secretTokenEncoded = "c3VwZXItc2VjcmV0LWJ5dGVz" // "super-secret-bytes"
 )
 
-// AC3/AC10/AC16.
 func TestSecretWriteContextRedactsValues(t *testing.T) {
 	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
 	h, _ := testHandler(t, gate, toolRegistry)
@@ -191,7 +188,7 @@ func TestJSONPatchCredentialValuesAreMasked(t *testing.T) {
 	}
 }
 
-// AC8. The accepted values and the refused ones share a test because the tool's
+// The accepted values and the refused ones share a test because the tool's
 // bounds are one statement: 0 is a replica count and -1 is not.
 //
 // The refusals assert the gate was never called (updatePairs). The set that gets
@@ -263,7 +260,7 @@ func TestUpdateScaleBounds(t *testing.T) {
 	}
 }
 
-// AC10. The accepted call and the refused ones share a test because this tool's
+// The accepted call and the refused ones share a test because this tool's
 // contract is one statement: it removes the object you named, and it has no way
 // to say "the ones matching this".
 //
@@ -341,7 +338,7 @@ func TestDeleteIsSingleObjectOnly(t *testing.T) {
 	}
 }
 
-// AC1/AC10. The control group for the case above: the refusals all assert the
+// The control group for the case above: the refusals all assert the
 // gate was not called, and a tool that was never gated would pass every one of
 // them.
 func TestDeleteIsRefusedWithoutApproval(t *testing.T) {
@@ -356,9 +353,9 @@ func TestDeleteIsRefusedWithoutApproval(t *testing.T) {
 	}
 }
 
-// AC8. The whole-object half: what the caller wrote is what gets PUT, and a
+// The whole-object half: what the caller wrote is what gets PUT, and a
 // manifest describing some other object is refused here rather than by the
-// apiserver — whose refusal would arrive after the approval was spent (AC7).
+// apiserver — whose refusal would arrive after the approval was spent.
 func TestUpdateReplacesWithTheCallersManifest(t *testing.T) {
 	h, fake := approvingHandler(t)
 	args := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"app",` +
@@ -402,7 +399,7 @@ func TestUpdateReplacesWithTheCallersManifest(t *testing.T) {
 	}
 }
 
-// AC6. The refusals share the table with the accepted values on purpose:
+// The refusals share the table with the accepted values on purpose:
 // "61 is refused" only means something beside "60 is not".
 func TestWatchWindowBounds(t *testing.T) {
 	accepted := []struct {
@@ -453,7 +450,7 @@ func TestWatchWindowBounds(t *testing.T) {
 	}
 }
 
-// AC6 carries the resume point through untouched: a window the caller cannot
+// The resume point is carried through untouched: a window the caller cannot
 // continue from is a window that has to start over, and starting over is where
 // a change goes missing.
 func TestWatchCarriesTheResumePoint(t *testing.T) {
@@ -473,7 +470,7 @@ func TestWatchCarriesTheResumePoint(t *testing.T) {
 	}
 }
 
-// AC6/AC16/AC17. The ordinary kind is in the same test because "Secret is
+// The ordinary kind is in the same test because "Secret is
 // refused" is only an assertion about the gate if something else is not.
 func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
 	secret := `{"apiVersion":"v1","kind":"Secret","namespace":"ops"}`
@@ -523,7 +520,6 @@ func TestWatchOnGatedKindRequiresApproval(t *testing.T) {
 	})
 }
 
-// AC12.
 func TestExecStreamsAndCaps(t *testing.T) {
 	t.Run("runs and hands the pod, the container and the command to the cluster", func(t *testing.T) {
 		gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}
@@ -627,7 +623,6 @@ func TestExecStreamsAndCaps(t *testing.T) {
 	}
 }
 
-// The shared table over every gated tool carries the exec case (AC6).
 func TestExecContextCarriesTheCommand(t *testing.T) {
 	reader := newStateReader()
 	gate := &scriptedGate{decision: &approvalgate.Decision{RequestID: "req-1"}}

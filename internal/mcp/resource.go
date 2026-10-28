@@ -305,7 +305,7 @@ func (h *Handler) resourceUpdate(ctx context.Context, raw json.RawMessage) (any,
 	}, nil
 }
 
-// parseUpdateTarget reads which of AC8's two shapes a call is.
+// parseUpdateTarget reads whether a call is a scale or a whole-object update.
 //
 // One function rather than a copy on each side, because both sides run it: the
 // gate runs it before an approval request exists (updatePairs says why it
@@ -354,9 +354,9 @@ func parseUpdateTarget(obj map[string]any) (string, int64, *rpcErr) {
 
 // parseManifest reads the replacement object and refuses one that describes a
 // different object than the coordinate does. The apiserver refuses that
-// mismatch too, but its answer arrives after the approval has been spent
-// (prd-approval-gate AC7), and an approval spent on a call that was never going
-// to run is an approval the operator has to grant twice.
+// mismatch too, but its answer arrives after the approval has been spent, and an
+// approval spent on a call that was never going to run is an approval the
+// operator has to grant twice.
 func parseManifest(obj map[string]any, coord coordinate, name string) (map[string]any, *rpcErr) {
 	manifest, ok := obj["manifest"].(map[string]any)
 	if !ok || len(manifest) == 0 {
@@ -519,14 +519,14 @@ func deletionText(result *k8s.ResourceResult, name string, grace *int64) string 
 	return b.String()
 }
 
-// parseDeleteTarget reads AC10's arguments.
+// parseDeleteTarget reads the arguments of a single-object delete.
 //
 // Both sides run it, for the reasons parseUpdateTarget and deletePairs set out.
 //
 // Refusing a stray subresource is not tidiness. genericPairs appends one to the
 // pair it resolves, so a subresource here would have the operator approve
 // "delete on <resource>/<sub>" while this handler deletes the object itself:
-// approving one thing and executing another (prd-approval-gate AC6).
+// approving one thing and executing another.
 func parseDeleteTarget(obj map[string]any) (string, *int64, *rpcErr) {
 	for _, key := range []string{"labelSelector", "fieldSelector"} {
 		if _, present := obj[key]; present {
@@ -558,7 +558,6 @@ func parseDeleteTarget(obj map[string]any) (string, *int64, *rpcErr) {
 	return *name, grace, nil
 }
 
-// rawPatchBody lifts the patch out of the raw arguments untouched.
 func rawPatchBody(raw json.RawMessage) []byte {
 	var args struct {
 		Patch json.RawMessage `json:"patch"`
@@ -656,7 +655,6 @@ func watchEventName(object map[string]any) string {
 	return name
 }
 
-// watchEventResourceVersion lifts the resume point out of the event.
 func watchEventResourceVersion(object map[string]any) string {
 	metadata, _ := object["metadata"].(map[string]any)
 	rv, _ := metadata["resourceVersion"].(string)

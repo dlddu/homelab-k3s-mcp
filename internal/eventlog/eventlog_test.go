@@ -33,9 +33,6 @@ func TestPrincipalRoundTripsThroughContext(t *testing.T) {
 	}
 }
 
-// AC1: the target column exists on every record, coordinate or not. A tool
-// with no coordinate must still emit the four keys, empty — an aggregation
-// over kind has to see "none" rather than a missing key.
 func TestLogWritesOneLineWithEveryField(t *testing.T) {
 	var buf bytes.Buffer
 	previous := slog.Default()
@@ -60,8 +57,6 @@ func TestLogWritesOneLineWithEveryField(t *testing.T) {
 	}
 }
 
-// AC2: a refused, gated call renders its reason and the gate's answer as
-// fields, not as prose in a message.
 func TestLogRendersReasonAndGateAsFields(t *testing.T) {
 	var buf bytes.Buffer
 	previous := slog.Default()
@@ -85,7 +80,6 @@ func TestLogRendersReasonAndGateAsFields(t *testing.T) {
 	}
 }
 
-// prd-metrics AC2: the reason set is the eight values, closed and ordered.
 func TestReasonsAreTheEightOfPRDMetricsAC2(t *testing.T) {
 	want := []Reason{"auth_failed", "invalid_input", "unconfigured",
 		"gate_rejected", "gate_expired", "gate_timeout", "gate_unreachable", "gate_unconfigured"}

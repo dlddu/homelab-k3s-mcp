@@ -33,7 +33,7 @@ func resourceName(apiVersion, kind, subresource string) (string, error) {
 }
 
 // invoke runs one tool with the kubernetes client it receives confined to what
-// this call declared — the call-time half of prd-approval-gate AC1.
+// this call declared.
 //
 // The confinement is built here, at the dispatcher, for the same reason the
 // gate call is: a handler that narrows its own client is a handler that can
@@ -78,7 +78,7 @@ func confine(inner k8s.Service, tool string, d toolDeclaration, rawArgs json.Raw
 // declared and refuses everything else before the request is built.
 //
 // It wraps the whole interface rather than the few methods a tool happens to
-// use today: the guarantee AC1 asks for is about the permissions a handler
+// use today: the guarantee is about the permissions a handler
 // *can* reach, and a passthrough for any method would be a hole that opens the
 // day some handler calls it.
 type confinedService struct {
@@ -174,7 +174,7 @@ func (c *confinedService) UpdateResource(ctx context.Context, ref k8s.UpdateRef)
 // PatchResource asks about the object and never a subresource, because PatchRef
 // addresses the object: resource_patch refuses a subresource argument before it
 // builds one. Deriving the pair from what the request actually carries is what
-// makes this check the one AC1 wants — a declaration that named a subresource
+// makes this check honest — a declaration that named a subresource
 // while the request patches the object is exactly the mismatch it asks to
 // catch, not an exception to wave through.
 func (c *confinedService) PatchResource(ctx context.Context, ref k8s.PatchRef) (*k8s.ResourceResult, error) {
@@ -234,7 +234,7 @@ func (c *confinedService) PortForwardResource(ctx context.Context, ref k8s.PortF
 }
 
 // ProxyResource reads its verb from the HTTP method the same way proxyPairs
-// does (AC15), so a GET through the proxy is confined as a get on <kind>/proxy
+// does, so a GET through the proxy is confined as a get on <kind>/proxy
 // and a POST as a create — the method decides both sides or neither.
 func (c *confinedService) ProxyResource(ctx context.Context, ref k8s.ProxyRef, method, path string, body []byte, contentType string, readSeconds int) (*k8s.ProxyOutcome, error) {
 	if err := c.permit(k8s.ProxyVerbForMethod(method), ref.APIVersion, ref.Kind, "proxy"); err != nil {
