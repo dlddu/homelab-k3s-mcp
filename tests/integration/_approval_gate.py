@@ -95,7 +95,7 @@ def _mint(oidc: str, subject: str) -> str:
         f"{oidc}/token",
         data={
             "grant_type": "password",
-            "username": subject,
+            "username": f"{subject}@pocket-aide.test",
             "password": OIDC_PASSWORD,
             "scope": "openid",
             "client_id": OIDC_CLIENT_ID,
