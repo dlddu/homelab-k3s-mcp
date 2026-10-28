@@ -28,7 +28,6 @@ const (
 	httpClientTimeout = 10 * time.Second
 )
 
-// errKind separates a "not configured" failure from an apiserver error.
 type errKind int
 
 const (
@@ -54,8 +53,7 @@ func (e *Error) Error() string {
 func unavailable(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 func apiError(msg string) *Error    { return &Error{kind: kindAPI, msg: msg} }
 
-// Unavailable reports whether this is the "not configured" kind — the one
-// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+// Unavailable reports whether this is the "not configured" kind.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
 
 // Credentials bundles a freshly minted short-lived token with the static

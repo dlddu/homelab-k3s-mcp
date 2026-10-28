@@ -1,8 +1,6 @@
 // Package opensearch talks to an OpenSearch Serverless collection over raw
-// HTTP with SigV4 request signing (service "aoss"). The base credentials come
-// from the default AWS credential chain (the instance profile in production);
-// they are used only to assume the configured role via STS, and the resulting
-// role credentials sign every data-plane request.
+// HTTP with SigV4 request signing (service "aoss"), using role credentials
+// assumed the way package awsconfig does.
 package opensearch
 
 import (
@@ -43,7 +41,6 @@ const (
 	MaxSearchSize int64 = 50
 )
 
-// errKind separates a "not configured" failure from a runtime request error.
 type errKind int
 
 const (
@@ -68,8 +65,7 @@ func (e *Error) Error() string {
 
 func unavailable(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 
-// Unavailable reports whether this is the "not configured" kind — the one
-// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+// Unavailable reports whether this is the "not configured" kind.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
 func requestError(format string, args ...any) *Error {
 	return &Error{kind: kindRequest, msg: fmt.Sprintf(format, args...)}
@@ -145,7 +141,6 @@ func (u *Unavailable) DeleteDocument(context.Context, string, string) (*DeleteRe
 	return nil, unavailable(u.reason)
 }
 
-// doer is the subset of http.Client the client depends on.
 type doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
@@ -323,7 +318,6 @@ func (c *Client) DeleteDocument(ctx context.Context, index, id string) (*DeleteR
 	}
 }
 
-// do signs the request with assumed-role credentials (SigV4, service "aoss").
 func (c *Client) do(ctx context.Context, method, path string, body []byte) (int, []byte, *Error) {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -362,7 +356,6 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (int,
 	return resp.StatusCode, data, nil
 }
 
-// snippet trims a response body for inclusion in error messages.
 func snippet(data []byte) string {
 	s := strings.TrimSpace(string(data))
 	const limit = 300

@@ -34,7 +34,6 @@ func bodyJSON(t *testing.T, rec *httptest.ResponseRecorder) map[string]any {
 	return m
 }
 
-// at walks a decoded JSON value by string keys and int indices.
 func at(t *testing.T, v any, path ...any) any {
 	t.Helper()
 	for _, p := range path {

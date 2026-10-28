@@ -141,7 +141,6 @@ func newTestClient(t *testing.T, fake *fakeGitHub) *Client {
 	}
 }
 
-// TestGitHubTokenRejectsStatusesWrite covers AC5 clause 1 (explicit write).
 func TestGitHubTokenRejectsStatusesWrite(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -179,7 +178,6 @@ func TestGitHubTokenRejectsStatusesWrite(t *testing.T) {
 	}
 }
 
-// TestGitHubTokenAllowsStatusesRead covers AC5 clause 1 (explicit read).
 func TestGitHubTokenAllowsStatusesRead(t *testing.T) {
 	fake := &fakeGitHub{}
 	c := newTestClient(t, fake)
@@ -199,7 +197,6 @@ func TestGitHubTokenAllowsStatusesRead(t *testing.T) {
 	}
 }
 
-// TestGitHubTokenDefaultDowngradesStatusesToRead covers AC5 clause 2.
 func TestGitHubTokenDefaultDowngradesStatusesToRead(t *testing.T) {
 	fake := &fakeGitHub{installation: map[string]any{
 		"contents": "write",
@@ -229,7 +226,6 @@ func TestGitHubTokenDefaultDowngradesStatusesToRead(t *testing.T) {
 	if got := permissionLevel(sent, "statuses"); got != "read" {
 		t.Errorf("requested statuses = %q, want read", got)
 	}
-	// The downgrade must not double as a scope change.
 	if got := permissionLevel(sent, "contents"); got != "write" {
 		t.Errorf("requested contents = %q, want write", got)
 	}
@@ -238,8 +234,6 @@ func TestGitHubTokenDefaultDowngradesStatusesToRead(t *testing.T) {
 	}
 }
 
-// TestGitHubTokenRefusesWhenInstallationUnreadable covers AC5 clause 2's
-// fail-closed half.
 func TestGitHubTokenRefusesWhenInstallationUnreadable(t *testing.T) {
 	fake := &fakeGitHub{installation: nil}
 	c := newTestClient(t, fake)
@@ -253,7 +247,6 @@ func TestGitHubTokenRefusesWhenInstallationUnreadable(t *testing.T) {
 	}
 }
 
-// TestGitHubTokenRevokesTokenCarryingStatusesWrite covers AC5 clause 3.
 func TestGitHubTokenRevokesTokenCarryingStatusesWrite(t *testing.T) {
 	fake := &fakeGitHub{
 		installation:      map[string]any{"contents": "read"},
@@ -425,11 +418,6 @@ func TestGitHubTokenRevokesTokenCarryingChecksWrite(t *testing.T) {
 	}
 }
 
-// TestCreateInstallationTokenNeverExposesSigningKey covers
-// github_app_installation_token AC4 (베이스 키 비노출). The RSA private key — and
-// the app JWT minted from it that authenticates the mint request — are
-// long-lived secrets; only the short-lived installation token that GitHub
-// issues may leave the process.
 func TestCreateInstallationTokenNeverExposesSigningKey(t *testing.T) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -479,7 +467,6 @@ func TestCreateInstallationTokenNeverExposesSigningKey(t *testing.T) {
 		t.Fatalf("installation token = %q, want ghs_freshly_minted", tok.Token)
 	}
 
-	// No returned field may carry the app JWT or the private key material.
 	fields := map[string]string{
 		"Token":               tok.Token,
 		"ExpiresAt":           tok.ExpiresAt,

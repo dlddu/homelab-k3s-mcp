@@ -12,15 +12,11 @@ import (
 	"time"
 )
 
-// recordedRequest is one request the control plane stub saw. The AC2 case reads
-// these to prove a listing never issues anything but the read-only GET.
 type recordedRequest struct {
 	method string
 	path   string
 }
 
-// stub serves the given JSON body from the control plane's list endpoint and
-// records every request it receives, whatever the path.
 func stub(t *testing.T, body string) (*Client, *[]recordedRequest) {
 	t.Helper()
 
@@ -102,9 +98,6 @@ func TestListSessionsEmpty(t *testing.T) {
 	}
 }
 
-// TestListSessionsIsPassive is the tool-level half of AC2: repeated listings
-// must issue nothing but the read-only GET — no read/write call that would
-// promote an idle session or restore a snapshot.
 func TestListSessionsIsPassive(t *testing.T) {
 	c, seen := stub(t, `{"sessions":[
 	  {"id":"s-1","name":"idle shell","workloadType":"shell","state":"idle",
@@ -208,8 +201,6 @@ func TestFromEnv(t *testing.T) {
 	}
 }
 
-// --- session_read ---
-
 // readStub models the control plane's read endpoint closely enough to exercise
 // the cursor contract: it holds an append-only output buffer, serves the span
 // after the requested offset, and issues the resulting cursor. Every request it
@@ -287,9 +278,6 @@ func newReadStub(t *testing.T, output string) (*Client, *readStub) {
 	}, st
 }
 
-// TestReadFullThenIncremental is AC1's cursor contract: offset 0 is everything,
-// the issued cursor yields nothing new, and once more output accumulates the
-// same cursor yields exactly the increment.
 func TestReadFullThenIncremental(t *testing.T) {
 	c, st := newReadStub(t, "hello\n")
 
@@ -304,7 +292,6 @@ func TestReadFullThenIncremental(t *testing.T) {
 		t.Fatalf("nextOffset = %d, want 6", full.NextOffset)
 	}
 
-	// Nothing new yet: an empty payload at the same cursor, not an error.
 	empty, err := c.ReadSession(context.Background(), "s-1", full.NextOffset)
 	if err != nil {
 		t.Fatalf("ReadSession(nextOffset): %v", err)
@@ -329,8 +316,6 @@ func TestReadFullThenIncremental(t *testing.T) {
 	}
 }
 
-// TestReadIsNonDestructive is the other half of AC1: reading consumes nothing,
-// so the same cursor always returns the same span.
 func TestReadIsNonDestructive(t *testing.T) {
 	c, _ := newReadStub(t, "line one\nline two\n")
 
@@ -372,7 +357,6 @@ func TestReadRejectsNegativeOffset(t *testing.T) {
 		t.Fatalf("requests = %+v, want none: a rejected cursor must not reach the control plane", st.seen)
 	}
 
-	// An empty id is refused the same way, and equally without a request.
 	if _, err := c.ReadSession(context.Background(), "", 0); err == nil {
 		t.Fatalf("ReadSession with an empty id succeeded")
 	}
@@ -381,8 +365,6 @@ func TestReadRejectsNegativeOffset(t *testing.T) {
 	}
 }
 
-// TestReadNotFound is AC3's target half: an unknown id is its own error kind, so
-// a caller can tell it from a malformed cursor and from a broken control plane.
 func TestReadNotFound(t *testing.T) {
 	c, st := newReadStub(t, "hello\n")
 
@@ -399,7 +381,6 @@ func TestReadNotFound(t *testing.T) {
 		t.Fatalf("error = %q, want the control plane's reason carried through", err.Error())
 	}
 
-	// It is distinguishable from the two neighbouring failures.
 	_, invalidErr := c.ReadSession(context.Background(), "s-1", -1)
 	if invalidErr.Error() == err.Error() {
 		t.Fatalf("a bad cursor and a missing session produced the same error %q", err.Error())
@@ -409,10 +390,6 @@ func TestReadNotFound(t *testing.T) {
 	}
 }
 
-// TestReadDisclosesStateBranch is AC2 at the tool's own layer: whichever branch
-// the control plane took to serve the read is carried out verbatim, together
-// with the session as it stands afterwards. A read that restored a snapshot
-// must not look like a read of an already-running session.
 func TestReadDisclosesStateBranch(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -462,8 +439,6 @@ func TestReadSurfacesControlPlaneError(t *testing.T) {
 	}
 }
 
-// TestReadUsesThePerSessionEndpoint pins the wire contract the control plane's
-// OpenAPI document declares: POST /api/v1/sessions/{id}/read.
 func TestReadUsesThePerSessionEndpoint(t *testing.T) {
 	c, st := newReadStub(t, "hello\n")
 
@@ -478,9 +453,6 @@ func TestReadUsesThePerSessionEndpoint(t *testing.T) {
 	}
 }
 
-// TestUnavailableRefusesRead is AC4 at the service layer: with no endpoint
-// configured the read fails as unavailable rather than panicking on a nil
-// client.
 func TestUnavailableRefusesRead(t *testing.T) {
 	result, err := NewUnavailable("").ReadSession(context.Background(), "s-1", 0)
 	if result != nil {
@@ -494,8 +466,6 @@ func TestUnavailableRefusesRead(t *testing.T) {
 		t.Fatalf("error = %q", err.Error())
 	}
 }
-
-// --- session_write ---
 
 // writeStub serves the control plane's write endpoint *and* its read endpoint
 // from one server, because session_write/AC1's stated verification is a round
@@ -576,12 +546,8 @@ func newWriteStub(t *testing.T, output string) (*Client, *writeStub) {
 		}
 		_ = json.NewDecoder(r.Body).Decode(&req)
 		st.payloads = append(st.payloads, req.Payload)
-		// A shell workload echoes what it is given, so the accepted payload
-		// becomes part of the output a later read recovers.
 		st.output = append(st.output, req.Payload...)
 
-		// Writing activates the target, so the stub reports it active
-		// afterwards, exactly as the control plane does.
 		sess.State = "active"
 		body, _ := json.Marshal(WriteResult{Session: sess, Path: st.path})
 		_, _ = w.Write(body)
@@ -626,8 +592,6 @@ func TestWriteThenReadRecoversOutput(t *testing.T) {
 		t.Fatalf("payloads = %q, want exactly %q delivered verbatim", st.payloads, payload)
 	}
 
-	// The write response said nothing about output; the increment is only
-	// visible once the caller reads from the cursor it held beforehand.
 	after, err := c.ReadSession(context.Background(), "s-1", before.NextOffset)
 	if err != nil {
 		t.Fatalf("ReadSession after write: %v", err)
@@ -641,10 +605,6 @@ func TestWriteThenReadRecoversOutput(t *testing.T) {
 	}
 }
 
-// TestWriteDisclosesStateBranch is AC2 at the tool's own layer: a write to a
-// parked session is not refused, it revives it, and the branch that did so is
-// carried out verbatim. A write that restored a snapshot must not look like a
-// write to an already-running session.
 func TestWriteDisclosesStateBranch(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -679,8 +639,6 @@ func TestWriteDisclosesStateBranch(t *testing.T) {
 	}
 }
 
-// writeRefusal is one of the four refusals session_write/AC4 requires a caller
-// to be able to tell apart.
 type writeRefusal struct {
 	name    string
 	status  int
@@ -698,11 +656,6 @@ func writeRefusals() []writeRefusal {
 	}
 }
 
-// TestWriteMapsControlPlaneRefusals is AC4's first half: each refusal gets its
-// own error kind, carries the control plane's reason through, and — the part
-// AC4 names outright — the one refusal worth retrying says so while the
-// permanent ones say the opposite. It also checks AC4's tail: a refused write
-// leaves what the session already produced readable.
 func TestWriteMapsControlPlaneRefusals(t *testing.T) {
 	for _, tc := range writeRefusals() {
 		t.Run(tc.name, func(t *testing.T) {
@@ -721,8 +674,6 @@ func TestWriteMapsControlPlaneRefusals(t *testing.T) {
 			if !strings.Contains(err.Error(), tc.reason) {
 				t.Fatalf("error = %q, want the control plane's reason carried through", err.Error())
 			}
-			// A caller that cannot inspect the kind still has to know whether
-			// trying again is pointless.
 			if tc.retries {
 				if !strings.Contains(err.Error(), "retry after") ||
 					strings.Contains(err.Error(), "retrying will not help") {
@@ -799,8 +750,6 @@ func TestWriteRejectsEmptyIDBeforeTheWire(t *testing.T) {
 	}
 }
 
-// TestWriteUsesThePerSessionEndpoint pins the wire contract the control plane's
-// OpenAPI document declares: POST /api/v1/sessions/{id}/write.
 func TestWriteUsesThePerSessionEndpoint(t *testing.T) {
 	c, st := newWriteStub(t, "banner\n")
 
@@ -830,9 +779,6 @@ func TestWriteSurfacesControlPlaneError(t *testing.T) {
 	}
 }
 
-// TestUnavailableRefusesWrite is AC5 at the service layer: with no endpoint
-// configured the write fails as unavailable rather than panicking on a nil
-// client.
 func TestUnavailableRefusesWrite(t *testing.T) {
 	result, err := NewUnavailable("").WriteSession(context.Background(), "s-1", "ls\n")
 	if result != nil {
@@ -846,8 +792,6 @@ func TestUnavailableRefusesWrite(t *testing.T) {
 		t.Fatalf("error = %q", err.Error())
 	}
 }
-
-// --- session_create / session_delete ---
 
 type lifecycleRequest struct {
 	method string
