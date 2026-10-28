@@ -24,23 +24,19 @@ PocketAide 의 승인 요청은 그 호출자(서비스 어카운트)를 등록�
 
 ## 사람 로그인 대신
 
-토큰은 in-cluster ``oidc-mock`` 의 PKCE 인가 코드 흐름으로 받는다. subject 는 ``/authorize``
-의 ``login_hint`` 로 고른다 — ``/e2e/next-login-subject`` 는 프로세스 전역 값 하나라 동시에 도는
-레인이 서로의 다음 로그인을 덮어쓴다.
+토큰은 PocketAide 전용 실 dex(``pocket-aide-dex.yaml``)의 password grant 로 받는다. 사용자는
+dex 의 정적 사용자이고 이름이 ``CALLERS`` 의 owner 와 같다 — 사용자마다 독립된 토큰이라 동시에
+도는 레인이 서로의 로그인에 간섭하지 않는다.
 """
 
 from __future__ import annotations
 
 import asyncio
-import base64
 import contextlib
-import hashlib
-import secrets
 import socket
 import sys
 import time
 from collections.abc import Iterable, Iterator
-from urllib.parse import parse_qs, urlparse
 
 import httpx
 
@@ -51,13 +47,15 @@ POCKET_AIDE_SERVICE = "pocket-aide"
 POCKET_AIDE_PORT = 8080
 TRACE_SERVICE = "pocket-aide-trace"
 
-OIDC_NAMESPACE = "oidc-mock"
-OIDC_SERVICE = "oidc-mock"
+OIDC_NAMESPACE = "dex-pocket-aide"
+OIDC_SERVICE = "dex"
 OIDC_PORT = 5556
-#: ``oidc-mock.yaml`` 의 ``-client-id`` 와 PocketAide 의 ``OIDC_REDIRECT_URI``. 리다이렉트는
-#: 따라가지 않고 ``Location`` 에서 코드만 읽으므로 그 주소에 아무것도 없어도 된다.
-OIDC_CLIENT_ID = "homelab-k3s-mcp-e2e"
-OIDC_REDIRECT_URI = "http://127.0.0.1/e2e-callback"
+#: ``pocket-aide-dex.yaml`` 의 정적 클라이언트. 액세스 토큰의 aud 가 이 id 이고 PocketAide 의
+#: ``OIDC_AUDIENCE`` 와 같다.
+OIDC_CLIENT_ID = "pocket-aide-e2e"
+OIDC_CLIENT_SECRET = "ci-pocket-aide-e2e-client-secret"
+#: 정적 사용자 공통 비밀번호(dex 예제 해시의 원문).
+OIDC_PASSWORD = "password"
 
 #: PocketAide 에 호출자로 등록하는 SUT 서비스 어카운트와 그것을 등록한(= 그 요청을 판정하는)
 #: 사용자의 OIDC subject. ci.yml 의 등록 스텝이 이 표를 그대로 등록한다. 배포가 같은
@@ -78,7 +76,7 @@ CREATE_BODY_FIELDS = ("externalId", "context", "requesterName", "timeoutSeconds"
 
 TRACE_LOCAL_PORT = 8096
 
-#: oidc-mock 토큰의 수명은 1 시간이다. 그보다 넉넉히 일찍 새로 받는다.
+#: dex 토큰의 수명은 1 시간이다(``expiry.idTokens``). 그보다 넉넉히 일찍 새로 받는다.
 TOKEN_REFRESH_SECONDS = 1800.0
 
 _tokens: dict[str, tuple[str, float]] = {}
@@ -91,46 +89,21 @@ def _ephemeral_port() -> int:
         return probe.getsockname()[1]
 
 
-def _pkce_pair() -> tuple[str, str]:
-    verifier = secrets.token_urlsafe(48)
-    digest = hashlib.sha256(verifier.encode()).digest()
-    return verifier, base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
-
-
 def _mint(oidc: str, subject: str) -> str:
-    """``subject`` 로 로그인한 사용자의 액세스 토큰(aud = PocketAide 의 OIDC_AUDIENCE)."""
-    verifier, challenge = _pkce_pair()
-    authorize = httpx.get(
-        f"{oidc}/authorize",
-        params={
-            "response_type": "code",
-            "client_id": OIDC_CLIENT_ID,
-            "redirect_uri": OIDC_REDIRECT_URI,
-            "scope": "openid",
-            "state": subject,
-            "code_challenge": challenge,
-            "code_challenge_method": "S256",
-            "login_hint": subject,
-        },
-        follow_redirects=False,
-        timeout=10.0,
-    )
-    assert authorize.status_code == 302, (
-        f"oidc-mock /authorize 가 {authorize.status_code} 를 돌려줬다: {authorize.text[:200]}"
-    )
-    code = parse_qs(urlparse(authorize.headers["location"]).query)["code"][0]
+    """``subject`` 사용자의 액세스 토큰(aud = PocketAide 의 OIDC_AUDIENCE)."""
     token = httpx.post(
         f"{oidc}/token",
         data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "code_verifier": verifier,
+            "grant_type": "password",
+            "username": f"{subject}@pocket-aide.test",
+            "password": OIDC_PASSWORD,
+            "scope": "openid",
             "client_id": OIDC_CLIENT_ID,
-            "redirect_uri": OIDC_REDIRECT_URI,
+            "client_secret": OIDC_CLIENT_SECRET,
         },
         timeout=10.0,
     )
-    token.raise_for_status()
+    assert token.status_code == 200, f"dex /token 이 {token.status_code} 를 돌려줬다: {token.text[:200]}"
     return token.json()["access_token"]
 
 

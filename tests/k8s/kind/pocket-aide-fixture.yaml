@@ -2,8 +2,8 @@
 # 픽스처 절).
 #
 # 이미지는 발행 이미지가 아니라 ci.yml 이 POCKET_AIDE_SHA 커밋의 backend/cmd/server 를 빌드한
-# `pocket-aide:ci` 다. 발행 이미지(ghcr.io/dlddu/pocket-aide)는 서버만 담고 IdP(cmd/oidcmock)가
-# 없어서, 서버와 IdP 를 같은 커밋에서 맞추려면 둘 다 소스에서 빌드해야 한다.
+# `pocket-aide:ci` 다. 발행 이미지(ghcr.io/dlddu/pocket-aide)가 아니라 소스에서 빌드한 것은 이 서버를
+# 게이트 계약(POCKET_AIDE_SHA 핀)에 맞추기 위해서다. IdP 는 실 dex(pocket-aide-dex.yaml)다.
 #
 # 서비스 어카운트 호출자는 TokenReview 로 검증된다(internal/auth/serviceaccount.go). 그래서
 # PocketAide 자신의 SA 가 system:auth-delegator 에 묶여야 하고, 묶이지 않으면 외부 호출 전부가
@@ -103,13 +103,13 @@ spec:
               value: "8080"
             - name: DATABASE_PATH
               value: /data/pocket-aide.db
-            # 셋 다 oidc-mock.yaml 의 플래그와 같아야 한다(issuer · audience · client id).
+            # 셋 다 pocket-aide-dex.yaml 의 설정과 같아야 한다(issuer · 클라이언트 id = audience).
             - name: OIDC_ISSUER
-              value: http://oidc-mock.oidc-mock.svc.cluster.local:5556
+              value: http://dex.dex-pocket-aide.svc.cluster.local:5556
             - name: OIDC_AUDIENCE
               value: pocket-aide-e2e
             - name: OIDC_CLIENT_ID
-              value: homelab-k3s-mcp-e2e
+              value: pocket-aide-e2e
             - name: OIDC_REDIRECT_URI
               value: http://127.0.0.1/e2e-callback
             # k8s/deployment.yaml 의 pocket-aide-token 볼륨 audience 와 같아야 한다.

@@ -25,8 +25,8 @@ PocketAide 는 그것을 실 kube-apiserver TokenReview 로 검증한다. CI 는
 `CALLERS`) — 승인 요청과 자동 응답 모드가 사용자 단위라, 한 배포의 모드 변경이 다른 배포의 요청에
 번지지 않게 하기 위해서다. 사람 조작은 그 사용자로 로그인해 앱 API(`GET /api/approvals` ·
 `GET /api/approvals/history` · `POST /api/approvals/{id}/approve|reject` ·
-`PATCH /api/approval-settings`)를 부르는 것으로 대신한다. 로그인은 실 IdP 대신 PocketAide 레포의
-`oidcmock`(`tests/k8s/kind/oidc-mock.yaml`, 허용목록 `oidc-mock` `UPS`)으로 한다.
+`PATCH /api/approval-settings`)를 부르는 것으로 대신한다. 로그인은 PocketAide 전용 실 dex
+(`tests/k8s/kind/pocket-aide-dex.yaml`, password grant)에서 받은 토큰으로 한다.
 
 Go 단위 테스트에서는 `httptest.Server`로 PocketAide 외부 승인 API 계약만 흉내 낸다. 이는 실물을
 피하는 모킹이 아니라, 실물로는 만들기 어려운 실패 경로(5xx·타임아웃·연결 실패)를 만들기 위한 것이다.
