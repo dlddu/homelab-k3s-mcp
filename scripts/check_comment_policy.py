@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""주석 비중복성 판정 원장 ↔ 실제 주석 상태 대조 체커.
+"""주석 필요성 판정 원장 ↔ 실제 주석 상태 대조 체커.
 
-줄 주석 표면 — 모델 `tbm_homelab-k3s-mcp-comment-redundancy` 의 as-is 지문과 같은 정의:
+줄 주석 표면 — 모델 `tbm_homelab-k3s-mcp-comment-necessity` 의 as-is 지문과 같은 정의:
 
 * **R1** 원장 행의 범위 파일이 실재하고 정책의 스캔 범위 안이다. 빈 범위는 등재가 아니다.
 * **R2** 각 행의 범위를 **모델 as-is 지문과 동일한 추출·정규화·정렬**로 재측정한 주석 줄 수와
@@ -23,9 +23,9 @@ docstring 표면(D) — `ast` 로 뜯은 module·class·function docstring 의 �
 위 여덟은 **등재 범위가 변했는지**만 재고 그 판정이 **무엇을 물었는지**는 보지 않는다.
 그 자리는 원장의 `판정 축` 칸이 담고, R9 가 그 칸의 표기를 강제한다:
 
-* **R9** 모든 행의 `판정 축` 칸이 `—` 이거나 `①②③④` 의 **정규 순서 부분열**이다(`①②`·`③④`·
-  `①②③④` 등). 빈 칸도, 순서가 뒤집힌 표기도, 정의에 없는 기호도 받지 않는다 — 진척을 세는
-  유일한 자리라 표기가 흔들리면 집계가 조용히 갈린다.
+* **R9** 모든 행의 `판정 축` 칸이 `—`(미판정) 이거나 `완료`(필요성 시험을 마침) 둘 중 하나다.
+  빈 칸도, 옛 기준의 `①②③④` 부분열도, 정의에 없는 기호도 받지 않는다 — 진척을 세는 유일한
+  자리라 표기가 흔들리면 집계가 조용히 갈린다.
 * **R10** 원장에는 **표와 「읽는 법」 절만** 둔다. 경위·병합 재측정·인계 문단은 그 패스의
   `passes/` 파일로 간다.
 
@@ -57,7 +57,7 @@ POLICY_DIR = REPO_ROOT / "docs" / "comment-policy"
 POLICY_README = POLICY_DIR / "README.md"
 LEDGER = POLICY_DIR / "ledger.md"
 
-# 아래 정의들이 모델 tbm_homelab-k3s-mcp-comment-redundancy 의 as-is 버전 스크립트와 같은지는
+# 아래 정의들이 모델 tbm_homelab-k3s-mcp-comment-necessity 의 as-is 버전 스크립트와 같은지는
 # **바이트 일치**로 확인한다 — 같은 트리에서 이 게이트의 인구조사와 모델 지문 스크립트의
 # `lines=/files=/unclassified=` 가 어긋나면 그중 하나가 틀린 것이다.
 FIXED_EXCLUDE_RE = re.compile(
@@ -122,7 +122,7 @@ LANGUAGE_GROUPS = (
         None,
     ),
 )
-SCOPE_LABEL = "레포 전체 − 제외 세 부류(복원 원본 · 편집 불가 · 주석 문법 없는 데이터·자산)"
+SCOPE_LABEL = "레포 전체 − 제외 세 부류(문서 · 편집 불가 · 주석 문법 없는 데이터·자산)"
 
 DOCSTRING_DECL_RE = re.compile(r"^(검증 시나리오|실행 대상|추가 인자|실행 순서|병렬 레인):")
 
@@ -133,16 +133,11 @@ DOC_LEDGER_SECTION = "## docstring 판정 이력"
 EOL_LEDGER_SECTION = "## 줄 끝 주석 판정 이력"
 READING_SECTION = "## 읽는 법"
 
-AXIS_EVIDENCE = {
-    "①②": (("복원경로 ①:", "복원경로 ②:"), re.compile(r"복원경로 ①② 판정 @지문 `([0-9a-f]{12})`")),
-    "③④": (("복원경로 ③:", "복원경로 ④:"), re.compile(r"복원경로 ③④ 판정 @지문 `([0-9a-f]{12})`")),
-}
-
-AXES = "①②③④"
-VALID_AXES = {"—"} | {
-    "".join(AXES[i] for i in range(4) if mask >> i & 1)
-    for mask in range(1, 16)
-}
+AXIS_DONE = "완료"
+UNJUDGED = "—"
+VALID_AXES = {UNJUDGED, AXIS_DONE}
+# 「완료」의 근거 앵커 — 결과 칸이 그 행의 현재 지문에 묶어 적는 문구.
+DONE_ANCHOR_RE = re.compile(r"필요성 판정 @지문 `([0-9a-f]{12})`")
 
 BACKTICKED_RE = re.compile(r"`([^`]+)`")
 FINGERPRINT_LEN = 12
@@ -696,12 +691,12 @@ def check_axis(rows: list[dict], rule: str, surface: str) -> dict[str, int]:
             rule,
             f"{surface} 표면에 판정 축 표기가 유효하지 않은 행 {len(bad)}개:"
             f" {', '.join(bad[:6])}{' …' if len(bad) > 6 else ''}."
-            " 값은 `—`(미판정) 이거나 `①②③④` 의 정규 순서 부분열이어야 한다.",
+            " 값은 `—`(미판정) 이거나 `완료` 여야 한다.",
         )
     tally = {"done": 0, "unjudged": 0, "lines_done": 0, "hist": {}}
     for row in rows:
         tally["hist"][row["axis"]] = tally["hist"].get(row["axis"], 0) + 1
-        if row["axis"] == AXES:
+        if row["axis"] == AXIS_DONE:
             tally["done"] += 1
             tally["lines_done"] += row["lines"]
         if row["axis"] == "—":
@@ -718,18 +713,13 @@ def axis_histogram(tally: dict) -> str:
 def check_axis_evidence(rows: list[dict], rule: str, surface: str) -> None:
     """R11 — 판정 축 칸이 결과 칸의 **현재 지문에 묶인 근거**와 정확히 일치한다.
 
-    양방향인 것이 요점이다. ⑴ 근거 없이 축을 적으면 묻지 않은 것이 완료로 계수되고,
-    ⑵ 근거가 있는데 축을 비우면 진척이 집계에서 사라진다.
+    양방향인 것이 요점이다. ⑴ 근거 없이 `완료`를 적으면 묻지 않은 것이 완료로 계수되고,
+    ⑵ 근거가 있는데 `—` 로 두면 진척이 집계에서 사라진다.
     """
     problems: list[str] = []
     for row in rows:
-        backed = ""
-        for axis, (tokens, anchor_re) in AXIS_EVIDENCE.items():
-            has_prose = all(token in row["result"] for token in tokens)
-            anchored = row["fingerprint"] in set(anchor_re.findall(row["result"]))
-            if has_prose and anchored:
-                backed += axis
-        backed = "".join(a for a in AXES if a in backed) or "—"
+        anchored = row["fingerprint"] in set(DONE_ANCHOR_RE.findall(row["result"]))
+        backed = AXIS_DONE if anchored else UNJUDGED
         if backed != row["axis"]:
             problems.append(f"{row['date']} 칸 `{row['axis']}` != 근거 `{backed}`")
     if problems:
@@ -737,15 +727,15 @@ def check_axis_evidence(rows: list[dict], rule: str, surface: str) -> None:
             rule,
             f"{surface} 표면에 판정 축 칸과 근거가 어긋난 행 {len(problems)}개:"
             f" {'; '.join(problems[:5])}{' …' if len(problems) > 5 else ''}."
-            " 축을 적으려면 결과 칸이 그 축의 판정을 담고 「복원경로 <축> 판정 @지문"
-            " <그 행의 현재 지문>」 으로 못박아야 한다. 재판정으로 지문이 움직였으면 그 축은"
+            " `완료`를 적으려면 결과 칸이 필요성 판정을 담고 「필요성 판정 @지문"
+            " <그 행의 현재 지문>」 으로 못박아야 한다. 재판정으로 지문이 움직였으면 그 판정은"
             " 낡은 것이므로 칸을 `—` 로 되돌리고 새 내용을 다시 물을 것.",
         )
 
 
 def check_structure(text: str) -> None:
     """R10 — 원장에는 표와 「읽는 법」 절만 둔다."""
-    allowed_headings = {"# 주석 비중복성 판정 원장", LEDGER_SECTION, DOC_LEDGER_SECTION,
+    allowed_headings = {"# 주석 필요성 판정 원장", LEDGER_SECTION, DOC_LEDGER_SECTION,
                         EOL_LEDGER_SECTION, READING_SECTION}
     section = None
     strays: list[str] = []
@@ -856,7 +846,7 @@ def main() -> int:
     print(
         f"OK: 규칙 R1~R15 위반 없음 — {census(hits, unclassified)}"
         f" · 원장 {len(rows)}행 / 등재 범위 {ledger_sum}줄"
-        f" · 네 경로 판정 완료 {tally['done']}행 {tally['lines_done']}줄({share:.1f}%)"
+        f" · 필요성 판정 완료 {tally['done']}행 {tally['lines_done']}줄({share:.1f}%)"
         f" · 미판정(—) {tally['unjudged']}행"
         f" · 축별 {axis_histogram(tally)}"
     )
@@ -869,7 +859,7 @@ def main() -> int:
     print(
         f"     {docstring_census(doc_hits)}"
         f" · 원장 {len(doc_rows)}행 / 등재 범위 {doc_sum}줄"
-        f" · 네 경로 판정 완료 {doc_tally['done']}행"
+        f" · 필요성 판정 완료 {doc_tally['done']}행"
         f" {doc_tally['lines_done']}줄({doc_share:.1f}%)"
         f" · 미판정(—) {doc_tally['unjudged']}행"
         f" · 축별 {axis_histogram(doc_tally)}"
@@ -883,7 +873,7 @@ def main() -> int:
     print(
         f"     {eol_census(eol_hits)}"
         f" · 원장 {len(eol_rows)}행 / 등재 범위 {eol_sum}줄"
-        f" · 네 경로 판정 완료 {eol_tally['done']}행"
+        f" · 필요성 판정 완료 {eol_tally['done']}행"
         f" {eol_tally['lines_done']}줄({eol_share:.1f}%)"
         f" · 미판정(—) {eol_tally['unjudged']}행"
         f" · 축별 {axis_histogram(eol_tally)}"
