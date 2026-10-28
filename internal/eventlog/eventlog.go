@@ -1,5 +1,5 @@
-// Package eventlog is the one place a tool call becomes a record
-// (prd-event-log). The dispatcher emits exactly one Record per tools/call —
+// Package eventlog is the one place a tool call becomes a record. The
+// dispatcher emits exactly one Record per tools/call —
 // success, refusal or error — and the auth layer contributes who made it.
 //
 // It is its own package rather than a corner of mcp because two layers write
@@ -15,10 +15,9 @@ import (
 	"time"
 )
 
-// Principal is who made the call, spelled the way AC1 asks: a JWT is its
-// subject, an API key is its position in MCP_API_KEYS. The credential itself
-// is never here — AC3 forbids it in any record, and the cheapest way to keep
-// a value out of every record is to never let it into the type.
+// Principal is who made the call: a JWT is its subject, an API key is its
+// position in MCP_API_KEYS. The credential itself is never here — the cheapest
+// way to keep a value out of every record is to never let it into the type.
 type Principal struct {
 	// Method is how the caller authenticated: "jwt", "api_key",
 	// "github_oidc", or "none" when the deployment serves /mcp without
@@ -36,9 +35,9 @@ type Principal struct {
 // layer that forgot to fill it in.
 var Anonymous = Principal{Method: "none"}
 
-// Unauthenticated is the principal of a call auth refused (AC4). It is not
+// Unauthenticated is the principal of a call auth refused. It is not
 // Anonymous: that one passed an auth layer that asks nothing, this one failed
-// an auth layer that asked. What it presented is not here either (AC3).
+// an auth layer that asked. What it presented is not here either.
 var Unauthenticated = Principal{Method: "unauthenticated"}
 
 // String renders the principal for the record: "jwt:<sub>", "api_key:<n>",
@@ -72,9 +71,8 @@ func PrincipalFrom(ctx context.Context) Principal {
 }
 
 // Target is the resource coordinate a call addressed, for the tools that take
-// one. All four fields are emitted even when empty: AC1 wants the column to
-// exist on every record, so an aggregation over kind sees "no coordinate"
-// rather than a missing key it has to special-case.
+// one. All four fields are emitted even when empty, so an aggregation over kind
+// sees "no coordinate" rather than a missing key it has to special-case.
 type Target struct {
 	APIVersion string
 	Kind       string
@@ -82,7 +80,7 @@ type Target struct {
 	Name       string
 }
 
-// Result is how a call ended. Three values, no fourth (AC1): success, refused
+// Result is how a call ended. Three values, no fourth: success, refused
 // (the tool never ran — argument validation, the approval gate, an unknown
 // name), error (the tool ran and reported failure).
 type Result string
@@ -93,12 +91,11 @@ const (
 	ResultError   Result = "error"
 )
 
-// Results is the closed set, for the same reason Reasons is one: the
-// metrics of prd-metrics pre-register a series per value (AC1's "0 rather
-// than absent"), and a list here cannot drift from the constants above.
+// Results is the closed set, so the metrics can pre-register a series per
+// value from here instead of a second list that can drift.
 var Results = []Result{ResultSuccess, ResultRefused, ResultError}
 
-// Reason is why a refused call was refused (AC2, AC4).
+// Reason is why a refused call was refused.
 type Reason string
 
 const (
@@ -120,18 +117,18 @@ var Reasons = []Reason{
 	ReasonGateRejected, ReasonGateExpired, ReasonGateTimeout, ReasonGateUnreachable, ReasonGateUnconfigured,
 }
 
-// Gate is what the approval gate said about a gated call (AC2). Decision is
+// Gate is what the approval gate said about a gated call. Decision is
 // the backend's verdict as the gate layer names it; it stays "approved" on a
 // call the gate layer refused after the verdict (a target that moved, an
 // approval already spent), which is exactly the case Reason and Decision are
-// two fields for. AutoApproved is prd-approval-gate AC9's notice as a field.
+// two fields for.
 type Gate struct {
 	RequestID    string
 	Decision     string
 	AutoApproved bool
 }
 
-// Record is one tool call: AC1's five fields, plus AC2's reason and gate.
+// Record is one tool call.
 // The timestamp is not a field here because the sink stamps it at emission
 // — a record built before the call and stamped after it would carry the
 // wrong moment.
@@ -144,28 +141,23 @@ type Record struct {
 	Gate      Gate
 
 	// Duration is how long the dispatcher held the call with the gate wait
-	// taken out, and GateWait how long the gate held it (prd-metrics AC3's
-	// two histograms). Neither reaches the log line: the record's field set
-	// is prd-event-log AC1/AC2's and closed, and "how long" is the metrics'
-	// question. They ride on the record only because both surfaces derive
-	// from this one emission point. Zero on a record the auth layer wrote —
-	// that call was never timed because nothing of it ran.
+	// taken out, and GateWait how long the gate held it. Neither reaches the log
+	// line: "how long" is the metrics' question. They ride on the record only
+	// because both surfaces derive from this one emission point. Zero on a record
+	// the auth layer wrote — that call was never timed because nothing of it ran.
 	Duration time.Duration
 	GateWait time.Duration
 }
 
 // Sink receives records. The dispatcher holds one so a test can capture
-// records without scraping log output, and so the metrics of prd-metrics can
-// later be derived at this same point rather than counted somewhere else
-// (both PRDs' "표면 개요" require a single derivation point).
+// records without scraping log output.
 type Sink interface {
 	Emit(ctx context.Context, r Record)
 }
 
 // Fanout is a Sink that hands each record to every sink it holds, in
-// order. It is how the log line and the metrics of prd-metrics derive from
-// the one emission point both PRDs require without the dispatcher knowing
-// there are two of them.
+// order. It is how the log line and the metrics derive from the one emission
+// point without the dispatcher knowing there are two of them.
 type Fanout []Sink
 
 // Emit implements Sink.
@@ -176,7 +168,7 @@ func (f Fanout) Emit(ctx context.Context, r Record) {
 }
 
 // Log is the Sink that writes each record as one structured slog line on the
-// default logger (AC5's stdout baseline). One line per record: the message is
+// default logger. One line per record: the message is
 // constant so a collector can select records by it, and everything that
 // varies is an attribute.
 type Log struct{}
@@ -189,8 +181,8 @@ func (Log) Emit(ctx context.Context, r Record) {
 	slog.Default().LogAttrs(ctx, slog.LevelInfo, Message, Attrs(r)...)
 }
 
-// Attrs renders a record as slog attributes, in the field order AC1 lists
-// them (time is the handler's own attribute). The reason and gate keys are
+// Attrs renders a record as slog attributes, in the field order the event-log
+// PRD lists them (time is the handler's own attribute). The reason and gate keys are
 // present on every record, empty on a success, for the same reason the
 // target keys are.
 func Attrs(r Record) []slog.Attr {

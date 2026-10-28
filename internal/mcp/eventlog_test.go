@@ -17,8 +17,7 @@ import (
 )
 
 // recordingSink keeps records as values so a case can count them and read
-// fields, which is what AC1 is about; the text a collector sees is checked
-// separately through eventlog.Attrs.
+// fields; the text a collector sees is checked separately through eventlog.Attrs.
 type recordingSink struct{ records []eventlog.Record }
 
 func (s *recordingSink) Emit(_ context.Context, r eventlog.Record) {
@@ -26,7 +25,7 @@ func (s *recordingSink) Emit(_ context.Context, r eventlog.Record) {
 }
 
 // recordText renders records the way the shipped sink would, so the
-// non-exposure sweep (AC3) searches the same bytes a collector would store.
+// non-exposure sweep searches the same bytes a collector would store.
 func recordText(t *testing.T, records []eventlog.Record) string {
 	t.Helper()
 	var buf bytes.Buffer
@@ -69,8 +68,6 @@ func lastRecord(t *testing.T, sink *recordingSink, wantCount int) eventlog.Recor
 	return sink.records[wantCount-1]
 }
 
-// AC1: one record per call, whatever class of tool ran, and the coordinate
-// only where the tool has one.
 func TestEveryToolCallLeavesExactlyOneRecord(t *testing.T) {
 	h, _, sink := recordedHandler(t, &scriptedGate{err: errors.New("unused")})
 	h.grafana = secretGrafana{token: "glc_unused"}
@@ -101,8 +98,7 @@ func TestEveryToolCallLeavesExactlyOneRecord(t *testing.T) {
 	}
 }
 
-// AC1: the three results are told apart, and a refusal that never reached a
-// handler still counts as one call.
+// A refusal that never reached a handler still counts as one call.
 func TestRecordResultFollowsHowTheCallEnded(t *testing.T) {
 	h, fake, sink := recordedHandler(t, &scriptedGate{err: errors.New("approval rejected (request req-9)")})
 
@@ -140,7 +136,7 @@ func TestRecordResultFollowsHowTheCallEnded(t *testing.T) {
 }
 
 // failingGitHub is a configured integration whose upstream failed: the
-// contrast AC4 draws with an integration nobody configured.
+// contrast with an integration nobody configured.
 type failingGitHub struct{}
 
 func (failingGitHub) CreateInstallationToken(context.Context, []string, map[string]any) (*github.InstallationToken, error) {
@@ -151,9 +147,7 @@ func (failingGitHub) CreateCommitStatus(context.Context, github.CommitStatusInpu
 	return nil, errors.New("unused")
 }
 
-// AC2 + AC4: every refusal carries one of the eight reasons, and the reasons
-// tell the classes apart — the arguments, the gate's five answers, an
-// integration that was never configured. The response the client sees is
+// Every refusal carries one of the eight reasons. The response the client sees is
 // unchanged in each case; only the record learned to say why.
 func TestRefusalRecordsCarryTheirReason(t *testing.T) {
 	coordinate := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1"}`
@@ -207,8 +201,7 @@ func TestRefusalRecordsCarryTheirReason(t *testing.T) {
 	}
 }
 
-// AC2: an approved call carries the request id it ran under, and an
-// AUTO_APPROVE'd one says so as a field — the two are told apart by nothing
+// An AUTO_APPROVE'd call says so as a field — the two are told apart by nothing
 // else, since the verdict is "approved" on both.
 func TestApprovedRecordsCarryTheRequestIdAndTheAutoApprovalFlag(t *testing.T) {
 	patch := `{"apiVersion":"v1","kind":"ConfigMap","namespace":"default","name":"cm-1","patchType":"merge","patch":{}}`
@@ -227,8 +220,8 @@ func TestApprovedRecordsCarryTheRequestIdAndTheAutoApprovalFlag(t *testing.T) {
 	}
 }
 
-// AC2's two fields disagree on purpose when the gate layer withholds an
-// approval the backend granted (AC7): the verdict stays "approved", the
+// The record's two fields disagree on purpose when the gate layer withholds an
+// approval the backend granted: the verdict stays "approved", the
 // reason says the call was refused by the gate all the same.
 func TestASpentApprovalIsRefusedWithTheVerdictKept(t *testing.T) {
 	decision := &approvalgate.Decision{RequestID: "req-spent"}
@@ -246,7 +239,6 @@ func TestASpentApprovalIsRefusedWithTheVerdictKept(t *testing.T) {
 	}
 }
 
-// AC1: the principal on the record is whoever auth put on the context.
 func TestRecordNamesThePrincipalAuthEstablished(t *testing.T) {
 	h, _, sink := recordedHandler(t, &scriptedGate{})
 	ctx := eventlog.WithPrincipal(context.Background(), eventlog.Principal{Method: "jwt", ID: "operator@example.test"})
@@ -258,8 +250,7 @@ func TestRecordNamesThePrincipalAuthEstablished(t *testing.T) {
 	}
 }
 
-// AC3: the four classes the PRD names — issued credentials, Secret data,
-// exec payloads, request/response bodies — are searched for as values in the
+// The credential, Secret, exec-payload and body values are searched for in the
 // rendered records and must not be found. The tool responses are checked to
 // contain them first, so the negative assertion is about the record and not
 // about a fixture that never carried the value.
@@ -311,9 +302,7 @@ func TestRecordsCarryNoCredentialsPayloadsOrBodies(t *testing.T) {
 	if out := rendered(call("resource_exec", execArgs)); !strings.Contains(out, execStdout) {
 		t.Fatalf("exec response %q does not carry the stdout; the sweep below would be vacuous", out)
 	}
-	// A Secret write carries the data in the request body; the approval
-	// gate is scripted to approve so the call runs end to end.
-	// An approval is spent by the exec above (AC7), so the patch needs its own.
+	// An approval is spent by the exec above, so the patch needs its own.
 	approved.decision = &approvalgate.Decision{RequestID: "req-ac3-patch"}
 	secretArgs := `{"apiVersion":"v1","kind":"Secret","namespace":"default","name":"s-1","patchType":"merge","patch":{"data":{"password":"` + secretData + `"}}}`
 	call("resource_patch", secretArgs)

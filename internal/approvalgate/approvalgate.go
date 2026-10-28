@@ -26,12 +26,9 @@ const (
 	defaultTimeout      = 300 * time.Second
 	defaultPollInterval = 2 * time.Second
 	defaultGatedKind    = "v1/Secret"
-	// DefaultTokenFile is where k8s/deployment.yaml projects this server's
-	// service account token for the approval backend's audience.
-	DefaultTokenFile = "/var/run/secrets/pocket-aide/token"
+	DefaultTokenFile    = "/var/run/secrets/pocket-aide/token"
 )
 
-// Verdicts as reported by the approval backend.
 const (
 	StatusPending  = "PENDING"
 	StatusApproved = "APPROVED"
@@ -39,11 +36,11 @@ const (
 	StatusExpired  = "EXPIRED"
 )
 
-// ErrNotConfigured is the refusal used when the gate has no backend to ask (AC5).
+// ErrNotConfigured is the refusal used when the gate has no backend to ask.
 var ErrNotConfigured = errors.New("approval gate is not configured (APPROVAL_GATE_URL): refusing")
 
-// Verdict is how the gate answered, as the record names it (prd-event-log
-// AC2). Rejected and expired are the backend's own words, timeout is this client
+// Verdict is how the gate answered, as the record names it.
+// Rejected and expired are the backend's own words, timeout is this client
 // giving up on PENDING, unreachable is a request that produced no verdict
 // (transport, 409, 5xx, an unreadable or unknown answer), unconfigured is a
 // gate with no backend to ask.
@@ -58,8 +55,7 @@ const (
 	VerdictUnconfigured Verdict = "unconfigured"
 )
 
-// Verdicts is the closed set, in the order above. The six are enumerated here
-// once rather than counted again where the histogram lives.
+// Verdicts is the closed set, in the order above.
 var Verdicts = []Verdict{
 	VerdictApproved, VerdictRejected, VerdictExpired,
 	VerdictTimeout, VerdictUnreachable, VerdictUnconfigured,
@@ -88,11 +84,11 @@ func refuse(verdict Verdict, requestID string, err error) error {
 }
 
 // unavailable is what every integration's "not configured" error can say
-// about itself (prd-event-log AC4); a Describe that fails that way is an
+// about itself; a Describe that fails that way is an
 // unconfigured gate, not a bad call.
 type unavailable interface{ Unavailable() bool }
 
-// ErrConsumed reports a second attempt to spend one approval (AC7).
+// ErrConsumed reports a second attempt to spend one approval.
 var ErrConsumed = errors.New("approval has already been spent; request a new one")
 
 // Pair is a kubernetes RBAC (verb, resource[/subresource]) pair. Resource
@@ -207,13 +203,12 @@ type Call struct {
 	SessionID string
 	Reason    string
 
-	// Describe renders the operator-facing text of AC3. It is a function rather
-	// than a string because building that text now reads the target from the
-	// cluster (AC3's "현재 → 목표 레플리카", AC6's precondition), and AC5 puts a
-	// hard order on that read: an unconfigured gate has to refuse "쿠버네티스
-	// API를 호출하지 않고". A gate that cannot ask anyone therefore never calls
-	// this, and the ordering is a property of the types rather than a rule each
-	// implementation has to remember.
+	// Describe renders the operator-facing text. It is a function rather than a
+	// string because building that text reads the target from the cluster, and an
+	// unconfigured gate has to refuse without calling the kubernetes API. A gate
+	// that cannot ask anyone therefore never calls this, and the ordering is a
+	// property of the types rather than a rule each implementation has to
+	// remember.
 	//
 	// An error is a refusal.
 	Describe func(context.Context) (string, error)
@@ -235,7 +230,7 @@ func (c Call) describe(ctx context.Context) (string, error) {
 	return text, nil
 }
 
-// Decision is an observed APPROVED verdict. It is spendable exactly once (AC7).
+// Decision is an observed APPROVED verdict. It is spendable exactly once.
 type Decision struct {
 	RequestID    string
 	ExternalID   string
@@ -245,7 +240,7 @@ type Decision struct {
 	used bool
 }
 
-// Consume spends the approval. The second call fails (AC7).
+// Consume spends the approval. The second call fails.
 func (d *Decision) Consume() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -267,7 +262,7 @@ type Gate interface {
 
 // Unavailable is a Gate that refuses everything with a fixed reason. It stands
 // in wherever the gate cannot be built, so an unconfigured deployment refuses
-// gated calls instead of quietly running them (AC5).
+// gated calls instead of quietly running them.
 type Unavailable struct{ reason error }
 
 // NewUnavailable builds a refusing gate.
@@ -278,9 +273,7 @@ func NewUnavailable(reason error) *Unavailable {
 	return &Unavailable{reason: reason}
 }
 
-// Authorize refuses without calling call.Describe. That omission is the point:
-// AC5 requires an unconfigured gate to refuse without touching the kubernetes
-// API, and Describe is where the pre-approval read lives (AC6, AC11).
+// Authorize refuses without calling call.Describe (see Call.Describe).
 func (u *Unavailable) Authorize(context.Context, Call) (*Decision, error) {
 	return nil, refuse(VerdictUnconfigured, "", u.reason)
 }
@@ -332,8 +325,6 @@ type requestResponse struct {
 
 // Authorize implements Gate.
 func (c *Client) Authorize(ctx context.Context, call Call) (*Decision, error) {
-	// The first point at which the gate knows it has a backend to ask, which is
-	// why Describe is called here rather than by the caller (see Call.Describe).
 	context, err := call.describe(ctx)
 	if err != nil {
 		var u unavailable
@@ -414,7 +405,6 @@ func (c *Client) create(ctx context.Context, call Call, approvalContext, externa
 	return &decoded, nil
 }
 
-// poll waits for the verdict (AC4).
 func (c *Client) poll(ctx context.Context, call Call, requestID, externalID string) (*Decision, error) {
 	deadline := c.afterFunc(c.cfg.Timeout)
 
@@ -432,7 +422,6 @@ func (c *Client) poll(ctx context.Context, call Call, requestID, externalID stri
 		case StatusExpired:
 			return nil, refuse(VerdictExpired, requestID, fmt.Errorf("refusing %s: approval expired (request %s)", call.Tool, requestID))
 		case StatusPending, "":
-			// keep waiting
 		default:
 			return nil, refuse(VerdictUnreachable, requestID, fmt.Errorf("refusing %s: unknown approval status %q (request %s)", call.Tool, state.Status, requestID))
 		}
@@ -484,7 +473,7 @@ func (c *Client) authorize(req *http.Request) error {
 }
 
 // randomExternalID gives every call its own id, so two identical calls are two
-// approvals rather than one reused one (AC2).
+// approvals rather than one reused one.
 func randomExternalID() (string, error) {
 	buf := make([]byte, 16)
 	if _, err := rand.Read(buf); err != nil {

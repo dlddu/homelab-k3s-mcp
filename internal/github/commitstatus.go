@@ -198,7 +198,6 @@ func (c *Client) postCommitStatus(ctx context.Context, token, owner string, in C
 	if err := json.Unmarshal(respBody, &status); err != nil {
 		return nil, apiError(fmt.Sprintf("parse commit status: %v", err))
 	}
-	// Filled from the input on purpose — docs/test-github-commit-status.md, 픽스처 절.
 	status.SHA = in.SHA
 	return &status, nil
 }
