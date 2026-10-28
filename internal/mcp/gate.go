@@ -65,14 +65,10 @@ type toolDeclaration struct {
 	// gatedVerbs judges by verb because for almost every tool the verb is what
 	// the call does — but AC15 makes resource_proxy's verb follow the HTTP
 	// method, so a GET there is not a read of an object, it is an arbitrary
-	// request to whatever the object serves. A sentence rather than a bool for
-	// the same reason outsideGate is one: widening the gate is a decision the
-	// documents make, and this field is where the code cites them.
+	// request to whatever the object serves.
 	alwaysGated string
 }
 
-// The one reason any tool is currently exempt. It comes from the documents,
-// not from this package.
 const (
 	exemptAcceptedByOwner = "prd-approval-gate 「남은 예외 1건」 — 소유자 수용 (doc-tracker 수용된 위험, 2026-09-27)"
 
@@ -288,7 +284,6 @@ var toolRegistry = map[string]toolEntry{
 	},
 }
 
-// toolEntry is a registered tool: what it does and what it is allowed to do.
 type toolEntry struct {
 	decl        toolDeclaration
 	handle      func(*Handler, context.Context, json.RawMessage) (any, *rpcErr)
@@ -308,10 +303,8 @@ func (d toolDeclaration) callPairs(rawArgs json.RawMessage) ([]approvalgate.Pair
 	return d.resolve(rawArgs)
 }
 
-// gatedPairs returns the pairs of this call that require approval, or nil when
-// it may run unattended. A documented exemption short-circuits the answer but
-// does not erase the pairs — Exemptions still names what is passing through
-// ungated.
+// gatedPairs: a documented exemption short-circuits the answer but does not
+// erase the pairs — Exemptions still names what is passing through ungated.
 func (d toolDeclaration) gatedPairs(sensitiveKinds []string, rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
 	if d.outsideGate != "" {
 		return nil, nil
@@ -378,8 +371,7 @@ func updatePairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 }
 
 // deletePairs is genericPairs("delete") with AC10's own argument checks run
-// first, for the reason updatePairs states. Scenario 10 wants a selector-only
-// call refused at argument validation.
+// first, for the reason updatePairs states.
 func deletePairs() func(json.RawMessage) ([]approvalgate.Pair, error) {
 	generic := genericPairs("delete")
 	return func(rawArgs json.RawMessage) ([]approvalgate.Pair, error) {
@@ -520,10 +512,8 @@ func validateRegistry(registered map[string]toolEntry, advertised []string) erro
 	return fmt.Errorf("tool registry is inconsistent: %s", strings.Join(problems, "; "))
 }
 
-// ToolNames is the dispatchable tool set, sorted. It is what the metrics of
-// prd-metrics enumerate the tool label from (AC1: every registered tool is
-// a series from the start, AC4: nothing else ever is), so it reads the same
-// registry the dispatcher dispatches from rather than the advertised list.
+// ToolNames is the dispatchable tool set, sorted. It reads the registry the
+// dispatcher dispatches from rather than the advertised list.
 func ToolNames() []string {
 	names := make([]string, 0, len(toolRegistry))
 	for name := range toolRegistry {
@@ -620,8 +610,6 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		return nil, nil, errf(-32603, "refusing %s: it resolves a coordinate per call and changes state, but declares no target for the gate to read, so the approval could not be tied to a state (prd-approval-gate AC6)", name)
 	}
 
-	// approved holds what the gate read while the operator was deciding. AC6
-	// compares against it once, just before the handler runs.
 	var approved *k8s.TargetState
 	var ref *k8s.TargetRef
 
@@ -660,7 +648,6 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		return nil, nil, rerr
 	}
 
-	// AC8: an executed gated call always leaves this record.
 	approvalLog(ctx, slog.LevelInfo, "approval granted",
 		"tool", name,
 		"pairs", pairsText(gated),
@@ -702,9 +689,6 @@ func (h *Handler) readGateTarget(ctx context.Context, decl toolDeclaration, gate
 	return ref, state, nil
 }
 
-// confirmTargetUnchanged re-reads the target and refuses when it has moved
-// since the approval was written (AC6).
-//
 // A read cannot protect the interval after it returns. Update carries the
 // approved version into its PUT as well; other verbs still need their own
 // atomic conditions (doc-tracker.md).
@@ -831,9 +815,8 @@ func kubeletHighPowerEndpoint(path string) string {
 	return ""
 }
 
-// argumentsBlock renders the verbatim-arguments tail every approval context
-// ends with. Shared rather than copied so the two context builders cannot
-// drift on whether a Secret write gets masked.
+// Shared rather than copied so the two context builders cannot drift on
+// whether a Secret write gets masked.
 func argumentsBlock(gated []approvalgate.Pair, rawArgs json.RawMessage, sensitiveKinds []string) string {
 	args := strings.TrimSpace(string(rawArgs))
 	if args == "" || args == "null" {
@@ -844,8 +827,6 @@ func argumentsBlock(gated []approvalgate.Pair, rawArgs json.RawMessage, sensitiv
 	return fmt.Sprintf("arguments:\n%s", args)
 }
 
-// targetText writes a coordinate the way AC3 asks for it — apiVersion, kind,
-// namespace, name — in one line.
 func targetText(ref *k8s.TargetRef) string {
 	coordinate := ref.Kind
 	if ref.Subresource != "" {
@@ -943,8 +924,6 @@ func writesASensitiveKind(gated []approvalgate.Pair, sensitiveKinds []string) bo
 	return false
 }
 
-// credentialFields are the two places a kubernetes object carries values that
-// must not reach the approval screen (prd-approval-gate AC3, AC10).
 var credentialFields = map[string]bool{"data": true, "stringData": true}
 
 // withheld replaces the whole argument blob when masking cannot be carried out.
@@ -1004,8 +983,6 @@ func maskCredentialTree(node any) {
 	}
 }
 
-// maskJSONPatchOps masks the value of every RFC 6902 operation that addresses a
-// credential field, including the whole-map form ("path": "/data").
 func maskJSONPatchOps(node any) {
 	ops, ok := node.([]any)
 	if !ok {
@@ -1035,8 +1012,6 @@ func maskJSONPatchOps(node any) {
 	}
 }
 
-// credentialPath splits a JSON pointer into the credential field it addresses
-// and whatever follows it, reporting whether it addresses one at all.
 func credentialPath(path string) (field, rest string, found bool) {
 	for name := range credentialFields {
 		if path == "/"+name {
@@ -1083,8 +1058,6 @@ func pairsText(pairs []approvalgate.Pair) string {
 	return strings.Join(parts, ", ")
 }
 
-// annotateAutoApproval marks a result that reached kubernetes without a human
-// looking at it (AC9).
 func annotateAutoApproval(result any, decision *approvalgate.Decision) any {
 	if decision == nil || !decision.AutoApproved {
 		return result

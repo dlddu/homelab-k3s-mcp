@@ -5,24 +5,19 @@ import (
 	"sort"
 )
 
-// noResourcePermissionKind names what a ⑵ marker still lets a tool reach.
 type noResourcePermissionKind string
 
 const (
-	// touchesNothing marks a tool that never speaks to the apiserver.
 	touchesNothing noResourcePermissionKind = "no kubernetes access"
 
-	// discoveryOnly marks a tool that only reads which kinds are served.
 	discoveryOnly noResourcePermissionKind = "discovery only"
 )
 
-// noResourcePermission is AC1's ⑵ marker: its kind and the reason AC1 asks for.
 type noResourcePermission struct {
 	kind   noResourcePermissionKind
 	reason string
 }
 
-// validateDeclarations enforces the startup half of prd-approval-gate AC1.
 func validateDeclarations(registered map[string]toolEntry) []string {
 	var problems []string
 	for name, entry := range registered {
