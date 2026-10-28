@@ -60,7 +60,6 @@ func main() {
 		}
 	}
 
-	// prd-approval-gate AC1.
 	if err := mcp.Validate(); err != nil {
 		slog.Error("refusing to start", "error", err)
 		os.Exit(1)
@@ -68,7 +67,6 @@ func main() {
 	for tool, reason := range mcp.Exemptions() {
 		slog.Warn("tool exercises a gated verb but runs outside the approval gate", "tool", tool, "reason", reason)
 	}
-	// prd-approval-gate AC11.
 	slog.Info("approval gate exercises these pairs before any verdict", "pairs", gatePairsText())
 
 	k8sSvc := buildK8sService()
@@ -139,7 +137,6 @@ func buildMetrics() (*metrics.Metrics, eventlog.Sink) {
 	return surface, eventlog.Fanout{eventlog.Log{}, surface}
 }
 
-// buildMetricsServer is the metrics listener (prd-metrics AC5).
 func buildMetricsServer(surface *metrics.Metrics) *http.Server {
 	if disabled := os.Getenv("METRICS_DISABLED"); disabled == "1" || disabled == "true" {
 		slog.Warn("METRICS_DISABLED is set: metrics are counted but not exposed")
@@ -244,7 +241,6 @@ func buildPocketAideService() pocketaide.Service {
 	return client
 }
 
-// buildGate wires the approval gate (prd-approval-gate AC5).
 func buildGate() (approvalgate.Gate, []string) {
 	cfg, err := approvalgate.FromEnv()
 	if err != nil {
@@ -264,8 +260,6 @@ func buildGate() (approvalgate.Gate, []string) {
 	return approvalgate.New(*cfg, version.Name), cfg.GatedKinds
 }
 
-// buildGateReader gives the gate its own kubernetes read surface (AC11).
-//
 // One object satisfies both interfaces when the client is up; why they are two
 // interfaces is on k8s.TargetReader.
 func buildGateReader(svc k8s.Service) k8s.TargetReader {
@@ -286,7 +280,6 @@ func buildGateCollectionReader(svc k8s.Service) k8s.CollectionTargetReader {
 	return reader
 }
 
-// gatePairsText renders GatePairs for the startup log.
 func gatePairsText() string {
 	pairs := mcp.GatePairs()
 	parts := make([]string, 0, len(pairs))

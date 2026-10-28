@@ -150,8 +150,6 @@ func TestFromEnvRequiresReadPolicyID(t *testing.T) {
 	}
 }
 
-// setQueryEnv sets the four metrics/logs query variables that FromEnv requires
-// once the integration is enabled.
 func setQueryEnv(t *testing.T) {
 	t.Helper()
 	t.Setenv("GRAFANA_METRICS_URL", "https://prometheus-prod-99.grafana.net/api/prom")

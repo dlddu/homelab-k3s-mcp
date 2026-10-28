@@ -25,7 +25,6 @@ const (
 	getObjectTimeout       = 15 * time.Second
 )
 
-// errKind separates a "not configured" failure from a runtime fetch error.
 type errKind int
 
 const (
@@ -51,8 +50,7 @@ func (e *Error) Error() string {
 func unavailable(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }
 func fetchError(msg string) *Error  { return &Error{kind: kindFetch, msg: msg} }
 
-// Unavailable reports whether this is the "not configured" kind — the one
-// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+// Unavailable reports whether this is the "not configured" kind.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
 
 // Object is the fetched S3 config object and its metadata.
@@ -89,7 +87,6 @@ func (u *Unavailable) GetConfig(context.Context) (*Object, error) {
 	return nil, unavailable(u.reason)
 }
 
-// objectGetter is the subset of the S3 API the client depends on.
 type objectGetter interface {
 	GetObject(ctx context.Context, in *s3.GetObjectInput, opts ...func(*s3.Options)) (*s3.GetObjectOutput, error)
 }
@@ -159,8 +156,7 @@ func FromEnv(ctx context.Context) (*Client, error) {
 	return &Client{s3: s3Client, bucket: bucket, key: key}, nil
 }
 
-// GetConfig fetches the configured object from S3 with the assumed-role
-// credentials and returns its contents and metadata.
+// GetConfig fetches the configured object from S3.
 func (c *Client) GetConfig(ctx context.Context) (*Object, error) {
 	ctx, cancel := context.WithTimeout(ctx, getObjectTimeout)
 	defer cancel()

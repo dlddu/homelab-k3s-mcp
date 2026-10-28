@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials"
 )
 
-// fakeDoer captures the signed request and returns a canned response.
 type fakeDoer struct {
 	status int
 	body   string

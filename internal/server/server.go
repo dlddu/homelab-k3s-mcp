@@ -43,7 +43,7 @@ func App(authCfg *auth.Config, k8sSvc k8s.Service, ghSvc github.Service, awsSvc 
 	return logging(mux)
 }
 
-// MetricsApp builds the handler of the metrics listener (prd-metrics AC5).
+// MetricsApp builds the handler of the metrics listener.
 func MetricsApp(exposition http.Handler) http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("GET /metrics", exposition)

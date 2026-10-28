@@ -31,37 +31,24 @@ const (
 	createTimeout     = 5 * time.Minute
 )
 
-// sessionPath renders the control plane's per-session endpoint,
-// DELETE /api/v1/sessions/{id}.
 func sessionPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) }
 
-// readPath renders the control plane's per-session read endpoint,
-// POST /api/v1/sessions/{id}/read.
 func readPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/read" }
 
-// writePath renders the control plane's per-session write endpoint,
-// POST /api/v1/sessions/{id}/write.
 func writePath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/write" }
 
-// errKind separates a "not configured" failure from a control plane error.
 type errKind int
 
 const (
 	kindUnavailable errKind = iota
 	kindAPI
-	// kindNotFound is the control plane's 404: the session id does not exist.
-	// It is split out because session_read/AC3 requires a caller to tell a
-	// missing target apart from a malformed cursor and from a control plane
-	// that is merely broken.
 	kindNotFound
 	// kindInvalidArgument is a cursor this package refuses before it reaches
-	// the wire. Rejecting locally is what makes AC3's "the session is left
+	// the wire. Rejecting locally is what makes "the session is left
 	// untouched" structural rather than a promise: no request is issued at all.
 	kindInvalidArgument
-	// kindBusy is the control plane's 429: the workload's prompt queue is
-	// full. It is the one refusal in this package that is worth retrying
-	// unchanged — session_write/AC4 asks precisely that a caller be able to
-	// tell "try again in a moment" from "this will never work".
+	// kindBusy is the control plane's 429: the workload's prompt queue is full. It
+	// is the one refusal in this package worth retrying unchanged.
 	kindBusy
 	// kindTooLarge is the control plane's 413: the payload exceeds the
 	// per-write limit (1 MiB for claude-code prompts). The limit is
@@ -72,8 +59,6 @@ const (
 	// output history is full, so further writes are refused for good while
 	// the output already accumulated stays readable.
 	kindQuotaExhausted
-	// kindConflict is the control plane's 409: another lifecycle operation
-	// holds the session.
 	kindConflict
 )
 
@@ -113,8 +98,7 @@ func tooLarge(msg string) *Error        { return &Error{kind: kindTooLarge, msg:
 func quotaExhausted(msg string) *Error  { return &Error{kind: kindQuotaExhausted, msg: msg} }
 func conflict(msg string) *Error        { return &Error{kind: kindConflict, msg: msg} }
 
-// Unavailable reports whether this is the "not configured" kind — the one
-// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+// Unavailable reports whether this is the "not configured" kind.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
 
 // Session is one session as the control plane reports it. The fields mirror the
@@ -135,7 +119,7 @@ type Session struct {
 // ReadResult is one read of a session's accumulated output. Path names the
 // state branch the control plane took to serve the read ("active",
 // "idle->active->read" or "snapshot->restore->read"), and Session is the
-// session as it stands *after* the read (session_read/AC2).
+// session as it stands *after* the read.
 type ReadResult struct {
 	Session    Session `json:"session"`
 	Path       string  `json:"path"`
@@ -150,7 +134,7 @@ type ReadResult struct {
 // ReadSession. That absence is the contract, not an omission. Path names the
 // state branch that served the write ("active", "idle->active->write" or
 // "snapshot->restore->write") and Session is the session as it stands
-// afterwards (session_write/AC2).
+// afterwards.
 type WriteResult struct {
 	Session Session `json:"session"`
 	Path    string  `json:"path"`
@@ -456,8 +440,6 @@ func (c *Client) WriteSession(ctx context.Context, id, payload string) (*WriteRe
 	return &parsed, nil
 }
 
-// controlPlaneMessage pulls the `{"error": "..."}` string out of a control plane
-// error body, falling back to the HTTP status when the body is not that shape.
 func controlPlaneMessage(body []byte, status string) string {
 	var parsed struct {
 		Error string `json:"error"`

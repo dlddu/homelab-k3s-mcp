@@ -217,9 +217,6 @@ func TestToolsListAdvertisesResourceTools(t *testing.T) {
 		}
 	}
 
-	// AC11 rests on the mirror image of that absence, and on one presence. A
-	// client offered either wrong shape will send it, and the refusal that
-	// follows is a worse answer than never having advertised it.
 	coll := findTool(t, tools, "resource_delete_collection")
 	wantStrSlice(t, enumStrings(t, at(t, coll, "inputSchema", "required")), "apiVersion", "kind", "namespace", "reason")
 	collProps := at(t, coll, "inputSchema", "properties").(map[string]any)
@@ -597,13 +594,10 @@ func TestResourceToolsSurfaceK8sErrorsAsToolErrors(t *testing.T) {
 	}
 }
 
-// The idempotent-destructive slot workload_scale used to hold. resource_update
-// inherits it rather than leaving it empty: resource_patch next door is
-// destructive but *not* idempotent, so without this case no tool asserts that
-// the pair can be both, and a successor that quietly dropped idempotentHint
-// would still pass. The kind-enum half of the old case has no successor — this
-// tool takes arbitrary coordinates on purpose, which is why it is the wider
-// replacement.
+// resource_update inherits the idempotent-destructive slot workload_scale used
+// to hold: resource_patch next door is destructive but *not* idempotent, so
+// without this case no tool asserts that the pair can be both, and a successor
+// that quietly dropped idempotentHint would still pass.
 func TestToolsListAdvertisesUpdateAnnotations(t *testing.T) {
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
 	tools := toolsList(t, app)
@@ -1661,7 +1655,6 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	}
 }
 
-// TestSessionWriteRejectsBadArguments is the argument half of the tool contract.
 // Each refusal is a JSON-RPC invalid-params error rather than a tool error, and
 // — the part that matters for a destructive tool — none of them reaches the
 // control plane, so a malformed call cannot restore a snapshot as a side effect.
