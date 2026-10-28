@@ -116,7 +116,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     # CGO 설정이 다르면 net 을 거치는 거의 모든 패키지의 빌드 캐시가 어긋나므로 잡 전체를 0 으로 둔다.
     #
-    # POCKET_AIDE_SHA 는 승인 게이트 상대(PocketAide 서버와 그 레포의 oidcmock)를 빌드하는
+    # POCKET_AIDE_SHA 는 승인 게이트 상대(PocketAide 서버)를 빌드하는
     # dlddu/pocket-aide 커밋이다. 이 한 줄이 그 의존의 유일한 핀이다.
     env:
       CGO_ENABLED: '0'
@@ -184,10 +184,9 @@ jobs:
           go build -tags e2e_undeclared_tool -ldflags="-s -w" \
             -o /tmp/image-ctx-undeclared/homelab-k3s-mcp .
 
-      # 발행 이미지(ghcr.io/dlddu/pocket-aide)에는 oidcmock 이 없어 서버와 IdP 를 같은 커밋에서
-      # 맞추려면 둘 다 소스에서 빌드해야 한다. 그 레포의 go.mod 가 이 잡의 Go(GOTOOLCHAIN=local)보다
+      # 승인 게이트 계약을 핀한 커밋에 맞추려면 발행 이미지 대신 소스에서 빌드해야 한다. 그 레포의 go.mod 가 이 잡의 Go(GOTOOLCHAIN=local)보다
       # 높은 go 줄을 요구하면 여기서 실패한다 — 핀을 옮길 때 같이 볼 것.
-      - name: Build PocketAide and oidc-mock binaries
+      - name: Build PocketAide binary
         run: |
           git init -q /tmp/pocket-aide-src
           git -C /tmp/pocket-aide-src fetch -q --depth 1 \
@@ -197,7 +196,6 @@ jobs:
           mkdir -p /tmp/pocket-aide-ctx
           cd /tmp/pocket-aide-src/backend
           go build -ldflags="-s -w" -o /tmp/pocket-aide-ctx/pocket-aide ./cmd/server
-          go build -ldflags="-s -w" -o /tmp/pocket-aide-ctx/oidcmock ./cmd/oidcmock
 
       - name: Build image
         run: |
@@ -207,8 +205,6 @@ jobs:
             -t homelab-k3s-mcp:ci-undeclared /tmp/image-ctx-undeclared
           docker build -f tests/k8s/kind/Dockerfile.pocket-aide --build-arg BINARY=pocket-aide \
             -t pocket-aide:ci /tmp/pocket-aide-ctx
-          docker build -f tests/k8s/kind/Dockerfile.pocket-aide --build-arg BINARY=oidcmock \
-            -t oidc-mock:ci /tmp/pocket-aide-ctx
 
       - name: Wait for kind cluster
         run: |
@@ -221,7 +217,6 @@ jobs:
           kind load docker-image homelab-k3s-mcp:ci --name homelab-k3s-mcp
           kind load docker-image homelab-k3s-mcp:ci-undeclared --name homelab-k3s-mcp
           kind load docker-image pocket-aide:ci --name homelab-k3s-mcp
-          kind load docker-image oidc-mock:ci --name homelab-k3s-mcp
 
       - name: Deploy github-mock fixture
         run: kubectl apply -f tests/k8s/kind/github-mock.yaml
@@ -241,13 +236,13 @@ jobs:
       # Real PocketAide for the approval-gate e2e (approval_gate_sc*.py), the
       # recording proxy in front of it and the fault injector on its SQLite file.
       # Order is load-bearing: PocketAide fetches the issuer's discovery document
-      # once at startup and exits when it fails, so oidc-mock must be Ready first;
+      # once at startup and exits when it fails, so the PocketAide dex must be Ready first;
       # the injector opens the database read-write without creating it, so it
       # waits for PocketAide to have migrated it.
-      - name: Deploy oidc-mock fixture
+      - name: Deploy PocketAide dex fixture
         run: |
-          kubectl apply -f tests/k8s/kind/oidc-mock.yaml
-          kubectl -n oidc-mock rollout status deploy/oidc-mock --timeout=120s
+          kubectl apply -f tests/k8s/kind/pocket-aide-dex.yaml
+          kubectl -n dex-pocket-aide rollout status deploy/dex --timeout=120s
 
       - name: Deploy PocketAide fixture
         run: |
@@ -569,8 +564,8 @@ jobs:
           kubectl -n dear-baby-test describe deploy/dear-baby || true
           kubectl -n dear-baby-test logs deploy/dear-baby --tail=200 || true
           kubectl -n dear-baby-test logs deploy/redis --tail=50 || true
-          kubectl -n oidc-mock get all -o wide || true
-          kubectl -n oidc-mock logs deploy/oidc-mock --tail=200 || true
+          kubectl -n dex-pocket-aide get all -o wide || true
+          kubectl -n dex-pocket-aide logs deploy/dex --tail=200 || true
           kubectl -n pocket-aide get all -o wide || true
           kubectl -n pocket-aide describe deploy/pocket-aide || true
           kubectl -n pocket-aide logs deploy/pocket-aide --tail=200 || true

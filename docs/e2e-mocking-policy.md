@@ -80,13 +80,12 @@
 | --- | --- | --- | --- |
 | `github-mock` | `UPS` | `tests/k8s/kind/github-mock.yaml` | — |
 | `grafana-mock` | `UPS` | `tests/k8s/kind/grafana-mock.yaml` | — |
-| `oidc-mock` | `UPS` | `tests/k8s/kind/oidc-mock.yaml` | — |
 | `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/approval-variant.yaml` · `tests/k8s/kind/gate-broken-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
 | `DISABLE_SECURITY_PLUGIN` | `GATE` | `tests/k8s/kind/opensearch.yaml` | `tests/k8s/kind/http-trace.yaml` |
 
 <!-- /mock-exception-원장 -->
 
-등재 상한: <!-- mock-exception-상한 -->5<!-- /mock-exception-상한 -->
+등재 상한: <!-- mock-exception-상한 -->4<!-- /mock-exception-상한 -->
 
 상한은 허용목록의 행 수와 **정확히 같아야** 한다(체커 R6, 양방향). 예외를 늘리려면 같은 PR에서
 이 숫자를 명시적으로 올려야 하고, 예외가 사라지면 같이 내려야 한다 — 예외는 늘지 않는 방향으로만
@@ -145,38 +144,28 @@ App의 private key·installation id가 필요하다. CI 클러스터 안에 GitH
 
 **소멸 조건**: Grafana Cloud를 CI에서 안전하게 호출할 수 있게 되면 소멸한다.
 
-### `oidc-mock` — `UPS`
+### 해소된 등재 — PocketAide 발급자 스텁 (`UPS`, 2026-10-28 삭제)
 
-**대상**: 승인 게이트의 상대인 PocketAide(`dlddu/pocket-aide`)가 사용자를 식별하는 OIDC 발급자.
-게이트 e2e 는 **사람 대신** 승인·거절·자동 응답 모드를 PocketAide 앱 API 로 조작하는데, 그 API 는
-OIDC Bearer 로만 열리고 요청은 「그 호출자를 등록한 사용자」의 것이라, 사용자 몫의 토큰이 있어야
-판정을 내릴 수 있다. 이 지점은 PocketAide 레포 자신의 `cmd/oidcmock`(PKCE 인가 코드 흐름 ·
-`login_hint` 로 subject 선택)을 `ci.yml` 이 PocketAide 서버와 **같은 커밋**(`POCKET_AIDE_SHA`)에서
-빌드해 `oidc-mock` 네임스페이스에 띄운 것이다. 흉내 내는 것은 IdP 의 로그인 화면·실 계정뿐이고,
-발급된 JWT 는 실물 PocketAide 가 실물 go-oidc 검증기로 discovery·JWKS 를 거쳐 검증한다.
+기록으로만 남긴다. 이 자리에는 PocketAide 레포의 `cmd/oidcmock` 을 띄운 IdP 스텁이 `UPS` 로
+등재돼 있었고, 사유는 「PocketAide 의 실 상류 IdP 는 운영자의 외부 OIDC 공급자라 CI 에서 로그인을
+구동할 수 없다」였다. 그 등재 절 스스로 하네스의 실 OIDC 구현 dex 로 옮기는 길이 *원리적으로 막혀
+있지 않고* 미채택 사유 셋(dex `idTokens` 20초 전역 값 · dex 롤아웃 순서 · 토큰 모양 일치)이 *불가능이
+아니라 비용*이라고 인정했다 — 「실환경으로 준비 가능하면 어떤 카테고리도 쓸 수 없다」와 「카테고리
+판정이 애매하면 제거 쪽으로 기운다」가 등재를 금지한다
+(`tbm_homelab-k3s-mcp-e2e-mock-policy/rct_20261028-0001`). 사유는 *실 계정* 문제였지만 PocketAide
+는 `sub` 와 `aud` 만 보므로, 운영 IdP 가 아니라 CI 용 실 발급자를 따로 두면 충분하다.
 
-**실환경 불가 사유**: PocketAide 의 실 상류 IdP 는 운영자의 외부 OIDC 공급자이고, 거기서 토큰을
-받으려면 실 계정과 브라우저 동의가 필요하다. CI 클러스터 안에서 그 로그인을 구동할 수 없고, 실
-계정 자격증명을 CI 에 두면 매 PR 이 운영 사용자의 승인 화면을 만지게 된다.
+대체물은 `tests/k8s/kind/pocket-aide-dex.yaml` — **PocketAide 전용 dex 인스턴스**(네임스페이스
+`dex-pocket-aide`, 기존 dex 와 같은 핀 이미지). 비용 셋을 이렇게 푼다:
 
-**dex 가 이미 있는데도 등재하는 이유 — 그리고 이 등재가 지는 부채.** 이 하네스에는 실 OIDC 구현인
-dex(`tests/k8s/kind/oidc-fixture.yaml`)가 이미 돈다. 그 dex 를 PocketAide 의 발급자로 쓰는 길은
-**원리적으로 막혀 있지 않다** — PocketAide 는 `sub` 만 보므로 정적 클라이언트와 사용자 몇을 더하면
-된다. 그 길을 지금 택하지 않은 것은 셋 때문이고, 셋 다 「불가능」이 아니라 「비용」이다: ⑴ dex 의
-`expiry.idTokens` 는 `event_log_sc6.py` 가 만료를 재려고 20초로 묶어 둔 전역 값이라 게이트 e2e 의
-토큰이 호출 도중에 만료된다 ⑵ dex 롤아웃이 지금 CI 의 맨 뒤에 있어 PocketAide(기동 시 discovery
-필수)가 그 뒤로 밀린다 ⑶ PocketAide 쪽 CI 가 검증하는 토큰 모양(액세스 토큰의 `aud` = `OIDC_AUDIENCE`)
-과 같은 것을 쓰면 두 레포의 하네스가 같은 계약 위에 선다. 이 판정은 「카테고리 판정이 애매하면 제거
-쪽으로 기운다」와 긴장 관계에 있으므로 **소멸 조건을 dex 쪽으로 열어 둔다**.
+- 만료: 인스턴스가 따로라 `idTokens: 1h` 를 쓴다. 기존 dex 의 20초는 건드리지 않는다.
+- 롤아웃 순서: `ci.yml` 이 이 인스턴스를 PocketAide 보다 먼저 배포·대기한다. 기존 dex 와 무관하다.
+- 토큰 모양: 정적 클라이언트 id = `OIDC_AUDIENCE` 라 액세스 토큰의 `aud` 가 맞는다. 사용자는
+  `_approval_gate.py` 의 `CALLERS` owner 와 같은 이름의 정적 사용자이고, 토큰은 password grant 로 받는다.
 
-**배선**: `.github/workflows/ci.yml` 이 이 매니페스트를 PocketAide 보다 먼저 배포·대기하고,
-`tests/k8s/kind/pocket-aide-fixture.yaml` 의 `OIDC_ISSUER` 가
-`http://oidc-mock.oidc-mock.svc.cluster.local:5556` 을 가리킨다. 토큰을 받는 쪽은
-`tests/integration/_approval_gate.py` 하나다.
-
-**소멸 조건**: PocketAide 의 발급자를 이 하네스의 실 OIDC 구현(dex)으로 옮기면 — dex 토큰 만료를
-게이트 e2e 와 갈라 쓸 수 있게 되거나 PocketAide 픽스처를 dex 롤아웃 뒤로 미루는 비용을 받아들이면 —
-이 등재는 소멸한다.
+**이 해소가 등재를 늘리지 않았다는 것**: 새 픽스처는 실 구현체(dex)라 이 문서가 세는 두 부류
+어느 쪽도 아니다. 허용목록은 한 행 줄고 상한은 같이 내려갔다. PocketAide 이미지를 소스에서 빌드하는
+것은 게이트 계약 핀(`POCKET_AIDE_SHA`) 때문이며 `oidcmock` 빌드는 사라졌다.
 
 ### 해소된 등재 — `dear-baby-fixture` (`IMG`, 2026-09-26 삭제)
 
@@ -512,7 +501,7 @@ PR 의 리뷰가 C1~C5 를 대조하는 자리다.
 승인 게이트의 상대가 gatekeeper 에서 PocketAide(`dlddu/pocket-aide`)로 바뀌었다. 위 판정의 근거
 1~5 는 **gatekeeper 의 이름으로** 적혀 있으므로, 같은 판정이 새 상대에서도 서는지 근거마다 대조하고
 대상만 옮겼다. 판정은 그대로다 — 주입은 이 정책이 세는 모킹이 아니고, 허용목록·상한은 이 이전으로
-움직이지 않는다(PocketAide 앞의 IdP 는 주입과 무관한 별개 지점이라 위 `oidc-mock` 절이 따로 판정한다).
+움직이지 않는다(PocketAide 앞의 IdP 는 주입과 무관하며 실 dex 라 모킹이 아니다).
 
 | 근거 | gatekeeper 에서 | PocketAide 에서 |
 | --- | --- | --- |

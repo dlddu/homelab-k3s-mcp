@@ -1,0 +1,115 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dex-pocket-aide
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+# PocketAide 의 OIDC 발급자 — 실 구현체 dex 다. oidc-fixture.yaml 의 dex 와 같은 이미지를 쓰되
+# 인스턴스를 따로 둔다: 그쪽은 event_log_sc6.py 가 만료를 재려고 idTokens 를 20초로 묶은
+# 전역 값이라 승인 게이트 e2e 의 토큰이 호출 도중에 만료되고, 롤아웃도 CI 맨 뒤라 기동 시
+# discovery 를 받아야 하는 PocketAide 가 그 뒤로 밀린다. 이 인스턴스는 PocketAide 보다 먼저
+# 배포·대기한다.
+#
+# 사람 로그인 대신 _approval_gate.py 가 password grant(passwordConnector: local)로 사용자별
+# 토큰을 받는다. 액세스 토큰의 aud 는 클라이언트 id 이고 PocketAide 의 OIDC_AUDIENCE 와
+# 같아야 한다. issuer 는 pocket-aide-fixture.yaml 의 OIDC_ISSUER 와 글자까지 같아야 한다.
+# bcrypt 해시는 dex 예제(examples/config-dev.yaml)의 문자열 "password" 해시다.
+# 사용자 id 는 _approval_gate.py 의 CALLERS 가 쓰는 owner 이름과 같다.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dex-config
+  namespace: dex-pocket-aide
+data:
+  config.yaml: |
+    issuer: http://dex.dex-pocket-aide.svc.cluster.local:5556
+    storage:
+      type: memory
+    web:
+      http: 0.0.0.0:5556
+    enablePasswordDB: true
+    oauth2:
+      passwordConnector: local
+    staticClients:
+      - id: pocket-aide-e2e
+        name: PocketAide e2e
+        secret: ci-pocket-aide-e2e-client-secret
+        redirectURIs:
+          - http://127.0.0.1/e2e-callback
+    staticPasswords:
+      - email: e2e-primary@pocket-aide.test
+        hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+        username: e2e-primary
+        userID: e2e-primary
+      - email: e2e-approval-variant@pocket-aide.test
+        hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+        username: e2e-approval-variant
+        userID: e2e-approval-variant
+      - email: e2e-rbac-narrow@pocket-aide.test
+        hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+        username: e2e-rbac-narrow
+        userID: e2e-rbac-narrow
+      - email: e2e-gate-refusal@pocket-aide.test
+        hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+        username: e2e-gate-refusal
+        userID: e2e-gate-refusal
+      - email: e2e-apiserver-audit@pocket-aide.test
+        hash: "$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W"
+        username: e2e-apiserver-audit
+        userID: e2e-apiserver-audit
+    expiry:
+      idTokens: 1h
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dex
+  namespace: dex-pocket-aide
+  labels:
+    app.kubernetes.io/name: dex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dex
+  template:
+    metadata:
+      labels:
+        app: dex
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: dex
+          image: ghcr.io/dexidp/dex:v2.44.0@sha256:5d0656fce7d453c0e3b2706abf40c0d0ce5b371fb0b73b3cf714d05f35fa5f86
+          args: ["dex", "serve", "/etc/dex/config.yaml"]
+          ports:
+            - name: http
+              containerPort: 5556
+          volumeMounts:
+            - name: config
+              mountPath: /etc/dex
+          readinessProbe:
+            httpGet:
+              path: /.well-known/openid-configuration
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+      volumes:
+        - name: config
+          configMap:
+            name: dex-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dex
+  namespace: dex-pocket-aide
+spec:
+  type: ClusterIP
+  selector:
+    app: dex
+  ports:
+    - name: http
+      port: 5556
+      targetPort: http
