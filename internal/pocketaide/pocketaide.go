@@ -50,7 +50,7 @@ func (e *Error) Error() string {
 }
 
 // Unavailable reports whether this is the "not configured" kind — the one
-// the dispatcher records as a refusal, not an error (prd-event-log AC4).
+// the dispatcher records as a refusal, not an error.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
 
 func unavailable(msg string) *Error { return &Error{kind: kindUnavailable, msg: msg} }

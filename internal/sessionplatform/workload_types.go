@@ -10,21 +10,18 @@ import (
 	"strings"
 )
 
-// configPath is the control plane's runtime configuration endpoint. Since
-// session-platform #153 it lists the workload types the deployment offers, so
-// this server no longer keeps a copy of that list that drifts whenever the
-// platform gains a type (minimax-code did).
+// configPath is the control plane's runtime configuration endpoint. It lists
+// the workload types the deployment offers, so this server keeps no copy of
+// that list.
 const configPath = "/api/v1/config"
 
 // shellWorkloadType is the control plane's default and is offered by every
 // deployment, so naming it needs no lookup.
 const shellWorkloadType = "shell"
 
-// checkWorkloadType refuses a type the control plane does not offer, before
-// anything is provisioned, and names the offered types so the caller can
-// retry with one of them. A control plane old enough to publish no list is
-// left to judge the type itself; it refuses an unknown one with a 400, which
-// CreateSession already reports as an invalid argument.
+// A control plane old enough to publish no list is left to judge the type
+// itself; it refuses an unknown one with a 400, which CreateSession already
+// reports as an invalid argument.
 func (c *Client) checkWorkloadType(ctx context.Context, workloadType string) error {
 	if workloadType == "" || workloadType == shellWorkloadType {
 		return nil
@@ -40,8 +37,6 @@ func (c *Client) checkWorkloadType(ctx context.Context, workloadType string) err
 	return nil
 }
 
-// offeredWorkloadTypes returns the types GET /config lists, in its order, or
-// nil when the response carries no list at all.
 func (c *Client) offeredWorkloadTypes(ctx context.Context) ([]string, error) {
 	endpoint := c.endpoint + configPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)

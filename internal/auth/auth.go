@@ -116,8 +116,6 @@ func FromEnv(ctx context.Context) (*Config, error) {
 	return cfg, nil
 }
 
-// configureOAuth validates the OAuth settings, performs OIDC discovery and the
-// initial JWKS fetch, and populates the OAuth fields on c.
 func (c *Config) configureOAuth(ctx context.Context, issuer, audience, resource string) error {
 	if issuer == "" {
 		return fmt.Errorf("MCP_OAUTH_ISSUER is required when OAuth is enabled")
@@ -147,8 +145,6 @@ func (c *Config) configureOAuth(ctx context.Context, issuer, audience, resource 
 	return c.refreshKeys(ctx)
 }
 
-// parseAPIKeys splits a comma-separated key list, trimming whitespace and
-// dropping empty entries.
 func parseAPIKeys(raw string) []string {
 	var keys []string
 	for _, part := range strings.Split(raw, ",") {
@@ -247,7 +243,6 @@ func (c *Config) keyForKid(ctx context.Context, kid string) *rsa.PublicKey {
 	return key
 }
 
-// verify checks the JWT and returns its subject.
 func (c *Config) verify(ctx context.Context, raw string) (string, error) {
 	// In API-key-only mode there is no issuer, JWKS URI, or HTTP client, so no
 	// JWT can verify. Refuse before keyForKid would try to fetch a nil JWKS.
@@ -308,7 +303,6 @@ func (c *Config) APIKeyCount() int {
 	return len(c.apiKeys)
 }
 
-// matchAPIKey reports whether raw equals any configured static API key.
 func (c *Config) matchAPIKey(raw string) bool {
 	return c.apiKeyIndex(raw) != 0
 }
@@ -364,11 +358,11 @@ func (c *Config) RequireBearer(next http.Handler) http.Handler {
 }
 
 // recordRefusal leaves the record of a tool call that never reached the
-// dispatcher (prd-event-log AC4). This layer ends the request before the
+// dispatcher. This layer ends the request before the
 // dispatcher parses it, so it reads the tool name itself — and only for a
 // body that is a tools/call: a refused initialize or tools/list was never a
 // tool call, and the records are the set of tool calls, authenticated or not.
-// The principal is Unauthenticated, never what was presented (AC3).
+// The principal is Unauthenticated, never what was presented.
 func (c *Config) recordRefusal(r *http.Request) {
 	tool, ok := refusedToolName(r.Body)
 	if !ok {
@@ -405,9 +399,9 @@ func refusedToolName(body io.Reader) (string, bool) {
 	return req.Params.Name, true
 }
 
-// RecordTo routes the records this layer writes (a refused tools/call, AC4)
-// to a sink other than the default log. The two layers that emit records have
-// to share one sink for the metrics of prd-metrics to see every refusal.
+// RecordTo routes the records this layer writes (a refused tools/call) to a
+// sink other than the default log. The two layers that emit records have to
+// share one sink for the metrics to see every refusal.
 func (c *Config) RecordTo(sink eventlog.Sink) {
 	if sink != nil {
 		c.events = sink

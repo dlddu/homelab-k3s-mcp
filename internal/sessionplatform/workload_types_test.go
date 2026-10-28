@@ -9,8 +9,6 @@ import (
 	"testing"
 )
 
-// configStub serves config on GET /api/v1/config and a created session on POST
-// /api/v1/sessions, recording every request.
 func configStub(t *testing.T, configStatus int, config string) (*Client, *[]lifecycleRequest) {
 	t.Helper()
 	var seen []lifecycleRequest
@@ -36,8 +34,6 @@ const offeredConfig = `{"claudeCode":{},"workloadTypes":[
   {"type":"shell","takesModel":false},{"type":"claude-code","takesModel":true},
   {"type":"minimax-code","takesModel":true},{"type":"approval-gated","takesModel":true}]}`
 
-// A type the control plane lists is created, including one this server has
-// never heard of — the list is the control plane's, not a copy kept here.
 func TestCreateSessionAcceptsAnOfferedType(t *testing.T) {
 	c, seen := configStub(t, http.StatusOK, offeredConfig)
 	if _, err := c.CreateSession(context.Background(), CreateRequest{Name: "mm", WorkloadType: "minimax-code"}); err != nil {
@@ -65,7 +61,6 @@ func TestCreateSessionRefusesATypeTheControlPlaneDoesNotOffer(t *testing.T) {
 	}
 }
 
-// shell is every deployment's default, so it costs no lookup.
 func TestCreateSessionLooksNothingUpForShell(t *testing.T) {
 	for _, workload := range []string{"", "shell"} {
 		c, seen := configStub(t, http.StatusInternalServerError, `{}`)
@@ -78,7 +73,6 @@ func TestCreateSessionLooksNothingUpForShell(t *testing.T) {
 	}
 }
 
-// A control plane that predates the list leaves the judgement to its own 400.
 func TestCreateSessionDefersToAControlPlaneWithoutAList(t *testing.T) {
 	c, seen := configStub(t, http.StatusOK, `{"claudeCode":{}}`)
 	if _, err := c.CreateSession(context.Background(), CreateRequest{Name: "x", WorkloadType: "claude-code"}); err != nil {

@@ -18,11 +18,9 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 )
 
-// The AC1/AC2/AC7 request-path tests exercise only local logic (header parsing,
+// The request-path tests exercise only local logic (header parsing,
 // key matching, challenge emission, metadata rendering) and never reach the
 // network.
-
-// --- gate decision ---
 
 func TestExtractBearerClassifiesHeader(t *testing.T) {
 	cases := []struct {
@@ -105,8 +103,6 @@ func TestRequireBearerRejectsMalformedScheme(t *testing.T) {
 	}
 }
 
-// --- protected-resource metadata ---
-
 func TestMetadataHandlerServesProtectedResource(t *testing.T) {
 	cfg := &Config{
 		Issuer:   "https://issuer.example.test",
@@ -139,8 +135,6 @@ func TestMetadataHandlerServesProtectedResource(t *testing.T) {
 		t.Errorf("bearer_methods_supported = %v, want [header]", got.BearerMethodsSupported)
 	}
 }
-
-// --- enable/disable via environment ---
 
 func TestFromEnvDisabledReturnsNilConfig(t *testing.T) {
 	t.Setenv("MCP_AUTH_DISABLED", "1")
@@ -248,8 +242,6 @@ func TestFromEnvRequiresAudienceWhenOAuthRequested(t *testing.T) {
 		t.Fatal("expected error when OAuth is requested but MCP_OAUTH_AUDIENCE is unset")
 	}
 }
-
-// --- static key gate ---
 
 func TestParseAPIKeys(t *testing.T) {
 	cases := []struct {
@@ -413,8 +405,6 @@ func TestRequireBearerAcceptsAPIKeyAndJWT(t *testing.T) {
 	})
 }
 
-// --- test helpers (RSA key, OIDC server, JWT signing) ---
-
 func newRSAKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
@@ -524,7 +514,6 @@ func TestRequireBearerHandsDownAPrincipalWithoutTheCredential(t *testing.T) {
 	})
 }
 
-// recordingSink keeps the records this layer emits, as values.
 type recordingSink struct{ records []eventlog.Record }
 
 func (s *recordingSink) Emit(_ context.Context, r eventlog.Record) { s.records = append(s.records, r) }

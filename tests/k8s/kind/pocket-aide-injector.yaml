@@ -186,8 +186,6 @@ data:
                     f"probe for {mode!r} failed with {message!r}, which does not contain "
                     f"{expected!r} — refusing to arm a trigger that produces the wrong error"
                 )
-            # The probe rolled back, but a failed statement inside it may still
-            # have left nothing; assert that explicitly.
             residue = shadow_rows(conn)
             if residue:
                 raise RuntimeError(f"probe left {residue} shadow row(s) behind")

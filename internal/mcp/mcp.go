@@ -47,13 +47,11 @@ type Handler struct {
 	sessionPlatform sessionplatform.Service
 	pocketAide      pocketaide.Service
 
-	// gate holds gated calls until a human decides. It is never nil — an
-	// unconfigured deployment gets a gate that refuses (prd-approval-gate AC5).
+	// gate is never nil — an unconfigured deployment gets a gate that refuses.
 	gate approvalgate.Gate
 
-	// gateReader is the gate's own read surface (prd-approval-gate AC11);
-	// k8s.TargetReader holds why it is separate. Never nil — a deployment without
-	// a cluster client gets one that refuses.
+	// gateReader is separate from the k8s service; k8s.TargetReader holds why.
+	// Never nil — a deployment without a cluster client gets one that refuses.
 	gateReader k8s.TargetReader
 
 	// gateCollectionReader is the plural of gateReader. Never nil.
@@ -66,9 +64,8 @@ type Handler struct {
 	// production does not ship.
 	registry map[string]toolEntry
 
-	// events receives one record per tools/call (prd-event-log AC1). nil
-	// means eventlog.Log — the field exists so a test can read records as
-	// values instead of scraping the log.
+	// events nil means eventlog.Log — the field exists so a test can read
+	// records as values instead of scraping the log.
 	events eventlog.Sink
 }
 
@@ -87,7 +84,7 @@ func WithGate(gate approvalgate.Gate, sensitiveKinds []string) Option {
 	}
 }
 
-// WithGateReader installs the reader the gate uses for AC11's two pairs. It is
+// WithGateReader installs the reader the gate uses to describe a target. It is
 // a separate option from WithGate because the gate and its reader fail
 // independently: an approval backend can be up while the cluster client is not,
 // and that combination has to refuse gated calls rather than describe them from
@@ -100,8 +97,8 @@ func WithGateReader(reader k8s.TargetReader) Option {
 	}
 }
 
-// WithGateCollectionReader installs the reader the gate uses for the `list`
-// half of AC11's table. Its own option rather than a second argument to
+// WithGateCollectionReader installs the reader the gate uses to describe a
+// collection target. Its own option rather than a second argument to
 // WithGateReader because the failure is silent: a gate missing only this one
 // still describes a collection delete, from arguments that do not say what
 // will be deleted.
@@ -174,10 +171,8 @@ type rpcErrorBody struct {
 	Message string `json:"message"`
 }
 
-// rpcErr is an internal carrier for a JSON-RPC error (code + message), and
-// of what the record says about the refusal it is (prd-event-log AC2): a
-// JSON-RPC error never reaches a handler, so every one of them is a refused
-// call that needs a reason.
+// rpcErr is an internal carrier for a JSON-RPC error (code + message) and for
+// what the record says about the refusal it is.
 type rpcErr struct {
 	code    int
 	message string
@@ -185,8 +180,7 @@ type rpcErr struct {
 	// reason is the refusal's reason when the site that produced the error
 	// knows it; reasonOf fills the rest in from the code.
 	reason eventlog.Reason
-	// gate is what the gate said, on the errors produced after it answered.
-	gate eventlog.Gate
+	gate   eventlog.Gate
 }
 
 func errf(code int, format string, args ...any) *rpcErr {
@@ -208,7 +202,7 @@ func (e *rpcErr) reasonOf() eventlog.Reason {
 	return eventlog.ReasonGateUnconfigured
 }
 
-// afterVerdict marks a refusal that came after the gate had approved (AC6, AC7).
+// afterVerdict marks a refusal that came after the gate had approved.
 // The record keeps the backend's verdict and says the gate layer withheld the
 // approval anyway — that is the case Reason and Gate.Decision differ for.
 func (e *rpcErr) afterVerdict(decision *approvalgate.Decision) *rpcErr {
@@ -248,7 +242,6 @@ func gateRefusal(err error) *rpcErr {
 	return e
 }
 
-// gateOf renders an approval for the record (prd-event-log AC2).
 func gateOf(decision *approvalgate.Decision) eventlog.Gate {
 	if decision == nil {
 		return eventlog.Gate{}
@@ -272,7 +265,7 @@ type callNote struct {
 	gate   eventlog.Gate
 
 	// gateWait is the time the gate held this call, summed over every
-	// Authorize a batch makes (prd-metrics AC3). askGate adds to it; the
+	// Authorize a batch makes. askGate adds to it; the
 	// dispatcher subtracts it from the call's own duration.
 	gateWait time.Duration
 }
@@ -284,7 +277,6 @@ func noteFrom(ctx context.Context) *callNote {
 	return note
 }
 
-// noteGate records the approval a gated path is about to execute under.
 func noteGate(ctx context.Context, decision *approvalgate.Decision) {
 	if note := noteFrom(ctx); note != nil {
 		g := gateOf(decision)
@@ -349,7 +341,7 @@ func initializeResult() any {
 	}
 }
 
-// toolsCall is the one place a tool call is recorded (prd-event-log AC1).
+// toolsCall is the one place a tool call is recorded.
 // The record is written here, after the outcome and around every exit, rather
 // than by the handlers: a handler that writes its own record is a handler
 // that can forget to, and a refusal that happens before any handler runs
@@ -407,7 +399,7 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 	}
 
 	// The gate runs here rather than inside the handlers. A handler that calls
-	// the gate itself is a handler that can forget to (prd-approval-gate AC1).
+	// the gate itself is a handler that can forget to.
 	if entry.createBatch {
 		return h.callCreateBatch(ctx, name, entry, rawArgs)
 	}
@@ -433,8 +425,8 @@ func (h *Handler) toolsCall(ctx context.Context, params json.RawMessage) (result
 }
 
 // askGate is the one way a call reaches the gate, so the time the gate held
-// it is measured once, here, whichever of the three gated paths asked
-// (prd-metrics AC3). The gate's own answer is untouched — this only notes
+// it is measured once, here, whichever of the three gated paths asked.
+// The gate's own answer is untouched — this only notes
 // how long it took.
 func (h *Handler) askGate(ctx context.Context, call approvalgate.Call) (*approvalgate.Decision, error) {
 	begin := time.Now()
@@ -452,12 +444,11 @@ func (h *Handler) sink() eventlog.Sink {
 	return eventlog.Log{}
 }
 
-// outcome classifies a call's end for the record (AC1's three results, AC2's
-// reason and gate). A JSON-RPC error is always a refusal: every path that
+// outcome classifies a call's end for the record. A JSON-RPC error is always a refusal: every path that
 // produces one — argument validation, the gate, an unknown name — returns
 // before the handler runs, so nothing reached the cluster or an external
 // system. A handler that ran and set isError reports an error — unless what
-// failed was an integration nobody configured, which is a refusal too (AC4):
+// failed was an integration nobody configured, which is a refusal too:
 // nothing was sent there either. Anything else is success.
 func outcome(result any, rerr *rpcErr, note *callNote) (eventlog.Result, eventlog.Reason, eventlog.Gate) {
 	if rerr != nil {
@@ -479,7 +470,7 @@ func outcome(result any, rerr *rpcErr, note *callNote) (eventlog.Result, eventlo
 }
 
 // recordTarget reads the four coordinate fields off a generic tool's arguments,
-// and only those four (prd-event-log AC1, AC3).
+// and only those four.
 func recordTarget(rawArgs json.RawMessage) eventlog.Target {
 	obj, ok := decodeObject(rawArgs)
 	if !ok {
@@ -497,7 +488,6 @@ func recordTarget(rawArgs json.RawMessage) eventlog.Target {
 	}
 }
 
-// extractArguments pulls the "arguments" field out of the raw tools/call params.
 func extractArguments(params json.RawMessage) json.RawMessage {
 	var p struct {
 		Arguments json.RawMessage `json:"arguments"`
@@ -510,8 +500,6 @@ func extractArguments(params json.RawMessage) json.RawMessage {
 	}
 	return p.Arguments
 }
-
-// --- tool implementations ---
 
 func (h *Handler) dearBabyResetUser(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
@@ -799,8 +787,8 @@ func (h *Handler) awsConfigGet(ctx context.Context) (any, *rpcErr) {
 	}, nil
 }
 
-// sessionList enumerates the control plane's sessions. The empty list is what
-// lets a caller tell "no sessions" from "the control plane is unreachable".
+// An empty list is what lets a caller tell "no sessions" from "the control
+// plane is unreachable".
 func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 	sessions, err := h.sessionPlatform.ListSessions(ctx)
 	if err != nil {
@@ -813,10 +801,9 @@ func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 	return successResult(map[string]any{"sessions": items}), nil
 }
 
-// sessionFields renders one session for a tool result. A snapshotted session has
-// had its pods reclaimed, so the control plane omits `pod`; keep it omitted
-// rather than reporting an empty name as if a pod existed. Every session tool
-// reports a session the same way, so they share this.
+// A snapshotted session has had its pods reclaimed, so the control plane omits
+// `pod`; keep it omitted rather than reporting an empty name as if a pod
+// existed.
 func sessionFields(s sessionplatform.Session) map[string]any {
 	fields := map[string]any{
 		"id":           s.ID,
@@ -832,7 +819,6 @@ func sessionFields(s sessionplatform.Session) map[string]any {
 	return fields
 }
 
-// sessionRead reads one session's accumulated output from a byte cursor.
 func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
@@ -868,9 +854,8 @@ func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *r
 	}), nil
 }
 
-// sessionWrite injects input into one session's workload. Both arguments are
-// validated here so that a malformed call is refused before any request is
-// issued — the same structural guarantee sessionRead makes for a bad cursor:
+// Both arguments are validated here so that a malformed call is refused before
+// any request is issued — the same structural guarantee sessionRead makes for a bad cursor:
 // nothing was sent, so the session cannot have been touched.
 func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
@@ -1072,8 +1057,6 @@ func (h *Handler) opensearchDocumentDelete(ctx context.Context, raw json.RawMess
 		"result": result.Result,
 	}), nil
 }
-
-// --- shared helpers ---
 
 func optionalString(obj map[string]any, key string) *string {
 	v, ok := obj[key]

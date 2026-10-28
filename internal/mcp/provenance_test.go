@@ -126,8 +126,6 @@ func TestOverlongReasonIsInvalidParams(t *testing.T) {
 	}
 }
 
-// A gated call without a reason is refused before the gate is asked, before
-// the gate's own pre-read, and with nothing sent to kubernetes.
 func TestGatedCallWithoutReasonIsRefusedBeforeTheGate(t *testing.T) {
 	cases := []struct{ tool, args string }{
 		{"resource_patch", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"cm","patchType":"merge","patch":{}}`},
@@ -156,8 +154,6 @@ func TestGatedCallWithoutReasonIsRefusedBeforeTheGate(t *testing.T) {
 	}
 }
 
-// The same tools keep working without a reason when the call itself is not
-// gated: only a call that would reach a human needs one.
 func TestUngatedCallsNeedNoReason(t *testing.T) {
 	cases := []struct{ tool, args string }{
 		{"resource_get", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"cm"}`},
@@ -176,9 +172,6 @@ func TestUngatedCallsNeedNoReason(t *testing.T) {
 	}
 }
 
-// The requirement is checked before the gate's own configuration: an
-// unconfigured gate refuses too, but a call missing its reason is the
-// caller's to fix first and is recorded as invalid input.
 func TestMissingReasonIsInvalidInputEvenWithAnUnconfiguredGate(t *testing.T) {
 	h, fake, sink := recordedHandler(t, approvalgate.NewUnavailable(nil))
 	_, rerr := callToolAsIs(t, h, "resource_patch", `{"apiVersion":"v1","kind":"ConfigMap","namespace":"ops","name":"cm","patchType":"merge","patch":{}}`)
