@@ -11,7 +11,7 @@ type Service interface {
 
 	// WatchResources collects the change events of one bounded window and
 	// returns them; it does not hand back a stream, because the tool layer
-	// answers one request at a time (prd-resource-generic AC6).
+	// answers one request at a time.
 	WatchResources(ctx context.Context, query WatchQuery) (*WatchResult, error)
 
 	GetResource(ctx context.Context, ref ResourceRef) (*ResourceResult, error)
@@ -25,7 +25,7 @@ type Service interface {
 	DeleteResource(ctx context.Context, ref DeleteRef) (*ResourceResult, error)
 
 	// DeleteCollection removes one namespace's selection with the
-	// deletecollection verb (prd-resource-generic AC11).
+	// deletecollection verb.
 	DeleteCollection(ctx context.Context, ref DeleteCollectionRef) (*DeleteCollectionResult, error)
 
 	// ExecInPod runs command inside the first Running pod matching labelSelector
@@ -34,19 +34,17 @@ type Service interface {
 	ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*ExecOutcome, error)
 
 	// ExecResource is the coordinate-addressed half of exec
-	// (prd-resource-generic AC12).
 	ExecResource(ctx context.Context, ref ExecRef, container *string, command []string) (*ExecOutcome, error)
 
 	// AttachResource joins the streams of the process already running in one
-	// named pod (prd-resource-generic AC13).
+	// named pod.
 	AttachResource(ctx context.Context, ref AttachRef, container *string, stdin *string, readSeconds int) (*AttachOutcome, error)
 
 	// PortForwardResource opens a tunnel to one port of one named pod, makes a
-	// single round trip through it, and closes it (prd-resource-generic AC14).
+	// single round trip through it, and closes it.
 	PortForwardResource(ctx context.Context, ref PortForwardRef, port int, payload []byte, readSeconds int) (*PortForwardOutcome, error)
 
 	// ProxyResource reaches one object's HTTP endpoint through the apiserver
-	// (prd-resource-generic AC15).
 	ProxyResource(ctx context.Context, ref ProxyRef, method, path string, body []byte, contentType string, readSeconds int) (*ProxyOutcome, error)
 }
 

@@ -27,7 +27,7 @@ import (
 )
 
 // tableAccept asks the apiserver for the same server-side rendering kubectl
-// gets (prd-resource-generic AC2, AC17). What an unrecognised parameter does,
+// gets. What an unrecognised parameter does,
 // and why a self-made Table cannot see it, is at tableNegotiatingServer.
 var tableAccept = fmt.Sprintf(
 	"application/json;as=Table;v=%s;g=%s, application/json",
@@ -35,19 +35,16 @@ var tableAccept = fmt.Sprintf(
 )
 
 const (
-	// ListDefaultLimit and ListMaxLimit are AC3's bounds.
 	ListDefaultLimit int64 = 100
 	ListMaxLimit     int64 = 500
 
-	// WatchDefaultSeconds and WatchMaxSeconds are AC6's window.
 	WatchDefaultSeconds int64 = 10
 	WatchMaxSeconds     int64 = 60
 
-	// WatchMaxEvents is the event ceiling AC6 asks for without naming a number.
 	WatchMaxEvents = 100
 )
 
-// patchTypes keys AC9's names by the tool's own vocabulary rather than the wire
+// patchTypes keys the names by the tool's own vocabulary rather than the wire
 // strings, because the wire strings are content types and an argument that has to
 // be spelled "application/strategic-merge-patch+json" is one nobody gets right.
 var patchTypes = map[string]types.PatchType{
@@ -69,13 +66,13 @@ func PatchTypeNames() []string {
 	return names
 }
 
-// IsPatchType reports whether name is one of AC9's four.
+// IsPatchType reports whether name is one of the accepted patch type names.
 func IsPatchType(name string) bool {
 	_, ok := patchTypes[name]
 	return ok
 }
 
-// ListQuery addresses a set of objects by coordinate (prd-resource-generic AC1).
+// ListQuery addresses a set of objects by coordinate.
 type ListQuery struct {
 	APIVersion    string
 	Kind          string
@@ -92,7 +89,7 @@ type ListColumn struct {
 	Type string `json:"type"`
 }
 
-// ListResult is a Table response (AC2).
+// ListResult is a Table response.
 type ListResult struct {
 	Resource   string       `json:"resource"`
 	Namespaced bool         `json:"namespaced"`
@@ -103,8 +100,8 @@ type ListResult struct {
 	Remaining  *int64       `json:"remaining_item_count"`
 }
 
-// WatchQuery addresses a set of objects to observe for one bounded window
-// (prd-resource-generic AC6). It is ListQuery's coordinate without the paging:
+// WatchQuery addresses a set of objects to observe for one bounded window.
+// It is ListQuery's coordinate without the paging:
 // a watch is not a page of a collection, so limit and continue have no meaning
 // here, and ResourceVersion takes their place as the "where do I resume" knob.
 type WatchQuery struct {
@@ -144,7 +141,7 @@ type ResourceRef struct {
 	Log         LogOptions
 }
 
-// UpdateRef addresses one object and the state to write over it (AC8). Exactly
+// UpdateRef addresses one object and the state to write over it. Exactly
 // one of Manifest and Replicas is set: the tool layer refuses a call that names
 // both or neither before this type is built.
 type UpdateRef struct {
@@ -158,7 +155,7 @@ type UpdateRef struct {
 	ApprovedResourceVersion string
 }
 
-// PatchRef addresses one object and the change to make to it (AC9).
+// PatchRef addresses one object and the change to make to it.
 type PatchRef struct {
 	APIVersion              string
 	Kind                    string
@@ -171,7 +168,7 @@ type PatchRef struct {
 	ApprovedUID             string
 }
 
-// DeleteRef addresses the single object to remove (AC10).
+// DeleteRef addresses the single object to remove.
 type DeleteRef struct {
 	APIVersion         string
 	Kind               string
@@ -188,7 +185,7 @@ type ResourceResult struct {
 	Text      string         `json:"text,omitempty"`
 }
 
-// APIResource is one row of the discovery answer (AC20).
+// APIResource is one row of the discovery answer.
 type APIResource struct {
 	Group      string   `json:"group"`
 	Version    string   `json:"version"`
@@ -202,7 +199,7 @@ type APIResource struct {
 // listParameterCodec encodes ListOptions against a scheme holding nothing but
 // meta/v1, the way client-go's own dynamic client does. The typed scheme would
 // refuse to encode parameters for a group version it has never heard of, and a
-// CRD is exactly that (AC1 puts arbitrary CRDs in scope).
+// CRD is exactly that (arbitrary CRDs are in scope).
 var (
 	metaV1GroupVersion  = schema.GroupVersion{Version: "v1"}
 	listParameterScheme = runtime.NewScheme()
@@ -213,7 +210,6 @@ func init() {
 	metav1.AddToGroupVersion(listParameterScheme, metaV1GroupVersion)
 }
 
-// resolved is a coordinate after discovery has answered.
 type resolved struct {
 	gvr        schema.GroupVersionResource
 	namespaced bool
@@ -222,7 +218,7 @@ type resolved struct {
 // mapperCache holds the discovery-derived RESTMapper. Discovery is a round trip
 // per group, so it is built once; an unknown kind invalidates it exactly once
 // before the kind is declared missing, which is what lets a CRD installed after
-// start-up be listed without a restart (AC20).
+// start-up be listed without a restart.
 type mapperCache struct {
 	mu     sync.Mutex
 	mapper meta.RESTMapper
@@ -256,7 +252,7 @@ func (s *KubeService) restMapper(refresh bool) (meta.RESTMapper, error) {
 
 // resolve turns apiVersion+kind into a resource path. Guessing one produces a
 // 404 that reads like "the object is gone" instead of "that kind does not exist
-// here" — that reading is why AC20 refuses instead.
+// here" — that reading is why this refuses instead.
 func (s *KubeService) resolve(ctx context.Context, apiVersion, kind string) (resolved, error) {
 	gv, err := schema.ParseGroupVersion(apiVersion)
 	if err != nil {
@@ -299,8 +295,7 @@ func (s *KubeService) similarKinds(ctx context.Context, kind string) []string {
 	return rankSimilarKinds(all, kind)
 }
 
-// rankSimilarKinds is the candidate half of AC20's refusal, split from discovery
-// so the ranking can be exercised without a cluster.
+// rankSimilarKinds is split from discovery so the ranking can be exercised without a cluster.
 //
 // Containment stays beside edit distance because a deliberate fragment like
 // `Deploy` is a partial name rather than a typo, and sits too far from any kind
@@ -473,7 +468,7 @@ func (s *KubeService) ListResources(ctx context.Context, q ListQuery) (*ListResu
 	return result, nil
 }
 
-// WatchResources collects one window of change events and closes (AC6).
+// WatchResources collects one window of change events and closes.
 func (s *KubeService) WatchResources(ctx context.Context, q WatchQuery) (*WatchResult, error) {
 	res, err := s.resolve(ctx, q.APIVersion, q.Kind)
 	if err != nil {
@@ -571,7 +566,7 @@ func (s *KubeService) WatchResources(ctx context.Context, q WatchQuery) (*WatchR
 }
 
 // GetResource reads one object whole, or the text a text-typed subresource
-// returns, with AC4's noise stripped.
+// returns, with the noise annotations stripped.
 func (s *KubeService) GetResource(ctx context.Context, ref ResourceRef) (*ResourceResult, error) {
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
 	if err != nil {
@@ -647,8 +642,8 @@ func (s *KubeService) podLogs(ctx context.Context, res resolved, namespace strin
 // one client-go puts in its place. DoRaw hands back the response body alongside
 // the error but only reads that body as a message when the response is text,
 // and the apiserver answers pods/log with a JSON Status — so a 400 surfaces as
-// "the server rejected our request for an unknown reason" and the sentence AC5
-// asks for ("a container name must be specified for pod x, choose one of: [a
+// "the server rejected our request for an unknown reason" and the sentence the
+// caller needs ("a container name must be specified for pod x, choose one of: [a
 // b]") is dropped while sitting in the bytes this already has. Forbidden is
 // left to apiCallError: which grant is missing is a fact about this server's
 // own RBAC, and the apiserver's wording does not carry it.
@@ -682,13 +677,13 @@ func objectNamespace(res resolved, kind string, namespace *string) (string, erro
 	return *namespace, nil
 }
 
-// ScaleSubresource is the one subresource resource_update writes (AC8). The
+// ScaleSubresource is the one subresource resource_update writes. The
 // tool layer refuses any other name, and this package answers what that name
 // means: the autoscaling/v1 Scale hanging off the workload.
 const ScaleSubresource = "scale"
 
 // UpdateResource replaces one object whole, or writes a replica count to its
-// scale subresource (AC8), under the version the gate approved
+// scale subresource, under the version the gate approved
 // (mcp.confirmTargetUnchanged).
 func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*ResourceResult, error) {
 	if ref.ApprovedResourceVersion == "" {
@@ -755,7 +750,7 @@ func (s *KubeService) UpdateResource(ctx context.Context, ref UpdateRef) (*Resou
 }
 
 // requireSubresource asks discovery whether the cluster serves <resource>/<sub>.
-// The apiserver cannot make AC8's distinction for us — a PUT to
+// The apiserver cannot make that distinction for us — a PUT to
 // daemonsets/<name>/scale and a PUT to a deleted deployment's scale are the same
 // status code, and the second reading is the one an operator acts on.
 func (s *KubeService) requireSubresource(ctx context.Context, gvr schema.GroupVersionResource, sub, kind string) error {
@@ -795,7 +790,7 @@ func scaleObject(namespace, name string, replicas int64) map[string]any {
 	}
 }
 
-// PatchResource applies a conditional patch to one approved object (AC9).
+// PatchResource applies a conditional patch to one approved object.
 func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*ResourceResult, error) {
 	patchType, ok := patchTypes[ref.PatchType]
 	if !ok {
@@ -859,7 +854,7 @@ func (s *KubeService) PatchResource(ctx context.Context, ref PatchRef) (*Resourc
 	return &ResourceResult{Resource: res.gvr.Resource, Namespace: namespace, Object: object}, nil
 }
 
-// DeleteResource removes one object (AC10). The answer is the request it made,
+// DeleteResource removes one object. The answer is the request it made,
 // not the object's fate (mcp.deletionText holds why).
 func (s *KubeService) DeleteResource(ctx context.Context, ref DeleteRef) (*ResourceResult, error) {
 	res, err := s.resolve(ctx, ref.APIVersion, ref.Kind)
@@ -882,7 +877,7 @@ func (s *KubeService) DeleteResource(ctx context.Context, ref DeleteRef) (*Resou
 
 	// No Preconditions: carrying a uid or resourceVersion would mean reading the
 	// object first, and get is a second verb this tool does not hold. The
-	// precondition AC10's callers want is the gate's (prd-approval-gate AC6).
+	// precondition callers want is the gate's.
 	opts := metav1.DeleteOptions{}
 	if ref.GracePeriodSeconds != nil {
 		grace := *ref.GracePeriodSeconds
@@ -939,7 +934,7 @@ func (s *KubeService) APIResources(ctx context.Context) ([]APIResource, error) {
 	return out, nil
 }
 
-// apiCallError converts a 403 the way AC18 asks.
+// apiCallError converts a 403 into this server's own grant statement.
 func (s *KubeService) apiCallError(err error, verb, resource string) error {
 	if apierrors.IsForbidden(err) {
 		return apiErrorf(

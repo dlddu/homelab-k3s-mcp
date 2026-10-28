@@ -19,8 +19,8 @@ import (
 // object looked small".
 const secretTokenInFixture = "unique-token-the-gate-must-not-read"
 
-// metadataNegotiatingServer stands in for an apiserver at the one point AC11
-// turns on.
+// metadataNegotiatingServer stands in for an apiserver at the one point
+// metadata negotiation turns on.
 //
 // `honor` false is the server that does not — and the branch it takes is the
 // documented hazard rather than an error.
@@ -42,7 +42,6 @@ func metadataNegotiatingServer(t *testing.T, honor bool) *httptest.Server {
 	}))
 }
 
-// acceptsPartialObjectMetadata matches the way the apiserver does.
 func acceptsPartialObjectMetadata(accept string) bool {
 	for _, media := range strings.Split(accept, ",") {
 		params := strings.Split(strings.TrimSpace(media), ";")
@@ -73,8 +72,6 @@ func targetServiceAgainst(host string) *KubeService {
 
 func namespaceOf(s string) *string { return &s }
 
-// AC11: the gate's read of a sensitive kind goes out as PartialObjectMetadata
-// and comes back without the value.
 func TestPreconditionUsesPartialObjectMetadataForGatedKinds(t *testing.T) {
 	t.Run("honoured", func(t *testing.T) {
 		server := metadataNegotiatingServer(t, true)
@@ -187,7 +184,6 @@ func TestReadTargetRefusesABodyWithNoResourceVersion(t *testing.T) {
 	}
 }
 
-// The refusal comes before any request goes out.
 func TestReadTargetRefusesAnUnnamedObject(t *testing.T) {
 	reached := false
 	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { reached = true }))

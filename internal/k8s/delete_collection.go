@@ -9,7 +9,6 @@ import (
 )
 
 // DeleteCollectionRef names the selection resource_delete_collection removes
-// (prd-resource-generic AC11).
 //
 // Namespace is a value where every other Ref in this package uses a pointer:
 // "absent" is not one of the states this coordinate can be in, and a pointer
@@ -37,15 +36,15 @@ type DeleteCollectionResult struct {
 }
 
 // DeleteCollection exercises the deletecollection verb over one namespace's
-// selection (prd-resource-generic AC11).
+// selection.
 //
 // A cluster-scoped kind is refused rather than allowed through unconfined: it
 // has no namespace to be held to, so the requirement is unanswerable here
 // rather than merely unmet.
 //
 // Like DeleteResource this sends no Preconditions, and for a sharper reason: a
-// whole selection cannot be pinned by one resourceVersion, so AC6 is served by
-// re-reading the selection just before this runs.
+// whole selection cannot be pinned by one resourceVersion, so the gate
+// re-reads the selection just before this runs.
 func (s *KubeService) DeleteCollection(ctx context.Context, ref DeleteCollectionRef) (*DeleteCollectionResult, error) {
 	if ref.Namespace == "" {
 		return nil, apiErrorf("namespace is required; a collection delete is confined to one namespace")

@@ -161,7 +161,6 @@ func TestApprovedCollectionDeleteSendsTheSelectorsUnchanged(t *testing.T) {
 	}
 }
 
-// resultText pulls the first text block out of a tool result.
 func resultText(t *testing.T, result any) string {
 	t.Helper()
 	m, ok := result.(map[string]any)

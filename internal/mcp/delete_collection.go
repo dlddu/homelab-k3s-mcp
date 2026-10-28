@@ -14,7 +14,7 @@ import (
 
 // contextNameLimit is where the count starts doing the work the names were there
 // for: an operator judging whether 900 is the number they meant is not reading
-// 900 lines to decide (prd-approval-gate AC3).
+// 900 lines to decide.
 const contextNameLimit = 20
 
 type deleteCollectionSelection struct {
@@ -144,10 +144,8 @@ func (h *Handler) callDeleteCollection(ctx context.Context, name string, entry t
 	return annotateAutoApproval(result, decision), nil
 }
 
-// confirmCollectionUnchanged re-reads the selection (prd-approval-gate AC6).
-//
-// Growth is the case AC11 names, but shrinkage and replacement are refused on
-// the same footing: a list with different names on it is a different approval.
+// confirmCollectionUnchanged refuses shrinkage and replacement on the same footing
+// as growth: a list with different names on it is a different approval.
 func (h *Handler) confirmCollectionUnchanged(
 	ctx context.Context,
 	name string,
@@ -194,7 +192,6 @@ func sameTargets(approved, current []k8s.CollectionTarget) bool {
 	return true
 }
 
-// collectionApprovalContext renders what the operator sees for a collection delete.
 func collectionApprovalContext(
 	name string,
 	gated []approvalgate.Pair,
@@ -232,8 +229,7 @@ func selectorText(selector string) string {
 	return selector
 }
 
-// resourceDeleteCollection removes one namespace's selection
-// (prd-resource-generic AC11). By the time it runs, callDeleteCollection has
+// By the time it runs, callDeleteCollection has
 // read the selection, shown it, and confirmed it had not moved.
 func (h *Handler) resourceDeleteCollection(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)

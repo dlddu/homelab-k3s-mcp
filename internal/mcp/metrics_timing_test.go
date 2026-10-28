@@ -11,7 +11,7 @@ import (
 )
 
 // slowGate approves after a delay, standing in for the operator taking their
-// time (prd-metrics AC3's "승인 대기가 길어져도").
+// time.
 type slowGate struct {
 	scriptedGate
 	delay time.Duration
