@@ -1,6 +1,3 @@
-# PocketAide-wired SUT variant for the approval-gate e2e
-# (approval_gate_sc{2,4,5,9}.py), event_log_sc{2,3,5}.py and resource_generic_sc17.py.
-#
 # The primary kind deployment carries the gate too, but three observation
 # designs need their own env values, and env is per deployment:
 #
@@ -11,8 +8,7 @@
 # * APPROVAL_GATE_URL points at the recording proxy (pocket-aide-trace), not at
 #   PocketAide directly, so scenario 2 can assert the create contract. The
 #   primary keeps pointing straight at the pocket-aide Service: its scenarios
-#   need no request-body observation, and a shorter path is one less thing to
-#   break.
+#   need no request-body observation.
 # * RESOURCE_GATED_KINDS -- see the env comment below.
 #
 # Auto-response modes (scenario 9) are a setting of the PocketAide user who

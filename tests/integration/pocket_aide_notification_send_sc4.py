@@ -21,11 +21,6 @@ from _helpers import base_url, open_session, wait_for_healthz
 async def test_pocket_aide_notification_send_ac4_unconfigured_refusal(
     session: ClientSession,
 ) -> None:
-    """AC: pocket-aide-notification-send/AC4
-
-    With APPROVAL_GATE_URL unset, pocket_aide_notification_send returns the
-    unavailable error and the server keeps serving.
-    """
     await assert_unavailable_refusal(
         session,
         "pocket_aide_notification_send",

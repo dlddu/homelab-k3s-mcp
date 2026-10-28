@@ -1,7 +1,5 @@
 package mcp
 
-// toolsListJSON is the static tools/list result. It is kept as a literal so the
-// advertised JSON Schemas and annotations are easy to audit against the docs.
 const toolsListJSON = `{
   "tools": [
     {

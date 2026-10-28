@@ -1,8 +1,5 @@
-# Real PocketAide (dlddu/pocket-aide) for the approval-gate e2e (docs/test-approval-gate.md
-# 픽스처 절).
-#
-# 이미지는 발행 이미지가 아니라 ci.yml 이 POCKET_AIDE_SHA 커밋의 backend/cmd/server 를 빌드한
-# `pocket-aide:ci` 다. 발행 이미지(ghcr.io/dlddu/pocket-aide)가 아니라 소스에서 빌드한 것은 이 서버를
+# 이미지는 ci.yml 이 POCKET_AIDE_SHA 커밋의 backend/cmd/server 를 빌드한 `pocket-aide:ci` 다.
+# 발행 이미지(ghcr.io/dlddu/pocket-aide)가 아니라 소스에서 빌드한 것은 이 서버를
 # 게이트 계약(POCKET_AIDE_SHA 핀)에 맞추기 위해서다. IdP 는 실 dex(pocket-aide-dex.yaml)다.
 #
 # 서비스 어카운트 호출자는 TokenReview 로 검증된다(internal/auth/serviceaccount.go). 그래서
