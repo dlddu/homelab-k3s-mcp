@@ -2,11 +2,6 @@
 
 // The startup variant for test-approval-gate.md#시나리오 1 (c).
 //
-// The default build (`go build ./...`, the Dockerfile's runtime stage, the
-// published image) never sees this file, so the shipped binary's tool surface
-// is unchanged; what the tag adds is a way to *exercise* the startup check that
-// already ships, not a way around it.
-//
 // The tool is advertised as well as registered on purpose. validateRegistry
 // reports every problem it finds, so a tool that were registered without being
 // advertised would also trip "registered but not advertised" — and then the
