@@ -1,8 +1,8 @@
-// Package opensearch backs the opensearch_* tools with docstore
-// (github.com/dlddu/docstore), an in-cluster document store that speaks the
-// slice of the OpenSearch REST API used here (_search with
-// simple_query_string, _doc put/post/delete). Requests are plain HTTP to
-// OPENSEARCH_ENDPOINT; there is no cloud credential or request signing.
+// Package opensearch backs the opensearch_* tools with any server that speaks
+// the slice of the OpenSearch REST API used here (_search with
+// simple_query_string, _doc put/post/delete) at OPENSEARCH_ENDPOINT: in
+// production docstore (github.com/dlddu/docstore), but equally OpenSearch
+// itself. How requests are authenticated is configuration (see auth.go).
 package opensearch
 
 import (
@@ -19,10 +19,11 @@ import (
 )
 
 const (
-	// requestTimeout budgets one request end to end. docstore scales to zero
-	// behind Sablier (blocking strategy), so the first request after it went
-	// idle waits while the pod is scheduled and its EFS volume mounted — about
-	// 10-20s. 45s leaves room for that without hanging a tool call forever.
+	// requestTimeout budgets one request end to end, credential fetch included.
+	// Both production-grade backends cold-start: docstore scales to zero behind
+	// Sablier (pod scheduling + EFS mount, about 10-20s) and an OpenSearch
+	// Serverless collection at min 0 OCU takes 10-30s. 45s covers either
+	// without hanging a tool call forever.
 	requestTimeout = 45 * time.Second
 
 	// DefaultSearchSize is used when a search request does not specify a size.
@@ -135,16 +136,26 @@ type doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// Client is the live implementation of Service, talking to docstore.
+// Client is the live implementation of Service.
 type Client struct {
 	endpoint string
 	http     doer
+	auth     authenticator
 }
 
-// FromEnv builds a Client from OPENSEARCH_ENDPOINT, the docstore base URL
-// (e.g. http://docstore-external.docstore.svc.cluster.local). An unset
-// endpoint returns (nil, nil): the tools are then unavailable.
-func FromEnv(_ context.Context) (*Client, error) {
+// AuthMode reports how this client authenticates its requests.
+func (c *Client) AuthMode() AuthMode {
+	if c.auth == nil {
+		return AuthNone
+	}
+	return c.auth.mode()
+}
+
+// FromEnv builds a Client from OPENSEARCH_ENDPOINT, the backend base URL
+// (e.g. http://docstore-external.docstore.svc.cluster.local), and the
+// authentication settings read by authFromEnv. An unset endpoint returns
+// (nil, nil): the tools are then unavailable.
+func FromEnv(ctx context.Context) (*Client, error) {
 	endpoint := strings.TrimRight(os.Getenv("OPENSEARCH_ENDPOINT"), "/")
 	if endpoint == "" {
 		return nil, nil
@@ -153,7 +164,11 @@ func FromEnv(_ context.Context) (*Client, error) {
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return nil, fmt.Errorf("OPENSEARCH_ENDPOINT must be an absolute http(s) URL, got %q", endpoint)
 	}
-	return &Client{endpoint: endpoint, http: &http.Client{}}, nil
+	auth, err := authFromEnv(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{endpoint: endpoint, http: &http.Client{}, auth: auth}, nil
 }
 
 // Search runs a simple_query_string full-text query.
@@ -277,6 +292,11 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (int,
 	}
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
+	}
+	if c.auth != nil {
+		if aerr := c.auth.apply(ctx, req, body); aerr != nil {
+			return 0, nil, aerr
+		}
 	}
 
 	resp, err := c.http.Do(req)

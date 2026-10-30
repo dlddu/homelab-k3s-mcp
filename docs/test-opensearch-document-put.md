@@ -4,7 +4,7 @@
 - AC1: 문서 색인·업서트 (PRD: opensearch_document_put)
 - AC2: 인덱스 자동 생성 (PRD: opensearch_document_put)
 - AC3: 파괴적 작업 표기 (PRD: opensearch_document_put)
-- AC4: docstore 접근(클러스터 내부 HTTP, 자격증명 없음) (PRD: opensearch_document_put)
+- AC4: 백엔드 접근(OpenSearch REST 호환 · 인증 모드 설정) (PRD: opensearch_document_put)
 - AC5: 미설정 시 graceful 거부 (PRD: opensearch_document_put)
 
 ## 테스트 시나리오
@@ -41,20 +41,21 @@
 - **자동화**: Go 단위 `internal/server/mcp_test.go`
   (`TestToolsListAdvertisesOpenSearchDocumentPut`).
 
-### 시나리오 4: docstore 접근 경로(서명·자격증명 없음)
-- **사전 조건**: `OPENSEARCH_ENDPOINT`가 docstore를 가리킴(통합: `tests/k8s/kind/http-trace.yaml`
-  프록시 → `tests/k8s/kind/docstore.yaml` 실 docstore)
+### 시나리오 4: 백엔드 접근 경로(인증 모드)
+- **사전 조건**: `OPENSEARCH_ENDPOINT`가 OpenSearch REST 호환 백엔드를 가리킴(통합:
+  `tests/k8s/kind/http-trace.yaml` 프록시 → `tests/k8s/kind/docstore.yaml` 실 docstore, 인증 없음 모드)
 - **실행 단계**: 호출 후 접근 경로 확인
-- **기대 결과**: 요청이 엔드포인트의 docstore에 도달하고 `Authorization`·`X-Amz-Security-Token`
-  헤더 없이 전송된다. Sablier 대기(307 같은 URL) 응답은 본문째 재시도된다. 전송 실패는 도구
-  에러로 래핑.
+- **기대 결과**: 기본(없음) 모드는 `Authorization`·`X-Amz-Security-Token` 없이 백엔드에 도달한다.
+  basic 모드는 Basic 헤더, SigV4 모드는 `es`|`aoss` 스코프의 AssumeRole 자격증명 서명(세션 토큰
+  포함)을 싣는다. 모호한 인증 설정은 시작 시 거부된다. Sablier 대기(307 같은 URL) 응답은 본문째
+  재시도된다. 전송 실패는 도구 에러로 래핑.
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go` (경로는 3도구 공통 `do()` —
-  `TestSearchSendsUnsignedJSONRequest` — 자격증명 헤더 부재 단언,
-  `TestSearchFollowsSablierRedirectWithBody` — 307 재시도). 통합
-  `opensearch_document_put_sc4.py` — 응답만으로는 경로를 구분할 수 없으므로
-  프록시 기록을 읽어 `PUT /<index>/_doc/<id>`가 docstore 업스트림에 도달했고 `Authorization`·세션 토큰
-  헤더가 없음을 단정한다.
+  `TestSearchSendsUnsignedJSONRequest`(없음) · `TestBasicAuthSendsCredentials`(basic) ·
+  `TestSigV4SignsWithAssumedRoleCreds`(SigV4, `es`·`aoss`) · `TestFromEnvSelectsAuthMode` ·
+  `TestFromEnvRejectsAmbiguousAuth` · `TestSearchFollowsSablierRedirectWithBody`). 통합
+  `opensearch_document_put_sc4.py` — 운영과 같은 기본 모드만 돈다. 응답만으로는 경로를 구분할 수 없으므로 프록시 기록을 읽어
+  `PUT /<index>/_doc/<id>`가 docstore 업스트림에 도달했고 `Authorization`·세션 토큰 헤더가 없음을 단정한다.
 
 ### 시나리오 5: 미설정 시 도구 에러
 - **사전 조건**: `OPENSEARCH_ENDPOINT` 미설정

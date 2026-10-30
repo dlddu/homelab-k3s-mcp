@@ -91,6 +91,9 @@ spec:
             - configMapRef:
                 name: homelab-k3s-mcp-opensearch
             - secretRef:
+                name: homelab-k3s-mcp-opensearch-auth
+                optional: true
+            - secretRef:
                 name: homelab-k3s-mcp-api-keys
                 optional: true
             - secretRef:

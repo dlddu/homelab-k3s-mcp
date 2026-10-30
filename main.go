@@ -209,7 +209,7 @@ func buildOpenSearchService(ctx context.Context) opensearch.Service {
 		slog.Warn("OPENSEARCH_ENDPOINT not set: opensearch tools will return errors")
 		return opensearch.NewUnavailable("")
 	}
-	slog.Info("opensearch integration loaded")
+	slog.Info("opensearch integration loaded", "auth", client.AuthMode())
 	return client
 }
 

@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 )
 
 type fakeDoer struct {
@@ -273,6 +276,134 @@ func TestFromEnvUnsetEndpointReturnsNil(t *testing.T) {
 	}
 }
 
+func sigv4Client(doer doer, service string) *Client {
+	return &Client{
+		endpoint: "https://example." + service + ".amazonaws.com",
+		http:     doer,
+		auth: sigv4Auth{
+			region:  "ap-northeast-2",
+			service: service,
+			creds:   credentials.NewStaticCredentialsProvider("AKIDEXAMPLE", "secret", "session-token"),
+			signer:  v4.NewSigner(),
+		},
+	}
+}
+
+func TestSigV4SignsWithAssumedRoleCreds(t *testing.T) {
+	for _, service := range []string{"aoss", "es"} {
+		fake := &fakeDoer{status: http.StatusOK, body: searchResponse}
+		c := sigv4Client(fake, service)
+		if _, err := c.Search(context.Background(), "etcd backup", strPtr("runbooks"), nil); err != nil {
+			t.Fatalf("%s: Search: %v", service, err)
+		}
+		authz := fake.got.Header.Get("Authorization")
+		if !strings.HasPrefix(authz, "AWS4-HMAC-SHA256 ") ||
+			!strings.Contains(authz, "/ap-northeast-2/"+service+"/aws4_request") {
+			t.Fatalf("%s: Authorization = %q", service, authz)
+		}
+		if fake.got.Header.Get("X-Amz-Content-Sha256") == "" {
+			t.Fatalf("%s: X-Amz-Content-Sha256 header missing", service)
+		}
+		if fake.got.Header.Get("X-Amz-Security-Token") != "session-token" {
+			t.Fatalf("%s: X-Amz-Security-Token = %q", service, fake.got.Header.Get("X-Amz-Security-Token"))
+		}
+		if c.AuthMode() != AuthSigV4 {
+			t.Fatalf("%s: mode = %s", service, c.AuthMode())
+		}
+	}
+}
+
+func TestBasicAuthSendsCredentials(t *testing.T) {
+	fake := &fakeDoer{status: http.StatusOK, body: `{"_index":"n","_id":"1","result":"created"}`}
+	c := &Client{endpoint: "https://opensearch.example", http: fake, auth: basicAuth{user: "admin", pass: "pw"}}
+	if _, err := c.PutDocument(context.Background(), "n", strPtr("1"), map[string]any{"a": 1}); err != nil {
+		t.Fatalf("PutDocument: %v", err)
+	}
+	user, pass, ok := fake.got.BasicAuth()
+	if !ok || user != "admin" || pass != "pw" {
+		t.Fatalf("basic auth = %q %q %v", user, pass, ok)
+	}
+	if fake.got.Header.Get("X-Amz-Date") != "" {
+		t.Fatal("basic mode must not sign")
+	}
+	if c.AuthMode() != AuthBasic {
+		t.Fatalf("mode = %s", c.AuthMode())
+	}
+}
+
+func clearAuthEnv(t *testing.T) {
+	for _, k := range []string{"OPENSEARCH_USERNAME", "OPENSEARCH_PASSWORD", "OPENSEARCH_ROLE_ARN",
+		"OPENSEARCH_REGION", "OPENSEARCH_SIGNING_SERVICE", "OPENSEARCH_STS_ENDPOINT", "OPENSEARCH_ROLE_SESSION_NAME"} {
+		t.Setenv(k, "")
+	}
+}
+
+func TestFromEnvSelectsAuthMode(t *testing.T) {
+	clearAuthEnv(t)
+	t.Setenv("OPENSEARCH_ENDPOINT", "https://opensearch.example")
+
+	c, err := FromEnv(context.Background())
+	if err != nil || c.AuthMode() != AuthNone {
+		t.Fatalf("none: client=%v err=%v", c, err)
+	}
+
+	t.Setenv("OPENSEARCH_USERNAME", "admin")
+	t.Setenv("OPENSEARCH_PASSWORD", "pw")
+	if c, err = FromEnv(context.Background()); err != nil || c.AuthMode() != AuthBasic {
+		t.Fatalf("basic: client=%v err=%v", c, err)
+	}
+
+	clearAuthEnv(t)
+	t.Setenv("OPENSEARCH_ROLE_ARN", "arn:aws:iam::123456789012:role/opensearch")
+	t.Setenv("OPENSEARCH_REGION", "ap-northeast-2")
+	if c, err = FromEnv(context.Background()); err != nil || c.AuthMode() != AuthSigV4 {
+		t.Fatalf("sigv4: client=%v err=%v", c, err)
+	}
+	if got := c.auth.(sigv4Auth); got.service != "es" || got.region != "ap-northeast-2" {
+		t.Fatalf("sigv4 defaults = %+v", got)
+	}
+	t.Setenv("OPENSEARCH_SIGNING_SERVICE", "aoss")
+	if c, err = FromEnv(context.Background()); err != nil || c.auth.(sigv4Auth).service != "aoss" {
+		t.Fatalf("sigv4 aoss: client=%v err=%v", c, err)
+	}
+}
+
+func TestFromEnvRejectsAmbiguousAuth(t *testing.T) {
+	cases := map[string]map[string]string{
+		"username without password": {"OPENSEARCH_USERNAME": "admin"},
+		"password without username": {"OPENSEARCH_PASSWORD": "pw"},
+		"basic and sigv4": {"OPENSEARCH_USERNAME": "admin", "OPENSEARCH_PASSWORD": "pw",
+			"OPENSEARCH_ROLE_ARN": "arn:aws:iam::123456789012:role/opensearch"},
+		"unknown signing service": {"OPENSEARCH_ROLE_ARN": "arn:aws:iam::123456789012:role/opensearch",
+			"OPENSEARCH_REGION": "ap-northeast-2", "OPENSEARCH_SIGNING_SERVICE": "s3"},
+	}
+	for name, env := range cases {
+		t.Run(name, func(t *testing.T) {
+			clearAuthEnv(t)
+			t.Setenv("OPENSEARCH_ENDPOINT", "https://opensearch.example")
+			for k, v := range env {
+				t.Setenv(k, v)
+			}
+			if c, err := FromEnv(context.Background()); err == nil {
+				t.Fatalf("expected a configuration error, got client %+v", c)
+			}
+		})
+	}
+}
+
+func TestFromEnvSigV4RequiresResolvableRegion(t *testing.T) {
+	clearAuthEnv(t)
+	t.Setenv("OPENSEARCH_ENDPOINT", "https://example.aoss.amazonaws.com")
+	t.Setenv("OPENSEARCH_ROLE_ARN", "arn:aws:iam::123456789012:role/opensearch")
+	t.Setenv("AWS_REGION", "")
+	t.Setenv("AWS_DEFAULT_REGION", "")
+	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
+	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
+	if _, err := FromEnv(context.Background()); err == nil || !strings.Contains(err.Error(), "OPENSEARCH_REGION") {
+		t.Fatalf("missing region err = %v", err)
+	}
+}
+
 func TestFromEnvRejectsNonHTTPEndpoint(t *testing.T) {
 	for _, endpoint := range []string{"docstore:9200", "ftp://docstore", "http://"} {
 		t.Setenv("OPENSEARCH_ENDPOINT", endpoint)
@@ -283,6 +414,7 @@ func TestFromEnvRejectsNonHTTPEndpoint(t *testing.T) {
 }
 
 func TestFromEnvBuildsClient(t *testing.T) {
+	clearAuthEnv(t)
 	t.Setenv("OPENSEARCH_ENDPOINT", "http://docstore-external.docstore.svc.cluster.local/")
 	client, err := FromEnv(context.Background())
 	if err != nil {

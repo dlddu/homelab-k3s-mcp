@@ -39,6 +39,7 @@
   - GitHub App 설치 토큰 — 수명 약 1시간, repo 및 권한의 부분집합으로 스코프 가능
   - Grafana Cloud 토큰 — 수명 1시간, read-only(메트릭·로그)로 고정
   - AWS config — 정적 키 없이 AssumeRole로 **고정된 단일 S3 객체**만 조회
+  - OpenSearch 계열 백엔드 — AWS 관리형을 쓸 때(SigV4 모드) 정적 키 없이 AssumeRole 단명 자격증명으로 서명
   - GitHub commit status — **쓰기는 토큰으로 발급하지 않는다.** 발급 토큰 어디에도
     `statuses: write`가 실리지 않고(읽기 `statuses: read`는 발급), 쓰기는 서버 안에서
     `statuses: write` + repo 하나로 좁힌 토큰으로 도구가 대신 행사한다
@@ -90,7 +91,9 @@
 - **기반 인프라**: docstore(`dlddu/docstore`) — EFS 볼륨에 문서당 JSON 파일로 저장하는
   자체 저장소로, OpenSearch REST의 필요한 부분(`_search`·`_doc`)만 말한다. Sablier로
   scale-to-zero되어 유휴 시 파드가 없고, 클러스터 안에서만(파드 대역 허용 목록) 닿는다.
-  (2026-07-02 ~ 2026-10-30에는 OpenSearch Serverless `kubernetes-docs` 컬렉션이었다.)
+  (2026-07-02 ~ 2026-10-30에는 OpenSearch Serverless `kubernetes-docs` 컬렉션이었다.) 도구는
+  OpenSearch REST 와이어 형식만 쓰고 인증(없음·basic·SigV4)을 설정으로 고르므로, OpenSearch로
+  되돌아가는 것은 코드 변경 없는 설정 변경이다.
 - **관련 도구**: `opensearch_search`, `opensearch_document_put`,
   `opensearch_document_delete`
 
@@ -157,6 +160,7 @@
 |------|-----------|
 | 2026-06-19 | 가치 문서 최초 생성. 소유자 지정(홈랩 운영자), V1~V3 정의. |
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |
+| 2026-10-30 | V4 백엔드 중립화 — opensearch_* 도구가 인증 모드(없음·basic·SigV4)를 설정으로 고른다. OpenSearch 재이전이 설정 변경이 되고, SigV4 모드에 한해 V2 근거로 다시 묶인다. |
 | 2026-10-30 | V4 기반 인프라를 OpenSearch Serverless에서 docstore(EFS 파일 기반)로 교체 — 비용 사유. 도구 3종의 표면은 그대로이고, 그 도구들의 접근 AC가 V2(단명 자격증명)에서 V4로 옮겨 갔다(자격증명 자체가 사라짐). 새 가치 추가 없음. |
 | 2026-08-12 | V5(클러스터 내부 앱 기능의 도구화) 추가 — session-platform 제어면 연동 도구 3종의 근거 가치. 기존 `dear_baby_reset_user`를 V1에서 V5로 재배치(앱 상태 조작은 클러스터 운영이 아니라는 경계 확정)하고, V1에 경계 문구 추가. |
 | 2026-07-04 | V3 인증 서술 확장 — `/mcp`에 정적 API 키 인증(비대화형 자동화용)을 OAuth와 병행 추가(platform PRD AC7·AC8). 새 가치 추가 없음. |
