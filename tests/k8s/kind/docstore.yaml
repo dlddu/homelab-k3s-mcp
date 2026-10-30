@@ -28,7 +28,7 @@ spec:
         fsGroup: 65532
       containers:
         - name: docstore
-          image: ghcr.io/dlddu/docstore:948311eeefee755279d2fce823a1ab0538283021
+          image: ghcr.io/dlddu/docstore:59980518a71185c1dc43eb2ec34d52ae01a1555d
           env:
             - name: DATA_DIR
               value: /data
