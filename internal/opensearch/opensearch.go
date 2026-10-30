@@ -1,13 +1,13 @@
-// Package opensearch talks to an OpenSearch Serverless collection over raw
-// HTTP with SigV4 request signing (service "aoss"), using role credentials
-// assumed the way package awsconfig does.
+// Package opensearch backs the opensearch_* tools with docstore
+// (github.com/dlddu/docstore), an in-cluster document store that speaks the
+// slice of the OpenSearch REST API used here (_search with
+// simple_query_string, _doc put/post/delete). Requests are plain HTTP to
+// OPENSEARCH_ENDPOINT; there is no cloud credential or request signing.
 package opensearch
 
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,24 +16,14 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"github.com/aws/aws-sdk-go-v2/aws"
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	sdkconfig "github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
-	"github.com/aws/aws-sdk-go-v2/service/sts"
 )
 
 const (
-	defaultRoleSessionName = "homelab-k3s-mcp"
-	// requestTimeout budgets one request end to end, including the AssumeRole
-	// credential fetch. The collection is NextGen with scale-to-zero (min 0
-	// OCU), so the first request after 10 idle minutes waits while capacity is
-	// restored — AWS documents 10-30s for that, per component. 35s covers the
-	// documented worst case instead of cutting off a cold start that would have
-	// succeeded.
-	requestTimeout = 35 * time.Second
-	signingService = "aoss"
+	// requestTimeout budgets one request end to end. docstore scales to zero
+	// behind Sablier (blocking strategy), so the first request after it went
+	// idle waits while the pod is scheduled and its EFS volume mounted — about
+	// 10-20s. 45s leaves room for that without hanging a tool call forever.
+	requestTimeout = 45 * time.Second
 
 	// DefaultSearchSize is used when a search request does not specify a size.
 	DefaultSearchSize int64 = 10
@@ -105,7 +95,7 @@ type Service interface {
 	// collection; a nil size defaults to DefaultSearchSize. Sizes above
 	// MaxSearchSize are rejected.
 	Search(ctx context.Context, query string, index *string, size *int64) (*SearchResult, error)
-	// PutDocument indexes (upserts) a JSON document. A nil id lets OpenSearch
+	// PutDocument indexes (upserts) a JSON document. A nil id lets the backend
 	// generate one; the target index is auto-created on first write.
 	PutDocument(ctx context.Context, index string, id *string, document map[string]any) (*PutResult, error)
 	// DeleteDocument deletes a single document by id. A missing document (or
@@ -145,66 +135,25 @@ type doer interface {
 	Do(req *http.Request) (*http.Response, error)
 }
 
-// Client is the live SigV4-signing implementation of Service.
+// Client is the live implementation of Service, talking to docstore.
 type Client struct {
 	endpoint string
-	region   string
-	creds    aws.CredentialsProvider
-	signer   *v4.Signer
 	http     doer
 }
 
-// FromEnv builds a Client from the OPENSEARCH_* environment variables.
-//
-// OPENSEARCH_REGION sets the AWS region when the default chain does not
-// provide one (it also determines the SigV4 signing region). When
-// OPENSEARCH_STS_ENDPOINT is set, the AssumeRole call is routed to that
-// endpoint.
-func FromEnv(ctx context.Context) (*Client, error) {
-	endpoint := os.Getenv("OPENSEARCH_ENDPOINT")
+// FromEnv builds a Client from OPENSEARCH_ENDPOINT, the docstore base URL
+// (e.g. http://docstore-external.docstore.svc.cluster.local). An unset
+// endpoint returns (nil, nil): the tools are then unavailable.
+func FromEnv(_ context.Context) (*Client, error) {
+	endpoint := strings.TrimRight(os.Getenv("OPENSEARCH_ENDPOINT"), "/")
 	if endpoint == "" {
 		return nil, nil
 	}
-	roleARN := os.Getenv("OPENSEARCH_ROLE_ARN")
-	if roleARN == "" {
-		return nil, fmt.Errorf("OPENSEARCH_ROLE_ARN is required when OPENSEARCH_ENDPOINT is set")
+	u, err := url.Parse(endpoint)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, fmt.Errorf("OPENSEARCH_ENDPOINT must be an absolute http(s) URL, got %q", endpoint)
 	}
-
-	var loadOpts []func(*sdkconfig.LoadOptions) error
-	if region := os.Getenv("OPENSEARCH_REGION"); region != "" {
-		loadOpts = append(loadOpts, sdkconfig.WithRegion(region))
-	}
-
-	baseCfg, err := sdkconfig.LoadDefaultConfig(ctx, loadOpts...)
-	if err != nil {
-		return nil, fmt.Errorf("load aws config: %w", err)
-	}
-	if baseCfg.Region == "" {
-		return nil, fmt.Errorf("no AWS region resolved: set OPENSEARCH_REGION when OPENSEARCH_ENDPOINT is set")
-	}
-
-	sessionName := os.Getenv("OPENSEARCH_ROLE_SESSION_NAME")
-	if sessionName == "" {
-		sessionName = defaultRoleSessionName
-	}
-	stsEndpoint := os.Getenv("OPENSEARCH_STS_ENDPOINT")
-
-	stsClient := sts.NewFromConfig(baseCfg, func(o *sts.Options) {
-		if stsEndpoint != "" {
-			o.BaseEndpoint = aws.String(stsEndpoint)
-		}
-	})
-	provider := stscreds.NewAssumeRoleProvider(stsClient, roleARN, func(o *stscreds.AssumeRoleOptions) {
-		o.RoleSessionName = sessionName
-	})
-
-	return &Client{
-		endpoint: strings.TrimRight(endpoint, "/"),
-		region:   baseCfg.Region,
-		creds:    aws.NewCredentialsCache(provider),
-		signer:   v4.NewSigner(),
-		http:     &http.Client{},
-	}, nil
+	return &Client{endpoint: endpoint, http: &http.Client{}}, nil
 }
 
 // Search runs a simple_query_string full-text query.
@@ -328,19 +277,6 @@ func (c *Client) do(ctx context.Context, method, path string, body []byte) (int,
 	}
 	if len(body) > 0 {
 		req.Header.Set("Content-Type", "application/json")
-	}
-
-	sum := sha256.Sum256(body)
-	payloadHash := hex.EncodeToString(sum[:])
-	// OpenSearch Serverless requires the payload hash as an explicit header.
-	req.Header.Set("X-Amz-Content-Sha256", payloadHash)
-
-	creds, err := c.creds.Retrieve(ctx)
-	if err != nil {
-		return 0, nil, requestError("assume role: %v", err)
-	}
-	if err := c.signer.SignHTTP(ctx, creds, req, payloadHash, signingService, c.region, time.Now()); err != nil {
-		return 0, nil, requestError("sign request: %v", err)
 	}
 
 	resp, err := c.http.Do(req)

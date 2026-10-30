@@ -87,9 +87,10 @@
   절차 등)을 AI 어시스턴트를 통해 축적하고, 필요한 순간 자연어로 검색해 재사용한다. 이
   가치가 지향하는 방향은 **흩어진 운영 지식을 검색 가능한 한 곳에 모아, 같은 문제를 두 번
   풀지 않게 하는 것**이다.
-- **기반 인프라**: OpenSearch Serverless(NextGen) `kubernetes-docs` 컬렉션 —
-  scale-to-zero(min 0 OCU)로 유휴 시 compute 과금이 멈추고, 접근은 IAM(`aoss`)과 데이터
-  액세스 정책의 2중 레이어로 통제된다.
+- **기반 인프라**: docstore(`dlddu/docstore`) — EFS 볼륨에 문서당 JSON 파일로 저장하는
+  자체 저장소로, OpenSearch REST의 필요한 부분(`_search`·`_doc`)만 말한다. Sablier로
+  scale-to-zero되어 유휴 시 파드가 없고, 클러스터 안에서만(파드 대역 허용 목록) 닿는다.
+  (2026-07-02 ~ 2026-10-30에는 OpenSearch Serverless `kubernetes-docs` 컬렉션이었다.)
 - **관련 도구**: `opensearch_search`, `opensearch_document_put`,
   `opensearch_document_delete`
 
@@ -156,6 +157,7 @@
 |------|-----------|
 | 2026-06-19 | 가치 문서 최초 생성. 소유자 지정(홈랩 운영자), V1~V3 정의. |
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |
+| 2026-10-30 | V4 기반 인프라를 OpenSearch Serverless에서 docstore(EFS 파일 기반)로 교체 — 비용 사유. 도구 3종의 표면은 그대로이고, 그 도구들의 접근 AC가 V2(단명 자격증명)에서 V4로 옮겨 갔다(자격증명 자체가 사라짐). 새 가치 추가 없음. |
 | 2026-08-12 | V5(클러스터 내부 앱 기능의 도구화) 추가 — session-platform 제어면 연동 도구 3종의 근거 가치. 기존 `dear_baby_reset_user`를 V1에서 V5로 재배치(앱 상태 조작은 클러스터 운영이 아니라는 경계 확정)하고, V1에 경계 문구 추가. |
 | 2026-07-04 | V3 인증 서술 확장 — `/mcp`에 정적 API 키 인증(비대화형 자동화용)을 OAuth와 병행 추가(platform PRD AC7·AC8). 새 가치 추가 없음. |
 | 2026-09-12 | V1 도구 6종(`namespace_list`·`workload_list`·`workload_logs`·`pod_describe`·`workload_restart`·`workload_scale`)을 `resource_*` 도구군으로 통합·폐기. 가치의 내용은 그대로이고 수단만 좁은 도구 여럿에서 좌표 기반 도구군으로 바뀐다. 부수 효과로 `workload_scale`·`workload_restart`가 열어 두던 무승인 변경 경로가 닫혔다. |

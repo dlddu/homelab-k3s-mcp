@@ -252,6 +252,7 @@ data:
                     "query": query,
                     "host": self.headers.get("Host", ""),
                     "status": status,
+                    "authorization": self.headers.get("Authorization") is not None,
                     "sigv4": parse_sigv4(self.headers.get("Authorization")),
                     "securityToken": self.headers.get("X-Amz-Security-Token") is not None,
                     "sts": None,
@@ -361,13 +362,13 @@ spec:
           env:
             - name: TRACE_ROUTES
               value: >-
-                minio=9000=minio.minio.svc.cluster.local:9000,opensearch=9200=opensearch.opensearch.svc.cluster.local:9200
+                minio=9000=minio.minio.svc.cluster.local:9000,docstore=9200=docstore.docstore.svc.cluster.local:9200
             - name: TRACE_ADMIN_PORT
               value: "8081"
           ports:
             - name: minio
               containerPort: 9000
-            - name: opensearch
+            - name: docstore
               containerPort: 9200
             - name: admin
               containerPort: 8081
@@ -411,7 +412,7 @@ spec:
       port: 9000
       targetPort: 9000
       protocol: TCP
-    - name: opensearch
+    - name: docstore
       port: 9200
       targetPort: 9200
       protocol: TCP

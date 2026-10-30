@@ -3,20 +3,20 @@
 ## 검증 대상 AC
 - AC1: 질의 검색 (PRD: opensearch_search)
 - AC2: 결과 상한 (PRD: opensearch_search)
-- AC3: AssumeRole·SigV4 접근 (PRD: opensearch_search)
+- AC3: docstore 접근(클러스터 내부 HTTP, 자격증명 없음) (PRD: opensearch_search)
 - AC4: 미설정 시 graceful 거부 (PRD: opensearch_search)
 
 ## 테스트 시나리오
 
 ### 시나리오 1: 질의어 매칭 문서 반환
-- **사전 조건**: OpenSearch 호환 픽스처(예: 단일 노드 opensearch 컨테이너)의 `runbooks`
+- **사전 조건**: docstore 픽스처(`tests/k8s/kind/docstore.yaml`, 운영과 같은 이미지)의 `runbooks`
   인덱스에 "etcd backup" 문서와 무관한 문서를 각 1건 시드
 - **실행 단계**: `query="etcd backup"`으로 호출, 이어서 `index="runbooks"`를 지정해 재호출
 - **기대 결과**: 매칭 문서만 index·id·score·본문(`_source`)과 함께 반환되고 무관한 문서는
   미포함. index 지정 시 검색 범위가 해당 인덱스로 한정.
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
-  (`TestSearchSignsRequestWithAssumedRoleCreds` — 결과 매핑,
+  (`TestSearchSendsUnsignedJSONRequest` — 결과 매핑,
   `TestSearchWithoutIndexTargetsCollection` — 인덱스 스코프) + 통합
   `tests/integration/opensearch_search_sc1.py`
   (인덱스 2개에 매칭 2건·비매칭 1건을 시드해 컬렉션 전체 검색은 두 인덱스에서 매칭만,
@@ -29,24 +29,24 @@
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
   (`TestSearchRejectsSizeOverMaxWithoutClamping`, 기본값 10은
-  `TestSearchSignsRequestWithAssumedRoleCreds`의 요청 본문 단언) + 통합
+  `TestSearchSendsUnsignedJSONRequest`의 요청 본문 단언) + 통합
   `tests/integration/opensearch_search_sc2.py`
   (문서 12건 시드 → size 미지정에 hits 10·total 12, size=50에 12건, size=51 도구 에러).
 
-### 시나리오 3: AssumeRole → SigV4 경로(정적 키 없음)
-- **사전 조건**: 베이스 자격증명은 기본 체인, `OPENSEARCH_ROLE_ARN` 설정
+### 시나리오 3: docstore 접근 경로(서명·자격증명 없음)
+- **사전 조건**: `OPENSEARCH_ENDPOINT`가 docstore를 가리킴(통합: `tests/k8s/kind/http-trace.yaml`
+  프록시 → `tests/k8s/kind/docstore.yaml` 실 docstore)
 - **실행 단계**: 호출 후 접근 경로 확인
-- **기대 결과**: 기본 자격증명 체인 → STS AssumeRole → 단명 자격증명으로 SigV4(service
-  `aoss`) 서명 요청. 정적 키 환경변수 미사용. 서명/요청 실패는 도구 에러로 래핑.
+- **기대 결과**: 요청이 엔드포인트의 docstore에 도달하고 `Authorization`·`X-Amz-Security-Token`
+  헤더 없이 전송된다. Sablier 대기(307 같은 URL) 응답은 본문째 재시도된다. 전송 실패는 도구
+  에러로 래핑.
 - **검증 AC**: AC3
-- **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
-  (`TestSearchSignsRequestWithAssumedRoleCreds` — SigV4 `aoss` 스코프·payload 해시·
-  세션 토큰 헤더 단언). 통합
-  `opensearch_search_sc3.py` — security 플러그인이 꺼진
-  픽스처는 서명 유무를 구분하지 못하므로 도구 응답 대신
-  `tests/k8s/kind/http-trace.yaml` 프록시 기록을 읽어, `POST /<index>/_search`가
-  `aoss` 스코프로 서명됐고 그 키가 STS가 내준 키(≠ 베이스 키)이며 세션 토큰을 달고 있음을
-  단정한다.
+- **자동화**: Go 단위 `internal/opensearch/opensearch_test.go` (경로는 3도구 공통 `do()` —
+  `TestSearchSendsUnsignedJSONRequest` — 자격증명 헤더 부재 단언,
+  `TestSearchFollowsSablierRedirectWithBody` — 307 재시도). 통합
+  `opensearch_search_sc3.py` — 응답만으로는 경로를 구분할 수 없으므로
+  프록시 기록을 읽어 `POST /<index>/_search`가 docstore 업스트림에 도달했고 `Authorization`·세션 토큰
+  헤더가 없음을 단정한다.
 
 ### 시나리오 4: 미설정 시 도구 에러
 - **사전 조건**: `OPENSEARCH_ENDPOINT` 등 관련 env 미설정
@@ -54,7 +54,7 @@
 - **기대 결과**: 서버 정상, 호출만 unavailable 도구 에러
 - **검증 AC**: AC4
 - **자동화**: Go 단위 `internal/opensearch/opensearch_test.go`
-  (`TestFromEnvUnsetEndpointReturnsNil`, `TestFromEnvRequiresRoleARN`) +
+  (`TestFromEnvUnsetEndpointReturnsNil`, `TestFromEnvRejectsNonHTTPEndpoint`) +
   `internal/server/mcp_test.go` (`TestOpenSearchUnavailableReturnsToolError`) + 통합
   `tests/integration/opensearch_search_sc4.py::test_opensearch_search_ac4_unconfigured_refusal`
   (자격증명 미부착 배포 변형에서 unavailable 도구 에러 반환 + 직후 ping 정상).

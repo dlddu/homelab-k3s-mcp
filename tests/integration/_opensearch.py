@@ -5,12 +5,11 @@ opensearch-{search,document-put,document-delete} 의 AC별 전용 파일들이 �
 ``ci-<case>-<RUN_ID>`` 와 자기 질의 토큰을 만들므로, 파일끼리도 서로의 문서를 보지
 못한다 — 실행 순서에 의존하지 않는다.
 
-서버는 OPENSEARCH_ROLE_ARN 을 MinIO 의 STS 엔드포인트에 대해 assume 하고, 그 자격
-증명으로 서명한(SigV4, service "aoss") 요청을 단일 노드 OpenSearch 픽스처
-(tests/k8s/kind/opensearch.yaml, security 플러그인 비활성)로 보낸다.
+서버는 서명 없는 HTTP 요청을 http-trace 프록시를 거쳐 실 docstore 픽스처
+(tests/k8s/kind/docstore.yaml, 운영과 같은 이미지)로 보낸다.
 
-문서는 refresh 후에야(픽스처에서 ~1s) 검색된다 — 검색 단정은 기대 상태가 나타날
-때까지 폴링한다.
+docstore 는 쓰기 직후 검색에 노출하지만, 검색 단정은 그 성질에 기대지 않고 기대
+상태가 나타날 때까지 폴링한다(백엔드가 바뀌어도 단정이 깨지지 않게).
 """
 
 from __future__ import annotations
@@ -19,13 +18,8 @@ import asyncio
 import time
 import uuid
 
-# Must match the opensearch secret in .github/workflows/ci.yml.
-ROLE_ARN = "arn:aws:iam::000000000000:role/ci-opensearch"
-REGION = "us-east-1"
-
-# OpenSearch Serverless signs with the "aoss" service name
-# (internal/opensearch/opensearch.go).
-SIGNING_SERVICE = "aoss"
+# tests/k8s/kind/http-trace.yaml 의 TRACE_ROUTES 이름. docstore 로 가는 요청이 기록되는 곳이다.
+TRACE_UPSTREAM = "docstore"
 
 # 따뜻한 픽스처에 대한 재실행도 묵은 문서를 보지 않는다.
 RUN_ID = uuid.uuid4().hex[:8]
@@ -82,3 +76,30 @@ async def search_until(session, query, predicate, description, index=None, size=
 
 def hit_ids(hits):
     return {hit["id"] for hit in hits}
+
+
+def assert_unsigned_docstore_access(records, *, method, path):
+    """``method path`` 가 docstore 업스트림에 서명·자격증명 없이 도달했음을 단정한다.
+
+    도구 응답은 경로를 말해 주지 않는다 — 서명된 요청이었어도 docstore 는 똑같이 답한다.
+    그래서 프록시 기록에서 그 요청을 찾아, ``Authorization`` 헤더도 세션 토큰도 없었음을
+    본다. 반환값은 매칭된 기록(호출자가 더 단정할 수 있게).
+    """
+    matches = [
+        r for r in records
+        if r["upstream"] == TRACE_UPSTREAM and r["method"] == method and r["path"] == path
+    ]
+    assert matches, (
+        f"no {method} {path} recorded against {TRACE_UPSTREAM} — the request never "
+        f"reached the traced docstore endpoint"
+    )
+    record = matches[-1]
+    assert record["authorization"] is False, (
+        f"{method} {path} carried an Authorization header: {record}"
+    )
+    assert record["sigv4"] is None, record
+    assert record["securityToken"] is False, (
+        f"{method} {path} carried X-Amz-Security-Token: {record}"
+    )
+    assert 200 <= record["status"] < 300, record
+    return record

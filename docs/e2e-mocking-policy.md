@@ -1,7 +1,7 @@
 # E2E 모킹 최소화 정책
 
 이 레포의 E2E는 **kind 실클러스터에 `:ci` 이미지로 실서버를 배포하고, 의존 서비스도 실제
-구현체를 띄운 하네스**를 대상으로 도는 것이 기본이다 — MinIO(S3 + STS), 단일노드 OpenSearch,
+구현체를 띄운 하네스**를 대상으로 도는 것이 기본이다 — MinIO(S3 + STS), 운영과 같은 이미지의 docstore,
 실 k8s 워크로드 픽스처, 그리고 AssumeRole → SigV4 경로를 관측 가능하게 하는 http-trace
 기록 프록시.
 
@@ -26,7 +26,7 @@
 2. **충실도 저하 스위치** — 실서버·실 픽스처를 띄우되 인증·보안 계층을 꺼서 실제 배포와
    다른 구성으로 만드는 테스트 전용 설정.
 
-모킹이 **아닌** 것: MinIO·OpenSearch·workload·auth 픽스처처럼 실제 구현체가 도는 것 자체
+모킹이 **아닌** 것: MinIO·docstore·workload·auth 픽스처처럼 실제 구현체가 도는 것 자체
 (그 위에 얹힌 충실도 저하 스위치만 2번으로 센다), 그리고 http-trace 프록시 — 동작을
 치환하지 않고 **관측만 하므로** 모킹이 아니라 이 정책이 권장하는 대안 쪽이다.
 
@@ -81,11 +81,10 @@
 | `github-mock` | `UPS` | `tests/k8s/kind/github-mock.yaml` | — |
 | `grafana-mock` | `UPS` | `tests/k8s/kind/grafana-mock.yaml` | — |
 | `MCP_AUTH_DISABLED` | `GATE` | `tests/k8s/kind/kustomization.yaml` · `tests/k8s/kind/approval-variant.yaml` · `tests/k8s/kind/gate-broken-variant.yaml` | `tests/k8s/kind/auth-fixture.yaml` |
-| `DISABLE_SECURITY_PLUGIN` | `GATE` | `tests/k8s/kind/opensearch.yaml` | `tests/k8s/kind/http-trace.yaml` |
 
 <!-- /mock-exception-원장 -->
 
-등재 상한: <!-- mock-exception-상한 -->4<!-- /mock-exception-상한 -->
+등재 상한: <!-- mock-exception-상한 -->3<!-- /mock-exception-상한 -->
 
 상한은 허용목록의 행 수와 **정확히 같아야** 한다(체커 R6, 양방향). 예외를 늘리려면 같은 PR에서
 이 숫자를 명시적으로 올려야 하고, 예외가 사라지면 같이 내려야 한다 — 예외는 늘지 않는 방향으로만
@@ -229,29 +228,6 @@ VAPID 더미와 같은 판정이다.
 검증 대상이 인증이 아님을 위 표에 적어야 한다.
 
 **소멸 조건**: 기본 배포에서도 인증을 켜고 모든 e2e가 자격증명을 들고 돌 수 있게 정리되면 소멸한다.
-
-### `DISABLE_SECURITY_PLUGIN` — `GATE`
-
-**대상**: OpenSearch 픽스처(`tests/k8s/kind/opensearch.yaml`)의 security plugin.
-
-**실환경 불가 사유**: 이 픽스처가 대신하는 실 구성요소는 **AWS OpenSearch Serverless**이고,
-그 요청 인증은 AWS 관리형 front door의 **SigV4**다. 반면 `opensearchproject/opensearch` 이미지의
-security plugin은 basic auth·JWT·TLS 인증서 계열이라 **SigV4를 검증하지 못한다.** 켜면 데모
-설정과 인증서가 붙고 서버가 basic auth로 갈아타야 하는데, 그것은 프로덕션에 **없는** 메커니즘이라
-충실도가 오히려 내려가고 `opensearch-*/AC`가 검증하는 SigV4 경로 자체가 사라진다. 즉 "게이트를 켠
-별도 배포 변형"이 원리적으로 존재할 수 없다. 이 계층 자체(상류가 무서명 요청을 거부하는가)를
-검증하는 우리 쪽 AC도 없다 — 상류의 동작이지 이 제품의 표면이 아니다.
-
-**대체 검증**: `tests/k8s/kind/http-trace.yaml` — 이 완화가 가리는 성질은 "실 상류라면 무서명
-요청을 거부했을 것"이다. 픽스처가 서명·무서명을 똑같이 받아 주므로 응답으로는 접근 경로를
-구분할 수 없고, 그래서 기록 프록시가 **어떤 자격증명이 각 요청에 서명했는지**를 관측해
-`opensearch-{search/AC3,document-put/AC4,document-delete/AC4}`·`aws-config-get/AC2`가 응답이
-아니라 그 기록을 단언한다. 접근 경로를 직접 관측하는 쪽이 상류의 거부에 의존하는 것보다 강한
-검증이다.
-
-**소멸 조건**: SigV4를 실제로 검증하는 실환경 대체물(AWS 관리형 엔드포인트를 CI에서 안전하게
-쓰거나, SigV4 검증 프런트를 픽스처에 세우는 것)이 생기면 소멸한다. 그 전까지 `http-trace.yaml`이
-사라지면 이 등재의 근거가 무너지므로 체커가 CI를 실패시킨다.
 
 ## 차단 원장 (불변식 2)
 
@@ -460,7 +436,7 @@ C1~C5 안에서만이다.
    `httpx.InternalError` 가 만든다. 주입이 만드는 것은 **응답이 아니라 전제**(고유 인덱스 충돌 ·
    저장소 오류)다. 테스트는 응답 문자열을 쓰지도 읽어 흉내 내지도 않는다.
 4. **이 문서가 이미 「모킹 아님」으로 분류한 것들과 같은 축이다.** http-trace 는 동작을 치환하지
-   않고 관측만 하므로 모킹이 아니고, MinIO·OpenSearch 는 실제 구현체가 도는 것 자체라 모킹이
+   않고 관측만 하므로 모킹이 아니고, MinIO·docstore 는 실제 구현체가 도는 것 자체라 모킹이
    아니다. 주입은 관측이 아니라 개입이지만 **치환이 아니다** — 실물 구성요소가 자기 오류 분기를
    실제로 타게 만드는 결함 주입이다.
 5. **편의 목적이 아니다.** 불허 사유로 열거된 셋(실환경 준비 회피 · 어서션 단순화 · 플레이키
@@ -531,7 +507,7 @@ CI의 B2는 표 구조·필수 셀·해소 방향·재검토 형식과 90일 상
 
 "실환경 우선"이 스펙이다.
 
-- **미등재 모킹** → 카테고리에 해당하면 등재 + 주석, 아니면 실 구현체 픽스처(MinIO·OpenSearch가
+- **미등재 모킹** → 카테고리에 해당하면 등재 + 주석, 아니면 실 구현체 픽스처(MinIO·docstore가
   선례다) · kind 실 워크로드 · http-trace를 통한 관측 · 게이트를 켠 별도 배포 변형으로 대체해
   모킹을 **제거**한다.
 - **고아 등재** → 허용목록에서 지운다(상한도 같이 내린다).

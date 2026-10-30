@@ -248,15 +248,14 @@ def port_forward(
 
 # --- http-trace: asserting the access path, not just its outcome -------------
 #
-# The MinIO and OpenSearch fixtures cannot tell an assumed-role request apart
-# from one signed with the base credentials (MinIO accepts both) or from one
-# that is not signed at all (the OpenSearch fixture runs with the security
-# plugin disabled). So an e2e assertion built only on "the call succeeded"
-# passes just as happily against a server that never assumes a role — it is
-# vacuous with respect to the AssumeRole/SigV4 ACs.
+# The MinIO fixture cannot tell an assumed-role request apart from one signed
+# with the base credentials (it accepts both). So an e2e assertion built only on
+# "the call succeeded" passes just as happily against a server that never
+# assumes a role — it is vacuous with respect to the AssumeRole/SigV4 ACs.
 #
-# tests/k8s/kind/http-trace.yaml puts a recording proxy in front of both
-# upstreams. The helpers below read that recording so a test can assert which
+# tests/k8s/kind/http-trace.yaml puts a recording proxy in front of MinIO (and
+# of docstore, whose unsigned-access assertion lives in _opensearch.py). The
+# helpers below read that recording so a test can assert which
 # credential actually signed a request.
 
 # The static key pair the CI secret carries (see the aws-config secret in
@@ -323,7 +322,7 @@ def assert_assumed_role_access(
        server that skips STS entirely.
     2. **The data-plane request carries a SigV4 Authorization header** scoped
        to ``service``/``region`` and covering ``host`` — rules out an unsigned
-       request, which the security-disabled OpenSearch fixture would otherwise
+       request, which a fixture without request authentication would otherwise
        accept without complaint.
     3. **The access key that signed it is one STS handed back, and is not the
        static base key** from the CI secret, and it travels with a session

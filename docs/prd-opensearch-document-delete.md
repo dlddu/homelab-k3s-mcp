@@ -1,21 +1,19 @@
 # PRD: opensearch_document_delete
 
-OpenSearch Serverless 컬렉션(운영: `kubernetes-docs`)의 인덱스에서 지정 id의 문서 하나를
+문서 저장소 docstore(`dlddu/docstore` — OpenSearch REST 부분집합을 말하는 EFS 파일 기반 저장소, 운영: `docstore` 네임스페이스)의 인덱스에서 지정 id의 문서 하나를
 삭제하는 도구.
 
 ## 달성 가치
 - **V4: 운영 지식의 축적·검색** — 낡거나 잘못된 지식을 정리하는 삭제 경로.
-- **V2: 단명·최소권한 자격증명** — 정적 키 없이 AssumeRole 단명 자격증명으로 SigV4 서명
-  접근한다.
 - **V3: 안전한 운영(Safe-by-default)** — 파괴적 작업임을 명시하고, 노출 범위를 단일 문서
   삭제로 한정한다.
 
 ## 도구 개요
 - 입력: `index`(필수), `id`(필수)
-- 동작: SigV4(service `aoss`) 서명으로 해당 문서를 삭제하고 결과(deleted/not_found)를
+- 동작: docstore 엔드포인트에 해당 문서를 삭제하고 결과(deleted/not_found)를
   반환한다. 이 도구가 노출하는 삭제는 **단일 문서 삭제뿐**이며, 인덱스 삭제·delete-by-query는
-  노출하지 않는다(부여된 데이터 액세스 정책은 `aoss:*`이지만 도구 표면에서 범위를 좁힌다).
-- 서버 요구 설정: `OPENSEARCH_ENDPOINT`, `OPENSEARCH_ROLE_ARN` (opensearch_search와 공유)
+  노출하지 않는다(docstore 자체도 인덱스 삭제·delete-by-query를 구현하지 않는다).
+- 서버 요구 설정: `OPENSEARCH_ENDPOINT` (opensearch_search와 공유)
 - 어노테이션: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=true`,
   `openWorldHint=true`
   (idempotent=true: 같은 삭제의 재호출은 not_found로 수렴하며 상태가 동일하다)
@@ -40,12 +38,16 @@ OpenSearch Serverless 컬렉션(운영: `kubernetes-docs`)의 인덱스에서 �
 - **달성 가치**: V3
 - **검증 방법**: `tools/list` 응답의 어노테이션이 destructiveHint=true이다.
 
-### AC4: AssumeRole·SigV4 접근
-- **설명**: 베이스 자격증명은 기본 체인에서 오고, 데이터 플레인 요청은 STS AssumeRole로
-  얻은 단명 자격증명으로 SigV4 서명하여 수행한다. 정적 AWS 키를 사용하지 않는다.
-- **달성 가치**: V2
-- **검증 방법**: 접근 경로가 AssumeRole → SigV4 서명 요청이며 정적 키 환경변수에 의존하지
-  않는다.
+### AC4: docstore 접근(클러스터 내부 HTTP, 자격증명 없음)
+- **설명**: 백엔드는 `OPENSEARCH_ENDPOINT`가 가리키는 docstore이며, 데이터 플레인 요청은
+  클러스터 내부 HTTP로 서명 없이 보낸다. 서버는 이 경로를 위해 어떤 클라우드 자격증명도
+  들거나 발급받지 않는다(이전 백엔드 OpenSearch Serverless의 AssumeRole·SigV4 경로는
+  2026-10-30 제거). 운영에서 엔드포인트는 Traefik을 거치는 이름
+  (`docstore-external.docstore.svc.cluster.local`)이라 scale-to-zero된 docstore를 Sablier가
+  깨운다.
+- **달성 가치**: V4
+- **검증 방법**: 요청이 엔드포인트의 docstore에 도달하고, `Authorization`·
+  `X-Amz-Security-Token` 헤더 없이 전송된다. Sablier 대기 응답(307 같은 URL)은 본문째 재시도된다.
 
 ### AC5: 미설정 시 graceful 거부
 - **설명**: 필수 서버 설정이 없으면 unavailable 류 에러를 반환하며, 서버 기동·다른 도구에는
