@@ -124,12 +124,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # OpenSearch refuses to start when the host vm.max_map_count is below
-      # its bootstrap check; kind nodes share the runner kernel, so raise it
-      # here before the fixture is scheduled.
-      - name: Raise vm.max_map_count for the OpenSearch fixture
-        run: sudo sysctl -w vm.max_map_count=262144
-
       - name: Install kind and kubectl
         uses: helm/kind-action@v1
         with:
@@ -227,8 +221,8 @@ jobs:
       - name: Deploy grafana-mock fixture
         run: kubectl apply -f tests/k8s/kind/grafana-mock.yaml
 
-      - name: Deploy OpenSearch fixture
-        run: kubectl apply -f tests/k8s/kind/opensearch.yaml
+      - name: Deploy docstore fixture
+        run: kubectl apply -f tests/k8s/kind/docstore.yaml
 
       - name: Deploy http-trace fixture
         run: kubectl apply -f tests/k8s/kind/http-trace.yaml
@@ -315,16 +309,13 @@ jobs:
             --from-literal=GRAFANA_LOGS_USER=222222 \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      # Recording both on one proxy is what lets the opensearch *_ac*.py
-      # access-path cases correlate the key STS issued with the key that
-      # signed each data-plane request.
-      - name: Create test OpenSearch secret
+      # The endpoint is the http-trace proxy in front of docstore, so the
+      # opensearch access-path cases (opensearch_*_sc3/sc4.py) can read how each
+      # request travelled. Not a secret: the server reads it via configMapRef.
+      - name: Create test OpenSearch config
         run: |
-          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-opensearch \
+          kubectl -n homelab-k3s-mcp create configmap homelab-k3s-mcp-opensearch \
             --from-literal=OPENSEARCH_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9200 \
-            --from-literal=OPENSEARCH_ROLE_ARN=arn:aws:iam::000000000000:role/ci-opensearch \
-            --from-literal=OPENSEARCH_REGION=us-east-1 \
-            --from-literal=OPENSEARCH_STS_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
             --dry-run=client -o yaml | kubectl apply -f -
 
       - name: Deploy via kustomize (kind overlay)
@@ -410,8 +401,8 @@ jobs:
       - name: Wait for MinIO seed job
         run: kubectl -n minio wait --for=condition=complete job/minio-seed --timeout=120s
 
-      - name: Wait for OpenSearch rollout
-        run: kubectl -n opensearch rollout status deploy/opensearch --timeout=300s
+      - name: Wait for docstore rollout
+        run: kubectl -n docstore rollout status deploy/docstore --timeout=180s
 
       # Has to be ready before the first tool call: the server caches the
       # credentials it assumes, so an AssumeRole that bypassed the proxy would
@@ -597,9 +588,9 @@ jobs:
           kubectl -n grafana-mock get all -o wide || true
           kubectl -n grafana-mock describe deploy/grafana-mock || true
           kubectl -n grafana-mock logs deploy/grafana-mock --tail=200 || true
-          kubectl -n opensearch get all -o wide || true
-          kubectl -n opensearch describe deploy/opensearch || true
-          kubectl -n opensearch logs deploy/opensearch --tail=200 || true
+          kubectl -n docstore get all -o wide || true
+          kubectl -n docstore describe deploy/docstore || true
+          kubectl -n docstore logs deploy/docstore --tail=200 || true
           kubectl -n http-trace get all -o wide || true
           kubectl -n http-trace describe deploy/http-trace || true
           kubectl -n http-trace logs deploy/http-trace --tail=200 || true

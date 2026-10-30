@@ -1,21 +1,19 @@
 # PRD: opensearch_document_put
 
-OpenSearch Serverless 컬렉션(운영: `kubernetes-docs`)의 인덱스에 JSON 문서를
+문서 저장소 docstore(`dlddu/docstore` — OpenSearch REST 부분집합을 말하는 EFS 파일 기반 저장소, 운영: `docstore` 네임스페이스)의 인덱스에 JSON 문서를
 색인(업서트)하는 도구.
 
 ## 달성 가치
 - **V4: 운영 지식의 축적·검색** — 운영 문서·기록을 축적하는 쓰기 경로.
-- **V2: 단명·최소권한 자격증명** — 정적 키 없이 AssumeRole 단명 자격증명으로 SigV4 서명
-  접근한다.
 - **V3: 안전한 운영(Safe-by-default)** — 기존 문서를 덮어쓸 수 있음을 `destructiveHint`로
   명시하고, 미설정 시 graceful 거부가 기본값이다.
 
 ## 도구 개요
 - 입력: `index`(필수), `document`(필수, JSON 객체), `id`(선택 — 지정 시 해당 id로 업서트,
   미지정 시 자동 생성)
-- 동작: SigV4(service `aoss`) 서명으로 문서를 색인한다. 대상 인덱스가 없으면 색인 시 자동
-  생성된다. 결과로 index·id·result(created/updated)를 반환한다. (검색 노출은 refresh 이후)
-- 서버 요구 설정: `OPENSEARCH_ENDPOINT`, `OPENSEARCH_ROLE_ARN` (opensearch_search와 공유)
+- 동작: docstore 엔드포인트에 문서를 색인한다. 대상 인덱스가 없으면 색인 시 자동
+  생성된다. 결과로 index·id·result(created/updated)를 반환한다. (docstore는 쓰기 직후 검색에 노출된다)
+- 서버 요구 설정: `OPENSEARCH_ENDPOINT` (opensearch_search와 공유)
 - 어노테이션: `readOnlyHint=false`, `destructiveHint=true`, `idempotentHint=false`,
   `openWorldHint=true`
   (idempotent=false: id 미지정 반복 호출은 문서를 중복 생성한다)
@@ -41,12 +39,16 @@ OpenSearch Serverless 컬렉션(운영: `kubernetes-docs`)의 인덱스에 JSON 
 - **달성 가치**: V3
 - **검증 방법**: `tools/list` 응답의 어노테이션이 destructiveHint=true이다.
 
-### AC4: AssumeRole·SigV4 접근
-- **설명**: 베이스 자격증명은 기본 체인에서 오고, 데이터 플레인 요청은 STS AssumeRole로
-  얻은 단명 자격증명으로 SigV4 서명하여 수행한다. 정적 AWS 키를 사용하지 않는다.
-- **달성 가치**: V2
-- **검증 방법**: 접근 경로가 AssumeRole → SigV4 서명 요청이며 정적 키 환경변수에 의존하지
-  않는다.
+### AC4: docstore 접근(클러스터 내부 HTTP, 자격증명 없음)
+- **설명**: 백엔드는 `OPENSEARCH_ENDPOINT`가 가리키는 docstore이며, 데이터 플레인 요청은
+  클러스터 내부 HTTP로 서명 없이 보낸다. 서버는 이 경로를 위해 어떤 클라우드 자격증명도
+  들거나 발급받지 않는다(이전 백엔드 OpenSearch Serverless의 AssumeRole·SigV4 경로는
+  2026-10-30 제거). 운영에서 엔드포인트는 Traefik을 거치는 이름
+  (`docstore-external.docstore.svc.cluster.local`)이라 scale-to-zero된 docstore를 Sablier가
+  깨운다.
+- **달성 가치**: V4
+- **검증 방법**: 요청이 엔드포인트의 docstore에 도달하고, `Authorization`·
+  `X-Amz-Security-Token` 헤더 없이 전송된다. Sablier 대기 응답(307 같은 URL)은 본문째 재시도된다.
 
 ### AC5: 미설정 시 graceful 거부
 - **설명**: 필수 서버 설정이 없으면 unavailable 류 에러를 반환하며, 서버 기동·다른 도구에는

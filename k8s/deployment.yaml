@@ -88,7 +88,7 @@ spec:
                 name: homelab-k3s-mcp-aws-config
             - secretRef:
                 name: homelab-k3s-mcp-grafana
-            - secretRef:
+            - configMapRef:
                 name: homelab-k3s-mcp-opensearch
             - secretRef:
                 name: homelab-k3s-mcp-api-keys

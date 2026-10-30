@@ -5,11 +5,9 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
-
-	v4 "github.com/aws/aws-sdk-go-v2/aws/signer/v4"
-	"github.com/aws/aws-sdk-go-v2/credentials"
 )
 
 type fakeDoer struct {
@@ -33,10 +31,7 @@ func (f *fakeDoer) Do(req *http.Request) (*http.Response, error) {
 
 func testClient(doer doer) *Client {
 	return &Client{
-		endpoint: "https://example.aoss.amazonaws.com",
-		region:   "ap-northeast-2",
-		creds:    credentials.NewStaticCredentialsProvider("AKIDEXAMPLE", "secret", "session-token"),
-		signer:   v4.NewSigner(),
+		endpoint: "http://docstore.example.svc.cluster.local",
 		http:     doer,
 	}
 }
@@ -55,7 +50,7 @@ const searchResponse = `{
   }
 }`
 
-func TestSearchSignsRequestWithAssumedRoleCreds(t *testing.T) {
+func TestSearchSendsUnsignedJSONRequest(t *testing.T) {
 	fake := &fakeDoer{status: http.StatusOK, body: searchResponse}
 	c := testClient(fake)
 
@@ -65,21 +60,17 @@ func TestSearchSignsRequestWithAssumedRoleCreds(t *testing.T) {
 	}
 
 	req := fake.got
-	if req.Method != http.MethodPost || req.URL.String() != "https://example.aoss.amazonaws.com/runbooks/_search" {
+	if req.Method != http.MethodPost || req.URL.String() != "http://docstore.example.svc.cluster.local/runbooks/_search" {
 		t.Fatalf("request = %s %s", req.Method, req.URL)
 	}
-	authz := req.Header.Get("Authorization")
-	if !strings.HasPrefix(authz, "AWS4-HMAC-SHA256 ") {
-		t.Fatalf("Authorization = %q", authz)
+	if req.Header.Get("Content-Type") != "application/json" {
+		t.Fatalf("Content-Type = %q", req.Header.Get("Content-Type"))
 	}
-	if !strings.Contains(authz, "/ap-northeast-2/aoss/aws4_request") {
-		t.Fatalf("Authorization not scoped to aoss: %q", authz)
-	}
-	if req.Header.Get("X-Amz-Content-Sha256") == "" {
-		t.Fatal("X-Amz-Content-Sha256 header missing")
-	}
-	if req.Header.Get("X-Amz-Security-Token") != "session-token" {
-		t.Fatalf("X-Amz-Security-Token = %q", req.Header.Get("X-Amz-Security-Token"))
+	// docstore is reached over in-cluster HTTP: no credential travels with it.
+	for _, h := range []string{"Authorization", "X-Amz-Date", "X-Amz-Security-Token", "X-Amz-Content-Sha256"} {
+		if v := req.Header.Get(h); v != "" {
+			t.Fatalf("%s header must not be sent, got %q", h, v)
+		}
 	}
 
 	body, _ := io.ReadAll(req.Body)
@@ -282,31 +273,17 @@ func TestFromEnvUnsetEndpointReturnsNil(t *testing.T) {
 	}
 }
 
-func TestFromEnvRequiresRoleARN(t *testing.T) {
-	t.Setenv("OPENSEARCH_ENDPOINT", "https://example.aoss.amazonaws.com")
-	t.Setenv("OPENSEARCH_ROLE_ARN", "")
-	if _, err := FromEnv(context.Background()); err == nil || !strings.Contains(err.Error(), "OPENSEARCH_ROLE_ARN") {
-		t.Fatalf("missing role err = %v", err)
-	}
-}
-
-func TestFromEnvRequiresResolvableRegion(t *testing.T) {
-	t.Setenv("OPENSEARCH_ENDPOINT", "https://example.aoss.amazonaws.com")
-	t.Setenv("OPENSEARCH_ROLE_ARN", "arn:aws:iam::123456789012:role/opensearch")
-	t.Setenv("OPENSEARCH_REGION", "")
-	t.Setenv("AWS_REGION", "")
-	t.Setenv("AWS_DEFAULT_REGION", "")
-	t.Setenv("AWS_CONFIG_FILE", "/dev/null")
-	t.Setenv("AWS_SHARED_CREDENTIALS_FILE", "/dev/null")
-	if _, err := FromEnv(context.Background()); err == nil || !strings.Contains(err.Error(), "OPENSEARCH_REGION") {
-		t.Fatalf("missing region err = %v", err)
+func TestFromEnvRejectsNonHTTPEndpoint(t *testing.T) {
+	for _, endpoint := range []string{"docstore:9200", "ftp://docstore", "http://"} {
+		t.Setenv("OPENSEARCH_ENDPOINT", endpoint)
+		if _, err := FromEnv(context.Background()); err == nil || !strings.Contains(err.Error(), "OPENSEARCH_ENDPOINT") {
+			t.Fatalf("endpoint %q: err = %v", endpoint, err)
+		}
 	}
 }
 
 func TestFromEnvBuildsClient(t *testing.T) {
-	t.Setenv("OPENSEARCH_ENDPOINT", "https://example.aoss.amazonaws.com/")
-	t.Setenv("OPENSEARCH_ROLE_ARN", "arn:aws:iam::123456789012:role/opensearch")
-	t.Setenv("OPENSEARCH_REGION", "ap-northeast-2")
+	t.Setenv("OPENSEARCH_ENDPOINT", "http://docstore-external.docstore.svc.cluster.local/")
 	client, err := FromEnv(context.Background())
 	if err != nil {
 		t.Fatalf("err = %v", err)
@@ -314,10 +291,39 @@ func TestFromEnvBuildsClient(t *testing.T) {
 	if client == nil {
 		t.Fatal("client = nil")
 	}
-	if client.endpoint != "https://example.aoss.amazonaws.com" {
+	if client.endpoint != "http://docstore-external.docstore.svc.cluster.local" {
 		t.Fatalf("endpoint = %q (trailing slash should be trimmed)", client.endpoint)
 	}
-	if client.region != "ap-northeast-2" {
-		t.Fatalf("region = %q", client.region)
+}
+
+// When docstore is asleep, Sablier's blocking strategy holds the request and,
+// past its timeout, answers 307 to the same URL. The client must replay the
+// request, body included.
+func TestSearchFollowsSablierRedirectWithBody(t *testing.T) {
+	var calls int
+	var lastBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		b, _ := io.ReadAll(r.Body)
+		lastBody = string(b)
+		if calls == 1 {
+			http.Redirect(w, r, r.URL.String(), http.StatusTemporaryRedirect)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, searchResponse)
+	}))
+	defer srv.Close()
+
+	c := &Client{endpoint: srv.URL, http: srv.Client()}
+	result, err := c.Search(context.Background(), "etcd", nil, nil)
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if calls != 2 || !strings.Contains(lastBody, `"query":"etcd"`) {
+		t.Fatalf("calls = %d, replayed body = %q", calls, lastBody)
+	}
+	if result.Total != 2 {
+		t.Fatalf("result = %+v", result)
 	}
 }
