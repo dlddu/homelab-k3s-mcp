@@ -72,7 +72,7 @@ func (s *KubeService) PortForwardResource(ctx context.Context, ref PortForwardRe
 		Namespace(namespace).
 		SubResource("portforward")
 
-	transport, upgrader, err := spdy.RoundTripperFor(s.config)
+	transport, upgrader, err := spdy.RoundTripperFor(s.upgradeConfig())
 	if err != nil {
 		return nil, APIError(err.Error())
 	}

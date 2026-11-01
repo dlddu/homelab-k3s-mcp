@@ -95,3 +95,16 @@ func Handler(h http.Handler, skipPaths ...string) http.Handler {
 		}),
 	)
 }
+
+// KubeTransport wraps a client-go transport so API requests get client
+// spans named "k8s METHOD path". Use it only on configs for plain
+// request/response calls: exec, attach and port-forward upgrade the
+// connection to SPDY and must keep an unwrapped config, since the wrapper
+// replaces the response body the upgrade hijacks.
+func KubeTransport(rt http.RoundTripper) http.RoundTripper {
+	return otelhttp.NewTransport(rt,
+		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string {
+			return "k8s " + r.Method + " " + r.URL.Path
+		}),
+	)
+}

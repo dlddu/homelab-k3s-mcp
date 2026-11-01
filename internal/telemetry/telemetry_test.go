@@ -80,3 +80,24 @@ func TestSetupIsNoopWithoutEndpoint(t *testing.T) {
 		t.Error("Setup replaced http.DefaultTransport while tracing is disabled")
 	}
 }
+
+func TestKubeTransportNamesClientSpans(t *testing.T) {
+	rec := withRecorder(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
+	t.Cleanup(srv.Close)
+
+	client := &http.Client{Transport: KubeTransport(http.DefaultTransport)}
+	resp, err := client.Get(srv.URL + "/api/v1/namespaces/default/pods")
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	_ = resp.Body.Close()
+
+	spans := rec.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("got %d spans, want 1", len(spans))
+	}
+	if got, want := spans[0].Name(), "k8s GET /api/v1/namespaces/default/pods"; got != want {
+		t.Errorf("span name = %q, want %q", got, want)
+	}
+}
