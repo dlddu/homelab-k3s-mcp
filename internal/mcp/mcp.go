@@ -15,6 +15,7 @@ import (
 
 	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
+	"github.com/dlddu/homelab-k3s-mcp/internal/drop"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
@@ -46,6 +47,7 @@ type Handler struct {
 	opensearch      opensearch.Service
 	sessionPlatform sessionplatform.Service
 	pocketAide      pocketaide.Service
+	drop            drop.Service
 
 	// gate is never nil — an unconfigured deployment gets a gate that refuses.
 	gate approvalgate.Gate
@@ -119,6 +121,15 @@ func WithPocketAide(svc pocketaide.Service) Option {
 	}
 }
 
+// WithDrop 은 drop 토큰 교환 클라이언트를 설치한다.
+func WithDrop(svc drop.Service) Option {
+	return func(h *Handler) {
+		if svc != nil {
+			h.drop = svc
+		}
+	}
+}
+
 // WithEventSink routes tool-call records somewhere other than the default
 // log.
 func WithEventSink(sink eventlog.Sink) Option {
@@ -139,6 +150,7 @@ func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Servi
 		opensearch:      osSvc,
 		sessionPlatform: sessionSvc,
 		pocketAide:      pocketaide.NewUnavailable(""),
+		drop:            drop.NewUnavailable(""),
 		gate:            approvalgate.NewUnavailable(nil),
 		gateReader:      k8s.NewUnavailableTargetReader("the approval gate has no kubernetes client to read a target with"),
 		sensitiveKinds:  []string{defaultSensitiveKind},

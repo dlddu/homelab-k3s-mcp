@@ -224,6 +224,9 @@ jobs:
       - name: Deploy docstore fixture
         run: kubectl apply -f tests/k8s/kind/docstore.yaml
 
+      - name: Deploy drop fixture
+        run: kubectl apply -f tests/k8s/kind/drop.yaml
+
       - name: Deploy http-trace fixture
         run: kubectl apply -f tests/k8s/kind/http-trace.yaml
 
@@ -403,6 +406,9 @@ jobs:
 
       - name: Wait for docstore rollout
         run: kubectl -n docstore rollout status deploy/docstore --timeout=180s
+
+      - name: Wait for drop rollout
+        run: kubectl -n drop rollout status deploy/drop --timeout=180s
 
       # Has to be ready before the first tool call: the server caches the
       # credentials it assumes, so an AssumeRole that bypassed the proxy would
@@ -591,6 +597,9 @@ jobs:
           kubectl -n docstore get all -o wide || true
           kubectl -n docstore describe deploy/docstore || true
           kubectl -n docstore logs deploy/docstore --tail=200 || true
+          kubectl -n drop get all -o wide || true
+          kubectl -n drop describe deploy/drop || true
+          kubectl -n drop logs deploy/drop --tail=200 || true
           kubectl -n http-trace get all -o wide || true
           kubectl -n http-trace describe deploy/http-trace || true
           kubectl -n http-trace logs deploy/http-trace --tail=200 || true

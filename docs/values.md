@@ -40,11 +40,13 @@
   - Grafana Cloud 토큰 — 수명 1시간, read-only(메트릭·로그)로 고정
   - AWS config — 정적 키 없이 AssumeRole로 **고정된 단일 S3 객체**만 조회
   - OpenSearch 계열 백엔드 — AWS 관리형을 쓸 때(SigV4 모드) 정적 키 없이 AssumeRole 단명 자격증명으로 서명
+  - drop 파일 공유 토큰 — 수명 기본 1시간(최대 24시간), drop 안에서만 쓰이는 API 키. 서버의 베이스
+    자격증명은 audience `drop` 으로 좁힌 ServiceAccount 토큰이고 공유 비밀이 없다
   - GitHub commit status — **쓰기는 토큰으로 발급하지 않는다.** 발급 토큰 어디에도
     `statuses: write`가 실리지 않고(읽기 `statuses: read`는 발급), 쓰기는 서버 안에서
     `statuses: write` + repo 하나로 좁힌 토큰으로 도구가 대신 행사한다
 - **관련 도구**: `github_app_installation_token`, `grafana_token`, `aws_config_get`,
-  `github_commit_status_create`
+  `github_commit_status_create`, `drop_token_issue`
 - **원칙 (2026-09-19 추가)**: 권한을 **토큰째 내주는 것**과 **도구가 좁은 동작으로 대신 행사하는
   것**은 다르다. 한 권한이 다른 시스템의 판정을 위조할 수 있으면(예: 필수 status 검사) 앞의 방식에서
   빼고 뒤의 방식으로만 연다.
@@ -108,7 +110,7 @@
 - **경계**: V1이 쿠버네티스 API 자체를 다루는 반면, V5는 클러스터 안에서 돌고 있는 앱의
   도메인 기능을 다룬다. 같은 `kubectl exec`을 쓰더라도 목적이 앱 상태 조작이면 V5다.
 - **관련 도구**: `dear_baby_reset_user`, `session_create`, `session_list`, `session_read`,
-  `session_write`, `session_delete`, `pocket_aide_notification_send`
+  `session_write`, `session_delete`, `pocket_aide_notification_send`, `drop_token_issue`
 
 ### V6: 서버 운영 통계
 
@@ -158,6 +160,7 @@
 
 | 시점 | 변경 내용 |
 |------|-----------|
+| 2026-11-01 | V5·V2 관련 도구에 `drop_token_issue` 추가, V2 측정 목표에 drop 토큰 수명 추가 — 클러스터 안의 파일 공유 서비스 drop 의 서비스 계정 교환을 도구로 연다. 새 가치 추가 없음 — 앱 기능의 도구화(V5)·단명 자격증명(V2)·기본값 안전(V3, 파일 내용이 도구를 지나지 않음·미설정 거부)의 구현체다. |
 | 2026-06-19 | 가치 문서 최초 생성. 소유자 지정(홈랩 운영자), V1~V3 정의. |
 | 2026-07-02 | V4(운영 지식의 축적·검색) 추가 — OpenSearch Serverless `kubernetes-docs` 연동 도구 3종의 근거 가치. |
 | 2026-10-30 | V4 백엔드 중립화 — opensearch_* 도구가 인증 모드(없음·basic·SigV4)를 설정으로 고른다. OpenSearch 재이전이 설정 변경이 되고, SigV4 모드에 한해 V2 근거로 다시 묶인다. |

@@ -287,3 +287,18 @@ is refused before sending). PocketAide stores it with the notification next to
 the registered caller; it is not verified, and the authenticated principal stays
 in this server's event log. See `docs/prd-pocket-aide-notification-send.md`
 (AC5).
+
+## File share (drop)
+
+`drop_token_issue` issues a short-lived API token for
+[drop](https://github.com/dlddu/drop), the homelab file share. It never moves
+file contents: the tool returns the token and curl command templates, and the
+agent uploads and downloads with `curl` in its shell (downloads saved with
+`-o`). File bytes passed through tool arguments or results would land in the
+conversation context, which is what the owner decided to avoid. The server
+reaches drop at `DROP_URL` and authenticates with its own ServiceAccount token,
+projected by `k8s/deployment.yaml` for the audience `drop`, so there is no shared
+secret. On the drop side, `SA_ALLOW` must list `homelab-k3s-mcp/homelab-k3s-mcp`,
+and drop's ServiceAccount must be bound to `system:auth-delegator`. Without
+`DROP_URL` the tool refuses and everything else keeps working. See
+`docs/prd-drop-token-issue.md`.

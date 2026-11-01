@@ -38,6 +38,8 @@ patches:
                     value: "1"
                   - name: OTEL_EXPORTER_OTLP_ENDPOINT
                     value: ""
+                  - name: DROP_URL
+                    value: http://drop.drop.svc.cluster.local
 
 configMapGenerator:
   - name: homelab-k3s-mcp-oauth

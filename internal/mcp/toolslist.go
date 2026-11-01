@@ -1030,6 +1030,41 @@ const toolsListJSON = `{
         "idempotentHint": false,
         "openWorldHint": true
       }
+    },
+    {
+      "name": "drop_token_issue",
+      "description": "Issue a short-lived API token for drop (dlddu/drop), the homelab file share that keeps files up to 30 days and hands them out by id + password. This tool ONLY issues the token: it never sends or receives file contents, and it has no file or content parameter. Do the actual upload and download yourself with curl in a shell, using the command templates returned in usage (export DROP_TOKEN once from usage.setup, then run the commands), and always save downloads to disk with -o — file bytes passing through tool arguments or results would be dumped into the conversation context and burn it, so they must move only through curl. Returns token, expires_at (call again once it passes), max_days (the longest retention a drop made with this token may ask for), base_url (where to send the curl requests), created_by and usage. Each call creates a new token on drop. Requires DROP_URL on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "valid_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440,
+            "default": 60,
+            "description": "How long the token stays valid, in minutes. Defaults to 60."
+          },
+          "max_days": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "description": "Optional cap on how many days a drop uploaded with this token may be kept. Defaults to drop's own maximum (30)."
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Optional label drop records with the token, e.g. what the upload is for. 40 characters or fewer."
+          }
+        },
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Issue drop Token",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
     }
   ]
 }`
