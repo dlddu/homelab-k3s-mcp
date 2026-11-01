@@ -1,0 +1,118 @@
+# 실물 drop(dlddu/drop) — drop_token_issue e2e(drop_token_issue_sc*.py)의 상대.
+#
+# 운영과 갈리는 곳:
+#   * 운영은 drop-external(ExternalName → Traefik → Sablier) 뒤에서 잠들지만 kind 에는 Traefik·Sablier 가
+#     없다. 그래서 kind 오버레이(kustomization.yaml)가 DROP_URL 을 이 Service 로 바로 돌린다.
+#   * PUBLIC_BASE_URL 은 공개 주소 대신 이 Service 의 클러스터 주소다. 러너는 포트포워드로 닿으므로
+#     e2e 가 응답의 base_url 을 그 주소와 대조한 뒤 로컬 포워드 주소로 바꿔 curl 을 돌린다.
+#   * SA_ALLOW 는 주 배포(kind 오버레이의 네임스페이스도 homelab-k3s-mcp 다)의 ServiceAccount 하나뿐이다.
+#
+# 이미지는 SHA 로 고정한다. 올릴 때는 dlddu/drop main 의 커밋 SHA 로 바꾸고, 그 커밋의 CI 가 같은 태그를
+# GHCR 에 발행했는지(`docker manifest inspect`) 먼저 확인할 것 — 이 줄이 그 의존의 유일한 핀이다.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: drop
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: drop
+  namespace: drop
+---
+# drop 은 받은 ServiceAccount 토큰을 TokenReview 로 확인한다. 이 바인딩이 없으면 교환이 502 다.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: drop:tokenreview
+  labels:
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+  - kind: ServiceAccount
+    name: drop
+    namespace: drop
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: drop
+  namespace: drop
+  labels:
+    app.kubernetes.io/name: drop
+    app.kubernetes.io/part-of: homelab-k3s-mcp-tests
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: drop
+  template:
+    metadata:
+      labels:
+        app: drop
+    spec:
+      serviceAccountName: drop
+      securityContext:
+        runAsNonRoot: true
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: drop
+          image: ghcr.io/dlddu/drop:4360deffa833b3d06aec45330af864cb5e2d831f
+          env:
+            - name: DATA_DIR
+              value: /data
+            - name: SA_ALLOW
+              value: homelab-k3s-mcp/homelab-k3s-mcp
+            - name: PUBLIC_BASE_URL
+              value: http://drop.drop.svc.cluster.local
+          ports:
+            - name: http
+              containerPort: 8080
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 2
+            failureThreshold: 30
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+      volumes:
+        - name: data
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: drop
+  namespace: drop
+spec:
+  selector:
+    app: drop
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      protocol: TCP

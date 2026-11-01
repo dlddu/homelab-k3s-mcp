@@ -205,6 +205,13 @@ var toolRegistry = map[string]toolEntry{
 		}},
 		handle: (*Handler).pocketAideNotificationSend,
 	},
+	"drop_token_issue": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "issues a drop (file share) token; reaches drop, never the apiserver",
+		}},
+		handle: (*Handler).dropTokenIssue,
+	},
 	"opensearch_search": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
 			kind:   touchesNothing,

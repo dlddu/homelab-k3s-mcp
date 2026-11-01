@@ -87,6 +87,11 @@ spec:
             # 통과한다 — 등록이 없으면 게이트 대상 호출은 401 로 전부 거부된다(fail-closed).
             - name: APPROVAL_GATE_URL
               value: http://pocket-aide.pocket-aide.svc.cluster.local:8080
+            # drop_token_issue(prd-drop-token-issue)의 상대. ExternalName → Traefik → Sablier 를 거치므로
+            # 잠든 drop 을 깨우는 첫 호출은 10~20초 붙잡힌다. 인증은 아래 drop-token 볼륨이고, drop 의
+            # SA_ALLOW 에 `homelab-k3s-mcp/homelab-k3s-mcp` 가 없으면 발급이 403 으로 거부된다.
+            - name: DROP_URL
+              value: http://drop-external.drop.svc.cluster.local
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth
@@ -113,6 +118,9 @@ spec:
           volumeMounts:
             - name: pocket-aide-token
               mountPath: /var/run/secrets/pocket-aide
+              readOnly: true
+            - name: drop-token
+              mountPath: /var/run/secrets/drop
               readOnly: true
           startupProbe:
             httpGet:
@@ -156,5 +164,14 @@ spec:
             sources:
               - serviceAccountToken:
                   audience: pocket-aide
+                  expirationSeconds: 3600
+                  path: token
+        # audience 는 drop 의 SA_TOKEN_AUDIENCE(기본 drop)와 같아야 한다. pocket-aide 토큰을 같이 쓰지
+        # 않는 이유도 위와 같다 — 받은 쪽이 그 토큰으로 PocketAide 에 이 서버로 행세할 수 있다.
+        - name: drop-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: drop
                   expirationSeconds: 3600
                   path: token

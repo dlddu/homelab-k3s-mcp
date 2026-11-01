@@ -37,6 +37,7 @@ K8S_REFUSAL = "kubernetes client unavailable: kubernetes integration is disabled
 POCKET_AIDE_REFUSAL = (
     "pocket-aide unavailable: PocketAide is not configured (APPROVAL_GATE_URL)"
 )
+DROP_REFUSAL = "drop unavailable: drop is not configured (DROP_URL)"
 
 
 async def assert_unavailable_refusal(

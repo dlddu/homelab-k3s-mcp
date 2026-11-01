@@ -15,6 +15,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/approvalgate"
 	"github.com/dlddu/homelab-k3s-mcp/internal/auth"
 	"github.com/dlddu/homelab-k3s-mcp/internal/awsconfig"
+	"github.com/dlddu/homelab-k3s-mcp/internal/drop"
 	"github.com/dlddu/homelab-k3s-mcp/internal/eventlog"
 	"github.com/dlddu/homelab-k3s-mcp/internal/github"
 	"github.com/dlddu/homelab-k3s-mcp/internal/grafana"
@@ -84,6 +85,7 @@ func main() {
 	osSvc := buildOpenSearchService(ctx)
 	sessionSvc := buildSessionPlatformService()
 	pocketAideSvc := buildPocketAideService()
+	dropSvc := buildDropService()
 	gate, gatedKinds := buildGate()
 	gateReader := buildGateReader(k8sSvc)
 	gateCollectionReader := buildGateCollectionReader(k8sSvc)
@@ -95,7 +97,7 @@ func main() {
 	app := server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc,
 		mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader),
 		mcp.WithGateCollectionReader(gateCollectionReader), mcp.WithEventSink(sink),
-		mcp.WithPocketAide(pocketAideSvc))
+		mcp.WithPocketAide(pocketAideSvc), mcp.WithDrop(dropSvc))
 	srv := &http.Server{
 		Addr:    addr,
 		Handler: telemetry.Handler(app, "/healthz", "/readyz"),
@@ -250,6 +252,20 @@ func buildPocketAideService() pocketaide.Service {
 		return pocketaide.NewUnavailable("")
 	}
 	slog.Info("pocket-aide notifications enabled")
+	return client
+}
+
+func buildDropService() drop.Service {
+	client, err := drop.FromEnv()
+	if err != nil {
+		slog.Error("failed to initialize drop client; drop_token_issue will return errors", "error", err)
+		return drop.NewUnavailable(err.Error())
+	}
+	if client == nil {
+		slog.Warn("DROP_URL not set: drop_token_issue will return errors")
+		return drop.NewUnavailable("")
+	}
+	slog.Info("drop token exchange enabled")
 	return client
 }
 
