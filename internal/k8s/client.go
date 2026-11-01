@@ -14,15 +14,18 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
 	utilexec "k8s.io/client-go/util/exec"
+
+	"github.com/dlddu/homelab-k3s-mcp/internal/telemetry"
 )
 
 const fieldManager = "homelab-k3s-mcp"
 
 // KubeService is the live kubernetes-backed implementation of Service.
 type KubeService struct {
-	clientset kubernetes.Interface
-	config    *rest.Config
-	mappers   mapperCache
+	clientset    kubernetes.Interface
+	config       *rest.Config
+	streamConfig *rest.Config
+	mappers      mapperCache
 }
 
 // New builds a KubeService from the in-cluster config, falling back to the
@@ -39,11 +42,21 @@ func New() (*KubeService, error) {
 		}
 	}
 
+	streamConfig := rest.CopyConfig(config)
+	config.Wrap(telemetry.KubeTransport)
+
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		return nil, unavailableErr(fmt.Sprintf("init kube client: %v", err))
 	}
-	return &KubeService{clientset: clientset, config: config}, nil
+	return &KubeService{clientset: clientset, config: config, streamConfig: streamConfig}, nil
+}
+
+func (s *KubeService) upgradeConfig() *rest.Config {
+	if s.streamConfig != nil {
+		return s.streamConfig
+	}
+	return s.config
 }
 
 func (s *KubeService) ExecInPod(ctx context.Context, namespace, labelSelector string, container *string, command []string) (*ExecOutcome, error) {
@@ -80,7 +93,7 @@ func (s *KubeService) ExecInPod(ctx context.Context, namespace, labelSelector st
 		SubResource("exec").
 		VersionedParams(execOpts, scheme.ParameterCodec)
 
-	executor, err := remotecommand.NewSPDYExecutor(s.config, "POST", req.URL())
+	executor, err := remotecommand.NewSPDYExecutor(s.upgradeConfig(), "POST", req.URL())
 	if err != nil {
 		return nil, APIError(err.Error())
 	}

@@ -70,7 +70,7 @@ func (s *KubeService) AttachResource(ctx context.Context, ref AttachRef, contain
 		SubResource("attach").
 		VersionedParams(attachOpts, scheme.ParameterCodec)
 
-	attacher, err := remotecommand.NewSPDYExecutor(s.config, "POST", req.URL())
+	attacher, err := remotecommand.NewSPDYExecutor(s.upgradeConfig(), "POST", req.URL())
 	if err != nil {
 		return nil, APIError(err.Error())
 	}

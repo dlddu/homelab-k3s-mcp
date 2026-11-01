@@ -67,6 +67,14 @@ spec:
               value: 0.0.0.0:9090
             - name: LOG_LEVEL
               value: info
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: http://alloy.alloy.svc.cluster.local:4318
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: k8s.namespace.name=$(POD_NAMESPACE)
             - name: SESSION_PLATFORM_ENDPOINT
               value: http://control-plane.session-platform.svc.cluster.local
             # 여기 있는 값이 운영의 단일 출처다 — homelab-k3s-mcp-github-app Secret 에

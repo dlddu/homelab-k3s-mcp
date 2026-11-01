@@ -25,6 +25,7 @@ import (
 	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 	"github.com/dlddu/homelab-k3s-mcp/internal/server"
 	"github.com/dlddu/homelab-k3s-mcp/internal/sessionplatform"
+	"github.com/dlddu/homelab-k3s-mcp/internal/telemetry"
 	"github.com/dlddu/homelab-k3s-mcp/internal/version"
 )
 
@@ -37,6 +38,13 @@ func main() {
 	}
 
 	ctx := context.Background()
+
+	shutdownTracing, err := telemetry.Setup(ctx, version.Name, version.Version)
+	if err != nil {
+		slog.Error("tracing setup failed; continuing without traces", "error", err)
+	} else if telemetry.Enabled() {
+		slog.Info("tracing enabled")
+	}
 
 	authCfg, err := auth.FromEnv(ctx)
 	if err != nil {
@@ -84,12 +92,13 @@ func main() {
 		authCfg.RecordTo(sink)
 	}
 
+	app := server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc,
+		mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader),
+		mcp.WithGateCollectionReader(gateCollectionReader), mcp.WithEventSink(sink),
+		mcp.WithPocketAide(pocketAideSvc))
 	srv := &http.Server{
-		Addr: addr,
-		Handler: server.App(authCfg, k8sSvc, ghSvc, awsSvc, grafanaSvc, osSvc, sessionSvc,
-			mcp.WithGate(gate, gatedKinds), mcp.WithGateReader(gateReader),
-			mcp.WithGateCollectionReader(gateCollectionReader), mcp.WithEventSink(sink),
-			mcp.WithPocketAide(pocketAideSvc)),
+		Addr:    addr,
+		Handler: telemetry.Handler(app, "/healthz", "/readyz"),
 	}
 	metricsSrv := buildMetricsServer(surface)
 
@@ -123,6 +132,9 @@ func main() {
 	}
 	if metricsSrv != nil {
 		_ = metricsSrv.Shutdown(timeoutCtx)
+	}
+	if err := shutdownTracing(timeoutCtx); err != nil {
+		slog.Error("tracing shutdown failed", "error", err)
 	}
 }
 

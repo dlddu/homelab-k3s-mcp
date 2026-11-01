@@ -18,6 +18,8 @@ import (
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+
+	"github.com/dlddu/homelab-k3s-mcp/internal/telemetry"
 )
 
 const (
@@ -134,6 +136,7 @@ func FromEnv(ctx context.Context) (*Client, error) {
 	endpoint := os.Getenv("AWS_CONFIG_S3_ENDPOINT")
 
 	stsClient := sts.NewFromConfig(baseCfg, func(o *sts.Options) {
+		o.TracerProvider = telemetry.AWSTracerProvider()
 		if endpoint != "" {
 			o.BaseEndpoint = aws.String(endpoint)
 		}
@@ -146,6 +149,7 @@ func FromEnv(ctx context.Context) (*Client, error) {
 	})
 
 	s3Client := s3.NewFromConfig(baseCfg, func(o *s3.Options) {
+		o.TracerProvider = telemetry.AWSTracerProvider()
 		o.Credentials = aws.NewCredentialsCache(provider)
 		if endpoint != "" {
 			o.BaseEndpoint = aws.String(endpoint)

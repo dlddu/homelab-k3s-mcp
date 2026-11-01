@@ -128,7 +128,7 @@ func (s *KubeService) ExecResource(ctx context.Context, ref ExecRef, container *
 		SubResource("exec").
 		VersionedParams(execOpts, scheme.ParameterCodec)
 
-	executor, err := remotecommand.NewSPDYExecutor(s.config, "POST", req.URL())
+	executor, err := remotecommand.NewSPDYExecutor(s.upgradeConfig(), "POST", req.URL())
 	if err != nil {
 		return nil, APIError(err.Error())
 	}

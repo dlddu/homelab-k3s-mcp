@@ -36,6 +36,8 @@ patches:
                     value: homelab-k3s-mcp/
                   - name: APPROVAL_GATE_POLL_INTERVAL_SECONDS
                     value: "1"
+                  - name: OTEL_EXPORTER_OTLP_ENDPOINT
+                    value: ""
 
 configMapGenerator:
   - name: homelab-k3s-mcp-oauth
