@@ -21,6 +21,8 @@ import (
 	"net/http"
 	"os"
 
+	"github.com/aws/smithy-go/tracing"
+	"github.com/aws/smithy-go/tracing/smithyoteltracing"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -107,4 +109,14 @@ func KubeTransport(rt http.RoundTripper) http.RoundTripper {
 			return "k8s " + r.Method + " " + r.URL.Path
 		}),
 	)
+}
+
+// AWSTracerProvider returns the global tracer provider in the form the AWS
+// SDK's built-in tracing takes. Set it on each service client's Options
+// (TracerProvider) so its calls (S3, STS, credential refreshes) get client
+// spans: the SDK builds its own HTTP client, so the http.DefaultTransport
+// wrapper in Setup does not reach it. Call it after Setup, which installs the
+// provider this captures.
+func AWSTracerProvider() tracing.TracerProvider {
+	return smithyoteltracing.Adapt(otel.GetTracerProvider())
 }

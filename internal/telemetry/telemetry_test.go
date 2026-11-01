@@ -1,11 +1,15 @@
 package telemetry
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -100,4 +104,32 @@ func TestKubeTransportNamesClientSpans(t *testing.T) {
 	if got, want := spans[0].Name(), "k8s GET /api/v1/namespaces/default/pods"; got != want {
 		t.Errorf("span name = %q, want %q", got, want)
 	}
+}
+
+func TestAWSTracerProviderRecordsSDKCalls(t *testing.T) {
+	rec := withRecorder(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	t.Cleanup(srv.Close)
+
+	client := sts.New(sts.Options{
+		Region:           "ap-northeast-2",
+		BaseEndpoint:     aws.String(srv.URL),
+		Credentials:      credentials.NewStaticCredentialsProvider("AKID", "SECRET", ""),
+		RetryMaxAttempts: 1,
+		TracerProvider:   AWSTracerProvider(),
+	})
+	_, _ = client.GetCallerIdentity(context.Background(), &sts.GetCallerIdentityInput{})
+
+	var names []string
+	for _, s := range rec.Ended() {
+		names = append(names, s.Name())
+	}
+	for _, n := range names {
+		if strings.Contains(n, "GetCallerIdentity") {
+			return
+		}
+	}
+	t.Errorf("no span for the STS call; got %v", names)
 }

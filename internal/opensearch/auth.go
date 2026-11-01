@@ -14,6 +14,8 @@ import (
 	sdkconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials/stscreds"
 	"github.com/aws/aws-sdk-go-v2/service/sts"
+
+	"github.com/dlddu/homelab-k3s-mcp/internal/telemetry"
 )
 
 // AuthMode names how requests to the backend are authenticated. It is chosen
@@ -138,6 +140,7 @@ func sigv4FromEnv(ctx context.Context, roleARN string) (authenticator, error) {
 	}
 	stsEndpoint := os.Getenv("OPENSEARCH_STS_ENDPOINT")
 	stsClient := sts.NewFromConfig(baseCfg, func(o *sts.Options) {
+		o.TracerProvider = telemetry.AWSTracerProvider()
 		if stsEndpoint != "" {
 			o.BaseEndpoint = aws.String(stsEndpoint)
 		}
