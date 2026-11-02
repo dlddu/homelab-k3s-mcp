@@ -263,46 +263,57 @@ jobs:
       - name: Create homelab-k3s-mcp namespace
         run: kubectl create namespace homelab-k3s-mcp --dry-run=client -o yaml | kubectl apply -f -
 
+      # 운영과 같이 개인키만 Secret, 나머지(ID·API 주소·context 접두사)는 ConfigMap 으로 나눈다.
       - name: Create test GitHub App secret
         run: |
           openssl genrsa -out /tmp/github-app-test-key.pem 2048
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-github-app \
+            --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp create configmap homelab-k3s-mcp-github-app-config \
             --from-literal=GITHUB_APP_CLIENT_ID=Iv1.testclientid12345 \
             --from-literal=GITHUB_APP_INSTALLATION_ID=67890 \
             --from-literal=GITHUB_API_BASE_URL=http://github-mock.github-mock.svc.cluster.local \
             --from-literal=GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES=homelab-k3s-mcp/ \
-            --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
           # Secrets are namespaced, so it is minted here from the same key rather
           # than copied.
           kubectl create namespace homelab-k3s-mcp-commit-status-variant --dry-run=client -o yaml | kubectl apply -f -
           kubectl -n homelab-k3s-mcp-commit-status-variant create secret generic homelab-k3s-mcp-github-app \
+            --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp-commit-status-variant create configmap homelab-k3s-mcp-github-app-config \
             --from-literal=GITHUB_APP_CLIENT_ID=Iv1.testclientid12345 \
             --from-literal=GITHUB_APP_INSTALLATION_ID=67890 \
             --from-literal=GITHUB_API_BASE_URL=http://github-mock.github-mock.svc.cluster.local \
-            --from-file=GITHUB_APP_PRIVATE_KEY=/tmp/github-app-test-key.pem \
             --dry-run=client -o yaml | kubectl apply -f -
 
       # AWS_CONFIG_S3_ENDPOINT points at the http-trace proxy rather than at
       # MinIO directly (the proxy forwards to MinIO preserving the signed Host
       # header). That is what lets aws_config_get_sc2.py observe which
       # credential signed the GetObject.
-      - name: Create test AWS config secret
+      # 설정값은 ConfigMap(운영과 같은 kind), kind 에 IRSA 가 없어 필요한 MinIO 정적 자격증명만
+      # 별도 Secret(homelab-k3s-mcp-aws-credentials, deployment 가 optional 로 읽음)에 둔다.
+      - name: Create test AWS config ConfigMap and credentials secret
         run: |
-          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-aws-config \
+          kubectl -n homelab-k3s-mcp create configmap homelab-k3s-mcp-aws-config \
             --from-literal=AWS_CONFIG_S3_BUCKET=ci-config-bucket \
             --from-literal=AWS_CONFIG_S3_KEY=aws/config \
             --from-literal=AWS_CONFIG_ROLE_ARN=arn:aws:iam::000000000000:role/ci-config-reader \
             --from-literal=AWS_CONFIG_S3_REGION=us-east-1 \
             --from-literal=AWS_CONFIG_S3_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-aws-credentials \
             --from-literal=AWS_ACCESS_KEY_ID=minioadmin \
             --from-literal=AWS_SECRET_ACCESS_KEY=minioadmin \
             --dry-run=client -o yaml | kubectl apply -f -
 
-      - name: Create test Grafana secret
+      - name: Create test Grafana secret and ConfigMap
         run: |
           kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-grafana \
             --from-literal=GRAFANA_ISSUER_TOKEN=glsa_mock_issuer \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp create configmap homelab-k3s-mcp-grafana-config \
             --from-literal=GRAFANA_READ_POLICY_ID=ci-read-policy \
             --from-literal=GRAFANA_REGION=ci-region \
             --from-literal=GRAFANA_API_URL=http://grafana-mock.grafana-mock.svc.cluster.local/api \

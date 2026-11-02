@@ -74,9 +74,13 @@ spec:
               value: "1"
           envFrom:
             # Created by ci.yml's "Create test GitHub App secret" step for THIS
-            # namespace, without GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES.
+            # namespace, without GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES (the
+            # private key in the Secret, the ids and API base URL in the ConfigMap,
+            # mirroring production's split).
             - secretRef:
                 name: homelab-k3s-mcp-github-app
+            - configMapRef:
+                name: homelab-k3s-mcp-github-app-config
           startupProbe:
             httpGet:
               path: /healthz

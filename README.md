@@ -207,10 +207,10 @@ rule's repository and workflow, or if `MCP_OAUTH_ISSUER` is the same issuer.
 its discovery document and JWKS are fetched at startup, so an unreachable issuer
 stops the server.
 
-In production both values come from the Secret `homelab-k3s-mcp-github-oidc`
+In production both values come from the ConfigMap `homelab-k3s-mcp-github-oidc`
 (an ExternalSecret in flux-cd-apps, SSM `/flux-cd/homelab-k3s-mcp/github-oidc`),
 which `k8s/deployment.yaml` reads with `optional: true`; without it the path is
-off. More rules come from the Secret `homelab-k3s-mcp-github-oidc-claude` (SSM
+off. More rules come from the ConfigMap `homelab-k3s-mcp-github-oidc-claude` (SSM
 `/flux-cd/homelab-k3s-mcp/github-oidc-claude`, key `MCP_GITHUB_OIDC_RULES_CLAUDE`),
 also optional.
 

@@ -95,12 +95,25 @@ spec:
           envFrom:
             - configMapRef:
                 name: homelab-k3s-mcp-oauth
+            # GitHub App 개인키(Secret)와 클라이언트 ID·설치 ID(ConfigMap) — 운영은 같은 SSM 파라미터를
+            # flux-cd-apps 의 ExternalSecret 둘이 나눠 만든다.
             - secretRef:
                 name: homelab-k3s-mcp-github-app
-            - secretRef:
+            - configMapRef:
+                name: homelab-k3s-mcp-github-app-config
+            # aws_config_get 의 S3 위치·assume-role ARN — 비밀이 없는 설정값이라 ConfigMap.
+            # 운영은 flux-cd-apps 의 ExternalSecret 이 SSM 에서 만든다.
+            - configMapRef:
                 name: homelab-k3s-mcp-aws-config
+            # IRSA 가 없는 환경(kind CI)에서만 쓰는 정적 AWS 자격증명. 운영에는 없다.
+            - secretRef:
+                name: homelab-k3s-mcp-aws-credentials
+                optional: true
+            # Grafana 발급자 토큰(Secret)과 엔드포인트·사용자 번호·리전·정책 ID(ConfigMap).
             - secretRef:
                 name: homelab-k3s-mcp-grafana
+            - configMapRef:
+                name: homelab-k3s-mcp-grafana-config
             - configMapRef:
                 name: homelab-k3s-mcp-opensearch
             - secretRef:
@@ -109,10 +122,10 @@ spec:
             - secretRef:
                 name: homelab-k3s-mcp-api-keys
                 optional: true
-            - secretRef:
+            - configMapRef:
                 name: homelab-k3s-mcp-github-oidc
                 optional: true
-            - secretRef:
+            - configMapRef:
                 name: homelab-k3s-mcp-github-oidc-claude
                 optional: true
           volumeMounts:
