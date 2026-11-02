@@ -287,14 +287,18 @@ jobs:
       # MinIO directly (the proxy forwards to MinIO preserving the signed Host
       # header). That is what lets aws_config_get_sc2.py observe which
       # credential signed the GetObject.
-      - name: Create test AWS config secret
+      # 설정값은 ConfigMap(운영과 같은 kind), kind 에 IRSA 가 없어 필요한 MinIO 정적 자격증명만
+      # 별도 Secret(homelab-k3s-mcp-aws-credentials, deployment 가 optional 로 읽음)에 둔다.
+      - name: Create test AWS config ConfigMap and credentials secret
         run: |
-          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-aws-config \
+          kubectl -n homelab-k3s-mcp create configmap homelab-k3s-mcp-aws-config \
             --from-literal=AWS_CONFIG_S3_BUCKET=ci-config-bucket \
             --from-literal=AWS_CONFIG_S3_KEY=aws/config \
             --from-literal=AWS_CONFIG_ROLE_ARN=arn:aws:iam::000000000000:role/ci-config-reader \
             --from-literal=AWS_CONFIG_S3_REGION=us-east-1 \
             --from-literal=AWS_CONFIG_S3_ENDPOINT=http://http-trace.http-trace.svc.cluster.local:9000 \
+            --dry-run=client -o yaml | kubectl apply -f -
+          kubectl -n homelab-k3s-mcp create secret generic homelab-k3s-mcp-aws-credentials \
             --from-literal=AWS_ACCESS_KEY_ID=minioadmin \
             --from-literal=AWS_SECRET_ACCESS_KEY=minioadmin \
             --dry-run=client -o yaml | kubectl apply -f -

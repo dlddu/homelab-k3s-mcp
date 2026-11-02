@@ -170,7 +170,7 @@
   그 레포에 푸시할 수 있는 사람이 그 파일을 고치거나 다른 브랜치에서 같은 경로로 바꿔 돌리면
   같은 도구를 쓸 수 있다(ref 는 보지 않는다). 브랜치·environment 단위로 좁히는 것은 이 AC의 범위
   밖이므로, 규칙에 주는 도구는 그 레포의 쓰기 권한자 전원에게 주는 것으로 보고 최소한으로 고른다.
-- 운영 배포는 이 두 값을 ExternalSecret 이 만드는 Secret `homelab-k3s-mcp-github-oidc` 에서
-  `envFrom`(`optional: true`)으로 받는다 — Secret 이 없으면 이 경로는 꺼진 채로 뜬다.
+- 운영 배포는 이 두 값을 ExternalSecret 이 만드는 ConfigMap `homelab-k3s-mcp-github-oidc` 에서
+  `envFrom`(`optional: true`)으로 받는다 — ConfigMap 이 없으면 이 경로는 꺼진 채로 뜬다(비밀이 아니므로 Secret 이 아니다).
 - 발급자의 discovery·JWKS는 기동 시 한 번 읽고(실패하면 기동 실패 — AC2와 같은 성질), 처음 보는
   `kid`가 오면 다시 읽는다.
