@@ -101,7 +101,6 @@ data:
 
     MAX_RECORDS = 4000
 
-    # Hop-by-hop headers must not be forwarded.
     SKIP_REQUEST_HEADERS = {
         "connection",
         "keep-alive",
