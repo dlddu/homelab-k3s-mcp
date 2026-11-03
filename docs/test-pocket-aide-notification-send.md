@@ -11,8 +11,8 @@
 > 이름이다. 통합 e2e 의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
 > (`(미작성)` 이면 아직 파일이 없다는 뜻이고, 그 표기는 `tests/integration/check_ac_mapping.py`
 > 규칙 8 이 실측 파일 집합과 대조한다). 시나리오 1 의 실제 도달은 실기기·Apple 자격 증명이 필요한
-> 외부 경계라 e2e 예외이고, 시나리오 3 은 고정된 PocketAide 픽스처(`POCKET_AIDE_SHA`)에 알림
-> 엔드포인트가 들어오기 전까지 e2e 가 관측할 대상이 없다. 시나리오 5 는 `requester` 를 받는
+> 외부 경계라 e2e 예외이고, 시나리오 3 은 핀(`POCKET_AIDE_SHA`)이 알림 엔드포인트와
+> `requester` 를 받는 판(dlddu/pocket-aide#321)을 담게 돼 e2e 로 닫혔다. 시나리오 5 는 `requester` 를 받는
 > PocketAide 가 픽스처 핀(`POCKET_AIDE_SHA`)에 들어와야 e2e 를 쓸 수 있다 — 지금 핀은 모르는 필드를
 > 400 으로 거부한다.
 
@@ -56,7 +56,8 @@
 - **검증 AC**: AC3
 - **자동화**: Go 단위 `internal/pocketaide/pocketaide_test.go` (`TestNotifyExplainsEachRefusal`) +
   `internal/server/pocket_aide_test.go` (`TestPocketAideNotificationSendSurfacesPocketAideRefusal`) +
-  통합 (미작성)
+  통합 `tests/integration/pocket_aide_notification_send_sc3.py`(`실행 대상: primary` — 등록된 primary 는 503, 미등록
+  전용 배포 `tests/k8s/kind/notify-unregistered-variant.yaml` 은 401)
 
 ### 시나리오 4: 미설정 시 도구 에러
 - **사전 조건**: `APPROVAL_GATE_URL` 미설정
