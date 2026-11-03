@@ -1142,7 +1142,7 @@ func toolText(text string, isError bool) any {
 // toolError renders a handler's failure for the client, and tells the record
 // when that failure was an integration that is not configured: the response
 // looks the same either way (the caller has always read the message), the
-// record does not (AC4 counts an unconfigured refusal, not an error).
+// record does not (the record counts an unconfigured refusal, not an error).
 func toolError(ctx context.Context, err error) any {
 	var u interface{ Unavailable() bool }
 	if errors.As(err, &u) && u.Unavailable() {

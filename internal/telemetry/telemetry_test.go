@@ -30,8 +30,6 @@ func withRecorder(t *testing.T) *tracetest.SpanRecorder {
 	return rec
 }
 
-// The reason this package exists: a traceparent behind a long Authorization
-// header (as Traefik writes it, alphabetically) must still be continued.
 func TestHandlerContinuesTraceBehindLongAuthorization(t *testing.T) {
 	rec := withRecorder(t)
 	h := Handler(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}), "/healthz")
