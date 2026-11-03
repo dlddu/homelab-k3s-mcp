@@ -53,8 +53,6 @@ func Setup(ctx context.Context, serviceName, serviceVersion string) (func(contex
 	if err != nil {
 		return noop, err
 	}
-	// Later options win: the compiled-in name is the default and
-	// OTEL_SERVICE_NAME / OTEL_RESOURCE_ATTRIBUTES override it.
 	res, err := resource.New(ctx,
 		resource.WithTelemetrySDK(),
 		resource.WithAttributes(

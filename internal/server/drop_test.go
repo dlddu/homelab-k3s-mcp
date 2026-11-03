@@ -202,7 +202,6 @@ func TestDropTokenIssueSurfacesDropRefusal(t *testing.T) {
 	}
 }
 
-// 실제 drop.Client 를 거쳐, 도구가 상대에게 보낸 요청 본문에도 파일 내용 자리가 없다는 것을 잰다.
 func TestDropTokenIssueSendsOnlyTokenParametersToDrop(t *testing.T) {
 	var bodies []map[string]any
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
