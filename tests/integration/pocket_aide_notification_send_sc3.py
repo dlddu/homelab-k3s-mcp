@@ -54,7 +54,7 @@ async def test_unregistered_caller_gets_registration_refusal() -> str:
     with port_forward(
         UNREGISTERED_NAMESPACE,
         UNREGISTERED_SERVICE,
-        3000,
+        80,
         UNREGISTERED_LOCAL_PORT,
         ready_path="/healthz",
     ) as url:
