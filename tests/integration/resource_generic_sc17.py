@@ -12,7 +12,7 @@ Go 단위가 이 계약의 조각들을 이미 단언한다 — ``internal/mcp/r
 **primary 에 (b) 의 env 를 세울 수 없는 두 번째 이유.** ``RESOURCE_GATED_KINDS`` 를 primary 에
 세우면 같은 픽스처 CRD 를 읽는 ``resource_generic_sc1.py`` 의 전제가 흔들린다. 그래서 이미 서
 있는 이 변형(``tests/k8s/kind/approval-variant.yaml``)의 env 한 줄로 세웠다. 이 변형의 SA 는 primary 와
-**같은** ``cluster-admin`` 바인딩이므로(``k8s/rbac.yaml``, 2026-09-14 개정), (d) 의 「``watch``
+**같은** ``cluster-admin`` 바인딩이므로(``k8s/rbac.yaml``), (d) 의 「``watch``
 는 이제 부여되어 403 이 아니다」도 운영과 같은 권한 위에서 관측된다.
 
 **미승인은 사람 없이 만든다 — 이 변형의 ``AUTO_REJECT`` 모드로.** 이 배포의 서비스 어카운트는
@@ -30,8 +30,7 @@ PocketAide 에 자기 몫의 사용자로 등록돼 있어 그 사용자의 자�
 Secret 에서 새어 나온 것이라고 단정할 수 있다는 데 있다. ``resource_generic_sc16.py`` 의
 ``TOKEN`` 과 같은 방식이다.
 
-**이 파일이 스스로 세우는 대상의 모양.** 이미지는 이미 클러스터에 있는
-``busybox:1.36`` 이라 새 pull 이 없다. 파드의 문서 루트를 Secret 마운트로 두면 ``exec`` 의
+**이 파일이 스스로 세우는 대상의 모양.** 파드의 문서 루트를 Secret 마운트로 두면 ``exec`` 의
 ``cat``, ``port_forward`` 의 ``GET``, ``proxy`` 의 경로가 **같은 값**을 가리켜, 넷이 다 막혀야
 한다는 주장이 한 대상 위에서 성립한다.
 
@@ -138,7 +137,6 @@ def _verbatim(value: str) -> str:
 
 
 def _fixtures() -> None:
-    """토큰 Secret, 대조군 ConfigMap, 그리고 토큰을 서빙하는 HTTP 파드를 세운다."""
     _apply(
         {
             "apiVersion": "v1",
@@ -210,9 +208,7 @@ def _pair(context: str) -> str:
 
 
 async def _refuse(session, gate: str, tool: str, args: dict, marker: str) -> str:
-    """게이트 대상 호출 하나를 태우고, 자동 거부로 끝났음을 확인한 뒤 그 화면을 돌려준다.
-
-    화면은 **이 호출이 새로 만든 기록**에서 읽는다 — 호출 직전의 거부 기록 id 집합 밖에
+    """화면은 **이 호출이 새로 만든 기록**에서 읽는다 — 호출 직전의 거부 기록 id 집합 밖에
     나타난 것 가운데 ``marker`` 를 담은 것을 집는다(모듈 머리말).
     """
     before = {row["id"] for row in list_requests(gate, status="REJECTED")}

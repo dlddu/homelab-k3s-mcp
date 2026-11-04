@@ -53,9 +53,7 @@ PAGE = 500
 
 
 def wait_for_fixture(timeout: float = 120.0) -> None:
-    """픽스처 CRD 와 그 인스턴스가 설 때까지 기다린다(멱등 폴링).
-
-    ci.yml 이 CRD → established 대기 → 인스턴스 순으로 적용하므로, 마지막에 적용되는
+    """ci.yml 이 CRD → established 대기 → 인스턴스 순으로 적용하므로, 마지막에 적용되는
     인스턴스가 보이면 이 파일이 쓰는 픽스처는 전부 서 있다. 도구가 아니라 kubectl 로
     재는 것은 이 전제를 검증 대상 자신으로 세우지 않기 위해서다.
     """
@@ -115,7 +113,6 @@ def _column(payload: dict, name: str) -> int:
 async def test_resource_generic_ac1_seven_kinds_answer_by_coordinate(
     session: ClientSession,
 ) -> None:
-    """시나리오 1 — 일곱 종류가 전부 좌표만으로 목록을 돌려준다."""
     seen = []
     for api_version, kind, namespace, _ in KINDS:
         extra = {"namespace": namespace} if namespace else {}
@@ -130,7 +127,6 @@ async def test_resource_generic_ac1_seven_kinds_answer_by_coordinate(
 async def test_resource_generic_ac1_label_selector_actually_narrows(
     session: ClientSession,
 ) -> None:
-    """시나리오 1 — 셀렉터가 결과 수를 실제로 줄인다."""
     narrowed = []
     for api_version, kind, namespace, selector in KINDS:
         if selector is None:
@@ -158,7 +154,6 @@ async def test_resource_generic_ac1_label_selector_actually_narrows(
 async def test_resource_generic_ac1_events_narrow_to_their_object(
     session: ClientSession, pod: str
 ) -> None:
-    """시나리오 1 — 이벤트가 `fieldSelector` 로 대상별로 좁혀진다."""
     whole = await _list(session, "v1", "Event", namespace=NAMESPACE)
     subset = await _list(
         session,
@@ -184,7 +179,6 @@ async def test_resource_generic_ac1_events_narrow_to_their_object(
 async def test_resource_generic_ac1_cluster_scoped_kind_rejects_namespace(
     session: ClientSession,
 ) -> None:
-    """시나리오 1 — 클러스터 스코프 종류에 `namespace` 를 붙이면 거부된다."""
     refused = await session.call_tool(
         "resource_list",
         {"apiVersion": "v1", "kind": "Namespace", "namespace": NAMESPACE},

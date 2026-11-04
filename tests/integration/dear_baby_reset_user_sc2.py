@@ -25,9 +25,7 @@ POD_PREFIX = "dear-baby-"
 
 
 async def test_dear_baby_reset_user_ac2_explicit_target(session) -> None:
-    """AC: dear-baby-reset-user/AC2 — email is mandatory, selector/container default but override.
-
-    The discriminator in each override clause is that the call *fails*: an
+    """The discriminator in each override clause is that the call *fails*: an
     ignored ``selector`` would have resolved the fixture pod anyway, and an
     ignored ``container`` would have exec'd ``backend`` and succeeded.
 

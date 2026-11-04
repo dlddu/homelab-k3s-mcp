@@ -66,7 +66,6 @@ def _kubectl(*args: str, input: str | None = None, check: bool = True):
 
 
 def _node_name() -> str:
-    """이 클러스터의 노드 하나. 시나리오의 사전 조건 「노드 1개」가 가리키는 그 노드다."""
     result = subprocess.run(
         ["kubectl", "get", "nodes", "-o", "jsonpath={.items[0].metadata.name}"],
         capture_output=True,
@@ -79,9 +78,7 @@ def _node_name() -> str:
 
 
 def _serving_pod_and_service() -> None:
-    """파드와 Service 를 매니페스트 기준으로 되돌린다.
-
-    지우고 다시 세우는 것은 재실행 편의가 아니다. 남아 있는 파드는 앞선 실행이 남긴 ``/www`` 를
+    """지우고 다시 세우는 것은 재실행 편의가 아니다. 남아 있는 파드는 앞선 실행이 남긴 ``/www`` 를
     그대로 들고 있을 수 있고, 그러면 본문 단언이 이 파일의 선언이 아니라 **지난 실행의 잔여**로
     참이 된다.
     """
@@ -154,9 +151,7 @@ def _proxy_args(kind: str, name: str, method: str, path: str, **extra) -> dict:
 
 
 async def _pending(session, gate: str, args: dict, marker: str):
-    """도구 호출을 띄우고 그 호출이 만든 PENDING 요청을 집는다.
-
-    마커는 **경로**다. 이 파일의 네 호출 중 둘(``/healthz`` 와 ``/exec``)이 같은 객체를 같은
+    """마커는 **경로**다. 이 파일의 네 호출 중 둘(``/healthz`` 와 ``/exec``)이 같은 객체를 같은
     쌍으로 가리키므로, 대상 이름으로는 두 화면이 갈리지 않는다.
     """
     task = asyncio.create_task(session.call_tool("resource_proxy", args))

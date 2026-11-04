@@ -26,9 +26,7 @@ LAST_APPLIED = "kubectl.kubernetes.io/last-applied-configuration"
 
 
 def _normalized(value):
-    """정수값 실수를 정수로 맞춘 사본.
-
-    두 경로가 같은 apiserver JSON 을 보지만 서로 다른 디코더를 지난다(kubectl 은 Go 의
+    """두 경로가 같은 apiserver JSON 을 보지만 서로 다른 디코더를 지난다(kubectl 은 Go 의
     타입 있는 스킴, 도구는 unstructured). 숫자 표현 차이 하나로 `spec` 등가 단언이 흔들리면
     이 케이스가 말하려는 것(잡음 제거가 spec 을 건드리지 않았다)과 무관한 실패가 된다.
     """
@@ -44,9 +42,7 @@ def _normalized(value):
 
 
 def _kubectl_whole_object() -> dict:
-    """잡음이 붙은 원본 객체 — 도구를 거치지 않은 대조군.
-
-    ⚠️ `--show-managed-fields` 가 필수다. kubectl 은 v1.21 부터 **출력에서**
+    """⚠️ `--show-managed-fields` 가 필수다. kubectl 은 v1.21 부터 **출력에서**
     `managedFields` 를 기본으로 지운다 — 객체에 없는 것이 아니라 프린터가 감추는 것이라,
     플래그 없이 뜨면 대조군이 이미 잡음 하나를 잃은 상태가 된다. 그러면 아래 사전 조건
     단언이 「원본에 managedFields 가 없다」로 실패하고(첫 CI 에서 실제로 그랬다),
@@ -63,7 +59,6 @@ def _kubectl_whole_object() -> dict:
 
 
 def test_resource_generic_ac4_precondition_has_both_noise_fields() -> dict:
-    """시나리오 4 사전 조건 — 원본에 잡음 두 필드가 실제로 붙어 있다."""
     whole = _kubectl_whole_object()
     metadata = whole["metadata"]
     assert metadata.get("managedFields"), (
@@ -83,7 +78,6 @@ def test_resource_generic_ac4_precondition_has_both_noise_fields() -> dict:
 async def test_resource_generic_ac4_get_strips_only_the_noise(
     session: ClientSession, whole: dict
 ) -> None:
-    """시나리오 4 — 잡음 둘만 사라지고 spec/status 는 온전하다."""
     result = await session.call_tool(
         "resource_get",
         {
@@ -140,7 +134,6 @@ async def test_resource_generic_ac4_get_strips_only_the_noise(
 
 
 async def test_resource_generic_ac4_name_is_required(session: ClientSession) -> None:
-    """시나리오 4 — `name` 없이 셀렉터만 준 호출은 거부되고 `resource_list` 를 안내한다."""
     try:
         await session.call_tool(
             "resource_get",

@@ -52,9 +52,7 @@ def _names(payload: dict) -> list[str]:
 def test_resource_generic_ac3_precondition_has_120_paged_configmaps(
     timeout: float = 120.0,
 ) -> list[str]:
-    """시나리오 3 사전 조건 — 페이징 ConfigMap 120개가 실제로 서 있다.
-
-    개수가 100 이하로 떨어지면 1회차가 잘리지 않아 이 파일의 나머지 단언이 전부 공전한다.
+    """개수가 100 이하로 떨어지면 1회차가 잘리지 않아 이 파일의 나머지 단언이 전부 공전한다.
     그래서 「120 이다」와 「120 > 기본 페이지」를 둘 다 건다 — 뒤엣것은 픽스처가 줄어들면
     조용히 무의미해지는 것을 막는 자기 방어다.
     """
@@ -89,7 +87,6 @@ def test_resource_generic_ac3_precondition_has_120_paged_configmaps(
 async def test_resource_generic_ac3_first_page_truncates(
     session: ClientSession,
 ) -> tuple[list[str], str]:
-    """시나리오 3 — `limit` 미지정 1회차가 100건 + 절단 표시 + `continue` 토큰."""
     result = await session.call_tool(
         "resource_list",
         {
@@ -127,9 +124,7 @@ async def test_resource_generic_ac3_first_page_truncates(
 async def test_resource_generic_ac3_continue_returns_the_rest(
     session: ClientSession, first_page: list[str], token: str, expected: list[str]
 ) -> None:
-    """시나리오 3 — `continue` 재조회가 나머지 20건을 돌려주고 두 페이지가 전집을 덮는다.
-
-    개수만 보면 같은 100건을 두 번 받아도 통과할 수 있는 자리가 아니다(20 ≠ 100). 그래도
+    """개수만 보면 같은 100건을 두 번 받아도 통과할 수 있는 자리가 아니다(20 ≠ 100). 그래도
     이름까지 보는 것은 **두 페이지가 겹치지 않고 합집합이 픽스처 전집과 같다**는 것이
     「이어보기」의 실제 요구이기 때문이다 — 토큰을 무시하고 두 번째 페이지를 새로 뜨는
     구현은 개수는 맞출 수 있어도 이 단언은 통과하지 못한다.
@@ -167,7 +162,6 @@ async def test_resource_generic_ac3_continue_returns_the_rest(
 async def test_resource_generic_ac3_over_max_limit_is_rejected_not_clamped(
     session: ClientSession,
 ) -> None:
-    """시나리오 3 — `limit=1000` 은 클램프되지 않고 거부되며, 상한값 자체는 정상 응답이다."""
     accepted = await session.call_tool(
         "resource_list",
         {

@@ -74,9 +74,7 @@ def _kubectl(*args: str, input: str | None = None, check: bool = True):
 
 
 def _serving_pod() -> None:
-    """파드를 매니페스트 기준으로 되돌린다 — 지우고, 다시 세우고, Ready 를 기다린다.
-
-    지우고 다시 세우는 것은 재실행 편의가 아니다. 남아 있는 파드는 앞선 실행이 남긴 ``/www``
+    """지우고 다시 세우는 것은 재실행 편의가 아니다. 남아 있는 파드는 앞선 실행이 남긴 ``/www``
     를 그대로 들고 있을 수 있고, 그러면 상한 케이스가 재려는 크기 조건이 이 파일의 선언이
     아니라 **지난 실행의 잔여**로 결정된다.
     """
@@ -130,7 +128,6 @@ def _forward_args(path: str, marker: str, **extra) -> dict:
 
 
 async def _pending(session, gate: str, args: dict, marker: str):
-    """도구 호출을 띄우고 그 호출이 만든 PENDING 요청을 집는다."""
     task = asyncio.create_task(session.call_tool("resource_port_forward", args))
     row = await wait_for_pending(gate, marker)
     return task, row

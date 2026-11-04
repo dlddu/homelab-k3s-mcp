@@ -41,9 +41,7 @@ MAX_OUTPUT_BYTES = 256 * 1024
 
 
 def _pod_name(timeout: float = 180.0) -> str:
-    """두 컨테이너가 다 Ready 인 픽스처 파드 이름을 돌려준다(없으면 기다린다).
-
-    `check_output` 이 아니라 `run(check=False)` 를 쓰는 이유: 빈 목록에 걸린
+    """`check_output` 이 아니라 `run(check=False)` 를 쓰는 이유: 빈 목록에 걸린
     `jsonpath={.items[0]…}` 은 `array index out of bounds` 로 rc=1 이라, 그대로 두면
     아래 단언에 **닿기 전에** `CalledProcessError` 가 먼저 튄다 — 직전 판이 실제로 그렇게
     깨졌고, 호출자는 「픽스처가 아직 없다」 대신 kubectl 인자 덤프를 읽게 된다.

@@ -111,12 +111,11 @@ def _kubectl(*args: str, stdin: str | None = None) -> str:
 
 
 def remove_probe_crd() -> None:
-    """프로브 CRD 를 지운다 — CR 은 함께 사라진다. 멱등하다."""
+    """CR 은 함께 사라진다. 멱등하다."""
     _kubectl("delete", "crd", PROBE_CRD, "--ignore-not-found", "--wait=true")
 
 
 def install_probe_crd() -> None:
-    """CRD 를 세우고 established 를 기다린 뒤 CR 을 하나 둔다."""
     _kubectl("apply", "-f", "-", stdin=PROBE_CRD_MANIFEST)
     _kubectl(
         "wait", "--for=condition=Established", f"crd/{PROBE_CRD}", "--timeout=60s"
@@ -161,9 +160,7 @@ async def api_resource_kinds(session: ClientSession) -> dict[str, dict]:
 async def test_resource_generic_ac20_probe_kind_is_absent_before_install(
     session: ClientSession,
 ) -> list[tuple]:
-    """시나리오 20 사전 조건 — 설치 「전」 상태를 실제로 세우고 관측한다.
-
-    직전 실행이 남긴 것이 있으면 먼저 지운다. 그래야 이 파일이 멱등하고, 「없다」가
+    """직전 실행이 남긴 것이 있으면 먼저 지운다. 그래야 이 파일이 멱등하고, 「없다」가
     「처음부터 없었다」가 아니라 **지금 없다**는 관측이 된다.
     """
     remove_probe_crd()
@@ -187,9 +184,7 @@ async def test_resource_generic_ac20_probe_kind_is_absent_before_install(
 async def test_resource_generic_ac20_typo_is_refused_with_candidates(
     session: ClientSession,
 ) -> None:
-    """시나리오 20 — 오타 호출이 거부되고 후보로 `Deployment` 가 제시된다.
-
-    이 호출은 후보 제시를 보는 자리인 동시에 서버의 RESTMapper 캐시를 **데우는** 자리다
+    """이 호출은 후보 제시를 보는 자리인 동시에 서버의 RESTMapper 캐시를 **데우는** 자리다
     (`resolve` 가 NoMatch 에 캐시를 한 번 무효화하고 다시 만든다). 설치 뒤의 목록 조회가
     「무효화됐다」를 재려면 그 전에 캐시가 차 있어야 한다.
     """
@@ -225,7 +220,6 @@ async def test_resource_generic_ac20_typo_is_refused_with_candidates(
 async def test_resource_generic_ac20_new_crd_shows_up_in_discovery(
     session: ClientSession,
 ) -> None:
-    """시나리오 20 — CRD 를 세우면 `api_resources` 에 나타난다."""
     install_probe_crd()
 
     deadline = time.monotonic() + DISCOVERY_TIMEOUT
@@ -253,7 +247,6 @@ async def test_resource_generic_ac20_new_crd_shows_up_in_discovery(
 async def test_resource_generic_ac20_new_kind_is_listable_right_away(
     session: ClientSession,
 ) -> None:
-    """시나리오 20 — 나타난 종류가 곧바로 목록으로 온다(데워진 캐시가 무효화됐다)."""
     result = await session.call_tool(
         "resource_list",
         {
@@ -286,9 +279,7 @@ async def test_resource_generic_ac20_server_never_restarted(
     session: ClientSession,
     before: list[tuple],
 ) -> None:
-    """시나리오 20 — 위의 모든 관측 동안 서버 파드가 그대로였다.
-
-    이 단언이 없으면 「재기동 불필요」는 문면에만 남는다 — discovery 전파를 기다리는 폴링은
+    """이 단언이 없으면 「재기동 불필요」는 문면에만 남는다 — discovery 전파를 기다리는 폴링은
     재기동 뒤 다시 읽은 경우에도 결국 통과하기 때문이다.
     """
     after = server_pod_identity()

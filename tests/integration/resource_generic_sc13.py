@@ -90,7 +90,6 @@ def _manifest() -> dict:
 
 
 def _ensure_pod() -> None:
-    """대상 파드를 멱등 생성하고 Ready 까지 기다린다."""
     subprocess.run(
         ["kubectl", "apply", "-f", "-"],
         input=json.dumps(_manifest()),
@@ -130,7 +129,7 @@ _GATE = ""
 
 
 async def _attach(session, arguments: dict):
-    """승인 댄스를 태워 attach 를 돌린다. 마커는 파드 이름 — context 가 좌표를 싣는다."""
+    """마커는 파드 이름 — context 가 좌표를 싣는다."""
     task = asyncio.create_task(session.call_tool("resource_attach", arguments))
     row = await wait_for_pending(_GATE, POD)
     await decide(_GATE, row["id"], "APPROVED")
