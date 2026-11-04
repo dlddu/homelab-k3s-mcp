@@ -151,10 +151,7 @@ def fail(rule: str, message: str) -> None:
 
 
 def repo_exclude_res() -> list[str]:
-    """정책 본문의 `comment-scope-exclude` 블록(한 줄에 ERE 하나). 없으면 빈 목록.
-
-    ERE 가 깨졌으면 빈 범위로 조용히 뭉개지 않고 멈춘다.
-    """
+    """ERE 가 깨졌으면 빈 범위로 조용히 뭉개지 않고 멈춘다."""
     fence = f"```{SCOPE_EXCLUDE_FENCE}"
     text = POLICY_README.read_text(encoding="utf-8")
     out: list[str] = []
@@ -194,7 +191,6 @@ def language_pattern(rel: str) -> re.Pattern[str] | None:
 
 
 def is_scannable(rel: str) -> bool:
-    """텍스트이고 생성 산출물이 아닌가(제외 부류 ② 의 나머지 절반)."""
     try:
         raw = (REPO_ROOT / rel).read_bytes()
     except OSError:
@@ -230,7 +226,6 @@ def scan_files() -> list[str]:
 
 
 def unclassified_files(paths: list[str]) -> list[str]:
-    """어느 언어군에도 들지 않은 파일."""
     return sorted(
         rel
         for rel in paths
@@ -261,9 +256,7 @@ def comment_lines(paths: list[str]) -> list[str]:
 
 
 def docstring_lines(paths: list[str]) -> list[str]:
-    """`경로:docstring 줄` 의 정규화·정렬 목록. 줄 주석 표면과 같은 구성이다.
-
-    빈 줄은 세지 않는다 — 문단 사이 여백은 판정 대상이 아니고, 그것까지 지문에 넣으면
+    """빈 줄은 세지 않는다 — 문단 사이 여백은 판정 대상이 아니고, 그것까지 지문에 넣으면
     문단을 옮기기만 해도 재판정 대상이 된다. 파싱에 실패하는 `.py` 는 인구조사를 통째로
     못 믿게 만드므로 조용히 건너뛰지 않고 멈춘다.
     """
@@ -382,7 +375,6 @@ def eol_lines(paths: list[str]) -> list[str]:
                 emit(rel, comment[1 + match.start():])
 
     def scan_python(rel: str, src: str) -> None:
-        """`tokenize` 로 주석 토큰을 뽑고, 그 앞에 코드가 있는 것만 E 로 낸다."""
         lines = src.splitlines()
         try:
             for tok in tokenize.generate_tokens(io.StringIO(src).readline):
@@ -397,9 +389,7 @@ def eol_lines(paths: list[str]) -> list[str]:
             raise SystemExit(f"{rel}: tokenize 실패로 줄 끝 주석 표면을 잴 수 없다 — {exc}")
 
     def scan_marker(rel: str, src: str, marker: str, make: bool = False) -> None:
-        """`#`·`--` 계열 줄 스캐너.
-
-        `#` 은 앞이 공백일 때만 주석으로 본다(`a#b` 는 주석이 아니다). Makefile 의 `##` 은
+        """`#` 은 앞이 공백일 때만 주석으로 본다(`a#b` 는 주석이 아니다). Makefile 의 `##` 은
         도움말 생성기가 읽는 표식이라 뺀다. 따옴표는 **열리는 자리**(`EOL_OPEN_OK`)에서만
         문자열을 시작한 것으로 보는데, 그러지 않으면 `don't` 의 `'` 가 줄 나머지를 삼킨다.
         """
@@ -514,7 +504,6 @@ def fingerprint(hits: list[str]) -> str:
 
 
 def section_table(text: str, heading: str) -> list[str]:
-    """한 절(`## ...`) 안의 첫 표에서 데이터 행만 돌려준다."""
     try:
         start = text.index(heading) + len(heading)
     except ValueError:
@@ -537,7 +526,6 @@ def section_table(text: str, heading: str) -> list[str]:
 
 
 def parse_ledger(text: str, heading: str) -> list[dict]:
-    """판정 이력 표를 행 목록으로. 헤더 행과 구분선은 버린다."""
     rows: list[dict] = []
     for line in section_table(text, heading):
         cells = [c.strip() for c in line.strip("|").split("|")]
@@ -656,9 +644,7 @@ def check_scope(
     rule: str,
     surface: str,
 ) -> None:
-    """범위 불변식(R4·R8) — 주석을 가진 실측 파일은 정확히 한 행에 속한다.
-
-    두 표면이 **같은 함수**를 쓰는 것이 의도다. 규칙을 복사해 두 벌로 두면 한쪽만 조용히
+    """두 표면이 **같은 함수**를 쓰는 것이 의도다. 규칙을 복사해 두 벌로 두면 한쪽만 조용히
     느슨해지는 경로가 남는다 — ③④ 래칫이 한 표면에만 서 있던 동안이 정확히 그 상태였다.
     """
     registered = {rel for row in rows for rel in row["paths"]}
@@ -684,7 +670,6 @@ def check_scope(
 
 
 def check_axis(rows: list[dict], rule: str, surface: str) -> dict[str, int]:
-    """R9 — 판정 축 칸의 표기를 강제하고 축별 집계를 돌려준다."""
     bad = [f"{row['date']}: {row['axis']!r}" for row in rows if row["axis"] not in VALID_AXES]
     if bad:
         fail(
@@ -705,7 +690,6 @@ def check_axis(rows: list[dict], rule: str, surface: str) -> dict[str, int]:
 
 
 def axis_histogram(tally: dict) -> str:
-    """축별 행 수를 한 줄로. 이전 형식의 「축별 잔량 마커」가 읽히던 자리를 대신한다."""
     order = sorted(tally["hist"], key=lambda a: (a == "—", -len(a), a))
     return " · ".join(f"{a} {tally['hist'][a]}행" for a in order)
 
@@ -734,7 +718,6 @@ def check_axis_evidence(rows: list[dict], rule: str, surface: str) -> None:
 
 
 def check_structure(text: str) -> None:
-    """R10 — 원장에는 표와 「읽는 법」 절만 둔다."""
     allowed_headings = {"# 주석 필요성 판정 원장", LEDGER_SECTION, DOC_LEDGER_SECTION,
                         EOL_LEDGER_SECTION, READING_SECTION}
     section = None

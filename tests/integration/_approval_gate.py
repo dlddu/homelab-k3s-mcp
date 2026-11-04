@@ -147,7 +147,6 @@ def approval_url() -> Iterator[str]:
 
 @contextlib.contextmanager
 def trace_url() -> Iterator[str]:
-    """기록 프록시 admin 의 로컬 URL."""
     with port_forward(
         POCKET_AIDE_NAMESPACE,
         TRACE_SERVICE,
@@ -205,12 +204,10 @@ def list_requests(
 
 
 def count_requests(url: str, marker: str, status: str | None = None) -> int:
-    """context 에 마커를 담은 요청 수(``status`` 를 주면 그 상태만)."""
     return sum(1 for row in list_requests(url, status) if marker in row.get("context", ""))
 
 
 def owner_of(url: str, request_id: str) -> str:
-    """요청 id 의 주인 subject. 목록에서 본 적이 없으면 사용자마다 단건 조회로 찾는다."""
     if request_id in _owner_of_request:
         return _owner_of_request[request_id]
     with httpx.Client(timeout=10.0) as client:
@@ -238,10 +235,7 @@ def get_request(url: str, request_id: str) -> dict:
 
 
 async def wait_for_pending(url: str, marker: str, timeout: float = 30.0) -> dict:
-    """context 에 마커를 담은 PENDING 요청을 폴링으로 기다린다.
-
-    도구 호출이 블록한 채 승인 요청을 만들었다는 최초 관측이다. 마커는 대상 객체
-    이름이므로, 다른 테스트의 잔여 요청과 섞이지 않는다. **async** 여야 한다 —
+    """도구 호출이 블록한 채 승인 요청을 만들었다는 최초 관측이다. **async** 여야 한다 —
     호출 패턴은 `create_task` 로 도구 호출을 띄운 직후 이 폴링에 들어가는 것이고,
     동기 폴링이면 이벤트 루프가 막혀 그 task 가 요청을 전송조차 하지 못한다.
     """
@@ -302,7 +296,6 @@ def set_auto_response(url: str, mode: str, owner: str = VARIANT_OWNER) -> None:
 
 
 def trace_records(url: str) -> list[dict]:
-    """기록 프록시가 쌓아 둔 전체 기록."""
     response = httpx.get(f"{url}/records", timeout=10.0)
     response.raise_for_status()
     return response.json()["records"]
@@ -313,10 +306,7 @@ def create_records(url: str) -> list[dict]:
 
 
 def poll_count(url: str, request_id: str) -> int:
-    """프록시가 본 특정 요청 id 의 폴링(GET) 횟수.
-
-    클라이언트가 실제로 몇 번이고 조회했는지는 PocketAide 기록에 남지 않고 이 기록에만 남는다.
-    """
+    """클라이언트가 실제로 몇 번이고 조회했는지는 PocketAide 기록에 남지 않고 이 기록에만 남는다."""
     return sum(
         1
         for r in trace_records(url)

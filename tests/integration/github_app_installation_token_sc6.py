@@ -31,9 +31,7 @@ MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/"
 
 
 def reset_mock(**config: Any) -> None:
-    """Clear the recorded requests and set the mock's knobs to ``config``.
-
-    ``reset_mock()`` with no arguments restores the stock mock the other
+    """``reset_mock()`` with no arguments restores the stock mock the other
     github-app files expect.
     """
     httpx.post(f"{MOCK_URL}/_admin/config", json=config, timeout=10.0).raise_for_status()
@@ -67,9 +65,7 @@ def mint_body() -> dict[str, Any]:
 
 
 async def test_sc6_explicit_checks_write_is_refused(session: ClientSession) -> None:
-    """시나리오 6 ① — an explicit ``checks: write`` never reaches the mint call.
-
-    Zero recorded mint requests is the load-bearing half: a server that asked
+    """Zero recorded mint requests is the load-bearing half: a server that asked
     for the write scope and then discarded the answer would still be wrong.
     """
     for arguments in (
@@ -85,7 +81,6 @@ async def test_sc6_explicit_checks_write_is_refused(session: ClientSession) -> N
 
 
 async def test_sc6_checks_read_is_issued(session: ClientSession) -> None:
-    """시나리오 6 ② — ``checks: read`` is ordinary and is issued unchanged."""
     reset_mock()
     result = await session.call_tool(
         "github_app_installation_token", {"permissions": {"checks": "read"}}
@@ -97,9 +92,7 @@ async def test_sc6_checks_read_is_issued(session: ClientSession) -> None:
 
 
 async def test_sc6_default_downgrades_checks_to_read(session: ClientSession) -> None:
-    """시나리오 6 ③ — with no arguments the installation grant is downgraded.
-
-    The assertion is on the *request body* the server sent, because "the token
+    """The assertion is on the *request body* the server sent, because "the token
     happens to come back with read" would also hold for a server that forwarded
     the write scope and got lucky with the upstream's response.
     """
@@ -118,9 +111,7 @@ async def test_sc6_default_downgrades_checks_to_read(session: ClientSession) -> 
 async def test_sc6_token_carrying_checks_write_is_revoked(
     session: ClientSession,
 ) -> None:
-    """시나리오 6 ④ — a token that comes back with ``checks: write`` is discarded.
-
-    This is the case the request filter cannot cover: the upstream hands back
+    """This is the case the request filter cannot cover: the upstream hands back
     more than it was asked for. The token must be revoked upstream *and* must
     not reach the caller, so the whole serialized result is scanned — the token
     string leaking into a structured field would be just as bad as leaking into
@@ -143,7 +134,6 @@ async def test_sc6_token_carrying_checks_write_is_revoked(
 async def test_sc6_both_excluded_permissions_are_downgraded(
     session: ClientSession,
 ) -> None:
-    """시나리오 6 ⑤ — a grant carrying both write scopes is downgraded in full."""
     reset_mock(installation_permissions={"statuses": "write", "checks": "write"})
     result = await session.call_tool("github_app_installation_token", {})
     assert result.isError is False, result

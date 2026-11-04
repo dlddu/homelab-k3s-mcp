@@ -5,10 +5,6 @@
 주장한다 — ⑴ `docs/` 의 마크다운 문서가 **전부** 허브(`index.html`)에서 도달 가능하고
 ⑵ 그 수와 종류별 내역이 맞다는 것. 이 스크립트가 그 줄을 읽는 기계다.
 
-`scripts/check_comment_policy.py` 가 원장 프로즈에 대해, `tests/integration/check_ac_mapping.py`
-가 시나리오 레지스트리에 대해 하는 일과 같은 성질이다 — **사람의 자기신고를 레포의 실제 상태에서
-재도출한 값과 대조한다.**
-
 분류 불가를 조용히 「정책」으로 흘려보내면 표가 말하는 종류와 집계가 갈라진다.
 
 D2 와 D4 를 함께 두는 것이 중요하다. 집계 숫자만 파일 개수와 맞추면 **「도달 가능」이라는 말이
@@ -76,7 +72,6 @@ def normalize(base: pathlib.PurePosixPath, target: str) -> str:
 
 
 def md_links(rel: str) -> list[str]:
-    """문서 하나가 가리키는 `.md` 대상들(`docs/` 기준 상대경로). 외부 URL 은 뺀다."""
     base = pathlib.PurePosixPath(rel).parent
     out: list[str] = []
     for target in MD_LINK_RE.findall((DOCS / rel).read_text(encoding="utf-8")):

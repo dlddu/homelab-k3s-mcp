@@ -4,8 +4,7 @@
 실행 대상: primary
 병렬 레인: gate-screens
 
-요청
-id 와 external_id 는 PocketAide 레코드와 대조해 같은 값임까지 확인한다(로그 한
+요청 id 와 external_id 는 PocketAide 레코드와 대조해 같은 값임까지 확인한다(로그 한
 줄이 어느 승인 요청의 것인지 대조 없이는 알 수 없다).
 
 판정자는 로그 필드가 아니다 — PocketAide 는 누가 판정했는지를 호출자에게 알려 주지
