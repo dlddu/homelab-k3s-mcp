@@ -28,9 +28,7 @@ async def test_grafana_token_ac4_issuer_token_not_exposed(
     assert result.isError is False, result
     assert result.structuredContent is None, result.structuredContent
     env_text, _ = parse_env_resource(result)
-    # The minted read token IS returned (that is the whole point of the tool)...
     assert "GRAFANA_TOKEN=glc_mock_" in env_text, env_text
-    # ...but the issuer credential must not leak in any form.
     assert "GRAFANA_ISSUER_TOKEN" not in env_text, env_text
     assert ISSUER_TOKEN not in env_text, env_text
     assert "glsa_" not in env_text, env_text

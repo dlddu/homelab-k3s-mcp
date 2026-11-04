@@ -26,7 +26,6 @@ from _helpers import base_url, open_session, wait_for_healthz
 # "Run integration tests (primary deployment)" 스텝이 여는 포트포워드와 짝이다.
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
 
-# Fixture contract: docs/test-github-commit-status.md 「픽스처」.
 INSTALLATION_OWNER = "dlddu"
 STUB_ID = 1
 STUB_CREATED_AT = "2026-01-01T00:00:00Z"

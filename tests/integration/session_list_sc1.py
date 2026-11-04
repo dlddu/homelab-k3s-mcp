@@ -73,12 +73,9 @@ async def test_session_list_ac1_enumerates_sessions(session) -> None:
     assert snapshot["state"] == "snapshot", snapshot
     assert "pod" not in snapshot, snapshot
 
-    # The two states really are different, so the tool is reporting per-session
-    # state rather than one value for the whole inventory.
     assert active["state"] != snapshot["state"], sessions
 
     for item in (active, snapshot):
-        # Parses (and therefore is a real instant), not just a non-empty string.
         datetime.datetime.fromisoformat(item["createdAt"].replace("Z", "+00:00"))
         datetime.datetime.fromisoformat(item["lastAccess"].replace("Z", "+00:00"))
 

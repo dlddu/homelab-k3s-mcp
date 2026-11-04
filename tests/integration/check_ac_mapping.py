@@ -61,7 +61,6 @@ SUBSECTION_COUNT_RES = (
 FILE_REF_RE = re.compile(r"`([a-z_0-9]+\.py)`")
 SCENARIO_ID_PARTS_RE = re.compile(r"test-([a-z0-9-]+)\.md#시나리오 (\d+)")
 
-# --- 규칙 8: 테스트 문서(`docs/test-<domain>.md`)의 자동화 필드 -------------------
 DOC_FIELD_RE = re.compile(r"^- \*\*(검증 AC|자동화)\*\*:")
 INTEGRATION_REF_RE = re.compile(r"`tests/integration/([a-z_0-9]+\.py)")
 UNWRITTEN_MARK = "(미작성)"
@@ -392,7 +391,6 @@ def main() -> int:
     dedicated = measured["dedicated"]
     shared = measured["shared"]
 
-    # --- 규칙 5: 참조 무결성 -------------------------------------------------
     for decl in decls:
         for scenario in decl.scenarios:
             if scenario not in scenario_set:
@@ -432,7 +430,7 @@ def main() -> int:
     if missing_rows:
         problems.append(f"규칙 5 위반 — 레지스트리에 없는 시나리오: {sorted(missing_rows)}")
 
-    # --- 예외와 구현 대기는 겹치면 안 된다 (영구 면제 vs 임시 보류) -----------
+    # 예외와 구현 대기는 겹치면 안 된다 (영구 면제 vs 임시 보류)
     both = tracker.exceptions & tracker.pending
     if both:
         problems.append(
@@ -481,7 +479,6 @@ def main() -> int:
                 f"ISO 날짜(YYYY-MM-DD)도 '사건: …' 도 아니다"
             )
 
-    # --- 규칙 3: 비-시나리오 파일 등재 --------------------------------------
     for name in measured["non_scenario"]:
         if name not in tracker.non_scenario_files:
             problems.append(
@@ -495,7 +492,6 @@ def main() -> int:
                 f"실재하지 않거나 시나리오를 선언한다(고아 등재)"
             )
 
-    # --- 예외·구현 대기: 선언과 겹치면 안 된다 -------------------------------
     for scenario in sorted(tracker.exceptions | tracker.pending):
         if scenario in dedicated or scenario in shared:
             problems.append(
@@ -503,7 +499,6 @@ def main() -> int:
                 f"선언한다 (등재를 해제하거나 선언을 지울 것)"
             )
 
-    # --- 규칙 6: 행별 제목·상태가 실측과 같은가 ------------------------------
     for scenario, title in scenarios.items():
         declared_title = tracker.titles.get(scenario)
         if declared_title is not None and declared_title != title:
@@ -547,14 +542,11 @@ def main() -> int:
                 f"규칙 6 위반 — {scenario} 의 상태 표기를 해석할 수 없다: {status!r}"
             )
 
-    # --- 규칙 8: 테스트 문서의 e2e 현황이 실측과 같은가 -----------------------
     problems += check_test_docs(scenarios, dedicated)
 
-    # --- 하네스 무결성 -------------------------------------------------------
     problems += check_dispatch(decls)
     problems += check_cases_are_run(decls)
 
-    # --- 집계 ---------------------------------------------------------------
     exceptions = len(tracker.exceptions)
     pending = len(tracker.pending)
     targets = len(scenarios) - exceptions - pending
@@ -578,7 +570,7 @@ def main() -> int:
                 f"규칙 6 위반 — 집계 '{key}' 등재 {declared} ≠ 실측 {counted[key]}"
             )
 
-    # --- 불변식: 미등재 공백은 drift 다 --------------------------------------
+    # 불변식: 미등재 공백은 drift 다
     measured_blank = {
         s
         for s in scenarios

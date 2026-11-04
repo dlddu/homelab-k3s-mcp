@@ -21,7 +21,6 @@ import httpx
 
 from _helpers import port_forward  # noqa: F401
 
-# --- dex (실 OIDC 발급자) -----------------------------------------------------
 
 DEX_NAMESPACE = "dex"
 DEX_SERVICE = "dex"
@@ -30,7 +29,6 @@ DEX_PORT = 5556
 #: `MCP_OAUTH_ISSUER` 로 배포에 들어가는 값과 같아야 한다 (oidc-fixture.yaml).
 ISSUER = "http://dex.dex.svc.cluster.local:5556"
 
-# --- MCP 서버 배포 변형 -------------------------------------------------------
 
 OAUTH_NAMESPACE = "homelab-k3s-mcp-oauth"
 
@@ -53,7 +51,6 @@ AUDIENCE = "homelab-k3s-mcp"
 #: `_auth_variant.API_KEY` 와 **다른 값**이라, 엉뚱한 배포의 키로 통과할 수 없다.
 API_KEY = "ci-oauth-e2e-key"
 
-# --- 경로·문자열 --------------------------------------------------------------
 
 PROTECTED_RESOURCE_PATH = "/.well-known/oauth-protected-resource"
 

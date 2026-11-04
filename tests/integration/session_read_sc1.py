@@ -26,7 +26,6 @@ import time
 from _helpers import base_url, open_session, wait_for_healthz
 from _session_platform import inject_through_control_plane, live_shell_session
 
-#: 제어면에 만들 세션 이름. 진단 로그에서 어느 파일의 세션인지 드러나야 한다.
 SESSION_NAME = "e2e read ac1"
 
 #: 증분으로 관측할 명령과 그 산출물의 마커. 쉘 프롬프트·에코와 섞이지 않도록 이 파일에서만 쓰는 유일 문자열을 고른다.
