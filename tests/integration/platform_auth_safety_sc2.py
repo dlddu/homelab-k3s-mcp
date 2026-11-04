@@ -124,7 +124,6 @@ async def test_platform_auth_safety_ac2_issuer_discovery_loads_jwks(url: str) ->
         )
 
         # jwks_uri 는 클러스터 내부 주소이므로, 그 **경로**를 지금 열어 둔 포워드로 가져온다.
-        # 호스트는 바로 위에서 발급자와 같음을 확인했다.
         keys_response = httpx.get(
             f"{dex_url}{urlsplit(jwks_uri).path}", timeout=5.0
         )

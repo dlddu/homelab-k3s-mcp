@@ -370,14 +370,12 @@ def test_c_the_declaration_matches_the_contract_and_the_grant() -> None:
     problems = compare_declaration(declared, prd_text, rbac_text)
     assert not problems, f"대조가 실패했다: {problems}"
 
-    # 음성 대조 ①: 선언을 뺀 변형.
     for dropped in range(len(declared)):
         variant = [p for i, p in enumerate(declared) if i != dropped]
         assert compare_declaration(variant, prd_text, rbac_text), (
             f"선언에서 {declared[dropped]!r} 을 뺀 변형이 대조를 통과했다 — 이 대조는 "
             "선언 누락을 잡지 못한다"
         )
-    # 음성 대조 ②: 계약 문면에서 한 행을 지운 변형.
     for pair in declared:
         verb = pair.split(" ", 1)[0]
         mutated = "\n".join(
@@ -388,7 +386,6 @@ def test_c_the_declaration_matches_the_contract_and_the_grant() -> None:
         assert compare_declaration(declared, mutated, rbac_text), (
             f"계약 문면에서 {verb} 행을 지운 변형이 대조를 통과했다"
         )
-    # 음성 대조 ③: 부여를 덮지 않는 ClusterRole 로 바꾼 변형.
     mutated_rbac = rbac_text.replace("name: cluster-admin", "name: view")
     assert mutated_rbac != rbac_text, "rbac.yaml 사본 훼손이 아무것도 바꾸지 못했다"
     assert compare_declaration(declared, prd_text, mutated_rbac), (

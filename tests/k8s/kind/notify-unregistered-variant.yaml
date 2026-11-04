@@ -1,5 +1,5 @@
-# 호출자로 등록되지 않은 SUT 배포 — test-pocket-aide-notification-send.md#시나리오 3
-# (pocket_aide_notification_send_sc3.py) 의 「미등록 ServiceAccount 의 배포」.
+# 호출자로 등록되지 않은 SUT 배포 — pocket_aide_notification_send_sc3.py 의
+# 「미등록 ServiceAccount 의 배포」.
 #
 # PocketAide 는 projected 토큰의 ServiceAccount 가 어떤 사용자의 호출자로 등록돼 있을 때만
 # 외부 알림 요청을 받는다(미등록이면 401). 등록은 ci.yml 이 tests/integration/_approval_gate.py

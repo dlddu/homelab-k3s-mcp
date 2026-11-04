@@ -22,7 +22,6 @@ import time
 from _helpers import base_url, open_session, wait_for_healthz
 from _session_platform import live_shell_session
 
-#: 제어면에 만들 세션 이름. 진단 로그에서 어느 파일의 세션인지 드러나야 한다.
 SESSION_NAME = "e2e write ac1"
 
 #: 마커는 **명령문 안에 나타나지 않도록** 두 조각으로 갈라 넣는다. PTY 는 타이핑된

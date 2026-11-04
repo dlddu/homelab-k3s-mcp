@@ -33,11 +33,8 @@ from _reason import ReasonedSession
 
 # The complete tool surface the server advertises. Keep it complete: the
 # assertions below subtract this set from what the server returned, so a tool
-# missing *here* is not a failure, it is a silently weaker check. That has now
-# happened twice -- ``session_list`` was missing from 2026-09-03 until the
-# session-list e2e slice noticed, and ``session_read`` from 2026-09-04 until
-# the session-write slice did -- so the rule is that the PR adding a tool
-# updates this set in the same commit.
+# missing *here* is not a failure, it is a silently weaker check. The PR adding
+# a tool updates this set in the same commit.
 # ``internal/server/mcp_test.go::TestToolsListIncludesAllTools`` pins the same
 # surface by exact count on the Go side; the two lists must agree.
 EXPECTED_TOOLS = {
@@ -161,7 +158,7 @@ async def assert_destructive_annotation(
     )
 
 
-# --- reaching a service the runner group's port-forward does not cover -------
+# Reaching a service the runner group's port-forward does not cover
 #
 # ci.yml opens one port-forward per runner group, held for as long as that
 # group's step lives. A file that has to reach some *other* service opens its
@@ -247,7 +244,7 @@ def port_forward(
             proc.wait(timeout=10)
 
 
-# --- http-trace: asserting the access path, not just its outcome -------------
+# http-trace: asserting the access path, not just its outcome
 #
 # The MinIO fixture cannot tell an assumed-role request apart from one signed
 # with the base credentials (it accepts both). So an e2e assertion built only on
@@ -255,9 +252,7 @@ def port_forward(
 # assumes a role — it is vacuous with respect to the AssumeRole/SigV4 ACs.
 #
 # tests/k8s/kind/http-trace.yaml puts a recording proxy in front of MinIO (and
-# of docstore, whose unsigned-access assertion lives in _opensearch.py). The
-# helpers below read that recording so a test can assert which
-# credential actually signed a request.
+# of docstore, whose unsigned-access assertion lives in _opensearch.py).
 
 # The static key pair the CI secret carries (see the aws-config secret in
 # .github/workflows/ci.yml). It is the base credential: legitimate for the

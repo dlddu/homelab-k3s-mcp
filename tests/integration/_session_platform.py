@@ -45,15 +45,11 @@ NAMESPACE = "session-platform"
 MANAGED_BY_LABEL = "app.kubernetes.io/managed-by"
 MANAGED_BY_VALUE = "control-plane"
 
-#: Ties one stored object to one session id.
 SESSION_ID_LABEL = "session-id"
 
-#: ConfigMap name prefix and the single data key holding the session JSON.
 NAME_PREFIX = "session-"
 DATA_KEY = "session"
 
-#: 시드 세션에 붙이는 파드 이름 접두. 실 제어면이 세션을 위해 만드는 파드와
-#: 구분되지 않아도 되지만, 진단 로그에서 시드분임이 드러나는 편이 낫다.
 SEED_POD_PREFIX = "session-"
 
 
@@ -176,7 +172,7 @@ def sessions_from(result) -> list[dict]:
     return result.structuredContent["sessions"]
 
 
-# --- real sessions, created through the control plane's product API ----------
+# Real sessions, created through the control plane's product API
 #
 # Seeded ConfigMaps are enough for session_list, which never leaves the store.
 # session-read/AC1 and session-write/AC1 do: the control plane resolves the
@@ -191,14 +187,12 @@ def sessions_from(result) -> list[dict]:
 # reach dex. What the ACs are about -- reading a cursor, injecting input -- goes
 # through the MCP tools, on the deployed server, as usual.
 
-#: 제어면 Service 와 그 포트 (이 파일 위쪽 픽스처가 세운다).
 CONTROL_PLANE_SERVICE = "control-plane"
 CONTROL_PLANE_PORT = 80
 
 #: 로컬 포워드 포트. 18080·18081·18082 는 platform-auth-safety 파일들이 쓴다.
 CONTROL_PLANE_LOCAL_PORT = 18083
 
-#: 제어면 REST 표면. OpenAPI 문서가 선언한 단일 서버 접두 `/api/v1` 를 포함한다.
 HEALTHZ_PATH = "/api/v1/healthz"
 SESSIONS_PATH = "/api/v1/sessions"
 
