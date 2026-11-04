@@ -6,8 +6,10 @@ import sys
 POLICY = "docs/review-policy.md"
 
 CASES = (
-    ("MA1", ("docs/values.md", "docs/prd-*.md", "docs/test-*.md")),
-    ("MA2", ("docs/review-policy.md", "scripts/review-policy/", ".github/workflows/review-policy.yml")),
+    ("MA1", ('docs/values.md', 'docs/prd-*.md', 'docs/test-*.md'), ()),
+    ("MA2", ('scripts/review-policy/', '.github/workflows/review-policy.yml', 'docs/review-policy.md'), ()),
+    ("MA3", ('internal/mcp/gate.go', 'internal/mcp/create_gate.go', 'internal/mcp/delete_collection.go', 'internal/mcp/confine.go', 'internal/mcp/declaration.go', 'internal/mcp/provenance.go', 'internal/approvalgate/', 'internal/auth/', 'internal/toolscope/', 'internal/server/server.go', 'main.go'), ('*_test.go',)),
+    ("MA4", ('k8s/rbac.yaml', 'k8s/serviceaccount.yaml'), ()),
 )
 
 
@@ -16,17 +18,17 @@ def policy_ids(path):
         return {m.group(1) for m in re.finditer(r"^\| (MA[0-9]+) \|", f.read(), re.M)}
 
 
-def matches(path, target):
-    if "*" in target:
-        return fnmatch.fnmatchcase(path, target)
-    return path == target or (target.endswith("/") and path.startswith(target))
+def matches(path, pattern):
+    if "*" in pattern:
+        return fnmatch.fnmatchcase(path, pattern)
+    return path == pattern or (pattern.endswith("/") and path.startswith(pattern))
 
 
 def touched(paths):
     hits = {}
     for p in paths:
-        for case_id, targets in CASES:
-            if any(matches(p, t) for t in targets):
+        for case_id, targets, excludes in CASES:
+            if any(matches(p, t) for t in targets) and not any(matches(p, x) for x in excludes):
                 hits.setdefault(case_id, []).append(p)
     return hits
 
@@ -40,7 +42,7 @@ def main():
     except OSError as e:
         print(f"판정 불가: 정책 문서를 읽지 못했다 — {e}", file=sys.stderr)
         return 2
-    own = {case_id for case_id, _ in CASES}
+    own = {case_id for case_id, _, _ in CASES}
     if declared != own:
         print(f"판정 불가: 정책 케이스 {sorted(declared)} != 판정기 케이스 {sorted(own)}", file=sys.stderr)
         return 2
