@@ -293,5 +293,4 @@ Go 단위 테스트에서는 `httptest.Server`로 PocketAide 외부 승인 API �
   `TestSessionHeaderIsDroppedWhenUnusable`,
   `internal/server/auth_routing_test.go::TestSessionHeaderPassesAuthIntoTheApprovalRequest`(API 키
   인증을 거친 뒤에도 헤더가 승인 요청까지 간다). 통합 `tests/integration/approval_gate_sc12.py`
-  (미작성) — `ci.yml` 의 `POCKET_AIDE_SHA` 가 dlddu/pocket-aide#319 의 main 머지 커밋으로 옮겨진 뒤에
-  쓴다(`doc-tracker` 「🚧 공백」 등재)
+  — (a) 헤더를 단 세션의 승인 호출을 기록 프록시 기록(본문 키 여섯)·PocketAide 요청 레코드·승인 로그 줄로 재고, (b)~(d) `reason` 누락 경로는 공유 세션 안쪽의 세션으로 불러 승인 요청 수 0 과 -32602 를 잰다. (e) 129자 헤더는 본문에 `sessionId` 키가 없는 것으로 잰다
