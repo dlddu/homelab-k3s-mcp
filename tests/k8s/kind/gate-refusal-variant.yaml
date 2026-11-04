@@ -26,9 +26,6 @@
 # Auth stays ON in both (MCP_API_KEYS, the throwaway key of auth-fixture.yaml),
 # like rbac-narrow-fixture.yaml and commit-status-variant.yaml, so this file adds
 # no GATE entry to docs/e2e-mocking-policy.md.
-#
-# The dedicated ServiceAccount and ClusterRoleBinding exist for the same reason
-# the other variants' do: authorization is per ServiceAccount.
 apiVersion: v1
 kind: Namespace
 metadata:

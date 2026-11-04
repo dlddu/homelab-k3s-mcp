@@ -52,7 +52,7 @@ data:
 
     MAX_RECORDS = 2000
 
-    # Hop-by-hop headers must not be forwarded. "Expect" is dropped too: the Go SDK
+    # "Expect" is dropped: the Go SDK
     # never signs it, and passing it through would make the upstream wait for a
     # 100-continue handshake this proxy does not relay.
     SKIP_REQUEST_HEADERS = {
