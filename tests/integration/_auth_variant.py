@@ -3,8 +3,7 @@
 This runs against the deployment variant in ``tests/k8s/kind/auth-fixture.yaml``:
 auth is on (``MCP_API_KEYS`` set, ``MCP_AUTH_DISABLED`` unset) and no credential
 secret is attached at all, so ``main.go``'s ``build*Service`` helpers each degrade
-to ``NewUnavailable("")`` while the server still starts. Sessions therefore carry
-the static key from ``_auth_variant.API_KEY``.
+to ``NewUnavailable("")`` while the server still starts.
 
 `API_KEY` 는 이 변형을 상대로 도는 모든 파일이 같은 값을 써야 하므로 여기 한 벌만 둔다.
 """
