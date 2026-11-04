@@ -49,7 +49,7 @@ async def issue(session, arguments: dict[str, Any] | None = None) -> dict[str, A
 
 
 def run_template(template: str, local_base: str, token: str, cwd: str, **fills: str) -> str:
-    """견본 한 줄을 셸로 돌리고 표준 출력을 돌려준다. ``<id>`` 같은 자리는 ``fills`` 로 채운다."""
+    """``<id>`` 같은 자리는 ``fills`` 로 채운다."""
     command = template.replace(CLUSTER_BASE_URL, local_base)
     for key, value in fills.items():
         command = command.replace(key, value)

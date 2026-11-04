@@ -104,7 +104,7 @@ class Snapshot:
 
 
 def assert_label_universe(snapshot: Snapshot) -> None:
-    """패밀리·라벨 이름·라벨 값이 전부 닫힌 전집 안에 있다(AC4 — 바늘 찾기가 아니라 전집 대조)."""
+    """패밀리·라벨 이름·라벨 값이 전부 닫힌 전집 안에 있다 — 바늘 찾기가 아니라 전집 대조다."""
     assert snapshot.family_names() == FAMILIES, f"패밀리가 {sorted(snapshot.family_names())} — 기대 {sorted(FAMILIES)}"
     assert snapshot.label_names() == LABEL_NAMES, f"라벨 이름 집합이 {sorted(snapshot.label_names())} — 기대 {sorted(LABEL_NAMES)}"
     for key, allowed in CLOSED_VALUES.items():

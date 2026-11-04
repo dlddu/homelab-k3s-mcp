@@ -7,8 +7,7 @@
 **이 파일은 러너가 건네는 배포를 쓰지 않는다.** 시나리오가 재는 것은 게이트가 승인 전에
 apiserver 로 *어떤 요청을 보냈는지*이고, 그것이 왜 기록 프록시로만 관측되는지는
 `tests/k8s/kind/apiserver-audit-variant.yaml` 머리말이 든다. 이 파일은 그 변형을 따로 띄우고
-자기 포트포워드로 그 배포와 그 프록시의 admin API 에 붙는다
-(`approval_gate_sc1.py`·`resource_generic_sc18.py` 가 각자의 변형에 붙는 것과 같은 형태).
+자기 포트포워드로 그 배포와 그 프록시의 admin API 에 붙는다.
 
 **부재만 세면 공전한다.** "전체 객체 `get` 이 한 번도 없다"는 기록 경로가 죽어 있어도 참이다.
 그래서 같은 창에서 **비민감 종류의 게이트 읽기**(스케일의 Deployment)를 함께 태운다 — 그것은
@@ -18,10 +17,8 @@ apiserver 로 *어떤 요청을 보냈는지*이고, 그것이 왜 기록 프록
 **난수 토큰이 새지 않는지는 세 표면에서 센다** — 프록시 기록 전체, SUT 컨테이너 로그, 그리고
 거부된 호출의 응답. 프록시는 설계상 본문을 기록하지 않으므로(식별자만) 기록 쪽 0 은 약한
 증거다. 강한 증거는 ``Accept`` 헤더 쪽이고, 토큰 grep 은 그 위에 얹는 교차 확인이다.
-값 가림 자체는 이 시나리오가 아니라 시나리오 10 이 잰다.
 
-**(c) 의 대조는 무엇인가.** `prd-approval-gate.md` AC11 은 `prd-resource-generic`
-AC19 의 RBAC 대조가 결번이 된 뒤에도 **선언은 남긴다**고 적으므로, 여기서 성립하는 대조는
+**(c) 의 대조는 무엇인가.** 선언은 남고 RBAC 대조는 결번이 됐으므로, 여기서 성립하는 대조는
 ① 선언이 AC11 표의 두 쌍과 정확히 같다 ② 그 두 쌍이 `k8s/rbac.yaml` 이 바인딩하는 ClusterRole
 아래 덮인다 — 둘의 논리곱이다. `cluster-admin` 은 ②를 항상 만족시키므로 ② 하나로는 공전하고,
 ①이 "선언을 뺀 변형"을 잡는 자리다. 음성 대조는 파싱된 선언과 `rbac.yaml` 사본을 각각
@@ -174,7 +171,6 @@ def _reads_of(records: list[dict], path: str) -> list[dict]:
 
 
 async def _rejected(session, gate: str, tool: str, args: dict, marker: str) -> str:
-    """게이트 대상 호출을 띄우고, 승인 요청이 뜬 상태에서 **거절**한다."""
     task = asyncio.create_task(session.call_tool(tool, args))
     row = await wait_for_pending(gate, marker)
     await decide(gate, row["id"], "REJECTED")
@@ -214,7 +210,6 @@ def _configmap_collection_path() -> str:
 async def test_a_rejected_sensitive_read_never_fetched_the_whole_object(
     session, gate: str, audit: str
 ) -> dict:
-    """(a) 거절된 Secret 승인은 메타데이터만 읽었고 값에 닿지 않았다."""
     mark = _watermark(audit)
     refusal_text = await _rejected(
         session, gate, "resource_get",
@@ -236,7 +231,6 @@ async def test_a_rejected_sensitive_read_never_fetched_the_whole_object(
 
 
 def test_a_the_token_is_nowhere(audit_window: dict) -> None:
-    """(a) 난수 토큰이 세 표면 어디에도 없다."""
     dumped = json.dumps(audit_window["records"], ensure_ascii=False)
     assert TOKEN not in dumped, "프록시 기록에 토큰이 들어갔다"
     logs = _server_logs()
@@ -249,7 +243,6 @@ def test_a_the_token_is_nowhere(audit_window: dict) -> None:
 async def test_b_scale_exercises_get_on_the_whole_object(
     session, gate: str, audit: str
 ) -> list[dict]:
-    """(b) 스케일의 사전 읽기는 `get` 이다 — 그리고 이것이 기록 경로의 양성 대조다."""
     before = _in_namespace(
         "get", f"deploy/{DEPLOYMENT}", "-o", "jsonpath={.spec.replicas}"
     ).stdout.strip()
@@ -282,7 +275,6 @@ async def test_b_scale_exercises_get_on_the_whole_object(
 async def test_b_delete_collection_exercises_list(
     session, gate: str, audit: str
 ) -> list[dict]:
-    """(b) 일괄 삭제의 사전 읽기는 `list` 다 — 컬렉션 경로의 메타데이터 목록."""
     mark = _watermark(audit)
     await _rejected(
         session, gate, "resource_delete_collection",
@@ -313,7 +305,6 @@ async def test_b_delete_collection_exercises_list(
 
 
 def declared_pairs() -> list[str]:
-    """기동 로그가 찍은 게이트 선언. 런타임이 스스로 말하는 값이다."""
     for line in _server_logs().splitlines():
         if DECLARATION_LOG_MARK not in line:
             continue
@@ -335,7 +326,6 @@ def contract_pairs(prd_text: str) -> list[str]:
 
 
 def bound_cluster_role(rbac_text: str) -> str:
-    """`k8s/rbac.yaml` 이 SUT 의 SA 에 바인딩하는 ClusterRole 이름."""
     match = re.search(
         r"roleRef:.*?kind:\s*ClusterRole.*?name:\s*(\S+)", rbac_text, re.S
     )
@@ -344,7 +334,7 @@ def bound_cluster_role(rbac_text: str) -> str:
 
 
 def compare_declaration(declared: list[str], prd_text: str, rbac_text: str) -> list[str]:
-    """선언 ↔ 계약 문면 ↔ 부여의 대조. 불일치 사유를 모아 돌려준다(빈 목록 = 통과)."""
+    """불일치 사유를 모아 돌려준다(빈 목록 = 통과)."""
     problems: list[str] = []
     contract = contract_pairs(prd_text)
     if not contract:
@@ -363,7 +353,6 @@ def compare_declaration(declared: list[str], prd_text: str, rbac_text: str) -> l
 
 
 def test_c_the_declaration_matches_the_contract_and_the_grant() -> None:
-    """(c) 정적 대조: 선언 = AC11 표, 그리고 그 쌍이 `rbac.yaml` 의 부여 아래 덮인다."""
     prd_text = (REPO_ROOT / PRD_PATH).read_text(encoding="utf-8")
     rbac_text = (REPO_ROOT / RBAC_PATH).read_text(encoding="utf-8")
     declared = declared_pairs()

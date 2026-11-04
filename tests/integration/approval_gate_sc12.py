@@ -3,10 +3,6 @@
 검증 시나리오: test-approval-gate.md#시나리오 12
 실행 대상: approval-variant
 
-(a) 헤더를 단 세션의 승인 호출은 create 본문에 `sessionId`·`reason` 이 더해진 여섯 키로 가고
-PocketAide 의 요청 레코드와 승인 로그 줄에 남는다. (b)~(d) `reason` 이 없는 게이트 대상 호출은
-승인 요청을 만들기 전에 -32602 로 거부된다. (e) 상한을 넘는 헤더는 자르지 않고 버린다.
-
 공유 세션(`ReasonedSession`)은 `reason` 을 채워 보내므로 누락 경로는 그 안쪽 세션으로 부른다.
 """
 

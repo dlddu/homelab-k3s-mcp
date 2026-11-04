@@ -7,11 +7,9 @@
 **이 파일은 러너가 건네는 배포를 쓰지 않는다.** (a) 는 「승인받지 못한 채
 `APPROVAL_GATE_TIMEOUT_SECONDS` 가 지난다」를 열네 번 관측하는데, primary 의 기본 타임아웃은
 300 초라 그 열넷이 한 시간을 넘는다. 타임아웃은 env 라 배포당이므로, 5 초짜리 배포를
-`tests/k8s/kind/gate-refusal-variant.yaml` 에 따로 세우고 이 파일이 자기 포트포워드로 붙는다
-(`resource_generic_sc18.py` 가 좁은 RBAC 변형에 붙는 것과 같은 형태). 그 배포의 서비스
-어카운트는 PocketAide 에 자기 몫의 사용자(`_approval_gate.CALLERS`)로 등록돼 있고 그 사용자의
-자동 응답 모드는 어느 파일도 바꾸지 않으므로 아무도 판정하지 않는다. 시나리오의 「자동 응답을
-끄고 판정하지 않는다」가 이 구성이다.
+`tests/k8s/kind/gate-refusal-variant.yaml` 에 따로 세우고 이 파일이 자기 포트포워드로 붙는다.
+그 배포의 서비스 어카운트는 PocketAide 에 자기 몫의 사용자(`_approval_gate.CALLERS`)로
+등록돼 있고 그 사용자의 자동 응답 모드는 어느 파일도 바꾸지 않으므로 아무도 판정하지 않는다.
 
 **「실행 호출 0」을 무엇으로 재는가.** e2e 에는 단위 층의 가짜 k8s 서비스 카운터가 없으므로,
 도구마다 *성공했다면 남았을 흔적*을 골라 그것이 없음을 센다 — 객체 쪽 도구는 대상의
@@ -22,7 +20,7 @@
 `kubectl` 로 **양성 대조**를 한 줄 넣어 그 경로가 살아 있음을 먼저 보인다.
 
 민감 읽기(`kind=Secret` 의 `get`·`watch`)는 흔적을 남기지 않는 호출이라 그 둘만은 거부와
-만료 기록이 증거의 전부다. 값이 새지 않는지는 이 시나리오가 아니라 시나리오 10 이 잰다.
+만료 기록이 증거의 전부다.
 """
 
 from __future__ import annotations
@@ -174,9 +172,7 @@ def _write_in_pod(container: str, path: str, marker: str) -> None:
 
 
 def _fixtures() -> None:
-    """이 파일이 가리키는 객체를 세운다.
-
-    `CM_CREATED` 만은 세우지 않는다 — create 호출이 만들려다 거부당하는 이름이라, 미리
+    """`CM_CREATED` 만은 세우지 않는다 — create 호출이 만들려다 거부당하는 이름이라, 미리
     있으면 「만들어지지 않았다」를 이름의 존재로 잴 수 없다.
     """
     _in_namespace("delete", "configmap", CM_CREATED, "--ignore-not-found", "--wait=true")
@@ -275,12 +271,10 @@ def _fixtures() -> None:
 
 
 async def _refused(session, gate: str, tool: str, args: dict, marker: str) -> dict:
-    """게이트 대상 호출을 띄우고, 판정 없이 만료로 거부되는 것을 관측한다.
-
-    거부 문면은 단언하지 않는다 — 클라이언트의 폴링 마감과 PocketAide 의 만료가 같은
-    `APPROVAL_GATE_TIMEOUT_SECONDS` 에서 파생해 어느 쪽이 먼저 닫는지가 경주이기 때문이다
-    (`approval_gate_sc4.py` (b) 와 같은 이유). 계약은 셋이 진다: 승인 요청이 실제로
-    만들어졌다 · 거부가 타임아웃을 기다린 뒤에 왔다 · 그 기록이 EXPIRED 다.
+    """거부 문면은 단언하지 않는다 — 클라이언트의 폴링 마감과 PocketAide 의 만료가 같은
+    `APPROVAL_GATE_TIMEOUT_SECONDS` 에서 파생해 어느 쪽이 먼저 닫는지가 경주이기 때문이다.
+    계약은 셋이 진다: 승인 요청이 실제로 만들어졌다 · 거부가 타임아웃을 기다린 뒤에 왔다 ·
+    그 기록이 EXPIRED 다.
     """
     started = time.monotonic()
     task = asyncio.create_task(session.call_tool(tool, args))
@@ -475,7 +469,7 @@ async def test_port_forward_is_refused_and_opens_no_tunnel(session, gate: str) -
 
 
 async def test_proxy_get_is_refused_and_reaches_nothing(session, gate: str) -> None:
-    """프록시는 `GET` 도 막힌다 — 메서드가 아니라 경로가 호출을 한정하기 때문이다(AC15)."""
+    """프록시는 `GET` 도 막힌다 — 메서드가 아니라 경로가 호출을 한정하기 때문이다."""
     await _refused(
         session, gate, "resource_proxy",
         {
@@ -511,7 +505,6 @@ async def test_sensitive_watch_is_refused(session, gate: str) -> None:
 
 
 async def test_ungated_calls_go_through_without_an_approval(session, gate: str) -> None:
-    """(b) 같은 승인 불가 조건에서 비게이트 호출은 승인 요청 없이 정상 수행된다."""
     listed = await _ungated(
         session, "resource_list",
         {"apiVersion": "v1", "kind": "Secret", "namespace": NAMESPACE},
@@ -615,9 +608,7 @@ def _available_replicas(deployment: str) -> int:
 
 
 def test_a_registry_with_an_undeclared_tool_refuses_to_start() -> None:
-    """(c) 쌍을 선언하지 않은 도구를 등록한 기동 변형은 뜨지 않는다.
-
-    같은 네임스페이스·같은 게이트 시크릿·같은 SA 를 쓰는 (a) 의 배포가 정상이라는 것이
+    """같은 네임스페이스·같은 게이트 시크릿·같은 SA 를 쓰는 (a) 의 배포가 정상이라는 것이
     대조군이다 — 죽은 이유가 네임스페이스나 시크릿이 아니라 그 도구임을 그것이 가른다.
     """
     assert _available_replicas(VARIANT_DEPLOYMENT) >= 1, (

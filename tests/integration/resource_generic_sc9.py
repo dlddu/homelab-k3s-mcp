@@ -75,7 +75,6 @@ def _wait_quiet(kind: str, name: str, settle: float = 3.0, timeout: float = 120.
 
 
 def _fresh_deployment() -> None:
-    """지난 실행의 어노테이션이 남지 않도록 지우고 새로 세운 뒤 파드가 다 설 때까지 기다린다."""
     _kubectl("delete", "deployment", DEPLOYMENT, "--ignore-not-found", "--wait=true")
     manifest = {
         "apiVersion": "apps/v1",

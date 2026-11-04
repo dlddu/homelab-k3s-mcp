@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""E2E 모킹 지점 대조와 차단 원장 완비 체커.
-
-R7 의 계기: 상한을 `5`→`4` 로 내린 PR 이 같은 문서의 개수 산문 네 자리 중 하나만 고쳤고,
-나머지 셋은 거짓이 된 채 네 게이트를 전부 통과했다.
-"""
+"""E2E 모킹 지점 대조와 차단 원장 완비 체커."""
 
 from __future__ import annotations
 
@@ -83,7 +79,6 @@ def ledger_block(text: str) -> str:
 
 
 def parse_ledger(text: str) -> list[dict]:
-    """허용목록 표를 행 목록으로. 헤더 행과 구분선은 버린다."""
     rows: list[dict] = []
     lines = [ln.strip() for ln in ledger_block(text).splitlines()]
     table = [ln for ln in lines if ln.startswith("|") and ln.endswith("|")]
@@ -121,7 +116,6 @@ def parse_cap(text: str) -> int:
 
 
 def next_content_line(lines: list[str], index: int) -> str | None:
-    """`index` 다음의 첫 비어 있지 않은 줄."""
     for line in lines[index + 1 :]:
         if line.strip():
             return line
@@ -137,9 +131,7 @@ COUNT_WINDOW = 40
 
 
 def prose_outside_markers(text: str) -> str:
-    """마커 블록(허용목록 표·상한 값·차단 원장)을 도려낸 나머지 산문.
-
-    도려내는 것이지 잘라내는 것이 아니다 — 블록을 같은 길이의 공백으로 덮어 줄 번호와
+    """도려내는 것이지 잘라내는 것이 아니다 — 블록을 같은 길이의 공백으로 덮어 줄 번호와
     문장 경계를 보존한다. 잘라내면 표의 마지막 낱말과 다음 문단의 숫자가 한 창 안에
     들어와 없는 위반이 생기고, 보고하는 줄 번호도 원문과 어긋난다.
     """

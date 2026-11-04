@@ -75,11 +75,7 @@ class BlockerPolicyTests(unittest.TestCase):
                         checker.parse_blockers(policy(row))
 
     def test_owner_column_cannot_come_back(self):
-        """B4: 해소 주체는 항상 이 모델이라 원장에 소관 칸을 두지 않는다.
-
-        규약을 산문에만 두던 동안, 소관이 `tbm_homelab-k3s-mcp-scenario-e2e` 인 행은
-        게이트를 rc=0 으로 통과했다.
-        """
+        """B4: 해소 주체는 항상 이 모델이라 원장에 소관 칸을 두지 않는다."""
         owner_header = HEADER.replace(
             "| 해소 방향 |", "| 해소 방향 | 소관 |"
         ).replace("| --- | --- | --- | --- | --- | --- |", "| --- | --- | --- | --- | --- | --- | --- |")
@@ -156,7 +152,6 @@ class BlockerPolicyTests(unittest.TestCase):
                     checker.parse_blockers(policy(row))
 
     def test_prose_may_not_state_registration_counts(self):
-        """R7: 마커 밖 산문이 개수를 말하면 잡고, 개수가 아닌 수는 흘려보낸다."""
         text = checker.POLICY.read_text()
         self.assertEqual(checker.find_prose_counts(text), [])
         for claim in [

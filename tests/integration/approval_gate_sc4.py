@@ -84,7 +84,6 @@ async def _patch(session, name: str, value: str):
 
 
 async def test_approved_verdict_is_observed_by_polling(session, gate, trace) -> None:
-    """(a) PENDING→APPROVED 전이가 폴링으로 관측되고 실행이 이어진다."""
     task = asyncio.create_task(_patch(session, TARGET_APPROVED, "approved"))
     row = await wait_for_pending(gate, TARGET_APPROVED)
     assert row["status"] == "PENDING", row
@@ -104,9 +103,7 @@ async def test_approved_verdict_is_observed_by_polling(session, gate, trace) -> 
 
 
 async def test_expired_verdict_is_observed(session, gate, trace) -> None:
-    """(b) 아무 판정도 없으면 거부가 만료 근처에 오고 기록은 EXPIRED 로 읽힌다.
-
-    거부는 도구 결과가 아니라 JSON-RPC 에러로 온다(`internal/mcp/gate.go` 의
+    """거부는 도구 결과가 아니라 JSON-RPC 에러로 온다(`internal/mcp/gate.go` 의
     `errf(-32603)`), 그래서 `McpError` 로 잡는다. 그 **문면은 단정하지 않는다** —
     아래의 지연·기록·폴링 수가 이 절의 계약을 진다.
     """
