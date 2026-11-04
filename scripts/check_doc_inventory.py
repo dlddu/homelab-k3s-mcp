@@ -44,7 +44,7 @@ CLAIM_RE = re.compile(
 
 CATEGORIES = ("가치", "PRD", "테스트", "상태 추적", "정책")
 POLICY_PREFIXES = ("comment-policy/",)
-POLICY_FILES = ("e2e-mocking-policy.md",)
+POLICY_FILES = ("e2e-mocking-policy.md", "review-policy.md")
 
 
 def categorize(rel: str) -> str | None:
