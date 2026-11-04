@@ -18,10 +18,10 @@
 #     is not deployable here: such a pod needs the claude-code-credentials
 #     Secret through a required SecretKeyRef plus the loopback credential
 #     proxy sidecar. Only `shell` sessions can be created in this harness,
-#     which is what session-read/AC1 and session-write/AC1 need and no more.
+#     which is all the session read/write checks need.
 # No env here reads a Secret, so this fixture needs none.
 #
-# DATA_PLANE_IMAGE **is** set because session-read/AC1 and session-write/AC1
+# DATA_PLANE_IMAGE **is** set because the session read/write checks
 # cannot be observed from seeded session ConfigMaps: `Service.Read` calls
 # `agent.Read(ctx, sess.Pod, offset)`, and the agent client resolves that pod
 # name to an IP through the Kubernetes API before dialling `:8090/read`, so a

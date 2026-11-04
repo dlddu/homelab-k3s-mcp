@@ -22,7 +22,6 @@ from _workload import NAMESPACE, WORKLOAD, CRASHLOOP_WORKLOAD
 #: 도구 응답이 객체 전문 대비 최소한 이만큼은 작아야 「현저히 작다」로 센다.
 MIN_SHRINK_FACTOR = 4.0
 
-#: 두 경로의 크기를 같은 규칙으로 재기 위한 직렬화 옵션.
 _DUMP = {"separators": (",", ":"), "sort_keys": True, "ensure_ascii": False}
 
 

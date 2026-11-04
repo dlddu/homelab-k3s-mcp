@@ -97,7 +97,7 @@ async def test_stdout_and_stderr_come_back_separately(session, gate, pod: str) -
         session, gate, pod,
         {"container": CHATTY, "command": ["echo", STDOUT_MARK]},
     )
-    # 성공 갈래 — #137 이 닫은 첫 자리다. 이 세 줄이 붉어지면 0 으로 끝난 명령의 종료
+    # 성공 갈래 — 이 세 줄이 붉어지면 0 으로 끝난 명령의 종료
     # 코드가 다시 응답에 실리지 않는 것이고, 그 아래 「거부」 단언들은 모두 공허해진다.
     assert result.isError is False, f"성공한 exec 가 에러로 보고됐다: {result}"
     payload = result.structuredContent

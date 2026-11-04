@@ -1,4 +1,4 @@
-# Prefix-less deployment variant for test-github-commit-status.md#시나리오 4 (b).
+# Prefix-less deployment variant.
 #
 # Differs from the primary in exactly one respect: the GitHub App secret ci.yml
 # creates in this namespace carries the same client id, installation id, API base
