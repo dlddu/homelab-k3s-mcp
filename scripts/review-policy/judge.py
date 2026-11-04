@@ -9,7 +9,7 @@ CASES = (
     ("MA1", ('docs/values.md', 'docs/prd-*.md', 'docs/test-*.md'), ()),
     ("MA2", ('scripts/review-policy/', '.github/workflows/review-policy.yml', 'docs/review-policy.md'), ()),
     ("MA3", ('internal/mcp/gate.go', 'internal/mcp/create_gate.go', 'internal/mcp/delete_collection.go', 'internal/mcp/confine.go', 'internal/mcp/declaration.go', 'internal/mcp/provenance.go', 'internal/approvalgate/', 'internal/auth/', 'internal/toolscope/', 'internal/server/server.go', 'main.go'), ('*_test.go',)),
-    ("MA4", ('k8s/',), ()),
+    ("MA4", ('k8s/rbac.yaml', 'k8s/serviceaccount.yaml'), ()),
 )
 
 
