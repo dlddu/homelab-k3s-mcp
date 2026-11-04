@@ -135,13 +135,6 @@ async def assert_destructive_annotation(
     session: ClientSession, tool_name: str
 ) -> None:
     """Assert the deployed server advertises ``tool_name`` as a destructive tool.
-
-    Fetches ``tools/list`` from the live server and checks the MCP annotations
-    that encode "파괴적 작업 표기" (destructive-operation marking): the tool must
-    advertise ``destructiveHint == True`` and ``readOnlyHint == False``. This
-    promotes the in-process assertion in ``internal/server/mcp_test.go``
-    (``TestToolsListAdvertisesAnnotations``) to the deployed-server e2e layer
-    without ever executing the destructive operation itself.
     """
     tools = await session.list_tools()
     by_name = {tool.name: tool for tool in tools.tools}
@@ -262,7 +255,6 @@ BASE_ACCESS_KEY_ID = "minioadmin"
 
 
 def fetch_trace(url: str | None = None) -> list[dict[str, Any]]:
-    """Return every request the http-trace proxy has recorded so far."""
     target = (url or trace_url()).rstrip("/")
     response = httpx.get(f"{target}/requests", timeout=10.0)
     response.raise_for_status()
@@ -272,7 +264,6 @@ def fetch_trace(url: str | None = None) -> list[dict[str, Any]]:
 def assume_role_records(
     records: list[dict[str, Any]], role_arn: str
 ) -> list[dict[str, Any]]:
-    """Return the successful AssumeRole calls recorded for ``role_arn``."""
     return [
         record
         for record in records
@@ -289,7 +280,6 @@ def find_requests(
     method: str,
     path: str,
 ) -> list[dict[str, Any]]:
-    """Return the recorded requests matching an exact upstream/method/path."""
     return [
         record
         for record in records
@@ -324,8 +314,6 @@ def assert_assumed_role_access(
        static base key** from the CI secret, and it travels with a session
        token — rules out signing with the long-lived base credentials, which
        MinIO would otherwise accept without complaint.
-
-    Returns the matched data-plane record so callers can assert more.
     """
     assumed = assume_role_records(records, role_arn)
     assert assumed, (

@@ -151,9 +151,7 @@ def _gated_calls() -> list[tuple[str, dict, str]]:
 
 
 async def _refuse(session, gate, tool: str, args: dict, marker: str) -> None:
-    """도구 호출을 띄우고, 그것이 만든 승인 요청을 사람 대신 **거절**한다.
-
-    자동 응답 모드(`AUTO_REJECT`)를 쓰지 않는 이유: 그 모드는 PocketAide 가 **호출자를
+    """자동 응답 모드(`AUTO_REJECT`)를 쓰지 않는 이유: 그 모드는 PocketAide 가 **호출자를
     등록한 사용자**에게 적용하는 설정이라, primary 의 사용자에 켜면 같은 그룹에서 동시에
     도는 다른 레인의 승인 댄스까지 거절해 버린다(자동 응답을 바꾸는 파일이
     `실행 대상: approval-variant` 에 모여 있는 이유가 그것이다). 그래서

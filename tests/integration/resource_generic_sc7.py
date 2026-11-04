@@ -4,8 +4,6 @@
 실행 대상: primary
 병렬 레인: gate-objects
 
-이 파일이 더하는 것은 **실물 apiserver 와 실물 PocketAide 에서 같은 계약이 성립하는가**이다.
-
 게이트는 문서 순서대로 하나씩 묻는다.
 """
 

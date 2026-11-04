@@ -6,7 +6,7 @@
 두 배포를 한 파일에서 만난다. 호출자로 **등록된** 배포는 primary 이고(`_approval_gate.CALLERS`),
 kind 의 PocketAide 에는 APNs 가 없어 PocketAide 가 503 으로 답한다. 호출자로 **등록되지 않은**
 배포는 `tests/k8s/kind/notify-unregistered-variant.yaml` 의 전용 배포이며 이 파일 자신의
-포트포워드로 닿는다(`approval_gate_sc5.py` 가 gate-broken 배포에 닿는 것과 같은 형태) —
+포트포워드로 닿는다 —
 PocketAide 가 자기 인증 층에서 401 을 낸다. 두 응답 모두 실물 PocketAide 의 것이다.
 
 요청이 PocketAide 의 본문 검증을 통과해야 503 에 닿는다 — `requester` 를 받는 판

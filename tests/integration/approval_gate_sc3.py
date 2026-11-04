@@ -87,7 +87,6 @@ CLOCK_SKEW_BEHIND = 3600.0
 
 @dataclass(frozen=True)
 class Screen:
-    """한 번의 승인 댄스가 남긴 화면과, 그 화면이 답해야 할 좌표."""
 
     tool: str
     pair: str
@@ -125,9 +124,7 @@ def _config_map(name: str, labels: dict[str, str] | None = None) -> dict:
 
 
 def _fixtures() -> None:
-    """이 파일이 가리키는 객체를 매니페스트 기준으로 세운다.
-
-    `CM_CREATED` 만은 **세우지 않는다** — 그 이름은 create 호출이 만들려다 거부당하는
+    """`CM_CREATED` 만은 **세우지 않는다** — 그 이름은 create 호출이 만들려다 거부당하는
     대상이고, 미리 만들어 두면 같은 이름의 create 가 승인 화면에 닿기 전에 충돌로 갈릴 수 있다.
     """
     _kubectl("delete", "configmap", CM_CREATED, "--ignore-not-found", "--wait=true")
@@ -225,7 +222,6 @@ async def _screen(
     pair: str,
     target_tokens: tuple[str, ...],
 ) -> str:
-    """게이트 대상 호출을 띄우고, 그것이 만든 승인 화면을 읽은 뒤 거부로 닫는다."""
     task = asyncio.create_task(session.call_tool(tool, args))
     row = await wait_for_pending(gate, marker)
     await decide(gate, row["id"], "REJECTED")

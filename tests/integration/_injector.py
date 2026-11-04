@@ -57,9 +57,7 @@ def injector_state(url: str) -> dict:
 
 
 def arm(url: str, mode: str, marker: str) -> dict:
-    """마커 한정 트리거를 건다.
-
-    주입기는 걸자마자 **프로브 INSERT 를 트랜잭션 안에서 날려 롤백**하고, 그것이
+    """주입기는 걸자마자 **프로브 INSERT 를 트랜잭션 안에서 날려 롤백**하고, 그것이
     기대한 오류를 내지 않으면 arm 자체를 실패시킨다. 그래서 이 함수가 돌아왔다는
     것은 「트리거가 이 마커에 실제로 발화한다」가 관측됐다는 뜻이다 — 발화하지
     않는 트리거 위에서 공허하게 통과하는 단언을 막는다.
@@ -73,7 +71,6 @@ def arm(url: str, mode: str, marker: str) -> dict:
 
 
 def disarm(url: str) -> dict:
-    """트리거를 걷고 그림자 행을 지운다."""
     response = httpx.post(f"{url}/disarm", timeout=30.0)
     if response.status_code != 200:
         raise AssertionError(f"주입기 disarm 실패: {response.text}")
@@ -82,9 +79,7 @@ def disarm(url: str) -> dict:
 
 @contextlib.contextmanager
 def injected(url: str, mode: str, marker: str) -> Iterator[dict]:
-    """``arm`` → 본문 → 반드시 ``disarm``.
-
-    본문이 무엇으로 끝나든 트리거를 걷는다. 걷은 뒤의 잔여 0 은 **호출자가**
+    """걷은 뒤의 잔여 0 은 **호출자가**
     단언한다 — C4 를 이 헬퍼 안에 숨기면 그 단언이 테스트 문면에서 사라진다.
     """
     armed = arm(url, mode, marker)

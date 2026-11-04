@@ -144,7 +144,6 @@ def _seed() -> None:
 
 
 async def _refused_after_change(session, gate, tool: str, args: dict, marker: str, disturb) -> str:
-    """도구를 띄우고 PENDING 을 잡은 뒤 **승인 전에** 대상을 흔들고 승인한다."""
     task = asyncio.create_task(session.call_tool(tool, args))
     row = await wait_for_pending(gate, marker)
     disturb()
@@ -233,7 +232,6 @@ async def test_secret_read_is_refused_and_returns_nothing(session, gate) -> None
 
 
 async def test_exec_is_refused_after_the_pod_was_recreated(session, gate) -> None:
-    """같은 이름·다른 uid — 재확인은 resourceVersion 뿐 아니라 uid 도 본다."""
     original_uid = _get("pod", TARGET_POD, ".metadata.uid")
 
     def disturb() -> None:
@@ -264,7 +262,6 @@ async def test_exec_is_refused_after_the_pod_was_recreated(session, gate) -> Non
 
 
 async def test_create_is_refused_by_the_apiserver_not_by_reconfirmation(session, gate) -> None:
-    """생성 경로는 재확인이 없다 — 409 가 그 자리를 대신하고, context 에 버전이 없다."""
     task = asyncio.create_task(
         session.call_tool(
             "resource_create",

@@ -96,7 +96,7 @@ async def test_github_commit_status_ac3_recorder_sees_a_call_that_passes_validat
     기록을 멈췄거나, 배포가 GitHub App 미설정이라 검증 이전에 거부하거나). 유효한
     한 벌은 검증과 접두사 검사를 지나 상류에 닿으므로, 그때 로그가 **비지 않는
     것**이 그 두 실패 모드를 배제한다. 호출 자체의 성패는 재지 않는다 — 이 시나리오의
-    주장이 아니고, `POST …/statuses/{sha}` 핸들러는 아직 시나리오 1 의 몫이다.
+    주장이 아니다.
     """
     reset_recorded()
     await session.call_tool("github_commit_status_create", dict(VALID_ARGUMENTS))
