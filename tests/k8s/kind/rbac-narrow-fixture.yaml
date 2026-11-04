@@ -1,5 +1,4 @@
-# Narrow-RBAC SUT variant for test-resource-generic.md#시나리오 18
-# (resource_generic_sc18.py).
+# Narrow-RBAC SUT variant (resource_generic_sc18.py).
 #
 # No deployment in this harness can produce the scenario's precondition:
 # k8s/rbac.yaml binds the primary's ServiceAccount to cluster-admin, and every

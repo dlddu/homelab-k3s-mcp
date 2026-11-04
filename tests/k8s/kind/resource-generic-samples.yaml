@@ -1,5 +1,4 @@
-# `resource-generic-fixture.yaml` 의 CRD 인스턴스 — 갈라 둔 이유는
-# `docs/test-resource-generic.md` 「픽스처」 절에 있다. ci.yml 이 CRD → `established` → 이 파일 순.
+# ci.yml 이 `resource-generic-fixture.yaml` 의 CRD → `established` → 이 파일 순으로 적용한다.
 apiVersion: homelab-k3s-mcp.test/v1
 kind: ResourceGenericSample
 metadata:

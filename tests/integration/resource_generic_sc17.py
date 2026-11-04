@@ -333,8 +333,6 @@ async def test_a_gated_custom_kind_is_refused_while_its_control_passes(
     assert _pair(screen) == "get on resourcegenericsamples", screen
     assert SAMPLE in screen, f"대상 이름이 화면에 없다:\n{screen}"
 
-    # 대조군: 민감 목록에 없는 종류는 같은 도구로 승인 없이 지나간다. 이것이 없으면 위 거부가
-    # 「그 종류가 민감해서」인지 「그 도구가 막혀서」인지 이 파일 안에서 갈리지 않는다.
     control = await session.call_tool(
         "resource_get",
         {
@@ -424,7 +422,6 @@ async def test_the_four_stream_tools_are_refused_and_show_the_path_not_the_value
     for screen in (exec_screen, attach_screen, forward_screen, proxy_screen):
         assert TOKEN not in screen, f"승인 화면에 토큰이 실렸다:\n{screen}"
 
-    # 「거부가 상태에 닿지 않았다」의 관측면: 대상 파드는 그대로 있다.
     assert (
         _kubectl("-n", NAMESPACE, "get", "pod", POD, check=False).returncode == 0
     ), "거부된 스트림 호출 뒤 대상 파드가 사라졌다"
@@ -481,7 +478,6 @@ async def test_the_direct_watch_is_granted_by_rbac_and_refused_by_the_kind_gate(
         f"SA 의 직접 watch 가 {response.status_code} 로 끝났다: {response.text[:200]}"
     )
 
-    # 같은 watch 를 도구로 부르면 민감 종류 게이트가 받는다.
     screen = await _refuse(
         session,
         gate,

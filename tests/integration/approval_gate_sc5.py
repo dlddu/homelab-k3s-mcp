@@ -177,8 +177,6 @@ async def refuse(session, name: str, path: str, budget: float = 30.0) -> str:
     raise AssertionError(f"{path}: 거부되지 않았다 — {result}")
 
 
-# --- (1) REJECTED -----------------------------------------------------------
-
 async def test_rejected_verdict_refuses(session, gate) -> None:
     """사람이 거절하면 거부된다."""
     task = asyncio.create_task(_patch(session, TARGET_REJECTED))
@@ -196,8 +194,6 @@ async def test_rejected_verdict_refuses(session, gate) -> None:
     assert_target_untouched(TARGET_REJECTED, "REJECTED")
     print("(1) ok: REJECTED → 도구 에러, 대상 불변")
 
-
-# --- (2) EXPIRED ------------------------------------------------------------
 
 async def test_expired_record_refuses(session, gate) -> None:
     """판정을 내리지 않으면 PocketAide 기록이 EXPIRED 로 읽히고 호출은 거부된다.
@@ -221,8 +217,6 @@ async def test_expired_record_refuses(session, gate) -> None:
     assert_target_untouched(TARGET_EXPIRED, "EXPIRED")
     print("(2) ok: 기록 EXPIRED → 도구 에러, 대상 불변")
 
-
-# --- (3) 타임아웃 내 판정 없음 ------------------------------------------------
 
 async def test_no_verdict_within_timeout_refuses(session, gate) -> None:
     """클라이언트가 판정 없이 마감한다 — 거부가 타임아웃을 **기다린 뒤에** 온다.
@@ -255,8 +249,6 @@ async def test_no_verdict_within_timeout_refuses(session, gate) -> None:
     assert_target_untouched(TARGET_NO_VERDICT, "판정 없음")
     print(f"(3) ok: 판정 없이 {wall:.1f}초(≥{LATENCY_FLOOR}) 뒤 거부, 대상 불변")
 
-
-# --- (4) externalId 충돌 (409) ----------------------------------------------
 
 async def test_external_id_conflict_refuses(session, gate, inject, trace) -> None:
     """409 — 실물 고유 인덱스 위반이 실물 핸들러의 409 를 내고 거부로 수렴한다.
@@ -292,8 +284,6 @@ async def test_external_id_conflict_refuses(session, gate, inject, trace) -> Non
     print("(4) ok: 실물 409 → 도구 에러, 저장 0건, 대상 불변, 잔여 0")
 
 
-# --- (5) 5xx ----------------------------------------------------------------
-
 async def test_server_error_refuses(session, gate, inject) -> None:
     """5xx — 실물 저장소 오류가 실물 `InternalError` 를 내고 거부로 수렴한다.
 
@@ -319,8 +309,6 @@ async def test_server_error_refuses(session, gate, inject) -> None:
     )
     print("(5) ok: 실물 500 → 도구 에러, 저장 0건, 대상 불변, 잔여 0")
 
-
-# --- (6)(7)(8) 연결 실패 · 두 미설정 ------------------------------------------
 
 async def _refuse_on_broken_variant(target: str, path: str, expected: str) -> None:
     """게이트가 죽은 배포에서 ⑴ 쓰기는 거부되고 ⑵ 읽기 대조군은 살아 있다.

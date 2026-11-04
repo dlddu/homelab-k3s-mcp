@@ -1,9 +1,7 @@
-# OIDC issuer + the auth-configuration deployment variants that
-# platform-auth-safety/AC2 (인증 디스커버리) and /AC8 (인증 방식 구성 유연성) need.
-#
 # No credential secrets are attached to any of the servers, for the same reason
 # auth-fixture.yaml attaches none: main.go's buildXService helpers degrade to an
-# unavailable service and the server still starts, which is all these ACs need.
+# unavailable service and the server still starts, which is all the discovery
+# and auth-configuration checks need.
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -16,9 +14,9 @@ metadata:
 # storage and a web listen address; server.NewServer additionally refuses to
 # start with zero connectors ("server: no connectors specified",
 # server/server.go). enablePasswordDB satisfies that by appending dex's built-in
-# local connector. AC2/AC8 need only discovery and the key set, never a login.
+# local connector. Discovery and the key set are all those checks read; none logs in.
 #
-# The password grant below is for test-event-log.md#시나리오 6 (2026-09-21): an
+# The password grant below is for test-event-log.md#시나리오 6: an
 # expired JWT has to be one this issuer signed, so event_log_sc6.py
 # mints one through `POST /token` (grant_type=password, the local connector)
 # and lets it expire. idTokens is short for that reason alone; nothing else in
