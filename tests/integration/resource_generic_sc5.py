@@ -86,7 +86,6 @@ def _lines(text: str) -> list[str]:
 
 
 def _control_secret() -> None:
-    """게이트 대조군이 겨눌 Secret 을 세운다(idempotent)."""
     manifest = {
         "apiVersion": "v1",
         "kind": "Secret",
@@ -105,9 +104,7 @@ def _control_secret() -> None:
 def test_resource_generic_ac5_precondition_multi_container_pod(
     timeout: float = 180.0,
 ) -> str:
-    """시나리오 5 사전 조건 — 다중 컨테이너 파드가 서 있고 로그 모집단이 선언대로다.
-
-    셋을 함께 건다. ⑴ 컨테이너가 **둘**이다 ⑵ 모집단이 `LOG_LINE_COUNT` 줄이다 ⑶ 재시작이
+    """셋을 함께 건다. ⑴ 컨테이너가 **둘**이다 ⑵ 모집단이 `LOG_LINE_COUNT` 줄이다 ⑶ 재시작이
     없다. 셋 다 무너져도 케이스는 **조용히 통과한다** — ⑴ 이 무너지면 거부가 일어나지 않아
     후보 단언에 닿지 못하고, ⑵ 가 `SMALL_TAIL_LINES` 이하로 떨어지면 절단 단언이 공전하며,
     ⑶ 이 무너지면 줄 수가 관측마다 달라져 ⑵ 가 흔들린다. 그래서 여기서 큰 소리로 세운다.
@@ -183,9 +180,7 @@ async def _logs(session: ClientSession, pod: str, **extra) -> tuple[dict, str]:
 async def test_resource_generic_ac5_log_returns_recent_lines(
     session: ClientSession, pod: str
 ) -> None:
-    """시나리오 5 — `subresource=log` 가 최근 로그를 돌려준다.
-
-    「돌려준다」를 비어 있지 않음이 아니라 **모집단 전체**로 건다. 기본값(`tailLines` 200)이
+    """「돌려준다」를 비어 있지 않음이 아니라 **모집단 전체**로 건다. 기본값(`tailLines` 200)이
     모집단(40)보다 크므로 전집이 와야 하고, 그래야 다음 케이스의 절단이 무엇에 대한 절단인지
     기준을 갖는다. 구조화 응답과 사람이 읽는 본문 양쪽을 보는 것은, 도구를 쓰는 쪽이 구조화
     필드를 보지 않아도 같은 로그를 읽는다는 것이 이 도구의 계약이라서다.
@@ -209,9 +204,7 @@ async def test_resource_generic_ac5_log_returns_recent_lines(
 async def test_resource_generic_ac5_tail_lines_actually_truncates(
     session: ClientSession, pod: str
 ) -> None:
-    """시나리오 5 — `tailLines=5` 가 라인 수를 실제로 줄이고, 남는 것은 **끝** 5줄이다.
-
-    개수만 보면 앞에서 5줄을 잘라 오는 구현도 통과한다. `tail` 이 약속하는 것은 개수가 아니라
+    """개수만 보면 앞에서 5줄을 잘라 오는 구현도 통과한다. `tail` 이 약속하는 것은 개수가 아니라
     **어느 쪽 끝인지**이므로 남은 줄의 이름까지 본다.
     """
     payload, _ = await _logs(
@@ -233,7 +226,6 @@ async def test_resource_generic_ac5_tail_lines_actually_truncates(
 async def test_resource_generic_ac5_over_max_tail_is_rejected_not_clamped(
     session: ClientSession, pod: str
 ) -> None:
-    """시나리오 5 — `tailLines=5001` 은 클램프되지 않고 거부되며, 상한값 자체는 정상 응답이다."""
     payload, _ = await _logs(
         session, pod, container=LOG_CONTAINER, tailLines=MAX_TAIL_LINES
     )
@@ -258,9 +250,7 @@ async def test_resource_generic_ac5_over_max_tail_is_rejected_not_clamped(
 async def test_resource_generic_ac5_previous_returns_the_terminated_instance(
     session: ClientSession,
 ) -> None:
-    """시나리오 5 — 크래시 루프 파드의 `previous=true` 가 **직전** 인스턴스 로그를 돌려준다.
-
-    직전 인스턴스가 찍는 마커는 지금 인스턴스가 찍는 것과 달라, 라이브 로그를 읽어 통과할 수
+    """직전 인스턴스가 찍는 마커는 지금 인스턴스가 찍는 것과 달라, 라이브 로그를 읽어 통과할 수
     없다. 그 구분을 실제로 세우려고 `previous` 없는 호출을 대조군으로 나란히 둔다 — 두 호출의
     답이 **서로를 배제**해야 「직전」이 관측된 것이다.
     """
@@ -283,9 +273,7 @@ async def test_resource_generic_ac5_previous_returns_the_terminated_instance(
 async def test_resource_generic_ac5_missing_container_is_refused_with_candidates(
     session: ClientSession, pod: str
 ) -> None:
-    """시나리오 5 — 다중 컨테이너 파드에 `container` 없이 부르면 거부되고 후보가 제시된다.
-
-    거부만으로는 부족하다. 시나리오가 요구하는 것은 **부르는 쪽이 다음에 무엇을 적어야 하는지**
+    """거부만으로는 부족하다. 시나리오가 요구하는 것은 **부르는 쪽이 다음에 무엇을 적어야 하는지**
     알 수 있다는 것이라, 거부 문면에 컨테이너 이름이 **전부** 실려야 한다. 이름을 하나 골라 부른
     호출이 성공하는 것을 나란히 봐야, 거부가 이름 누락 때문이지 이 파드를 못 읽어서가 아님이
     성립한다.
@@ -314,9 +302,7 @@ async def test_resource_generic_ac5_missing_container_is_refused_with_candidates
 async def test_resource_generic_ac5_scale_returns_current_replicas(
     session: ClientSession,
 ) -> None:
-    """시나리오 5 — `subresource=scale` 이 현재 레플리카를 돌려준다.
-
-    레플리카 수만으로 재면 객체 전문을 그대로 돌려주는 구현도 통과한다(Deployment 전문에도
+    """레플리카 수만으로 재면 객체 전문을 그대로 돌려주는 구현도 통과한다(Deployment 전문에도
     `spec.replicas` 가 있다). 그래서 돌아온 것이 `Scale` 이라는 것과 Deployment 전문에만 있는
     `spec.template` 이 **없다**는 것을 함께 본다.
     """
@@ -349,22 +335,18 @@ async def test_resource_generic_ac5_scale_returns_current_replicas(
 async def test_resource_generic_ac5_reads_never_reach_the_approval_gate(
     session: ClientSession, pod: str
 ) -> None:
-    """시나리오 5 — 이 시나리오의 호출은 `get` 만 행사하므로 승인 요청이 생기지 않는다.
-
-    성공만 보면 공허하다 — 게이트를 아예 달지 않은 서버도 통과시킨다. 그래서 같은 세션에서
+    """성공만 보면 공허하다 — 게이트를 아예 달지 않은 서버도 통과시킨다. 그래서 같은 세션에서
     게이트 대상(`v1/Secret` 읽기)이 **거부**되는 것을 나란히 봐서, 이 배포에 게이트가 실제로
     서 있는데도 위 호출들이 지나갔다는 것으로 만든다. 이 배포에는 실물 PocketAide 가 서 있으므로
     (``tests/k8s/kind/pocket-aide-fixture.yaml``) 거부는 사람 판정을 대신 태워 관측한다 —
     생성된 승인 요청을 **거절**하면 클라이언트가 즉시 물러난다. 거절이라 `EXPIRED` 의 5초
     대기도 승인 댄스도 필요 없고, 「승인되면 값이 온다」와 섞이지 않는다.
 
-    ⚠️ **대조군은 실재하는 Secret 을 겨눈다.** 준비 시점의 이 함수는 없는 이름을 겨누면서
-    「게이트는 kubernetes 호출 수가 0인 채로 판정하므로 대상이 실재할 필요가 없다」고 적었는데,
-    그것은 **거짓이다** — `target` 을 선언하는 도구는 승인 요청을 POST 하기 **전에**
+    ⚠️ **대조군은 실재하는 Secret 을 겨눈다.** `target` 을 선언하는 도구는 승인 요청을 POST 하기 **전에**
     `gate.go::readGateTarget` 이 대상을 읽는다(민감 종류는 `MetadataOnly`, 곧
     `PartialObjectMetadata`). 없는 이름은 그 읽기에서 404 로 죽어 **승인 요청이 아예 생기지
     않고**, 거부 문면도 「approval rejected」가 아니라 apiserver 의 「could not find」가 된다.
-    CI 가 이것을 잡았다. 실재하는 대상을 겨누면 「없어서 실패했다」와 섞일 걱정도 없다 —
+    실재하는 대상을 겨누면 「없어서 실패했다」와 섞일 걱정도 없다 —
     거절 댄스를 태우므로 거부 사유가 거절임이 문면에 박힌다.
     """
     payload, _ = await _logs(session, pod, container=LOG_CONTAINER)

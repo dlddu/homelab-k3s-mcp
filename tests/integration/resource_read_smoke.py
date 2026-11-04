@@ -6,7 +6,7 @@
 
 `smoke.py` 가 도구가 **광고되는지**를 보는 자리라면, 이 파일은 읽기 축 두 도구가 실제로
 **클러스터에서 값을 가져오는지**를 본다. 둘을 나눈 이유는 `resource_list` 가 광고된 채로
-빈 표를 돌려주는 상태가 실재했기 때문이다(`rct_20260913-0002` 1차 시도): Table 표현을
+빈 표를 돌려주는 상태가 실재했기 때문이다: Table 표현을
 요구하는 `Accept` 파라미터가 apiserver 가 아는 것과 어긋나면 요청이 실패하는 대신 **평범한
 List 로 답이 오고**, 그 본문은 `metav1.Table` 로 전부 0인 값으로 디코드된다. Go 단위 테스트는
 자기가 만든 Table 을 먹이므로 이 어긋남을 볼 수 없다 — 실 apiserver 만 볼 수 있고, 이
@@ -26,7 +26,6 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 
 def _table(result) -> tuple[list[str], list[list]]:
-    """도구 결과에서 (열 이름, 행) 을 꺼낸다."""
     assert result.isError is False, result
     payload = result.structuredContent
     assert payload is not None, result
@@ -36,7 +35,6 @@ def _table(result) -> tuple[list[str], list[list]]:
 async def test_resource_list_returns_the_apiservers_table(
     session: ClientSession,
 ) -> None:
-    """`resource_list` 가 협상된 Table 로 답한다 — 열도 행도 비어 있지 않다."""
     result = await session.call_tool("resource_list", {"apiVersion": "v1", "kind": "Namespace"})
     columns, rows = _table(result)
 

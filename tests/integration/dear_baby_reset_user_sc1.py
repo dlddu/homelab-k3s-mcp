@@ -23,9 +23,7 @@ POD_PREFIX = "dear-baby-"
 
 
 async def test_dear_baby_reset_user_ac1_reset_execution(session) -> None:
-    """AC: dear-baby-reset-user/AC1 — a valid email execs the reset CLI in the backend pod.
-
-    The not-found email is exercised as a control: it proves the success
+    """The not-found email is exercised as a control: it proves the success
     assertions read the CLI's real output rather than a fixed payload.
     """
     result = await session.call_tool(

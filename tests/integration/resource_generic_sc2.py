@@ -30,7 +30,6 @@ def _size(value) -> int:
 
 
 def _kubectl_deployments_whole() -> dict:
-    """같은 목록의 **객체 전문** — 도구를 거치지 않은 대조군."""
     raw = subprocess.check_output(
         ["kubectl", "get", "deployments", "-n", NAMESPACE, "-o", "json"],
         text=True,
@@ -41,7 +40,6 @@ def _kubectl_deployments_whole() -> dict:
 async def test_resource_generic_ac2_list_comes_back_as_a_table(
     session: ClientSession,
 ) -> None:
-    """시나리오 2 — 도구 응답이 Table(컬럼 헤더 + 행)이고 kubectl 준하는 컬럼을 보존한다."""
     result = await session.call_tool(
         "resource_list",
         {"apiVersion": "apps/v1", "kind": "Deployment", "namespace": NAMESPACE},
@@ -76,7 +74,6 @@ async def test_resource_generic_ac2_list_comes_back_as_a_table(
 async def test_resource_generic_ac2_table_is_much_smaller_than_whole_objects(
     session: ClientSession,
 ) -> None:
-    """시나리오 2 — 같은 목록의 객체 전문과 견줘 도구 응답이 현저히 작다."""
     result = await session.call_tool(
         "resource_list",
         {"apiVersion": "apps/v1", "kind": "Deployment", "namespace": NAMESPACE},
@@ -110,7 +107,6 @@ async def test_resource_generic_ac2_table_is_much_smaller_than_whole_objects(
 async def test_resource_generic_ac2_rows_carry_no_objects(
     session: ClientSession,
 ) -> None:
-    """시나리오 2 — 작아진 이유가 표이기 때문임을 형태로 확인한다."""
     result = await session.call_tool(
         "resource_list",
         {"apiVersion": "apps/v1", "kind": "Deployment", "namespace": NAMESPACE},

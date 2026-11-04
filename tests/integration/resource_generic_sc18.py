@@ -110,7 +110,6 @@ def _patch_args(
 
 
 async def _approved_call(session: ClientSession, gate: str, args: dict, mark: str):
-    """resource_patch 를 띄우고 그 승인 요청을 사람 대신 승인한 뒤 결과와 요청 id 를 준다."""
     task = asyncio.create_task(session.call_tool("resource_patch", args))
     row = await wait_for_pending(gate, mark)
     await decide(gate, row["id"], "APPROVED")
