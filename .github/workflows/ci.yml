@@ -120,7 +120,7 @@ jobs:
     # dlddu/pocket-aide 커밋이다. 이 한 줄이 그 의존의 유일한 핀이다.
     env:
       CGO_ENABLED: '0'
-      POCKET_AIDE_SHA: ea32e4182f8b9f1c05cb269e6e52c79aa6d8ee8f
+      POCKET_AIDE_SHA: 0a547a619c17fcddc14e3714aa8749d54a0e3922
     steps:
       - uses: actions/checkout@v4
 
@@ -368,6 +368,9 @@ jobs:
       - name: Apply gate-refusal variants
         run: kubectl apply -f tests/k8s/kind/gate-refusal-variant.yaml
 
+      - name: Apply notify-unregistered variant
+        run: kubectl apply -f tests/k8s/kind/notify-unregistered-variant.yaml
+
       - name: Apply apiserver-audit variant fixture
         run: kubectl apply -f tests/k8s/kind/apiserver-audit-variant.yaml
 
@@ -457,6 +460,9 @@ jobs:
       # reason deploy/homelab-k3s-mcp-no-auth is skipped below.
       - name: Wait for gate-refusal rollout
         run: kubectl -n homelab-k3s-mcp-gate-refusal rollout status deploy/homelab-k3s-mcp-gate-refusal --timeout=120s
+
+      - name: Wait for notify-unregistered variant rollout
+        run: kubectl -n homelab-k3s-mcp-notify-unregistered rollout status deploy/homelab-k3s-mcp-notify-unregistered --timeout=120s
 
       - name: Wait for apiserver-audit variant rollout
         run: kubectl -n homelab-k3s-mcp-apiserver-audit rollout status deploy/homelab-k3s-mcp-apiserver-audit --timeout=300s
@@ -589,6 +595,8 @@ jobs:
           kubectl -n homelab-k3s-mcp-apiserver-audit logs deploy/homelab-k3s-mcp-apiserver-audit -c mint-cert || true
           kubectl -n homelab-k3s-mcp-apiserver-audit logs deploy/homelab-k3s-mcp-apiserver-audit -c audit-proxy --tail=200 || true
           kubectl -n homelab-k3s-mcp-apiserver-audit logs deploy/homelab-k3s-mcp-apiserver-audit -c server --tail=200 || true
+          kubectl -n homelab-k3s-mcp-notify-unregistered get all -o wide || true
+          kubectl -n homelab-k3s-mcp-notify-unregistered logs deploy/homelab-k3s-mcp-notify-unregistered --tail=200 || true
           kubectl -n homelab-k3s-mcp-gate-refusal get all -o wide || true
           kubectl -n homelab-k3s-mcp-gate-refusal logs deploy/homelab-k3s-mcp-gate-refusal --tail=200 || true
           # 기동 실패가 의도인 변형(시나리오 1 (c)). 백오프 중이면 현재 인스턴스에 로그가 없다.
