@@ -230,6 +230,7 @@ func TestReasonIsAdvertisedOnExactlyTheToolsThatMayAskForApproval(t *testing.T) 
 		"resource_update": true, "resource_patch": true, "resource_delete": true,
 		"resource_delete_collection": true, "resource_exec": true, "resource_attach": true,
 		"resource_port_forward": true, "resource_proxy": true,
+		"session_create": true,
 	}
 	for name, entry := range toolRegistry {
 		if got := entry.decl.mayAskForApproval(); got != want[name] {
@@ -239,6 +240,7 @@ func TestReasonIsAdvertisedOnExactlyTheToolsThatMayAskForApproval(t *testing.T) 
 
 	needs := map[string]approvalNeed{
 		"resource_get": approvedForSensitiveKinds, "resource_watch": approvedForSensitiveKinds,
+		"session_create": approvedForSomeArguments,
 	}
 	for name, entry := range toolRegistry {
 		want := neverApproved

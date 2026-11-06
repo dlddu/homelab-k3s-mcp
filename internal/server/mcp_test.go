@@ -1768,7 +1768,7 @@ func TestToolsListAdvertisesSessionCreate(t *testing.T) {
 	create := findTool(t, toolsList(t, app), "session_create")
 
 	props := at(t, create, "inputSchema", "properties").(map[string]any)
-	for _, key := range []string{"name", "workloadType", "model"} {
+	for _, key := range []string{"name", "workloadType", "model", "reason"} {
 		if _, ok := props[key]; !ok {
 			t.Fatalf("inputSchema is missing %s: %v", key, props)
 		}
@@ -1842,6 +1842,24 @@ func TestSessionCreateRejectsBadArguments(t *testing.T) {
 				t.Fatalf("createCalls = %+v, want none", fake.createCalls)
 			}
 		})
+	}
+}
+
+// prd-session-create AC5: a codex session waits for a human, so with no
+// approval gate configured it is refused and the control plane is never asked.
+func TestSessionCreateRefusesCodexWithoutAnApprovalGate(t *testing.T) {
+	fake := &fakeSessionPlatform{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 192, "session_create", map[string]any{
+		"name": "agent", "workloadType": "codex", "reason": "codex 세션을 연다.",
+	})
+	message, _ := at(t, body, "error", "message").(string)
+	if !strings.Contains(message, "approval gate is not configured") {
+		t.Fatalf("error message = %q, want the unconfigured-gate refusal", message)
+	}
+	if len(fake.createCalls) != 0 {
+		t.Fatalf("createCalls = %+v, want none", fake.createCalls)
 	}
 }
 

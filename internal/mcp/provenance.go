@@ -21,6 +21,9 @@ const (
 
 	reasonDescriptionAlways        = "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 필수 — 이 도구의 호출은 언제나 사람의 승인을 거친다."
 	reasonDescriptionSensitiveOnly = "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. 민감 종류(예: Secret)를 읽을 때는 필수 — 그 호출은 사람의 승인을 거친다. 그 밖의 종류에서는 쓰이지 않는다."
+
+	// reasonDescriptionConditional is completed by an argumentGate's condition.
+	reasonDescriptionConditional = "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. %s 필수 — 그 호출은 사람의 승인을 거친다. 그 밖에는 쓰이지 않는다."
 )
 
 type approvalNeed int
@@ -28,6 +31,7 @@ type approvalNeed int
 const (
 	neverApproved approvalNeed = iota
 	approvedForSensitiveKinds
+	approvedForSomeArguments
 	alwaysApproved
 )
 
@@ -89,6 +93,9 @@ func (d toolDeclaration) approvalNeed() approvalNeed {
 	if d.outsideGate != "" {
 		return neverApproved
 	}
+	if d.argumentGate != nil {
+		return approvedForSomeArguments
+	}
 	if d.alwaysGated != "" {
 		return alwaysApproved
 	}
@@ -113,6 +120,14 @@ func (d toolDeclaration) mayAskForApproval() bool { return d.approvalNeed() != n
 func (h *Handler) requireReason(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) *rpcErr {
 	if reasonFrom(ctx) != "" {
 		return nil
+	}
+	if g := entry.decl.argumentGate; g != nil {
+		subject, err := g.subject(rawArgs)
+		if err != nil || subject == "" {
+			return nil
+		}
+		return errf(-32602, "reason is required: this %s call (%s) needs human approval, and the approval screen has to show the operator why it is being made — pass reason, one or two sentences in Korean",
+			name, subject)
 	}
 	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, rawArgs)
 	if err != nil || len(gated) == 0 {
@@ -225,8 +240,11 @@ func validateReasonArgument(registered map[string]toolEntry, toolsList string) e
 			problems = append(problems, fmt.Sprintf("%s never asks for approval but advertises %q, which the dispatcher would pass to its handler", tool.Name, reasonArgument))
 		case advertised:
 			want := reasonDescriptionSensitiveOnly
-			if need == alwaysApproved {
+			switch need {
+			case alwaysApproved:
 				want = reasonDescriptionAlways
+			case approvedForSomeArguments:
+				want = fmt.Sprintf(reasonDescriptionConditional, entry.decl.argumentGate.condition)
 			}
 			var prop struct {
 				Type        string `json:"type"`
