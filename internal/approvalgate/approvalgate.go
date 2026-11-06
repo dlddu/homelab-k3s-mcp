@@ -194,10 +194,11 @@ func gatedKindsFromEnv() []string {
 	return kinds
 }
 
-// Call describes the single kubernetes operation an approval is being sought
-// for.
+// Call describes the single operation an approval is being sought for.
 type Call struct {
 	Tool string
+	// Pair is zero for a call gated on its arguments (session_create's codex
+	// workload), which exercises no kubernetes permission.
 	Pair Pair
 
 	SessionID string

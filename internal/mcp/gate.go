@@ -67,9 +67,34 @@ type toolDeclaration struct {
 	// method, so a GET there is not a read of an object, it is an arbitrary
 	// request to whatever the object serves.
 	alwaysGated string
+
+	// argumentGate puts some calls of a tool that holds no kubernetes
+	// permission behind the gate anyway, chosen by the call's own arguments.
+	// It sits beside the no-resource-permission marker rather than replacing
+	// it: the call still reaches no apiserver, so confinement is unchanged.
+	argumentGate *argumentGate
+}
+
+// argumentGate is the one place the gate reads a call's content to decide
+// whether to ask, which AC1 otherwise forbids for kubernetes pairs. Each one
+// therefore cites the document that drew its line, the way outsideGate does.
+type argumentGate struct {
+	basis string
+
+	// condition completes the reason argument's description: it says, in the
+	// words tools/list shows the agent, which calls need approval.
+	condition string
+
+	// subject names what one call would be approved for, or "" when the call
+	// needs no approval. An error refuses the call before anyone is asked.
+	subject func(json.RawMessage) (string, error)
 }
 
 const (
+	// docs/prd-session-create.md AC5 (2026-11-06 소유자 결정).
+	gatedCodexWorkloadByOwner = "prd-session-create AC5 — codex 계열 워크로드 세션은 사람 승인을 거친다"
+
+	codexWorkloadType     = "codex"
 	exemptAcceptedByOwner = "prd-approval-gate 「남은 예외 1건」 — 소유자 수용 (doc-tracker 수용된 위험, 2026-09-27)"
 
 	// docs/prd-resource-generic.md AC15, and the same sentence in
@@ -234,10 +259,17 @@ var toolRegistry = map[string]toolEntry{
 		handle: (*Handler).opensearchDocumentDelete,
 	},
 	"session_create": {
-		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
-			kind:   touchesNothing,
-			reason: "creates a session through the session platform API; reaches no kubernetes resource",
-		}},
+		decl: toolDeclaration{
+			noResourcePermission: &noResourcePermission{
+				kind:   touchesNothing,
+				reason: "creates a session through the session platform API; reaches no kubernetes resource",
+			},
+			argumentGate: &argumentGate{
+				basis:     gatedCodexWorkloadByOwner,
+				condition: "workloadType 이 codex 계열('codex' 또는 'codex-'로 시작하는 타입)일 때는",
+				subject:   codexSessionSubject,
+			},
+		},
 		handle: (*Handler).sessionCreate,
 	},
 	"session_delete": {
@@ -600,6 +632,10 @@ func GatePairs() []approvalgate.Pair {
 // authorize runs the gate for one tool call. It is called by the dispatcher
 // before the handler, never by a handler (AC1).
 func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, rawArgs json.RawMessage) (*approvalgate.Decision, *k8s.TargetState, *rpcErr) {
+	if g := entry.decl.argumentGate; g != nil {
+		decision, rerr := h.authorizeArguments(ctx, name, g, rawArgs)
+		return decision, nil, rerr
+	}
 	gated, err := entry.decl.gatedPairs(h.sensitiveKinds, rawArgs)
 	if err != nil {
 		// A call whose pair cannot be named is a call whose gating cannot be
@@ -663,6 +699,78 @@ func (h *Handler) authorize(ctx context.Context, name string, entry toolEntry, r
 		"auto_approved", decision.AutoApproved,
 	)
 	return decision, approved, nil
+}
+
+// authorizeArguments is authorize for an argumentGate. There is no target to
+// read and no state to re-check (AC6): what the operator approves is the
+// request itself, and the control plane creates something new each time.
+func (h *Handler) authorizeArguments(ctx context.Context, name string, g *argumentGate, rawArgs json.RawMessage) (*approvalgate.Decision, *rpcErr) {
+	subject, err := g.subject(rawArgs)
+	if err != nil {
+		return nil, errf(-32602, "%s", err.Error())
+	}
+	if subject == "" {
+		return nil, nil
+	}
+
+	decision, err := h.askGate(ctx, approvalgate.Call{
+		Tool:      name,
+		SessionID: sessionIDFrom(ctx),
+		Reason:    reasonFrom(ctx),
+		Describe: func(context.Context) (string, error) {
+			return argumentApprovalContext(name, subject, rawArgs), nil
+		},
+	})
+	if err != nil {
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "subject", subject, "error", err.Error())
+		return nil, gateRefusal(err)
+	}
+	if err := decision.Consume(); err != nil {
+		approvalLog(ctx, slog.LevelWarn, "approval refused", "tool", name, "request_id", decision.RequestID, "error", err.Error())
+		return nil, errf(-32603, "%s", err.Error()).afterVerdict(decision)
+	}
+	approvalLog(ctx, slog.LevelInfo, "approval granted",
+		"tool", name,
+		"subject", subject,
+		"request_id", decision.RequestID,
+		"external_id", decision.ExternalID,
+		"auto_approved", decision.AutoApproved,
+	)
+	return decision, nil
+}
+
+// argumentApprovalContext carries the arguments verbatim, as AC3 asks of
+// every approval screen. None of them is a credential, so nothing is masked.
+func argumentApprovalContext(name, subject string, rawArgs json.RawMessage) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "tool: %s\n", name)
+	fmt.Fprintf(&b, "approval: %s\n", subject)
+	fmt.Fprintf(&b, "requested at: %s\n", time.Now().UTC().Format(time.RFC3339))
+	b.WriteString(argumentsBlock(nil, rawArgs, nil))
+	return b.String()
+}
+
+// codexSessionSubject runs the handler's own argument checks first, for the
+// reason updatePairs states. A codex type the control plane does not offer
+// still asks: whether it is offered is the control plane's answer, and the
+// gate decides before anything is sent there.
+func codexSessionSubject(rawArgs json.RawMessage) (string, error) {
+	req, rerr := parseSessionCreate(rawArgs)
+	if rerr != nil {
+		return "", errors.New(rerr.message)
+	}
+	if !isCodexWorkload(req.WorkloadType) {
+		return "", nil
+	}
+	return fmt.Sprintf("create a session-platform session running workload type %q (a codex agent with its own pod)", req.WorkloadType), nil
+}
+
+// isCodexWorkload matches the family rather than the one name, so a variant
+// the platform adds later is gated without a change here. Case and spaces are
+// folded so that a spelling the control plane might accept cannot slip past.
+func isCodexWorkload(workloadType string) bool {
+	t := strings.ToLower(strings.TrimSpace(workloadType))
+	return t == codexWorkloadType || strings.HasPrefix(t, codexWorkloadType+"-")
 }
 
 type approvedTargetKey struct{}

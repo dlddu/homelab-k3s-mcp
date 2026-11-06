@@ -880,7 +880,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_create",
-      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers, so this call BLOCKS — typically seconds, up to a few minutes on a cold image pull — and returns the session already 'active' with its 'pod', ready for session_write and session_read. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, and the agent types (for example 'claude-code', 'approval-gated', 'minimax-code') run one prompt per write. The types available are the ones this deployment offers, read from the control plane on each call rather than fixed here; a type it does not offer is refused before anything is created, and the refusal lists the offered ones. 'model' applies to agent types only and defaults to the platform default. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers, so this call BLOCKS — typically seconds, up to a few minutes on a cold image pull — and returns the session already 'active' with its 'pod', ready for session_write and session_read. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, and the agent types (for example 'claude-code', 'approval-gated', 'minimax-code') run one prompt per write. The types available are the ones this deployment offers, read from the control plane on each call rather than fixed here; a type it does not offer is refused before anything is created, and the refusal lists the offered ones. 'model' applies to agent types only and defaults to the platform default. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. A codex workload ('codex' or any type starting with 'codex-') needs human approval through the PocketAide approval gate before anything is created, so pass 'reason' for it; the call waits for the decision and a refusal creates nothing. Other types run without approval. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -897,6 +897,11 @@ const toolsListJSON = `{
           "model": {
             "type": "string",
             "description": "Model for an agent session. Omit to use the platform default. Not allowed for 'shell', and refused by the control plane for a type that takes no model choice."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "운영자의 승인 화면에 그대로 보이는, 이 호출을 하려는 이유. 한국어 한두 문장. workloadType 이 codex 계열('codex' 또는 'codex-'로 시작하는 타입)일 때는 필수 — 그 호출은 사람의 승인을 거친다. 그 밖에는 쓰이지 않는다."
           }
         },
         "required": ["name"],

@@ -899,11 +899,27 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 }
 
 func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	req, rerr := parseSessionCreate(raw)
+	if rerr != nil {
+		return nil, rerr
+	}
+
+	created, err := h.sessionPlatform.CreateSession(ctx, req)
+	if err != nil {
+		return toolError(ctx, err), nil
+	}
+	return successResult(map[string]any{"session": sessionFields(*created)}), nil
+}
+
+// parseSessionCreate is shared with the gate's codex check, which runs before
+// the handler and must refuse the same bad arguments without first costing an
+// approval request.
+func parseSessionCreate(raw json.RawMessage) (sessionplatform.CreateRequest, *rpcErr) {
+	var req sessionplatform.CreateRequest
 	obj, ok := decodeObject(raw)
 	if !ok {
-		return nil, errf(-32602, "arguments must be an object")
+		return req, errf(-32602, "arguments must be an object")
 	}
-	var req sessionplatform.CreateRequest
 	for key, dst := range map[string]*string{
 		"name": &req.Name, "workloadType": &req.WorkloadType, "model": &req.Model,
 	} {
@@ -913,19 +929,14 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 		}
 		str, ok := v.(string)
 		if !ok {
-			return nil, errf(-32602, "%s must be a string", key)
+			return req, errf(-32602, "%s must be a string", key)
 		}
 		*dst = str
 	}
 	if strings.TrimSpace(req.Name) == "" {
-		return nil, errf(-32602, "name is required and must contain a non-whitespace character")
+		return req, errf(-32602, "name is required and must contain a non-whitespace character")
 	}
-
-	created, err := h.sessionPlatform.CreateSession(ctx, req)
-	if err != nil {
-		return toolError(ctx, err), nil
-	}
-	return successResult(map[string]any{"session": sessionFields(*created)}), nil
+	return req, nil
 }
 
 func (h *Handler) sessionDelete(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {

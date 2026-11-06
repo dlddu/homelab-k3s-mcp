@@ -5,6 +5,7 @@
 - AC2: 잘못된 요청은 아무것도 만들지 않는다 (PRD: session_create)
 - AC3: 비파괴 추가 작업 표기 (PRD: session_create)
 - AC4: 미설정 시 graceful 거부 (PRD: session_create)
+- AC5: codex 워크로드는 사람 승인을 거친다 (PRD: session_create)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -74,3 +75,24 @@
   `internal/sessionplatform/sessionplatform_test.go`
   (`TestUnavailableRefusesCreateAndDelete`) + 통합
   `tests/integration/session_create_sc4.py`(`실행 대상: auth-variant`)
+
+### 시나리오 5: codex 세션 생성의 승인 게이트
+- **사전 조건**: 시나리오 1과 같고, 서버에 승인 게이트(PocketAide) 배선
+- **실행 단계**: `workloadType=codex`로 ⑴ `reason` 없이 호출 ⑵ `reason`을 주고 호출한 뒤 대기
+  중인 승인 요청을 거부 ⑶ 같은 호출을 승인. 매 호출 전후로 세션 목록과 파드 집합을 비교
+- **기대 결과**: ⑴은 승인 요청 없이 `-32602`(`reason is required`)로 거부된다. ⑵는 승인 요청의
+  `context`에 워크로드 타입이 보이고 `reason`이 따로 실리며, 거부 뒤 호출은 게이트 거부로
+  끝난다. ⑶은 승인 뒤에야 제어면에 닿는다 — kind 제어면은 `codex`를 제공하지 않으므로 제공되지
+  않는 타입으로 거부된다. 세 호출 모두 세션 목록과 파드 집합이 그대로다. `shell`·`claude-code`
+  생성은 승인 요청 없이 돈다(Go 단위).
+- **검증 AC**: AC5
+- **자동화**: Go 단위 `internal/mcp/session_gate_test.go`
+  (`TestCodexSessionCreateWaitsForApproval` — 승인 요청 하나와 그 `context`·`reason`, 승인 뒤
+  생성 요청 하나, `TestCodexSessionCreateCreatesNothingWithoutApproval` — 거부·미구성 게이트에서
+  생성 요청 0건, `TestCodexSessionCreateRequiresAReason`,
+  `TestBadSessionArgumentsAreRefusedBeforeApproval`, `TestOtherWorkloadsCreateWithoutApproval`,
+  `TestCodexAutoApprovalIsVisibleInTheToolResponse`, `TestCodexWorkloadFamily`) +
+  `internal/mcp/provenance_test.go`
+  (`TestReasonIsAdvertisedOnExactlyTheToolsThatMayAskForApproval` — `reason`이 선택으로 광고된다) +
+  `internal/server/mcp_test.go` (`TestSessionCreateRefusesCodexWithoutAnApprovalGate`) + 통합
+  `tests/integration/session_create_sc5.py`
