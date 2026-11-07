@@ -38,7 +38,7 @@ func tenantStub(t *testing.T, status int) (*httptest.Server, *authRecorder) {
 		case status != http.StatusOK:
 			_, _ = w.Write([]byte(`{"error":"service account belongs to no tenant"}`))
 		case r.URL.Path == configPath:
-			_, _ = w.Write([]byte(`{"workloadTypes":[{"type":"shell"},{"type":"codex"}]}`))
+			_, _ = w.Write([]byte(`{"workloadTypes":[{"type":"shell"},{"type":"codex-chat"}]}`))
 		default:
 			_, _ = w.Write([]byte(`{"sessions":[]}`))
 		}
@@ -67,7 +67,7 @@ func TestTenantTokenIsSentOnEveryControlPlaneCall(t *testing.T) {
 
 	ctx := context.Background()
 	_, _ = c.ListSessions(ctx)
-	_, _ = c.CreateSession(ctx, CreateRequest{Name: "n", WorkloadType: "codex"})
+	_, _ = c.CreateSession(ctx, CreateRequest{Name: "n", WorkloadType: "codex-chat"})
 	_ = c.DeleteSession(ctx, "id")
 	_, _ = c.ReadSession(ctx, "id", 0)
 	_, _ = c.WriteSession(ctx, "id", "x")
