@@ -202,13 +202,16 @@ func (u *Unavailable) WriteSession(context.Context, string, string) (*WriteResul
 type Client struct {
 	endpoint  string
 	userAgent string
+	tokenFile string
 	http      *http.Client
 	create    *http.Client
 }
 
 // FromEnv builds a Client from SESSION_PLATFORM_ENDPOINT, the control plane's
 // base URL (in production the cluster-internal
-// http://control-plane.session-platform.svc.cluster.local).
+// http://control-plane.session-platform.svc.cluster.local), and
+// SESSION_PLATFORM_TOKEN_FILE, the projected token that makes the control plane
+// answer as this server's tenant rather than as the operator.
 func FromEnv() (*Client, error) {
 	endpoint := strings.TrimSpace(os.Getenv("SESSION_PLATFORM_ENDPOINT"))
 	if endpoint == "" {
@@ -218,9 +221,17 @@ func FromEnv() (*Client, error) {
 		return nil, fmt.Errorf("SESSION_PLATFORM_ENDPOINT must be an absolute http(s) URL, got %q", endpoint)
 	}
 
+	tokenFile := strings.TrimSpace(os.Getenv("SESSION_PLATFORM_TOKEN_FILE"))
+	if tokenFile != "" {
+		if _, err := readToken(tokenFile); err != nil {
+			return nil, err
+		}
+	}
+
 	return &Client{
 		endpoint:  strings.TrimRight(endpoint, "/"),
 		userAgent: version.Name + "/" + version.Version,
+		tokenFile: tokenFile,
 		http:      &http.Client{Timeout: httpClientTimeout},
 		create:    &http.Client{Timeout: createTimeout},
 	}, nil
@@ -243,13 +254,11 @@ func (c *Client) CreateSession(ctx context.Context, req CreateRequest) (*Session
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
-	httpReq.Header.Set("Accept", "application/json")
 	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("User-Agent", c.userAgent)
 
-	resp, err := c.create.Do(httpReq)
+	resp, err := c.send(c.create, httpReq)
 	if err != nil {
-		return nil, apiError(fmt.Sprintf("post %s: %v", endpoint, err))
+		return nil, sendError("post", endpoint, err)
 	}
 	defer resp.Body.Close()
 
@@ -281,12 +290,10 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 	if err != nil {
 		return apiError(fmt.Sprintf("build request: %v", err))
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.send(c.http, req)
 	if err != nil {
-		return apiError(fmt.Sprintf("delete %s: %v", endpoint, err))
+		return sendError("delete", endpoint, err)
 	}
 	defer resp.Body.Close()
 
@@ -312,12 +319,10 @@ func (c *Client) ListSessions(ctx context.Context) ([]Session, error) {
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.send(c.http, req)
 	if err != nil {
-		return nil, apiError(fmt.Sprintf("get %s: %v", endpoint, err))
+		return nil, sendError("get", endpoint, err)
 	}
 	defer resp.Body.Close()
 
@@ -360,13 +365,11 @@ func (c *Client) ReadSession(ctx context.Context, id string, offset int64) (*Rea
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
-	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.send(c.http, req)
 	if err != nil {
-		return nil, apiError(fmt.Sprintf("post %s: %v", endpoint, err))
+		return nil, sendError("post", endpoint, err)
 	}
 	defer resp.Body.Close()
 
@@ -406,13 +409,11 @@ func (c *Client) WriteSession(ctx context.Context, id, payload string) (*WriteRe
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
-	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.send(c.http, req)
 	if err != nil {
-		return nil, apiError(fmt.Sprintf("post %s: %v", endpoint, err))
+		return nil, sendError("post", endpoint, err)
 	}
 	defer resp.Body.Close()
 
@@ -438,6 +439,54 @@ func (c *Client) WriteSession(ctx context.Context, id, payload string) (*WriteRe
 		return nil, apiError(fmt.Sprintf("parse write result: %v", err))
 	}
 	return &parsed, nil
+}
+
+// send stamps the common headers and, when a token file is configured, the
+// tenant token. A token that cannot be read fails the call instead of going out
+// without one: an unauthenticated request is the operator, who sees every
+// tenant's sessions.
+func (c *Client) send(client *http.Client, req *http.Request) (*http.Response, error) {
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", c.userAgent)
+	if c.tokenFile != "" {
+		token, err := readToken(c.tokenFile)
+		if err != nil {
+			return nil, unavailable(err.Error())
+		}
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		return nil, apiError(fmt.Sprintf("control plane refused this server's tenant identity (SESSION_PLATFORM_TOKEN_FILE): %s",
+			controlPlaneMessage(body, resp.Status)))
+	}
+	return resp, nil
+}
+
+func sendError(verb, endpoint string, err error) *Error {
+	if e, ok := err.(*Error); ok {
+		return e
+	}
+	return apiError(fmt.Sprintf("%s %s: %v", verb, endpoint, err))
+}
+
+// readToken is called per request because the kubelet rotates the projected
+// token in place.
+func readToken(path string) (string, error) {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("session platform tenant token: %w", err)
+	}
+	token := strings.TrimSpace(string(raw))
+	if token == "" {
+		return "", fmt.Errorf("session platform tenant token %s is empty", path)
+	}
+	return token, nil
 }
 
 func controlPlaneMessage(body []byte, status string) string {

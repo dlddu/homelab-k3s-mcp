@@ -5,6 +5,7 @@
 - AC2: 잘못된 요청은 아무것도 만들지 않는다 (PRD: session_create)
 - AC3: 비파괴 추가 작업 표기 (PRD: session_create)
 - AC4: 미설정 시 graceful 거부 (PRD: session_create)
+- AC5: 세션 도구는 이 서버의 테넌트로 말한다 (PRD: session_create)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -74,3 +75,18 @@
   `internal/sessionplatform/sessionplatform_test.go`
   (`TestUnavailableRefusesCreateAndDelete`) + 통합
   `tests/integration/session_create_sc4.py`(`실행 대상: auth-variant`)
+
+### 시나리오 5: 세션 도구가 테넌트 토큰을 싣는다
+- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT`와 `SESSION_PLATFORM_TOKEN_FILE` 배선, 테넌트가 설정된
+  session-platform 제어면(테넌트 `homelab-k3s-mcp`가 이 서버의 ServiceAccount를 주장)
+- **실행 단계**: (a) `session_create`(에이전트 타입 포함)·`session_list`·`session_read`·`session_write`·
+  `session_delete`를 차례로 호출 → (b) 토큰 파일을 새 토큰으로 바꾼 뒤 `session_list` → (c) 토큰 파일을
+  지운 뒤 `session_list` → (d) 변수를 비운 서버로 `session_list`
+- **기대 결과**: (a) 제어면이 받은 모든 요청(`GET /config` 포함)에 그 토큰의 `Authorization: Bearer`가
+  있고, 만들어진 세션은 테넌트 `homelab-k3s-mcp` 소속이다. (b) 새 토큰이 실린다. (c) 제어면에 요청이
+  가지 않고 unavailable 도구 에러다. (d) `Authorization` 헤더가 없다
+- **검증 AC**: AC5
+- **자동화**: Go 단위 `internal/sessionplatform/tenant_token_test.go`
+  (`TestTenantTokenIsSentOnEveryControlPlaneCall`, `TestTenantTokenIsReReadAfterRotation`,
+  `TestUnreadableTenantTokenSendsNothing`, `TestFromEnvRefusesAMissingOrEmptyTokenFile`,
+  `TestNoTokenFileSendsNoAuthorization`, `TestTenantRefusalNamesTheIdentity`) + 통합 (미작성)

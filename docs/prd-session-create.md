@@ -28,7 +28,8 @@ session-platform 제어면에 새 세션을 만드는 도구. 세션마다 전�
   `lastAccess`)
 - 생성 대기 상한: 제어면의 파드 Ready 대기 기본값(2분)보다 넉넉한 **5분**. 도구가 제어면보다
   먼저 끊으면, 제어면이 띄운 파드는 남는데 호출자는 그 세션의 id를 받지 못한다.
-- 서버 요구 설정: `SESSION_PLATFORM_ENDPOINT` (세션 도구 공유)
+- 서버 요구 설정: `SESSION_PLATFORM_ENDPOINT` (세션 도구 공유), 선택 `SESSION_PLATFORM_TOKEN_FILE`
+  (세션 도구 공유 — 테넌트 신원, AC5)
 - 어노테이션: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`,
   `openWorldHint=true`
   (destructive=false: 기존 세션·출력을 바꾸지 않는 추가적 변경이다. idempotent=false: 같은
@@ -79,3 +80,20 @@ session-platform 제어면에 새 세션을 만드는 도구. 세션마다 전�
   기동·다른 도구에는 영향을 주지 않는다.
 - **달성 가치**: V3
 - **검증 방법**: 관련 env가 비어 있을 때 unavailable 에러가 반환되고 서버는 계속 동작한다.
+
+### AC5: 세션 도구는 이 서버의 테넌트로 말한다
+- **설명**: `SESSION_PLATFORM_TOKEN_FILE`이 설정되면 세션 도구 다섯(`session_create`·`session_list`·
+  `session_read`·`session_write`·`session_delete`)과 그 사전 조회(`GET /api/v1/config`)의 **모든** 제어면
+  요청이 그 파일의 토큰을 `Authorization: Bearer`로 싣는다. 토큰은 이 서버 ServiceAccount의 projected
+  토큰(audience `session-platform`)이고, 제어면은 그것으로 이 서버를 테넌트 `homelab-k3s-mcp`로 본다
+  (session-platform `docs/prd/multitenancy.md` AC-K1) — 그래서 도구가 보고 만드는 세션은 그 테넌트의
+  세션이고, 고를 수 있는 타입은 그 테넌트에 허용된 타입이다. kubelet이 토큰을 제자리에서 갈아 끼우므로
+  파일은 **요청마다** 다시 읽는다. 기동 때 파일이 없거나 비어 있으면 세션 도구는 unavailable로 거부되고
+  (AC4와 같은 자리), 호출 시점에 읽지 못하면 그 호출은 **요청을 보내지 않고** unavailable로 실패한다 —
+  토큰 없는 요청은 제어면에서 모든 테넌트의 세션을 보는 운영자가 되므로, 토큰이 빠진 채로 떨어지지
+  않는다. 제어면의 401·403은 이 서버의 테넌트 신원이 거절됐다는 메시지로 전달된다. 변수가 비어 있으면
+  지금처럼 토큰 없이 부른다(프리뷰·테넌시 이전 제어면).
+- **달성 가치**: V3
+- **검증 방법**: 토큰 파일을 둔 서버의 세션 도구 호출 전부가 그 토큰을 싣고, 파일을 바꾼 뒤의 호출은
+  새 토큰을 실으며, 파일이 사라진 뒤의 호출은 요청 0건으로 실패하고, 변수가 없으면 헤더가 없음을
+  확인한다.

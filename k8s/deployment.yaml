@@ -76,6 +76,11 @@ spec:
               value: k8s.namespace.name=$(POD_NAMESPACE)
             - name: SESSION_PLATFORM_ENDPOINT
               value: http://control-plane.session-platform.svc.cluster.local
+            # 세션 도구는 아래 session-platform-token 볼륨의 토큰으로 session-platform 의 테넌트
+            # `homelab-k3s-mcp` 가 된다. flux-cd-apps apps/session-platform/tenants.yaml 의 그 테넌트에
+            # `homelab-k3s-mcp/homelab-k3s-mcp` 가 없으면 세션 도구는 전부 403 이다.
+            - name: SESSION_PLATFORM_TOKEN_FILE
+              value: /var/run/secrets/session-platform/token
             # 여기 있는 값이 운영의 단일 출처다 — homelab-k3s-mcp-github-app Secret 에
             # 같은 키가 있어도 env 가 이긴다.
             - name: GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES
@@ -134,6 +139,9 @@ spec:
             - name: drop-token
               mountPath: /var/run/secrets/drop
               readOnly: true
+            - name: session-platform-token
+              mountPath: /var/run/secrets/session-platform
+              readOnly: true
           startupProbe:
             httpGet:
               path: /healthz
@@ -185,5 +193,14 @@ spec:
             sources:
               - serviceAccountToken:
                   audience: drop
+                  expirationSeconds: 3600
+                  path: token
+        # audience 는 session-platform 의 TENANT_TOKEN_AUDIENCE(기본 session-platform)와 같아야 한다.
+        # 다른 토큰을 같이 쓰지 않는 이유도 위와 같다 — 받은 쪽이 그 토큰으로 상대 서비스에 이 서버로 행세할 수 있다.
+        - name: session-platform-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  audience: session-platform
                   expirationSeconds: 3600
                   path: token
