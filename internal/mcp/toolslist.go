@@ -907,7 +907,7 @@ const toolsListJSON = `{
               "type": "string",
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
             },
-            "description": "Marketplace plugins for this session, by name in the platform marketplace without an '@marketplace' suffix (for example ['session-platform', 'development']). Replaces the workload type's default plugins (claude-code: session-platform; codex: the deployment's default; minimax-code: mcp-servers) rather than adding to them. Omit for the default. Immutable after creation and kept across snapshot/restore. Refused by the control plane for 'shell' and 'approval-gated', and for an empty, duplicate or malformed list. A name the marketplace does not list makes a claude-code create fail and leaves a codex or minimax-code session without plugin skills."
+            "description": "Marketplace plugins for this session, by name in the platform marketplace without an '@marketplace' suffix (for example ['session-platform', 'development']). Replaces the workload type's default plugins (claude-code: session-platform; codex: the deployment's default; minimax-code: mcp-servers) rather than adding to them. Omit for the default. Immutable after creation and kept across snapshot/restore. Refused by the control plane for 'shell' and 'approval-gated', and for an empty, duplicate or malformed list. A name the marketplace does not list makes a claude-code create fail and leaves a codex or minimax-code session without plugins; minimax-code gets its K3s MCP tools only from a selected plugin that declares them (the default mcp-servers does), so leave that plugin in the list to keep them. Null is the same as omitting it, as for the other arguments."
           }
         },
         "required": ["name"],
