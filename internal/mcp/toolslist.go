@@ -880,7 +880,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_create",
-      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers, so this call BLOCKS — typically seconds, up to a few minutes on a cold image pull — and returns the session already 'active' with its 'pod', ready for session_write and session_read. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, and the agent types (for example 'claude-code', 'approval-gated', 'minimax-code') run one prompt per write. The types available are the ones this deployment offers, read from the control plane on each call rather than fixed here; a type it does not offer is refused before anything is created, and the refusal lists the offered ones. 'model' applies to agent types only and defaults to the platform default. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers, so this call BLOCKS — typically seconds, up to a few minutes on a cold image pull — and returns the session already 'active' with its 'pod', ready for session_write and session_read. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, and the agent types (for example 'claude-code', 'approval-gated', 'minimax-code') run one prompt per write. The types available are the ones this deployment offers, read from the control plane on each call rather than fixed here; a type it does not offer is refused before anything is created, and the refusal lists the offered ones. 'model' applies to agent types only and defaults to the platform default. 'plugins' names the marketplace plugins the session gets, for the types that load them ('claude-code', 'codex', 'minimax-code'); given, it replaces that type's default plugins, so list the default too to keep it; omitted, the type default applies. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -897,6 +897,17 @@ const toolsListJSON = `{
           "model": {
             "type": "string",
             "description": "Model for an agent session. Omit to use the platform default. Not allowed for 'shell', and refused by the control plane for a type that takes no model choice."
+          },
+          "plugins": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 16,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+            },
+            "description": "Marketplace plugins for this session, by name in the platform marketplace without an '@marketplace' suffix (for example ['session-platform', 'development']). Replaces the workload type's default plugins (claude-code: session-platform; codex: the deployment's default; minimax-code: mcp-servers) rather than adding to them. Omit for the default. Immutable after creation and kept across snapshot/restore. Refused by the control plane for 'shell' and 'approval-gated', and for an empty, duplicate or malformed list. A name the marketplace does not list makes a claude-code create fail and leaves a codex or minimax-code session without plugin skills."
           }
         },
         "required": ["name"],

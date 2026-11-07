@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -73,7 +74,7 @@ func TestListSessionsReturnsAllSessions(t *testing.T) {
 		},
 	}
 	for i := range want {
-		if sessions[i] != want[i] {
+		if !reflect.DeepEqual(sessions[i], want[i]) {
 			t.Fatalf("sessions[%d] = %+v, want %+v", i, sessions[i], want[i])
 		}
 	}
@@ -836,7 +837,7 @@ func TestCreateSessionReturnsTheActiveSession(t *testing.T) {
 		ID: "s-9", Name: "scratch", WorkloadType: "shell", State: "active",
 		Pod: "session-s-9", CreatedAt: "2026-10-16T00:00:00Z", LastAccess: "2026-10-16T00:00:00Z",
 	}
-	if *got != want {
+	if !reflect.DeepEqual(*got, want) {
 		t.Fatalf("session = %+v, want %+v", *got, want)
 	}
 
@@ -871,6 +872,22 @@ func TestCreateSessionOmitsUnsetFields(t *testing.T) {
 	}
 	if body := (*seen)[len(*seen)-1].body; body != `{"name":"agent","workloadType":"claude-code","model":"sonnet"}` {
 		t.Fatalf("body = %s", body)
+	}
+}
+
+// session-platform AC-L1: a plugin selection is sent as the JSON array the
+// control plane validates; an omitted one is not sent at all.
+func TestCreateSessionSendsPlugins(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusCreated, createdShell, 0)
+
+	if _, err := c.CreateSession(context.Background(), CreateRequest{
+		Name: "agent", WorkloadType: "claude-code", Plugins: []string{"session-platform", "development"},
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	want := `{"name":"agent","workloadType":"claude-code","plugins":["session-platform","development"]}`
+	if body := (*seen)[len(*seen)-1].body; body != want {
+		t.Fatalf("body = %s, want %s", body, want)
 	}
 }
 

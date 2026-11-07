@@ -6,6 +6,7 @@
 - AC3: 비파괴 추가 작업 표기 (PRD: session_create)
 - AC4: 미설정 시 graceful 거부 (PRD: session_create)
 - AC5: 세션 도구는 이 서버의 테넌트로 말한다 (PRD: session_create)
+- AC6: 세션 플러그인 선택을 그대로 전달한다 (PRD: session_create)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -90,3 +91,15 @@
   (`TestTenantTokenIsSentOnEveryControlPlaneCall`, `TestTenantTokenIsReReadAfterRotation`,
   `TestUnreadableTenantTokenSendsNothing`, `TestFromEnvRefusesAMissingOrEmptyTokenFile`,
   `TestNoTokenFileSendsNoAuthorization`, `TestTenantRefusalNamesTheIdentity`) + 통합 (미작성)
+
+### 시나리오 6: 플러그인 선택이 제어면에 그대로 실린다
+- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, 세션 플러그인 선택(session-platform AC-L1)을 받는
+  제어면
+- **실행 단계**: (a) `session_create`에 `workloadType=claude-code`, `plugins=["session-platform","development"]`
+  → (b) 같은 호출에서 `plugins` 생략 → (c) `plugins`에 `[]`·`"development"`·`["development", 7]`을 각각 준 호출
+- **기대 결과**: (a) 제어면이 받은 본문의 `plugins`가 `["session-platform","development"]`이고 반환 세션의
+  `plugins`도 같다. (b) 본문에 `plugins`가 없고 반환 세션에도 없다. (c) 제어면에 요청이 가지 않고 `-32602`
+- **검증 AC**: AC6
+- **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`(`TestCreateSessionSendsPlugins`,
+  `TestCreateSessionOmitsUnsetFields`) + `internal/server/mcp_test.go`(`TestSessionCreatePassesPluginsThrough`,
+  `TestSessionCreateRejectsBadArguments`) + 통합 (미작성)

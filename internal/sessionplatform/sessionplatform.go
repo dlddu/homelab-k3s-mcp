@@ -112,8 +112,10 @@ type Session struct {
 	WorkloadType string `json:"workloadType"`
 	State        string `json:"state"`
 	Pod          string `json:"pod,omitempty"`
-	CreatedAt    string `json:"createdAt"`
-	LastAccess   string `json:"lastAccess"`
+	// Plugins is present only on a session created with its own selection.
+	Plugins    []string `json:"plugins,omitempty"`
+	CreatedAt  string   `json:"createdAt"`
+	LastAccess string   `json:"lastAccess"`
 }
 
 // ReadResult is one read of a session's accumulated output. Path names the
@@ -144,6 +146,10 @@ type CreateRequest struct {
 	Name         string `json:"name"`
 	WorkloadType string `json:"workloadType,omitempty"`
 	Model        string `json:"model,omitempty"`
+	// Plugins replaces the workload type's default marketplace plugins
+	// (session-platform AC-L1). nil leaves the default; an empty list would be
+	// dropped by omitempty and silently mean the same, so callers refuse it.
+	Plugins []string `json:"plugins,omitempty"`
 }
 
 // Service talks to the control plane on behalf of the session tools.
