@@ -828,6 +828,9 @@ func sessionFields(s sessionplatform.Session) map[string]any {
 	if s.Pod != "" {
 		fields["pod"] = s.Pod
 	}
+	if len(s.Plugins) != 0 {
+		fields["plugins"] = s.Plugins
+	}
 	return fields
 }
 
@@ -919,6 +922,20 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 	}
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, errf(-32602, "name is required and must contain a non-whitespace character")
+	}
+	if v, present := obj["plugins"]; present && v != nil {
+		list, ok := v.([]any)
+		if !ok || len(list) == 0 {
+			return nil, errf(-32602, "plugins must be a non-empty array of plugin names")
+		}
+		req.Plugins = make([]string, 0, len(list))
+		for _, item := range list {
+			name, ok := item.(string)
+			if !ok {
+				return nil, errf(-32602, "plugins must be a non-empty array of plugin names")
+			}
+			req.Plugins = append(req.Plugins, name)
+		}
 	}
 
 	created, err := h.sessionPlatform.CreateSession(ctx, req)

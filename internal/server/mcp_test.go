@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -1768,10 +1769,16 @@ func TestToolsListAdvertisesSessionCreate(t *testing.T) {
 	create := findTool(t, toolsList(t, app), "session_create")
 
 	props := at(t, create, "inputSchema", "properties").(map[string]any)
-	for _, key := range []string{"name", "workloadType", "model"} {
+	for _, key := range []string{"name", "workloadType", "model", "plugins"} {
 		if _, ok := props[key]; !ok {
 			t.Fatalf("inputSchema is missing %s: %v", key, props)
 		}
+	}
+	if typ := at(t, create, "inputSchema", "properties", "plugins", "type"); typ != "array" {
+		t.Fatalf("plugins type = %v, want array", typ)
+	}
+	if typ := at(t, create, "inputSchema", "properties", "plugins", "items", "type"); typ != "string" {
+		t.Fatalf("plugins items type = %v, want string", typ)
 	}
 	required, _ := at(t, create, "inputSchema", "required").([]any)
 	if len(required) != 1 || required[0] != "name" {
@@ -1812,7 +1819,34 @@ func TestSessionCreateReturnsTheActiveSession(t *testing.T) {
 	}
 
 	want := sessionplatform.CreateRequest{Name: "agent", WorkloadType: "claude-code", Model: "sonnet"}
-	if len(fake.createCalls) != 1 || fake.createCalls[0] != want {
+	if len(fake.createCalls) != 1 || !reflect.DeepEqual(fake.createCalls[0], want) {
+		t.Fatalf("createCalls = %+v, want one %+v", fake.createCalls, want)
+	}
+}
+
+// session-platform AC-L1 through this tool: the selection reaches the control
+// plane as given and the created session reports it back.
+func TestSessionCreatePassesPluginsThrough(t *testing.T) {
+	fake := &fakeSessionPlatform{createResponse: func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error) {
+		return &sessionplatform.Session{
+			ID: "s-10", Name: req.Name, WorkloadType: "claude-code", State: "active", Pod: "session-s-10",
+			Plugins: req.Plugins, CreatedAt: "2026-11-07T00:00:00Z", LastAccess: "2026-11-07T00:00:00Z",
+		}, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 194, "session_create", map[string]any{
+		"name": "agent", "workloadType": "claude-code", "plugins": []any{"session-platform", "development"},
+	})
+	if at(t, body, "result", "isError") != false {
+		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
+	}
+	got, _ := at(t, body, "result", "structuredContent", "session", "plugins").([]any)
+	if len(got) != 2 || got[0] != "session-platform" || got[1] != "development" {
+		t.Fatalf("session.plugins = %v, want [session-platform development]", got)
+	}
+	want := sessionplatform.CreateRequest{Name: "agent", WorkloadType: "claude-code", Plugins: []string{"session-platform", "development"}}
+	if len(fake.createCalls) != 1 || !reflect.DeepEqual(fake.createCalls[0], want) {
 		t.Fatalf("createCalls = %+v, want one %+v", fake.createCalls, want)
 	}
 }
@@ -1828,6 +1862,10 @@ func TestSessionCreateRejectsBadArguments(t *testing.T) {
 		{name: "numeric name", args: map[string]any{"name": 7}, want: "name must be a string"},
 		{name: "numeric workload", args: map[string]any{"name": "x", "workloadType": 7}, want: "workloadType must be a string"},
 		{name: "numeric model", args: map[string]any{"name": "x", "model": 3}, want: "model must be a string"},
+		// An empty list would vanish under omitempty and silently mean "type default".
+		{name: "empty plugins", args: map[string]any{"name": "x", "workloadType": "claude-code", "plugins": []any{}}, want: "plugins must be a non-empty array"},
+		{name: "string plugins", args: map[string]any{"name": "x", "workloadType": "claude-code", "plugins": "development"}, want: "plugins must be a non-empty array"},
+		{name: "numeric plugin", args: map[string]any{"name": "x", "workloadType": "claude-code", "plugins": []any{"development", 7}}, want: "plugins must be a non-empty array"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeSessionPlatform{}
