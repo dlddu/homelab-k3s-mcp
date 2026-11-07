@@ -43,12 +43,10 @@ func (c *Client) offeredWorkloadTypes(ctx context.Context) ([]string, error) {
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", c.userAgent)
 
-	resp, err := c.http.Do(req)
+	resp, err := c.send(c.http, req)
 	if err != nil {
-		return nil, apiError(fmt.Sprintf("get %s: %v", endpoint, err))
+		return nil, sendError("get", endpoint, err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
