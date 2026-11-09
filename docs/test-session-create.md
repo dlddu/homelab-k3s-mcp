@@ -7,6 +7,7 @@
 - AC4: 미설정 시 graceful 거부 (PRD: session_create)
 - AC5: 세션 도구는 이 서버의 테넌트로 말한다 (PRD: session_create)
 - AC6: 세션 플러그인 선택을 그대로 전달한다 (PRD: session_create)
+- AC7: 오래 걸리는 생성은 끊지 않고 「준비 중」으로 답한다 (PRD: session_create)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -103,3 +104,14 @@
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`(`TestCreateSessionSendsPlugins`,
   `TestCreateSessionOmitsUnsetFields`) + `internal/server/mcp_test.go`(`TestSessionCreatePassesPluginsThrough`,
   `TestSessionCreateRejectsBadArguments`) + 통합 (미작성)
+
+### 시나리오 7: 늦는 생성은 「준비 중」으로 답하고 제어면 요청은 이어진다
+- **사전 조건**: 생성 요청에 대기 상한보다 늦게 답하는 제어면
+- **실행 단계**: (a) 대기 상한을 짧게 둔 서버에서 `session_create` 호출 → (b) 도구가 답한 직후 호출
+  요청의 컨텍스트를 취소 → (c) 제어면이 답하게 둔다 → (d) 상한 안에 답하는 제어면으로 다시 호출
+- **기대 결과**: (a) 상한 안에 `isError=false`, `pending: true`, `session.state="starting"`, 이름을 가리키는
+  `message`. (b) 제어면 요청이 취소되지 않는다. (c) 제어면 요청이 완료된다. (d) `pending` 없이 활성 세션
+- **검증 AC**: AC7
+- **자동화**: Go 단위 `internal/server/session_create_wait_test.go`
+  (`TestSessionCreateAnswersPendingWhenControlPlaneIsSlow`, `TestSessionCreateKeepsTheControlPlaneRequestAfterAnswering`,
+  `TestSessionCreateWithinTheWaitReturnsTheSession`) + 통합 (미작성)

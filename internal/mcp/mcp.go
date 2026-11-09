@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"slices"
 	"sort"
@@ -69,6 +70,26 @@ type Handler struct {
 	// events nil means eventlog.Log — the field exists so a test can read
 	// records as values instead of scraping the log.
 	events eventlog.Sink
+
+	// sessionCreateWait bounds how long session_create holds its response
+	// (AC7). Zero means defaultSessionCreateWait.
+	sessionCreateWait time.Duration
+}
+
+const (
+	// defaultSessionCreateWait stays under the public edge's 30s idle timeout
+	// with room for the request's own transit (AC7).
+	defaultSessionCreateWait = 20 * time.Second
+	// sessionCreatePendingHorizon is what a pending answer tells the caller to
+	// wait before treating the create as failed: the control plane's 2-minute
+	// pod-ready bound plus a node scale-up's head start.
+	sessionCreatePendingHorizon = 3 * time.Minute
+)
+
+// WithSessionCreateWait sets how long session_create waits for the control
+// plane before answering that the session is still starting (AC7).
+func WithSessionCreateWait(d time.Duration) Option {
+	return func(h *Handler) { h.sessionCreateWait = d }
 }
 
 // Option customises a Handler at construction.
@@ -938,11 +959,66 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 		}
 	}
 
-	created, err := h.sessionPlatform.CreateSession(ctx, req)
-	if err != nil {
-		return toolError(ctx, err), nil
+	// The control plane holds the create open until the workload pod is Ready,
+	// which can take minutes when the pod waits for a node to scale up. A
+	// session's own call reaches this server through the public edge, whose
+	// idle timeout (30s) cuts a silent response long before that; the cut used
+	// to cancel the control-plane request, which then reclaimed the half-made
+	// pod, so every retry paid for a scale-up and kept nothing (AC7). The
+	// create therefore runs detached from the caller's connection — keeping the
+	// request's values, such as the tenant identity — and the tool answers
+	// within sessionCreateWait either way.
+	type outcome struct {
+		session *sessionplatform.Session
+		err     error
 	}
-	return successResult(map[string]any{"session": sessionFields(*created)}), nil
+	done := make(chan outcome, 1)
+	started := time.Now()
+	go func() {
+		created, err := h.sessionPlatform.CreateSession(context.WithoutCancel(ctx), req)
+		done <- outcome{created, err}
+	}()
+
+	wait := h.sessionCreateWait
+	if wait <= 0 {
+		wait = defaultSessionCreateWait
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		if got.err != nil {
+			return toolError(ctx, got.err), nil
+		}
+		return successResult(map[string]any{"session": sessionFields(*got.session)}), nil
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+
+	go func() {
+		got := <-done
+		elapsed := time.Since(started).Round(time.Millisecond)
+		if got.err != nil {
+			slog.Warn("session_create finished after the tool answered", "name", req.Name,
+				"workloadType", req.WorkloadType, "elapsed", elapsed, "result", "error", "error", got.err.Error())
+			return
+		}
+		slog.Info("session_create finished after the tool answered", "name", req.Name,
+			"workloadType", req.WorkloadType, "elapsed", elapsed, "result", "success", "id", got.session.ID)
+	}()
+	return successResult(map[string]any{
+		"pending": true,
+		"session": map[string]any{
+			"name":         strings.TrimSpace(req.Name),
+			"workloadType": req.WorkloadType,
+			"state":        "starting",
+		},
+		"message": fmt.Sprintf("The session is still starting after %s; the control plane keeps provisioning it "+
+			"(a pod may be waiting for a node to scale up). Do not call session_create again for it — poll "+
+			"session_list for a session named %q, which appears there once it is active. If it has not "+
+			"appeared within about %s, provisioning failed.",
+			wait, strings.TrimSpace(req.Name), sessionCreatePendingHorizon),
+	}), nil
 }
 
 func (h *Handler) sessionDelete(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
