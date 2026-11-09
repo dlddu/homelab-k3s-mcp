@@ -846,6 +846,9 @@ func sessionFields(s sessionplatform.Session) map[string]any {
 	if len(s.Plugins) != 0 {
 		fields["plugins"] = s.Plugins
 	}
+	if s.DoubleMemory {
+		fields["doubleMemory"] = true
+	}
 	return fields
 }
 
@@ -937,6 +940,13 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 	}
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, errf(-32602, "name is required and must contain a non-whitespace character")
+	}
+	if v, present := obj["doubleMemory"]; present && v != nil {
+		b, ok := v.(bool)
+		if !ok {
+			return nil, errf(-32602, "doubleMemory must be a boolean")
+		}
+		req.DoubleMemory = b
 	}
 	if v, present := obj["plugins"]; present && v != nil {
 		list, ok := v.([]any)
