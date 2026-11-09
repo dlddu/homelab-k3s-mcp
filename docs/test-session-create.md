@@ -8,6 +8,7 @@
 - AC5: 세션 도구는 이 서버의 테넌트로 말한다 (PRD: session_create)
 - AC6: 세션 플러그인 선택을 그대로 전달한다 (PRD: session_create)
 - AC7: 오래 걸리는 생성은 끊지 않고 「준비 중」으로 답한다 (PRD: session_create)
+- AC8: 메모리 2배 옵션을 그대로 전달한다 (PRD: session_create)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -115,3 +116,15 @@
 - **자동화**: Go 단위 `internal/server/session_create_wait_test.go`
   (`TestSessionCreateAnswersPendingWhenControlPlaneIsSlow`, `TestSessionCreateKeepsTheControlPlaneRequestAfterAnswering`,
   `TestSessionCreateWithinTheWaitReturnsTheSession`) + 통합 (미작성)
+
+### 시나리오 8: 메모리 2배 옵션이 제어면에 그대로 실린다
+- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, 메모리 2배 옵션(session-platform
+  `control-plane/api/openapi.yaml`의 `doubleMemory`)을 받는 제어면
+- **실행 단계**: (a) `session_create`에 `workloadType=claude-code`, `doubleMemory=true` → (b) 같은
+  호출에서 `doubleMemory` 생략 → (c) `doubleMemory`에 `"yes"`·`1`을 각각 준 호출
+- **기대 결과**: (a) 제어면이 받은 본문의 `doubleMemory`가 `true`이고 반환 세션의 `doubleMemory`도
+  `true`다. (b) 본문에 `doubleMemory`가 없고 반환 세션에도 없다. (c) 제어면에 요청이 가지 않고 `-32602`
+- **검증 AC**: AC8
+- **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`(`TestCreateSessionSendsDoubleMemory`)
+  + `internal/server/mcp_test.go`(`TestSessionCreatePassesDoubleMemoryThrough`,
+  `TestSessionCreateRejectsBadArguments`) + 통합 (미작성)

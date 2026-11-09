@@ -113,9 +113,13 @@ type Session struct {
 	State        string `json:"state"`
 	Pod          string `json:"pod,omitempty"`
 	// Plugins is present only on a session created with its own selection.
-	Plugins    []string `json:"plugins,omitempty"`
-	CreatedAt  string   `json:"createdAt"`
-	LastAccess string   `json:"lastAccess"`
+	Plugins []string `json:"plugins,omitempty"`
+	// DoubleMemory is present only when the session was created with the
+	// doubled workload-container memory tier (session-platform
+	// `control-plane/api/openapi.yaml` `doubleMemory`).
+	DoubleMemory bool   `json:"doubleMemory,omitempty"`
+	CreatedAt    string `json:"createdAt"`
+	LastAccess   string `json:"lastAccess"`
 }
 
 // ReadResult is one read of a session's accumulated output. Path names the
@@ -150,6 +154,11 @@ type CreateRequest struct {
 	// (session-platform AC-L1). nil leaves the default; an empty list would be
 	// dropped by omitempty and silently mean the same, so callers refuse it.
 	Plugins []string `json:"plugins,omitempty"`
+	// DoubleMemory doubles the workload container's memory request/limit
+	// (session-platform `control-plane/api/openapi.yaml` `doubleMemory`).
+	// false (the default) is dropped by omitempty, same as the control plane's
+	// own "omitted" behavior.
+	DoubleMemory bool `json:"doubleMemory,omitempty"`
 }
 
 // Service talks to the control plane on behalf of the session tools.

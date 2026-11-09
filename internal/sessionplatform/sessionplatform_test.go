@@ -891,6 +891,32 @@ func TestCreateSessionSendsPlugins(t *testing.T) {
 	}
 }
 
+// session-platform `doubleMemory`: sent as a JSON boolean when true; omitted
+// (not sent as `false`) when unset, matching the control plane's own
+// omitted-means-default contract.
+func TestCreateSessionSendsDoubleMemory(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusCreated, createdShell, 0)
+
+	if _, err := c.CreateSession(context.Background(), CreateRequest{
+		Name: "agent", WorkloadType: "claude-code", DoubleMemory: true,
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	want := `{"name":"agent","workloadType":"claude-code","doubleMemory":true}`
+	if body := (*seen)[len(*seen)-1].body; body != want {
+		t.Fatalf("body = %s, want %s", body, want)
+	}
+
+	if _, err := c.CreateSession(context.Background(), CreateRequest{
+		Name: "agent2", WorkloadType: "claude-code",
+	}); err != nil {
+		t.Fatalf("CreateSession: %v", err)
+	}
+	if body := (*seen)[len(*seen)-1].body; body != `{"name":"agent2","workloadType":"claude-code"}` {
+		t.Fatalf("body = %s, want doubleMemory omitted", body)
+	}
+}
+
 func TestCreateSessionRejectsBadRequestsBeforeTheWire(t *testing.T) {
 	for _, tc := range []struct {
 		name string
