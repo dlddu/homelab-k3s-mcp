@@ -7,8 +7,6 @@
 표면을 하나라도 빼면 이 시나리오는 증명되지 않는다 — 값이 로그로만 새는 구현과
 context 로만 새는 구현은 서로 다른 결함이고, 어느 하나만 막아도 나머지는 그대로
 통과한다. 그래서 표면별로 파일을 쪼개지 않고 여기서 함께 단언한다.
-
-가림은 ``internal/mcp/gate.go::maskCredentialValues`` 가 넣는다.
 """
 
 from __future__ import annotations
@@ -85,7 +83,6 @@ def _assert_clean(surface: str, text: str) -> None:
 
 
 async def _dance(session, gate, tool: str, args: dict, marker: str):
-    """도구를 띄우고 PENDING context 를 수집한 뒤 승인한다. (context, 결과) 를 준다."""
     task = asyncio.create_task(session.call_tool(tool, args))
     row = await wait_for_pending(gate, marker)
     await decide(gate, row["id"], "APPROVED")

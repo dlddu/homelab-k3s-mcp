@@ -83,7 +83,7 @@ def assert_unsigned_docstore_access(records, *, method, path):
 
     도구 응답은 경로를 말해 주지 않는다 — 서명된 요청이었어도 docstore 는 똑같이 답한다.
     그래서 프록시 기록에서 그 요청을 찾아, ``Authorization`` 헤더도 세션 토큰도 없었음을
-    본다. 반환값은 매칭된 기록(호출자가 더 단정할 수 있게).
+    본다.
     """
     matches = [
         r for r in records

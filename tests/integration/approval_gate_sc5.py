@@ -7,8 +7,7 @@
 `APPROVAL_GATE_TIMEOUT_SECONDS=5` 라 만료·타임아웃 경로를 초 단위로 관측할 수 있기
 때문이다(primary 는 기본 300초다). 미설정·연결 실패 셋은 env·볼륨이 배포당이라
 그 배포로는 만들 수 없어, `tests/k8s/kind/gate-broken-variant.yaml` 의 전용
-배포 셋에 이 파일 자신의 포트포워드로 닿는다 — `github_commit_status_sc4.py`
-가 `commit-status-variant` 에 닿는 것과 같은 형태다.
+배포 셋에 이 파일 자신의 포트포워드로 닿는다.
 
 **409·5xx 를 만드는 수단.** 실물 PocketAide 는 자기 고유 제약
 (`approval_requests` 의 `UNIQUE (caller_key_id, external_id)`)과 자기 「create failed」
@@ -136,7 +135,6 @@ def _config_map_value(name: str) -> str:
 
 
 def assert_target_untouched(name: str, path: str) -> None:
-    """C5 — 거부가 대상 리소스를 바꾸지 않았음을 클러스터에서 직접 읽어 확인한다."""
     value = _config_map_value(name)
     assert value == SENTINEL, (
         f"{path}: 거부됐는데 대상 ConfigMap {name} 의 값이 {value!r} 다 "
@@ -159,9 +157,7 @@ async def _patch(session, name: str, value: str = FORBIDDEN):
 
 
 async def refuse(session, name: str, path: str, budget: float = 30.0) -> str:
-    """게이트 대상 호출 하나가 **거부**되는 것을 확인하고 그 문면을 돌려준다.
-
-    거부는 도구 결과가 아니라 JSON-RPC 에러로 온다(`internal/mcp/mcp.go` 의
+    """거부는 도구 결과가 아니라 JSON-RPC 에러로 온다(`internal/mcp/mcp.go` 의
     `gateRefusal` → `errf(-32603, "%s", err)`), 그래서 `McpError` 로 잡는다.
     """
     try:
@@ -178,7 +174,6 @@ async def refuse(session, name: str, path: str, budget: float = 30.0) -> str:
 
 
 async def test_rejected_verdict_refuses(session, gate) -> None:
-    """사람이 거절하면 거부된다."""
     task = asyncio.create_task(_patch(session, TARGET_REJECTED))
     row = await wait_for_pending(gate, TARGET_REJECTED)
     await decide(gate, row["id"], "REJECTED")
@@ -196,9 +191,7 @@ async def test_rejected_verdict_refuses(session, gate) -> None:
 
 
 async def test_expired_record_refuses(session, gate) -> None:
-    """판정을 내리지 않으면 PocketAide 기록이 EXPIRED 로 읽히고 호출은 거부된다.
-
-    여기서 단언하는 것은 **기록 쪽 얼굴**이다(만료 평가가 조회 시점에 일어나는 것은
+    """여기서 단언하는 것은 **기록 쪽 얼굴**이다(만료 평가가 조회 시점에 일어나는 것은
     실물에서만 관측된다). 클라이언트 쪽 얼굴은 (3) 이 잰다.
     """
     task = asyncio.create_task(_patch(session, TARGET_EXPIRED))
@@ -219,10 +212,8 @@ async def test_expired_record_refuses(session, gate) -> None:
 
 
 async def test_no_verdict_within_timeout_refuses(session, gate) -> None:
-    """클라이언트가 판정 없이 마감한다 — 거부가 타임아웃을 **기다린 뒤에** 온다.
-
-    최초 응답만 보고 끝낸 구현이라면 즉시 거부했을 것이므로, 지연 하한이 이 경로의
-    계약을 진다. 승인도 거절도 하지 않으므로 어떤 판정도 관측되지 않아야 한다.
+    """최초 응답만 보고 끝낸 구현이라면 즉시 거부했을 것이므로, 지연 하한이 이 경로의
+    계약을 진다.
     """
     started = time.monotonic()
     task = asyncio.create_task(_patch(session, TARGET_NO_VERDICT))
@@ -251,9 +242,7 @@ async def test_no_verdict_within_timeout_refuses(session, gate) -> None:
 
 
 async def test_external_id_conflict_refuses(session, gate, inject, trace) -> None:
-    """409 — 실물 고유 인덱스 위반이 실물 핸들러의 409 를 내고 거부로 수렴한다.
-
-    C1: status·본문은 실물 `approvals.isUniqueViolation` → 실물 핸들러가 만든다. 주입은
+    """C1: status·본문은 실물 `approvals.isUniqueViolation` → 실물 핸들러가 만든다. 주입은
     충돌이라는 **전제**만 만들고 응답을 흉내 내지 않는다. C2: 트리거는 이 대상
     이름(마커)이 context 에 든 INSERT 에만 걸린다. C4: 아래에서 잔여 0 을 단언한다.
 
@@ -285,9 +274,7 @@ async def test_external_id_conflict_refuses(session, gate, inject, trace) -> Non
 
 
 async def test_server_error_refuses(session, gate, inject) -> None:
-    """5xx — 실물 저장소 오류가 실물 `InternalError` 를 내고 거부로 수렴한다.
-
-    409 와 같은 수단이지만 트리거가 `RAISE(ABORT, …)` 라 고유 인덱스가 아니라
+    """409 와 같은 수단이지만 트리거가 `RAISE(ABORT, …)` 라 고유 인덱스가 아니라
     저장소 오류 분기를 탄다. 두 경로가 **서로 다른 문면**으로 갈리는 것이 「5xx 가
     409 로 뭉뚱그려지지 않는다」의 관측면이다.
     """
@@ -311,9 +298,7 @@ async def test_server_error_refuses(session, gate, inject) -> None:
 
 
 async def _refuse_on_broken_variant(target: str, path: str, expected: str) -> None:
-    """게이트가 죽은 배포에서 ⑴ 쓰기는 거부되고 ⑵ 읽기 대조군은 살아 있다.
-
-    미설정 둘은 `approvalgate.FromEnv` 의 서로 다른 분기에서 나오고, `main.go` 가 그것을
+    """미설정 둘은 `approvalgate.FromEnv` 의 서로 다른 분기에서 나오고, `main.go` 가 그것을
     `NewUnavailable` 로 바꿔 **`Describe` 를 부르지 않고** 거부한다. 그 「부르지
     않음」이 AC5 의 핵심이라 대상 불변을 함께 잰다 — 사전 읽기조차 없었다면 대상은
     당연히 그대로다.
@@ -334,10 +319,7 @@ async def _refuse_on_broken_variant(target: str, path: str, expected: str) -> No
 
 
 async def assert_reads_survive(session, path: str) -> None:
-    """시나리오의 읽기 대조군 — 같은 조건에서 `resource_list` 와 비민감
-    `resource_get` 은 정상 동작한다.
-
-    「승인 경로가 죽었는데 변경이 나가면 게이트가 있으나 마나」의 반대편이다:
+    """「승인 경로가 죽었는데 변경이 나가면 게이트가 있으나 마나」의 반대편이다:
     죽은 게이트가 **읽기까지** 막으면 그것도 계약 위반이다.
     """
     listed = await session.call_tool(
@@ -361,21 +343,18 @@ async def assert_reads_survive(session, path: str) -> None:
 
 
 async def test_unreachable_gate_refuses() -> None:
-    """(6) 연결 실패 — 백엔드에 닿지 못해도 변경은 전부 멈춘다."""
     await _refuse_on_broken_variant(
         TARGET_UNREACHABLE, "연결 실패", "approval request failed"
     )
 
 
 async def test_missing_url_refuses() -> None:
-    """(7) `APPROVAL_GATE_URL` 미설정 — `FromEnv` 의 그 분기 문면이 그대로 온다."""
     await _refuse_on_broken_variant(
         TARGET_NO_URL, "URL 미설정", "APPROVAL_GATE_URL is not"
     )
 
 
 async def test_missing_token_refuses() -> None:
-    """(8) 서비스 어카운트 토큰 미마운트 — 토큰을 읽는 분기 문면이 그대로 온다."""
     await _refuse_on_broken_variant(
         TARGET_NO_TOKEN, "토큰 미마운트", "approval gate service account token"
     )

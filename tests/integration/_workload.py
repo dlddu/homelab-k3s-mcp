@@ -54,9 +54,7 @@ def wait_for_crashloop_restart(timeout: float = 180.0) -> None:
     previous=true logs only exist once the kubelet has restarted the container
     (restartCount >= 1). The fixture crashes exactly once and then stays
     Running, so after the first restart lastState.terminated is pinned to the
-    marker-printing instance and this returns for good. The fixture is applied
-    minutes before this script runs in CI, so this normally returns
-    immediately; the poll is a safety net for scheduling/backoff timing.
+    marker-printing instance and this returns for good.
     """
     deadline = time.monotonic() + timeout
     last = "<no pod yet>"
@@ -94,8 +92,7 @@ def wait_for_crashloop_log_age(min_age: float, timeout: float = 60.0) -> None:
     that line being safely in the past: workload-logs/AC1 reads it back (so the
     write must have been flushed) and workload-logs/AC4 asserts a small
     since_seconds window *excludes* it. Both become deterministic once the
-    container has been up longer than that window. In CI the fixture is applied
-    minutes earlier, so this returns on the first probe.
+    container has been up longer than that window.
     """
     deadline = time.monotonic() + timeout
     last = "<no startedAt yet>"
@@ -196,8 +193,6 @@ def wait_for_single_ready_pod(selector: str, timeout: float = 120.0) -> None:
     superseded pod can still be Terminating and still carry the label.
     ``pod_describe`` picks one pod out of that set, so a snapshot case asserting
     ``phase == Running`` and ``ready is True`` could observe the dying one.
-    Requiring the set to have settled to a single Ready pod is what makes those
-    assertions deterministic without depending on which file ran before this one.
     """
     deadline = time.monotonic() + timeout
     last = "<no pods yet>"
@@ -232,10 +227,6 @@ def wait_for_single_ready_pod(selector: str, timeout: float = 120.0) -> None:
 
 def ensure_workload_fixture_baseline() -> None:
     """Bring ``deploy/workload-fixture`` back to its declared baseline, idempotently.
-
-    This is the precondition every file that reads or mutates the fixture opens
-    with, so no file depends on the cluster state another file left behind (see the
-    module docstring).
 
     kubectl rather than the ``workload_scale`` tool on purpose — a precondition
     established through the tool under test would make the setup depend on the very

@@ -54,7 +54,6 @@ SEED_POD_PREFIX = "session-"
 
 
 def kubectl(*args: str, check: bool = True) -> str:
-    """Run kubectl against the fixture namespace and return stdout."""
     proc = subprocess.run(
         ["kubectl", "-n", NAMESPACE, *args], capture_output=True, text=True
     )
@@ -116,10 +115,7 @@ def _configmap_manifest(payload: dict) -> dict:
 def clear_sessions() -> None:
     """Remove every session the control plane owns, leaving an empty inventory.
 
-    Each file calls this (directly or through :func:`seed_sessions`) at the top
-    of its ``run()`` so it establishes its own precondition instead of depending
-    on which file ran before it -- the same rule the workload files follow. The
-    selector is the control plane's ownership label, so this never touches a
+    The selector is the control plane's ownership label, so this never touches a
     ConfigMap the fixture did not create.
     """
     kubectl(
@@ -132,7 +128,6 @@ def clear_sessions() -> None:
 
 
 def seed_sessions(payloads: list[dict]) -> None:
-    """Make the control plane's inventory exactly ``payloads``."""
     clear_sessions()
     if not payloads:
         return
@@ -167,7 +162,6 @@ def pod_names() -> set[str]:
 
 
 def sessions_from(result) -> list[dict]:
-    """Pull the session list out of a successful ``session_list`` tool result."""
     assert result.isError is False, result
     return result.structuredContent["sessions"]
 
@@ -238,10 +232,9 @@ def delete_and_reclaim(url: str, session: dict) -> None:
 def live_shell_session(name: str) -> Iterator[tuple[str, dict]]:
     """Create one real shell session, yield ``(control_plane_url, session)``.
 
-    The session is deleted on the way out, which reclaims its pod, so a file
-    that uses this leaves the cluster as it found it. ``control_plane_url``
-    stays valid for the body: a caller that needs to make the workload produce
-    output can post to it without going through the tool under test.
+    ``control_plane_url`` stays valid for the body: a caller that needs to make
+    the workload produce output can post to it without going through the tool
+    under test.
     """
     with control_plane() as url:
         session = create_shell_session(url, name)
@@ -278,8 +271,6 @@ def wait_for_pod_gone(pod: str, timeout: float = RECLAIM_TIMEOUT) -> None:
     ``session_read_sc3.py`` samples the pod set and asserts it is unchanged
     across its calls, so a pod still draining when that file starts and gone by
     the time it finishes would fail an assertion about something else entirely.
-    Waiting here keeps the "each file establishes its own precondition" rule
-    from being quietly undermined by a neighbour's leftovers.
     """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
