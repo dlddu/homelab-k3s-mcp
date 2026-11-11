@@ -72,13 +72,14 @@ type Handler struct {
 	events eventlog.Sink
 
 	sessionCreateWait time.Duration
+	creates           *createTracker
 }
 
 const (
 	// Must stay under the public edge's 30s idle timeout (AC7).
 	defaultSessionCreateWait = 20 * time.Second
-	// The control plane's 2-minute pod-ready bound plus a node scale-up's head start.
-	sessionCreatePendingHorizon = 3 * time.Minute
+	// The control plane's 5-minute pod-ready bound plus a node scale-up's head start.
+	sessionCreatePendingHorizon = 6 * time.Minute
 )
 
 // WithSessionCreateWait sets how long session_create waits before answering pending (AC7).
@@ -170,6 +171,7 @@ func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Servi
 		gateReader:      k8s.NewUnavailableTargetReader("the approval gate has no kubernetes client to read a target with"),
 		sensitiveKinds:  []string{defaultSensitiveKind},
 		registry:        toolRegistry,
+		creates:         newCreateTracker(),
 	}
 	h.gateCollectionReader = k8s.NewUnavailableTargetReader(
 		"the approval gate has no kubernetes client to read a selection with")
@@ -825,7 +827,11 @@ func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 	for _, s := range sessions {
 		items = append(items, sessionFields(s))
 	}
-	return successResult(map[string]any{"sessions": items}), nil
+	result := map[string]any{"sessions": items}
+	if pending := h.creates.report(); len(pending) > 0 {
+		result["pendingCreates"] = pending
+	}
+	return successResult(result), nil
 }
 
 // A snapshotted session has had its pods reclaimed, so the control plane omits
@@ -983,8 +989,10 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 	case <-ctx.Done():
 	}
 
+	tracked := h.creates.add(strings.TrimSpace(req.Name), req.WorkloadType, started)
 	go func() {
 		got := <-done
+		h.creates.finish(tracked, got.session, got.err)
 		elapsed := time.Since(started).Round(time.Millisecond)
 		if got.err != nil {
 			slog.Warn("session_create finished after the tool answered", "name", req.Name,
@@ -1003,8 +1011,10 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 		},
 		"message": fmt.Sprintf("The session is still starting after %s; the control plane keeps provisioning it "+
 			"(a pod may be waiting for a node to scale up). Do not call session_create again for it — poll "+
-			"session_list for a session named %q, which appears there once it is active. If it has not "+
-			"appeared within about %s, provisioning failed.",
+			"session_list for a session named %q, which appears there once it is active. Until then "+
+			"session_list also reports this create under 'pendingCreates' with its state: 'starting', "+
+			"'created' with the id, or 'failed' with the control plane's error, after which it is safe to "+
+			"create again. If neither has changed within about %s, provisioning failed.",
 			wait, strings.TrimSpace(req.Name), sessionCreatePendingHorizon),
 	}), nil
 }
