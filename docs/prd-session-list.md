@@ -13,7 +13,8 @@ session-platform 제어면(control plane)이 보유한 세션 목록을 조회�
 - 입력: 없음
 - 동작: 제어면의 `GET /api/v1/sessions`를 호출해 세션 목록을 반환한다. 세션별로 `id`,
   `name`, `workloadType`(`shell` | `claude-code`), `state`(`active` | `idle` | `snapshot`),
-  `pod`, `createdAt`, `lastAccess`를 노출한다.
+  `pod`, `createdAt`, `lastAccess`를 노출한다. `session_create`가 최근 `pending`으로 답한 생성이 있으면 그 결말을
+  `pendingCreates`로 함께 싣는다 — 계약은 `prd-session-create` AC7.
 - 서버 요구 설정: `SESSION_PLATFORM_ENDPOINT` (제어면 베이스 URL. 운영 기준 클러스터 내부
   주소 `http://control-plane.session-platform.svc.cluster.local` — 세션 도구 3종 공유)
 - 어노테이션: `readOnlyHint=true`, `destructiveHint=false`, `idempotentHint=true`,

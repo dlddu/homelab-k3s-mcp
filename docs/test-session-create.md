@@ -108,10 +108,14 @@
 ### 시나리오 7: 늦는 생성은 「준비 중」으로 답하고 제어면 요청은 이어진다
 - **사전 조건**: 생성 요청에 대기 상한보다 늦게 답하는 제어면
 - **실행 단계**: (a) 대기 상한을 짧게 둔 서버에서 `session_create` 호출 → (b) 도구가 답한 직후 호출
-  요청의 컨텍스트를 취소 → (c) 제어면이 답하게 둔다 → (d) 상한 안에 답하는 제어면으로 다시 호출
+  요청의 컨텍스트를 취소 → (c) 제어면이 답하게 둔다 → (d) 상한 안에 답하는 제어면으로 다시 호출 →
+  (e) (a) 직후와 (c) 뒤에 `session_list` 호출 — 제어면이 실패로 답하는 경우와 성공하는 경우 각각
 - **기대 결과**: (a) 상한 안에 `isError=false`, `pending: true`, `session.state="starting"`, 이름을 가리키는
   `message`. (b) 제어면 요청이 취소되지 않는다. (c) 제어면 요청이 완료된다. (d) `pending` 없이 활성 세션
+  (e) (a) 직후 `pendingCreates`에 그 이름이 `starting`으로, (c) 뒤에는 실패면 `failed`와 제어면 오류,
+  성공이면 `created`와 세션 `id`로 나타난다. 상한 안에 끝난 생성만 있으면 `pendingCreates`가 없다
 - **검증 AC**: AC7
 - **자동화**: Go 단위 `internal/server/session_create_wait_test.go`
   (`TestSessionCreateAnswersPendingWhenControlPlaneIsSlow`, `TestSessionCreateKeepsTheControlPlaneRequestAfterAnswering`,
-  `TestSessionCreateWithinTheWaitReturnsTheSession`) + 통합 (미작성)
+  `TestSessionCreateWithinTheWaitReturnsTheSession`), `internal/server/session_create_outcome_test.go`
+  (`TestSessionListReportsHowAPendingCreateEnded`, `TestSessionListOmitsPendingCreatesWhenNoneWerePending`) + 통합 (미작성)
