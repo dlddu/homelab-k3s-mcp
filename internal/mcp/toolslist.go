@@ -1013,6 +1013,28 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "session_recover",
+      "description": "Bring a deleted session-platform session back under its old id. Every committed snapshot (the 60-minute idle freeze or an explicit archive) leaves a record beside its archive, so a session that was deleted or lost its pod comes back as it was when it was last frozen: same id, name, workload type, model and plugins, restored into a new pod and returned 'active', ready for session_read and session_write. Work done after that last freeze is not recovered, and a session that was never frozen, or that disappeared before the platform began keeping these records, cannot be recovered (not found). When this server calls as a tenant, only that tenant's sessions can be recovered; any other id reads as not found. Refusals arrive distinguished: not found, 'still exists' when the id is a live session (nothing to recover), and unavailable when the platform cannot recover that workload type right now or no login slot is free. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id of the deleted session, as session_list or session_create reported it while it existed."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Recover Session",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "pocket_aide_notification_send",
       "description": "Send a plain push notification to the phone of the person who registered this server as a caller in PocketAide (dlddu/pocket-aide). The title and body arrive exactly as given on every device that person has registered, and PocketAide keeps the notification in that person's history together with the requester you write. requester is required: name who is asking for this notification in your own words — the person or agent and what it is working on (e.g. \"Claude Code 세션 — dear-baby 구버전 정리\" or \"reconciler 정합성 루프\"). It is shown as written and is not verified. No approval is created, so use it for status updates that need no decision (a long task finished, a job failed). The recipient is fixed by that registration and is not a parameter. Returns how many devices are registered (devices) and how many APNs accepted (sent); devices = 0 is not an error but means nobody was reached. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
       "inputSchema": {

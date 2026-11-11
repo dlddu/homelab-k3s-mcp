@@ -112,7 +112,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 		"session_create", "session_list", "session_read", "session_write", "session_delete",
-		"pocket_aide_notification_send", "drop_token_issue",
+		"session_recover", "pocket_aide_notification_send", "drop_token_issue",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("len(tools) = %d, want %d", len(tools), len(want))
@@ -2017,6 +2017,110 @@ func TestSessionDeleteUnavailableReturnsToolError(t *testing.T) {
 	}
 
 	survivor := callTool(t, app, 199, "ping", map[string]any{})
+	if at(t, survivor, "result", "content", 0, "text") != "pong" {
+		t.Fatalf("ping did not survive the refusal: %v", survivor)
+	}
+}
+
+func TestToolsListAdvertisesSessionRecover(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	rec := findTool(t, toolsList(t, app), "session_recover")
+
+	required, _ := at(t, rec, "inputSchema", "required").([]any)
+	if len(required) != 1 || required[0] != "id" {
+		t.Fatalf("required = %v, want [id]", required)
+	}
+	if at(t, rec, "annotations", "title") != "Recover Session" ||
+		at(t, rec, "annotations", "readOnlyHint") != false ||
+		at(t, rec, "annotations", "destructiveHint") != false ||
+		at(t, rec, "annotations", "idempotentHint") != false ||
+		at(t, rec, "annotations", "openWorldHint") != true {
+		t.Fatalf("annotations = %v", rec["annotations"])
+	}
+}
+
+func TestSessionRecoverReturnsTheRecoveredSession(t *testing.T) {
+	fake := &fakeSessionPlatform{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 300, "session_recover", map[string]any{"id": "s-gone"})
+	if at(t, body, "result", "isError") != false ||
+		at(t, body, "result", "structuredContent", "session", "id") != "s-gone" ||
+		at(t, body, "result", "structuredContent", "session", "state") != "active" {
+		t.Fatalf("result = %v", at(t, body, "result"))
+	}
+	if len(fake.recoverCalls) != 1 || fake.recoverCalls[0] != "s-gone" {
+		t.Fatalf("recoverCalls = %v, want [s-gone]", fake.recoverCalls)
+	}
+	if len(fake.createCalls) != 0 || fake.listCalls != 0 || len(fake.readCalls) != 0 || len(fake.writeCalls) != 0 {
+		t.Fatalf("recover touched other endpoints: create=%v list=%d read=%v write=%v",
+			fake.createCalls, fake.listCalls, fake.readCalls, fake.writeCalls)
+	}
+}
+
+func TestSessionRecoverRejectsBadArguments(t *testing.T) {
+	for _, args := range []map[string]any{{}, {"id": ""}, {"id": 9}} {
+		fake := &fakeSessionPlatform{}
+		app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+		body := callTool(t, app, 301, "session_recover", args)
+		message, _ := at(t, body, "error", "message").(string)
+		if !strings.Contains(message, "id is required") {
+			t.Fatalf("args %v: error message = %q", args, message)
+		}
+		if len(fake.recoverCalls) != 0 {
+			t.Fatalf("args %v: recoverCalls = %v, want none", args, fake.recoverCalls)
+		}
+	}
+}
+
+func TestSessionRecoverSurfacesRefusalsDistinctly(t *testing.T) {
+	var status int
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":"refused"}`))
+	}))
+	defer control.Close()
+
+	t.Setenv("SESSION_PLATFORM_ENDPOINT", control.URL)
+	client, err := sessionplatform.FromEnv()
+	if err != nil || client == nil {
+		t.Fatalf("FromEnv() = (%v, %v), want a client", client, err)
+	}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), client)
+
+	texts := map[int]string{}
+	for _, code := range []int{http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable} {
+		status = code
+		body := callTool(t, app, 302, "session_recover", map[string]any{"id": "s-1"})
+		if at(t, body, "result", "isError") != true {
+			t.Fatalf("status %d: isError = %v", code, at(t, body, "result", "isError"))
+		}
+		texts[code], _ = at(t, body, "result", "content", 0, "text").(string)
+	}
+	if !strings.Contains(texts[http.StatusNotFound], "not found") ||
+		strings.Contains(texts[http.StatusNotFound], "retry") {
+		t.Fatalf("not found text = %q", texts[http.StatusNotFound])
+	}
+	if !strings.Contains(texts[http.StatusConflict], "still exists") ||
+		strings.Contains(texts[http.StatusConflict], "retry") {
+		t.Fatalf("still-exists text = %q", texts[http.StatusConflict])
+	}
+	if !strings.Contains(texts[http.StatusServiceUnavailable], "unavailable") {
+		t.Fatalf("unavailable text = %q", texts[http.StatusServiceUnavailable])
+	}
+}
+
+func TestSessionRecoverUnavailableReturnsToolError(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 303, "session_recover", map[string]any{"id": "s-1"})
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if at(t, body, "result", "isError") != true || !strings.Contains(text, "session platform unavailable") {
+		t.Fatalf("result = %v", at(t, body, "result"))
+	}
+
+	survivor := callTool(t, app, 304, "ping", map[string]any{})
 	if at(t, survivor, "result", "content", 0, "text") != "pong" {
 		t.Fatalf("ping did not survive the refusal: %v", survivor)
 	}
