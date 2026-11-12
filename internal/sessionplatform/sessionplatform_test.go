@@ -843,6 +843,7 @@ func lifecycleStub(t *testing.T, status int, body string, delay time.Duration) (
 		userAgent: "homelab-k3s-mcp/test",
 		http:      srv.Client(),
 		create:    srv.Client(),
+		archive:   srv.Client(),
 	}, &seen
 }
 
@@ -1058,6 +1059,9 @@ func TestUnavailableRefusesCreateAndDelete(t *testing.T) {
 	if got, err := svc.RecoverSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("RecoverSession = (%+v, %v), want a kindUnavailable *Error", got, err)
 	}
+	if got, err := svc.ArchiveSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("ArchiveSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
 }
 
 func TestRecoverSessionIssuesOnePostAndReturnsTheSession(t *testing.T) {
@@ -1110,6 +1114,66 @@ func TestRecoverSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
 	c, seen := lifecycleStub(t, http.StatusOK, createdShell, 0)
 
 	_, err := c.RecoverSession(context.Background(), "")
+	var e *Error
+	if !errors.As(err, &e) || e.kind != kindInvalidArgument || len(*seen) != 0 {
+		t.Fatalf("err = %v, requests = %+v; want a local invalid argument and no request", err, *seen)
+	}
+}
+
+const frozenShell = `{"id":"s-9","name":"scratch","workloadType":"shell","state":"snapshot",
+  "auxiliaryPods":[],"createdAt":"2026-10-16T00:00:00Z","lastAccess":"2026-10-16T00:00:00Z"}`
+
+func TestArchiveSessionIssuesOnePostAndReturnsTheFrozenSession(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	got, err := c.ArchiveSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("ArchiveSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "snapshot" || got.Pod != "" {
+		t.Fatalf("archived = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/snapshot"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+}
+
+func TestArchiveSessionRefusalsAreDistinct(t *testing.T) {
+	seen := map[errKind]string{}
+	for _, tc := range []struct {
+		status    int
+		kind      errKind
+		retryable bool
+	}{
+		{status: http.StatusNotFound, kind: kindNotFound},
+		{status: http.StatusConflict, kind: kindConflict, retryable: true},
+		{status: http.StatusServiceUnavailable, kind: kindUnavailable},
+		{status: http.StatusInternalServerError, kind: kindAPI},
+	} {
+		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
+
+		_, err := c.ArchiveSession(context.Background(), "s-1")
+		var e *Error
+		if !errors.As(err, &e) || e.kind != tc.kind {
+			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
+		}
+		if strings.Contains(err.Error(), "retry") != tc.retryable {
+			t.Fatalf("status %d: %q, want retry advice = %v", tc.status, err.Error(), tc.retryable)
+		}
+		for kind, text := range seen {
+			if text == err.Error() {
+				t.Fatalf("kinds %d and %d read the same: %q", kind, tc.kind, text)
+			}
+		}
+		seen[tc.kind] = err.Error()
+	}
+}
+
+func TestArchiveSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	_, err := c.ArchiveSession(context.Background(), "")
 	var e *Error
 	if !errors.As(err, &e) || e.kind != kindInvalidArgument || len(*seen) != 0 {
 		t.Fatalf("err = %v, requests = %+v; want a local invalid argument and no request", err, *seen)
