@@ -582,7 +582,7 @@ func TestWriteThenReadRecoversOutput(t *testing.T) {
 	// Deliberately multi-byte: byte length (10) and rune count (8) differ, so a
 	// stub or client that measured the wrong one would show up here.
 	const payload = "echo 안녕\n"
-	written, err := c.WriteSession(context.Background(), "s-1", payload)
+	written, err := c.WriteSession(context.Background(), "s-1", payload, WriteOptions{})
 	if err != nil {
 		t.Fatalf("WriteSession: %v", err)
 	}
@@ -623,7 +623,7 @@ func TestWriteDisclosesStateBranch(t *testing.T) {
 			sess.State = tc.start
 			st.sessions["s-1"] = sess
 
-			got, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+			got, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 			if err != nil {
 				t.Fatalf("WriteSession: %v", err)
 			}
@@ -664,7 +664,7 @@ func TestWriteMapsControlPlaneRefusals(t *testing.T) {
 			st.refuseWriteStatus = tc.status
 			st.refuseWriteBody = `{"error":"` + tc.reason + `"}`
 
-			_, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+			_, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 			if err == nil {
 				t.Fatalf("WriteSession succeeded, want a %d refusal", tc.status)
 			}
@@ -711,7 +711,7 @@ func TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse(t *testing.T) {
 		st.refuseWriteStatus = tc.status
 		st.refuseWriteBody = `{"error":"` + sameReason + `"}`
 
-		_, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+		_, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 		if err == nil {
 			t.Fatalf("%s: WriteSession succeeded, want a %d refusal", tc.name, tc.status)
 		}
@@ -735,7 +735,7 @@ func TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse(t *testing.T) {
 func TestWriteRejectsEmptyIDBeforeTheWire(t *testing.T) {
 	c, st := newWriteStub(t, "banner\n")
 
-	_, err := c.WriteSession(context.Background(), "", "ls\n")
+	_, err := c.WriteSession(context.Background(), "", "ls\n", WriteOptions{})
 	if err == nil {
 		t.Fatalf("WriteSession with an empty id succeeded, want an invalid argument error")
 	}
@@ -754,7 +754,7 @@ func TestWriteRejectsEmptyIDBeforeTheWire(t *testing.T) {
 func TestWriteUsesThePerSessionEndpoint(t *testing.T) {
 	c, st := newWriteStub(t, "banner\n")
 
-	if _, err := c.WriteSession(context.Background(), "s-1", "ls\n"); err != nil {
+	if _, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{}); err != nil {
 		t.Fatalf("WriteSession: %v", err)
 	}
 	if len(st.seen) != 1 {
@@ -762,6 +762,30 @@ func TestWriteUsesThePerSessionEndpoint(t *testing.T) {
 	}
 	if st.seen[0].method != http.MethodPost || st.seen[0].path != "/api/v1/sessions/s-1/write" {
 		t.Fatalf("request = %+v, want POST /api/v1/sessions/s-1/write", st.seen[0])
+	}
+}
+
+// session-platform AC-E2: a permission mode rides in the write body beside the
+// payload; a write without one sends exactly the old body.
+func TestWriteSendsPermissionMode(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		_, _ = w.Write([]byte(`{"session":{"id":"s-1","state":"active"},"path":"active"}`))
+	}))
+	defer srv.Close()
+	c := &Client{endpoint: srv.URL, userAgent: "homelab-k3s-mcp/test", http: srv.Client()}
+
+	if _, err := c.WriteSession(context.Background(), "s-1", "edit it", WriteOptions{PermissionMode: "acceptEdits"}); err != nil {
+		t.Fatalf("WriteSession with mode: %v", err)
+	}
+	if _, err := c.WriteSession(context.Background(), "s-1", "plain", WriteOptions{}); err != nil {
+		t.Fatalf("WriteSession without mode: %v", err)
+	}
+	want := []string{`{"payload":"edit it","permissionMode":"acceptEdits"}`, `{"payload":"plain"}`}
+	if !reflect.DeepEqual(bodies, want) {
+		t.Fatalf("bodies = %q, want %q", bodies, want)
 	}
 }
 
@@ -773,7 +797,7 @@ func TestWriteSurfacesControlPlaneError(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{endpoint: srv.URL, userAgent: "homelab-k3s-mcp/test", http: srv.Client()}
-	_, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+	_, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 	var e *Error
 	if !errors.As(err, &e) || e.kind != kindAPI {
 		t.Fatalf("error = %v, want a kindAPI *Error", err)
@@ -781,7 +805,7 @@ func TestWriteSurfacesControlPlaneError(t *testing.T) {
 }
 
 func TestUnavailableRefusesWrite(t *testing.T) {
-	result, err := NewUnavailable("").WriteSession(context.Background(), "s-1", "ls\n")
+	result, err := NewUnavailable("").WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 	if result != nil {
 		t.Fatalf("result = %+v, want nil", result)
 	}

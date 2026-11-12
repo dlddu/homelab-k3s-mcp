@@ -70,7 +70,7 @@ func TestTenantTokenIsSentOnEveryControlPlaneCall(t *testing.T) {
 	_, _ = c.CreateSession(ctx, CreateRequest{Name: "n", WorkloadType: "codex-chat"})
 	_ = c.DeleteSession(ctx, "id")
 	_, _ = c.ReadSession(ctx, "id", 0)
-	_, _ = c.WriteSession(ctx, "id", "x")
+	_, _ = c.WriteSession(ctx, "id", "x", WriteOptions{})
 
 	headers, _ := rec.seen()
 	if len(headers) != 6 {

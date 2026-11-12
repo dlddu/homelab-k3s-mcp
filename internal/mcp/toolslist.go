@@ -966,7 +966,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_write",
-      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive: like session_read it activates its target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) rather than refused. The branch that served the call is reported as 'path' ('active', 'idle->active->write' or 'snapshot->restore->write') and the session is returned as it stands after the write, so a write that revived a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive: like session_read it activates its target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) rather than refused. The branch that served the call is reported as 'path' ('active', 'idle->active->write' or 'snapshot->restore->write') and the session is returned as it stands after the write, so a write that revived a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. For a 'claude-code' session, 'permissionMode' picks the permission mode of the one turn this write queues ('auto' or 'acceptEdits'); omitted, the turn runs in auto, and the next write without it runs in auto again. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -977,6 +977,11 @@ const toolsListJSON = `{
           "payload": {
             "type": "string",
             "description": "Raw workload input. For a 'shell' session this goes to the PTY stdin, so include a trailing newline to submit a command. For a 'claude-code' session this is one prompt, limited to 1 MiB of UTF-8 bytes."
+          },
+          "permissionMode": {
+            "type": "string",
+            "enum": ["auto", "acceptEdits"],
+            "description": "Permission mode of the one 'claude-code' turn this write queues. 'auto' (the default when omitted) lets Claude Code's model classifier approve or deny the tool requests the platform's settings leave open; 'acceptEdits' accepts file edits without asking. It applies to this turn only. The control plane refuses any other value, a mode on a session of another workload type, and an empty string, without activating the session. Null is the same as omitting it, as for the other arguments."
           }
         },
         "required": ["id", "payload"],

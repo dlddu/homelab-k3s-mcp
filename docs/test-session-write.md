@@ -6,6 +6,7 @@
 - AC3: 파괴적 작업 표기 (PRD: session_write)
 - AC4: 거부 응답의 구분 전달 (PRD: session_write)
 - AC5: 미설정 시 graceful 거부 (PRD: session_write)
+- AC6: claude-code 턴의 권한 모드를 그대로 전달한다 (PRD: session_write)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -83,3 +84,16 @@
   여전히 `pong`) + `internal/sessionplatform/sessionplatform_test.go`
   (`TestUnavailableRefusesWrite`) + 통합
   `tests/integration/session_write_sc5.py`(`실행 대상: auth-variant`)
+
+### 시나리오 6: 권한 모드가 제어면에 그대로 실린다
+- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, write 의 `permissionMode`(session-platform AC-E2)를
+  받는 제어면과 `claude-code` 세션 1개
+- **실행 단계**: (a) `session_write`에 `permissionMode="acceptEdits"` → (b) 같은 세션에 `permissionMode` 생략 →
+  (c) `permissionMode`에 `""`·`1`을 각각 준 호출 → (d) `tools/list`
+- **기대 결과**: (a) 제어면이 받은 본문이 `{"payload": …, "permissionMode": "acceptEdits"}`다. (b) 본문에
+  `permissionMode`가 없다. (c) 제어면에 요청이 가지 않고 `-32602`. (d) `permissionMode` 스키마가
+  `enum: [auto, acceptEdits]`
+- **검증 AC**: AC6
+- **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`(`TestWriteSendsPermissionMode`) +
+  `internal/server/mcp_test.go`(`TestSessionWritePassesPermissionModeThrough`, `TestSessionWriteRejectsBadArguments`,
+  `TestToolsListAdvertisesSessionWrite`) + 통합 (미작성)
