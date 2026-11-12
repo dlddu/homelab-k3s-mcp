@@ -191,12 +191,12 @@ var toolRegistry = map[string]toolEntry{
 		}},
 		handle: (*Handler).githubAppInstallationToken,
 	},
-	"github_commit_status_create": {
+	"github_commit_status_request": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
 			kind:   touchesNothing,
-			reason: "writes a GitHub commit status; reaches GitHub, never the apiserver",
+			reason: "files a commit status request in PocketAide for a human to approve; reaches no kubernetes resource",
 		}},
-		handle: (*Handler).githubCommitStatusCreate,
+		handle: (*Handler).githubCommitStatusRequest,
 	},
 	"pocket_aide_notification_send": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{

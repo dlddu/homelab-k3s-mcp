@@ -25,10 +25,6 @@ func (g *recordingTokenGitHub) CreateInstallationToken(_ context.Context, reposi
 	return &github.InstallationToken{Token: "ghs_test"}, nil
 }
 
-func (g *recordingTokenGitHub) CreateCommitStatus(context.Context, github.CommitStatusInput) (*github.CommitStatus, error) {
-	return nil, nil
-}
-
 func reconcilerCap() *toolscope.TokenCap {
 	return &toolscope.TokenCap{
 		Repositories: []string{"plugin-marketplace", "econ-monitor"},

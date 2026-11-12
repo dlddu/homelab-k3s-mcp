@@ -54,7 +54,7 @@ func githubConfig(key *rsa.PrivateKey) *Config {
 			issuer:   ghIssuer,
 			audience: ghAudience,
 			rules: []githubRule{
-				{repository: "dlddu/reconciler", workflow: ".github/workflows/reconcile.yml", tools: []string{"ping", "github_commit_status_create"}},
+				{repository: "dlddu/reconciler", workflow: ".github/workflows/reconcile.yml", tools: []string{"ping", "github_commit_status_request"}},
 				{repository: "dlddu/reconciler", tools: []string{"opensearch_search", "ping"}},
 				{repository: "dlddu/notes", workflow: ".github/workflows/journal.yml", tools: []string{"opensearch_document_put"}},
 			},
@@ -203,14 +203,14 @@ func TestFromEnvRefusesOneIssuerForOAuthAndGitHub(t *testing.T) {
 
 func TestCheckToolScopes(t *testing.T) {
 	cfg := githubConfig(newRSAKey(t))
-	if err := cfg.CheckToolScopes([]string{"ping", "github_commit_status_create", "opensearch_search", "opensearch_document_put"}); err != nil {
+	if err := cfg.CheckToolScopes([]string{"ping", "github_commit_status_request", "opensearch_search", "opensearch_document_put"}); err != nil {
 		t.Fatalf("CheckToolScopes: %v", err)
 	}
 	err := cfg.CheckToolScopes([]string{"ping", "opensearch_search", "opensearch_document_put"})
 	if err == nil {
 		t.Fatal("CheckToolScopes accepted a tool the server does not have")
 	}
-	if !strings.Contains(err.Error(), "dlddu/reconciler/.github/workflows/reconcile.yml: github_commit_status_create") {
+	if !strings.Contains(err.Error(), "dlddu/reconciler/.github/workflows/reconcile.yml: github_commit_status_request") {
 		t.Errorf("error = %q, want it to name the rule and the unknown tool", err)
 	}
 	if err := (&Config{}).CheckToolScopes(nil); err != nil {
@@ -235,7 +235,7 @@ func TestRequireBearerAcceptsGitHubOIDCAndScopesTools(t *testing.T) {
 			repo:        "dlddu/reconciler",
 			workflowRef: "dlddu/reconciler/.github/workflows/reconcile.yml@refs/heads/main",
 			principal:   "dlddu/reconciler/.github/workflows/reconcile.yml",
-			allowed:     []string{"ping", "github_commit_status_create", "opensearch_search"},
+			allowed:     []string{"ping", "github_commit_status_request", "opensearch_search"},
 			denied:      []string{"resource_delete", "opensearch_document_put"},
 		},
 		{
@@ -243,7 +243,7 @@ func TestRequireBearerAcceptsGitHubOIDCAndScopesTools(t *testing.T) {
 			repo:        "dlddu/Reconciler",
 			workflowRef: "dlddu/Reconciler/.github/workflows/reconcile.yml@refs/heads/feature",
 			principal:   "dlddu/Reconciler/.github/workflows/reconcile.yml",
-			allowed:     []string{"ping", "github_commit_status_create", "opensearch_search"},
+			allowed:     []string{"ping", "github_commit_status_request", "opensearch_search"},
 		},
 		{
 			name:        "another workflow gets only the repository rule",
@@ -251,7 +251,7 @@ func TestRequireBearerAcceptsGitHubOIDCAndScopesTools(t *testing.T) {
 			workflowRef: "dlddu/reconciler/.github/workflows/other.yml@refs/heads/main",
 			principal:   "dlddu/reconciler/.github/workflows/other.yml",
 			allowed:     []string{"opensearch_search", "ping"},
-			denied:      []string{"github_commit_status_create"},
+			denied:      []string{"github_commit_status_request"},
 		},
 		{
 			name:        "workflow-only repository",

@@ -718,42 +718,50 @@ const toolsListJSON = `{
       }
     },
     {
-      "name": "github_commit_status_create",
-      "description": "Write one commit status on a commit in a repository the server's GitHub App is installed on. The caller never receives a credential: the server mints an installation token scoped to that one repository and to statuses: write, spends it on this single call, and discards it. The owner is the installation account and is not a parameter. Only contexts starting with one of the prefixes in GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES may be written, and a deployment without that setting refuses every call. Requires GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
+      "name": "github_commit_status_request",
+      "description": "Ask the owner to approve one GitHub commit status, and return at once. The request — repository, sha, state, context, description, target_url — is stored in PocketAide (dlddu/pocket-aide) for the person who registered this server as a caller there; they get a push notification and approve or reject it in the PocketAide app. Only when they approve does PocketAide write the status to GitHub, with its own GitHub App. This tool never writes to GitHub and returns no credential: a successful result means the approval was requested, not that the status exists. Watch the commit's statuses (or the pull request's checks) to learn the outcome, and carry on once the status appears; a rejected request writes nothing. Only contexts starting with one of the prefixes in GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES may be requested, and a deployment without that setting refuses every call. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "repository": {
             "type": "string",
-            "description": "Repository name without its owner, e.g. \"homelab-k3s-mcp\". Must be installed for the App."
+            "description": "Repository as owner/name, e.g. \"dlddu/homelab-k3s-mcp\". PocketAide's GitHub App must be installed on it for the approval to be written."
           },
           "sha": {
             "type": "string",
-            "description": "Full 40-character hex commit SHA. Short SHAs, branches and tags are rejected."
+            "description": "Full 40-character hex commit SHA, usually a pull request's head. Short SHAs, branches and tags are rejected."
           },
           "state": {
             "type": "string",
             "enum": ["error", "failure", "pending", "success"],
-            "description": "Status state."
+            "description": "Status state to write once approved."
           },
           "context": {
             "type": "string",
-            "description": "Status label, e.g. \"homelab-k3s-mcp/e2e\". Must start with one of the server's allowed prefixes."
+            "description": "Status label, e.g. \"review/manual-approval\". Must start with one of the server's allowed prefixes; 255 characters or fewer."
           },
           "description": {
             "type": "string",
-            "description": "Short human-readable description, 140 characters or fewer."
+            "description": "Short human-readable status description, 140 characters or fewer."
           },
           "target_url": {
             "type": "string",
-            "description": "Absolute http(s) URL the status links to."
+            "description": "Absolute http(s) URL the status links to, e.g. the pull request."
+          },
+          "requester": {
+            "type": "string",
+            "description": "Who is asking, written by you: the person or agent and what it is working on (e.g. \"Claude Code 세션 — pocket-aide PR #405 검토\"). 1 to 200 characters after trimming. Shown on the approval screen as written; not verified."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Optional: why this status should be written, in one or two Korean sentences. Shown to the approver as the agent's unverified explanation; 2000 characters or fewer."
           }
         },
-        "required": ["repository", "sha", "state", "context"],
+        "required": ["repository", "sha", "state", "context", "requester"],
         "additionalProperties": false
       },
       "annotations": {
-        "title": "Create GitHub Commit Status",
+        "title": "Request GitHub Commit Status Approval",
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false,

@@ -17,13 +17,14 @@ from mcp import ClientSession
 
 from _helpers import base_url, open_session, wait_for_healthz
 
-TOOL = "github_commit_status_create"
+TOOL = "github_commit_status_request"
 
 # 세 힌트를 하나씩 따로 재면 읽기 전용으로 잘못 광고된 서버와 파괴적으로 과표기된
 # 서버가 서로 다른 단언에서 갈려 어느 쪽도 걸리지 않는다.
 EXPECTED_HINTS = {
     "readOnlyHint": False,
     "destructiveHint": False,
+    "idempotentHint": False,
     "openWorldHint": True,
 }
 
