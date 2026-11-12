@@ -1031,4 +1031,63 @@ func TestUnavailableRefusesCreateAndDelete(t *testing.T) {
 	if err := svc.DeleteSession(context.Background(), "s-1"); !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("DeleteSession = %v, want a kindUnavailable *Error", err)
 	}
+	if got, err := svc.RecoverSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("RecoverSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
+}
+
+func TestRecoverSessionIssuesOnePostAndReturnsTheSession(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, createdShell, 0)
+
+	got, err := c.RecoverSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("RecoverSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "active" || got.Pod != "session-s-9" {
+		t.Fatalf("recovered = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/recover"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+}
+
+func TestRecoverSessionRefusalsAreDistinct(t *testing.T) {
+	seen := map[errKind]string{}
+	for _, tc := range []struct {
+		status int
+		kind   errKind
+	}{
+		{status: http.StatusNotFound, kind: kindNotFound},
+		{status: http.StatusConflict, kind: kindAlreadyExists},
+		{status: http.StatusServiceUnavailable, kind: kindUnavailable},
+		{status: http.StatusForbidden, kind: kindAPI},
+	} {
+		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
+
+		_, err := c.RecoverSession(context.Background(), "s-1")
+		var e *Error
+		if !errors.As(err, &e) || e.kind != tc.kind {
+			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
+		}
+		if strings.Contains(err.Error(), "retry") {
+			t.Fatalf("status %d: %q invites a retry that cannot help", tc.status, err.Error())
+		}
+		for kind, text := range seen {
+			if text == err.Error() {
+				t.Fatalf("kinds %d and %d read the same: %q", kind, tc.kind, text)
+			}
+		}
+		seen[tc.kind] = err.Error()
+	}
+}
+
+func TestRecoverSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, createdShell, 0)
+
+	_, err := c.RecoverSession(context.Background(), "")
+	var e *Error
+	if !errors.As(err, &e) || e.kind != kindInvalidArgument || len(*seen) != 0 {
+		t.Fatalf("err = %v, requests = %+v; want a local invalid argument and no request", err, *seen)
+	}
 }

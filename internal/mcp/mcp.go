@@ -1035,6 +1035,23 @@ func (h *Handler) sessionDelete(ctx context.Context, raw json.RawMessage) (any, 
 	return successResult(map[string]any{"id": *id, "deleted": true}), nil
 }
 
+func (h *Handler) sessionRecover(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	recovered, err := h.sessionPlatform.RecoverSession(ctx, *id)
+	if err != nil {
+		return toolError(ctx, err), nil
+	}
+	return successResult(map[string]any{"session": recovered}), nil
+}
+
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {
 	creds, err := h.grafana.CreateToken(ctx)
 	if err != nil {

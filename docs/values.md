@@ -110,7 +110,7 @@
 - **경계**: V1이 쿠버네티스 API 자체를 다루는 반면, V5는 클러스터 안에서 돌고 있는 앱의
   도메인 기능을 다룬다. 같은 `kubectl exec`을 쓰더라도 목적이 앱 상태 조작이면 V5다.
 - **관련 도구**: `dear_baby_reset_user`, `session_create`, `session_list`, `session_read`,
-  `session_write`, `session_delete`, `pocket_aide_notification_send`, `drop_token_issue`
+  `session_write`, `session_delete`, `session_recover`, `pocket_aide_notification_send`, `drop_token_issue`
 
 ### V6: 서버 운영 통계
 

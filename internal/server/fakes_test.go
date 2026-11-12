@@ -352,17 +352,19 @@ type writeCall struct {
 type fakeSessionPlatform struct {
 	mu sync.Mutex
 
-	createCalls []sessionplatform.CreateRequest
-	deleteCalls []string
-	listCalls   int
-	readCalls   []readCall
-	writeCalls  []writeCall
+	createCalls  []sessionplatform.CreateRequest
+	deleteCalls  []string
+	recoverCalls []string
+	listCalls    int
+	readCalls    []readCall
+	writeCalls   []writeCall
 
-	createResponse func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
-	deleteResponse func(id string) error
-	listResponse   func() ([]sessionplatform.Session, error)
-	readResponse   func(id string, offset int64) (*sessionplatform.ReadResult, error)
-	writeResponse  func(id, payload string) (*sessionplatform.WriteResult, error)
+	createResponse  func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
+	deleteResponse  func(id string) error
+	recoverResponse func(id string) (*sessionplatform.Session, error)
+	listResponse    func() ([]sessionplatform.Session, error)
+	readResponse    func(id string, offset int64) (*sessionplatform.ReadResult, error)
+	writeResponse   func(id, payload string) (*sessionplatform.WriteResult, error)
 }
 
 func (f *fakeSessionPlatform) CreateSession(_ context.Context, req sessionplatform.CreateRequest) (*sessionplatform.Session, error) {
@@ -383,6 +385,16 @@ func (f *fakeSessionPlatform) DeleteSession(_ context.Context, id string) error 
 		return f.deleteResponse(id)
 	}
 	return nil
+}
+
+func (f *fakeSessionPlatform) RecoverSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.recoverCalls = append(f.recoverCalls, id)
+	if f.recoverResponse != nil {
+		return f.recoverResponse(id)
+	}
+	return &sessionplatform.Session{ID: id, Name: "recovered", State: "active", Pod: "session-" + id}, nil
 }
 
 func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {

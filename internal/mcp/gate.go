@@ -247,6 +247,13 @@ var toolRegistry = map[string]toolEntry{
 		}},
 		handle: (*Handler).sessionDelete,
 	},
+	"session_recover": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "recovers a session through the session platform API; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).sessionRecover,
+	},
 	"session_read": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
 			kind:   touchesNothing,

@@ -37,6 +37,8 @@ func readPath(id string) string { return sessionsPath + "/" + url.PathEscape(id)
 
 func writePath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/write" }
 
+func recoverPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/recover" }
+
 type errKind int
 
 const (
@@ -60,6 +62,9 @@ const (
 	// the output already accumulated stays readable.
 	kindQuotaExhausted
 	kindConflict
+	// kindAlreadyExists is a recover's 409: the id is still a live session, so
+	// there is nothing to bring back.
+	kindAlreadyExists
 )
 
 // Error is the error type returned by Service.
@@ -84,6 +89,8 @@ func (e *Error) Error() string {
 		return "session platform output quota exhausted, retrying will not help (existing output is still readable): " + e.msg
 	case kindConflict:
 		return "session platform conflict, retry after the in-progress lifecycle operation finishes: " + e.msg
+	case kindAlreadyExists:
+		return "session platform session still exists, nothing to recover: " + e.msg
 	default:
 		return "session platform api error: " + e.msg
 	}
@@ -97,6 +104,7 @@ func busy(msg string) *Error            { return &Error{kind: kindBusy, msg: msg
 func tooLarge(msg string) *Error        { return &Error{kind: kindTooLarge, msg: msg} }
 func quotaExhausted(msg string) *Error  { return &Error{kind: kindQuotaExhausted, msg: msg} }
 func conflict(msg string) *Error        { return &Error{kind: kindConflict, msg: msg} }
+func alreadyExists(msg string) *Error   { return &Error{kind: kindAlreadyExists, msg: msg} }
 
 // Unavailable reports whether this is the "not configured" kind.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
@@ -161,6 +169,7 @@ type CreateRequest struct {
 type Service interface {
 	CreateSession(ctx context.Context, req CreateRequest) (*Session, error)
 	DeleteSession(ctx context.Context, id string) error
+	RecoverSession(ctx context.Context, id string) (*Session, error)
 	ListSessions(ctx context.Context) ([]Session, error)
 	ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error)
 	WriteSession(ctx context.Context, id, payload string) (*WriteResult, error)
@@ -187,6 +196,11 @@ func (u *Unavailable) CreateSession(context.Context, CreateRequest) (*Session, e
 // DeleteSession always fails with the configured reason.
 func (u *Unavailable) DeleteSession(context.Context, string) error {
 	return unavailable(u.reason)
+}
+
+// RecoverSession always fails with the configured reason.
+func (u *Unavailable) RecoverSession(context.Context, string) (*Session, error) {
+	return nil, unavailable(u.reason)
 }
 
 // ListSessions always fails with the configured reason.
@@ -314,6 +328,46 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 		return apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
 	}
 	return nil
+}
+
+// RecoverSession brings a deleted session back from its last snapshot
+// (session-platform AC-B4). It provisions a pod like a create, so it gets the
+// create client's timeout.
+func (c *Client) RecoverSession(ctx context.Context, id string) (*Session, error) {
+	if id == "" {
+		return nil, invalidArgument("session id is required")
+	}
+
+	endpoint := c.endpoint + recoverPath(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+
+	resp, err := c.send(c.create, req)
+	if err != nil {
+		return nil, sendError("post", endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	message := controlPlaneMessage(respBody, resp.Status)
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, notFound(fmt.Sprintf("no recoverable snapshot for session %q: %s", id, message))
+	case resp.StatusCode == http.StatusConflict:
+		return nil, alreadyExists(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		return nil, unavailable(message)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+
+	var recovered Session
+	if err := json.Unmarshal(respBody, &recovered); err != nil {
+		return nil, apiError(fmt.Sprintf("parse recovered session: %v", err))
+	}
+	return &recovered, nil
 }
 
 // ListSessions returns every session the control plane holds. It issues exactly
