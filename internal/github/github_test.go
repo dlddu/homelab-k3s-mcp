@@ -168,8 +168,8 @@ func TestGitHubTokenRejectsStatusesWrite(t *testing.T) {
 			if err == nil {
 				t.Fatalf("CreateInstallationToken = %+v, want an error", tok)
 			}
-			if !strings.Contains(err.Error(), "github_commit_status_create") {
-				t.Errorf("error = %q, want it to point at github_commit_status_create", err)
+			if !strings.Contains(err.Error(), "github_commit_status_request") {
+				t.Errorf("error = %q, want it to point at github_commit_status_request", err)
 			}
 			if got := len(fake.requests); got != 0 {
 				t.Errorf("upstream saw %d requests (%+v), want 0", got, fake.requests)
@@ -299,7 +299,7 @@ func TestGitHubTokenRejectsChecksWrite(t *testing.T) {
 			if !strings.Contains(err.Error(), "check run") {
 				t.Errorf("error = %q, want it to say this server does not exercise check run writes", err)
 			}
-			if strings.Contains(err.Error(), "github_commit_status_create") {
+			if strings.Contains(err.Error(), "github_commit_status_request") {
 				t.Errorf("error = %q, want the checks refusal not to point at the commit status tool", err)
 			}
 			if got := len(fake.requests); got != 0 {

@@ -223,6 +223,37 @@ def owner_of(url: str, request_id: str) -> str:
     raise AssertionError(f"요청 {request_id} 의 주인이 등록된 사용자 {OWNERS} 중에 없다")
 
 
+def commit_status_request(url: str, request_id: str, owner: str = OWNERS[0]) -> dict | None:
+    """``owner`` 의 커밋 상태 요청 하나(PocketAide 앱 API 모양 그대로). 없거나 남의 것이면 None."""
+    _ensure_tokens([owner])
+    response = httpx.get(
+        f"{url}/api/commit-status-requests/{request_id}", headers=_headers(owner), timeout=10.0
+    )
+    if response.status_code == 404:
+        return None
+    response.raise_for_status()
+    return response.json()
+
+
+def commit_status_requests(url: str, owner: str = OWNERS[0]) -> list[dict]:
+    """``owner`` 의 대기 중인 커밋 상태 요청과 최근 처리분 전부."""
+    _ensure_tokens([owner])
+    response = httpx.get(f"{url}/api/commit-status-requests", headers=_headers(owner), timeout=10.0)
+    response.raise_for_status()
+    body = response.json()
+    return body["items"] + body["history"]
+
+
+def reject_commit_status_request(url: str, request_id: str, owner: str = OWNERS[0]) -> dict:
+    """대기 중인 요청을 거절해 다음 실행의 대기 목록에 남기지 않는다(GitHub 에는 아무것도 쓰지 않는다)."""
+    _ensure_tokens([owner])
+    response = httpx.post(
+        f"{url}/api/commit-status-requests/{request_id}/reject", headers=_headers(owner), timeout=10.0
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 def get_request(url: str, request_id: str) -> dict:
     """요청 레코드 하나. PocketAide 는 조회 시점에 만료를 평가하므로(저장된 상태는 PENDING
     그대로다) 이 호출이 PENDING → EXPIRED 를 관측하는 경로다."""

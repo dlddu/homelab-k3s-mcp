@@ -42,10 +42,6 @@ func (g secretGitHub) CreateInstallationToken(context.Context, []string, map[str
 	return &github.InstallationToken{Token: g.token, ExpiresAt: "2026-09-21T09:00:00Z"}, nil
 }
 
-func (g secretGitHub) CreateCommitStatus(context.Context, github.CommitStatusInput) (*github.CommitStatus, error) {
-	return nil, errors.New("unused")
-}
-
 type secretGrafana struct{ token string }
 
 func (g secretGrafana) CreateToken(context.Context) (*grafana.Credentials, error) {
@@ -141,10 +137,6 @@ type failingGitHub struct{}
 
 func (failingGitHub) CreateInstallationToken(context.Context, []string, map[string]any) (*github.InstallationToken, error) {
 	return nil, errors.New("github api error: 502 from api.github.com")
-}
-
-func (failingGitHub) CreateCommitStatus(context.Context, github.CommitStatusInput) (*github.CommitStatus, error) {
-	return nil, errors.New("unused")
 }
 
 // Every refusal carries one of the eight reasons. The response the client sees is

@@ -43,10 +43,11 @@
   - drop 파일 공유 토큰 — 수명 기본 1시간(최대 24시간), drop 안에서만 쓰이는 API 키. 서버의 베이스
     자격증명은 audience `drop` 으로 좁힌 ServiceAccount 토큰이고 공유 비밀이 없다
   - GitHub commit status — **쓰기는 토큰으로 발급하지 않는다.** 발급 토큰 어디에도
-    `statuses: write`가 실리지 않고(읽기 `statuses: read`는 발급), 쓰기는 서버 안에서
-    `statuses: write` + repo 하나로 좁힌 토큰으로 도구가 대신 행사한다
+    `statuses: write`가 실리지 않고(읽기 `statuses: read`는 발급), 이 서버는 status 를 쓰지도
+    않는다 — 도구는 PocketAide 에 요청만 남기고, 사람이 승인하면 PocketAide 가 자기 GitHub App 으로
+    그 repo 하나·`statuses: write` 로 좁힌 토큰을 받아 쓴다(2026-11-12)
 - **관련 도구**: `github_app_installation_token`, `grafana_token`, `aws_config_get`,
-  `github_commit_status_create`, `drop_token_issue`
+  `github_commit_status_request`, `drop_token_issue`
 - **원칙 (2026-09-19 추가)**: 권한을 **토큰째 내주는 것**과 **도구가 좁은 동작으로 대신 행사하는
   것**은 다르다. 한 권한이 다른 시스템의 판정을 위조할 수 있으면(예: 필수 status 검사) 앞의 방식에서
   빼고 뒤의 방식으로만 연다.
@@ -184,3 +185,4 @@
 | 2026-10-15 | V3 근거 (1) 「사람의 사전 승인」의 상대를 gatekeeper 에서 PocketAide(`dlddu/pocket-aide`)로 고쳤다 — 승인 게이트(`prd-approval-gate`)의 백엔드 교체를 따라간 것이고, 가치의 내용(변경 동사는 사람 승인을 거쳐야 클러스터에 닿는다)과 새 가치 수는 바뀌지 않는다. |
 | 2026-10-23 | V3 게이트 범위를 클러스터 밖 쓰기 하나로 넓혔다 — `github_commit_status_create` 를 승인 게이트에 넣었다(`prd-github-commit-status` AC7). commit status 는 필수 검사뿐 아니라 reconciler 수동 승인 같은 **사람 판정의 신호**로도 쓰여, 허용 접두사 안에서도 에이전트가 승인 없이 적으면 그 판정을 위조할 수 있다. 보증 문장 「승인 없이는 클러스터 상태가 바뀌지 않는다」는 그대로 두고, 클러스터 밖은 문서가 이름으로 지정한 도구만 게이트를 탄다. 새 가치 추가 없음. |
 | 2026-10-24 | 2026-10-23 의 V3 게이트 범위 확장을 되돌렸다 — `github_commit_status_create` 를 승인 게이트에서 다시 뺐다(`prd-github-commit-status` AC7·`prd-approval-gate` 「클러스터 밖 쓰기 게이트」 절 철회, 소유자 결정). 위조 방지는 다시 허용 접두사(`prd-github-commit-status` AC4)가 맡는다. 보증 문장 「승인 없이는 클러스터 상태가 바뀌지 않는다」는 그대로다. 새 가치 추가 없음. |
+| 2026-11-12 | V2 commit status 쓰기의 주체를 이 서버에서 PocketAide 로 옮겼다 — `github_commit_status_create`(서버가 바로 기록)를 `github_commit_status_request`(PocketAide 에 요청만 남기고 바로 반환, 사람이 앱에서 승인하면 PocketAide 의 GitHub App 이 기록)로 바꿨다(`prd-github-commit-status`). `review/manual-approval` 같은 status 는 사람의 판정 그 자체라 무인 기록은 판정 위조이고, 동기 승인 게이트는 MCP 커넥터 30초 제한에 걸려 10-24 에 되돌렸다 — 비동기 요청이 둘을 함께 푼다. V3 게이트 범위는 바뀌지 않는다(이 도구는 기다리지 않는다). |

@@ -55,7 +55,7 @@ EXPECTED_TOOLS = {
     "dear_baby_reset_user",
     "grafana_token",
     "github_app_installation_token",
-    "github_commit_status_create",
+    "github_commit_status_request",
     "aws_config_get",
     "opensearch_search",
     "opensearch_document_put",

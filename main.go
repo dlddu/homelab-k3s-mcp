@@ -244,11 +244,11 @@ func buildSessionPlatformService() sessionplatform.Service {
 func buildPocketAideService() pocketaide.Service {
 	client, err := pocketaide.FromEnv()
 	if err != nil {
-		slog.Error("failed to initialize pocket-aide client; pocket_aide_notification_send will return errors", "error", err)
+		slog.Error("failed to initialize pocket-aide client; pocket_aide_notification_send and github_commit_status_request will return errors", "error", err)
 		return pocketaide.NewUnavailable(err.Error())
 	}
 	if client == nil {
-		slog.Warn("APPROVAL_GATE_URL not set: pocket_aide_notification_send tool will return errors")
+		slog.Warn("APPROVAL_GATE_URL not set: pocket_aide_notification_send and github_commit_status_request tools will return errors")
 		return pocketaide.NewUnavailable("")
 	}
 	slog.Info("pocket-aide notifications enabled")

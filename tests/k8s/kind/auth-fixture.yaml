@@ -69,6 +69,8 @@ spec:
             # for it, and _auth_variant.py::K8S_REFUSAL pins that text.
             - name: MCP_K8S_DISABLED
               value: "1"
+            - name: GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES
+              value: homelab-k3s-mcp/
           startupProbe:
             httpGet:
               path: /healthz

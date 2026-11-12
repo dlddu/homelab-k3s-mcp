@@ -30,7 +30,7 @@ PocketAide(`dlddu/pocket-aide`)를 거쳐 사용자의 폰으로 단순 푸시 �
   덮어쓰는 것이 없다)
 - 승인 게이트: 대상 밖이다. PocketAide API 호출이지 쿠버네티스 권한을 행사하지 않으므로
   `prd-approval-gate` 의 정의 범위 밖이다(`session_write`·`opensearch_document_put` 과 같은 자리).
-  알림은 사람의 판정 신호로 쓰이지 않아 `github_commit_status_create` 의 위조 우려도 없다.
+  알림은 사람의 판정 신호로 쓰이지 않아 `github_commit_status_request` 의 위조 우려도 없다.
 
 > **구현 상태(2026-10-25)**: `internal/pocketaide` 와 `internal/mcp` 의 등록·디스패치가 이 PRD 와 같은
 > 변경에서 착지했다. 상대 엔드포인트는 dlddu/pocket-aide#317 로 들어간다. 시나리오별 자동화 현황은
