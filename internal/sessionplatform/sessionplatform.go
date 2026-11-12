@@ -150,6 +150,15 @@ type WriteResult struct {
 	Path    string  `json:"path"`
 }
 
+// WriteOptions are a write's optional choices beside its payload.
+type WriteOptions struct {
+	// PermissionMode is the permission mode of the one claude-code turn the
+	// write queues (session-platform AC-E2): "auto" or "acceptEdits". Empty
+	// sends nothing and the turn runs in auto. The control plane judges the
+	// value and the session's type.
+	PermissionMode string
+}
+
 type CreateRequest struct {
 	Name         string `json:"name"`
 	WorkloadType string `json:"workloadType,omitempty"`
@@ -172,7 +181,7 @@ type Service interface {
 	RecoverSession(ctx context.Context, id string) (*Session, error)
 	ListSessions(ctx context.Context) ([]Session, error)
 	ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error)
-	WriteSession(ctx context.Context, id, payload string) (*WriteResult, error)
+	WriteSession(ctx context.Context, id, payload string, opts WriteOptions) (*WriteResult, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -214,7 +223,7 @@ func (u *Unavailable) ReadSession(context.Context, string, int64) (*ReadResult, 
 }
 
 // WriteSession always fails with the configured reason.
-func (u *Unavailable) WriteSession(context.Context, string, string) (*WriteResult, error) {
+func (u *Unavailable) WriteSession(context.Context, string, string, WriteOptions) (*WriteResult, error) {
 	return nil, unavailable(u.reason)
 }
 
@@ -452,15 +461,16 @@ func (c *Client) ReadSession(ctx context.Context, id string, offset int64) (*Rea
 
 // WriteSession injects payload into the session's workload and reports the
 // branch that served it.
-func (c *Client) WriteSession(ctx context.Context, id, payload string) (*WriteResult, error) {
+func (c *Client) WriteSession(ctx context.Context, id, payload string, opts WriteOptions) (*WriteResult, error) {
 	if id == "" {
 		return nil, invalidArgument("session id is required")
 	}
 
 	endpoint := c.endpoint + writePath(id)
 	body, err := json.Marshal(struct {
-		Payload string `json:"payload"`
-	}{Payload: payload})
+		Payload        string `json:"payload"`
+		PermissionMode string `json:"permissionMode,omitempty"`
+	}{Payload: payload, PermissionMode: opts.PermissionMode})
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}

@@ -1604,6 +1604,10 @@ func TestToolsListAdvertisesSessionWrite(t *testing.T) {
 	if _, ok := props["payload"]; !ok {
 		t.Fatalf("inputSchema is missing payload: %v", props)
 	}
+	modes, _ := at(t, write, "inputSchema", "properties", "permissionMode", "enum").([]any)
+	if len(modes) != 2 || modes[0] != "auto" || modes[1] != "acceptEdits" {
+		t.Fatalf("permissionMode enum = %v, want [auto acceptEdits]", modes)
+	}
 	required, _ := at(t, write, "inputSchema", "required").([]any)
 	if len(required) != 2 || !contains([]string{fmt.Sprint(required[0]), fmt.Sprint(required[1])}, "id") ||
 		!contains([]string{fmt.Sprint(required[0]), fmt.Sprint(required[1])}, "payload") {
@@ -1656,6 +1660,33 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	}
 }
 
+// session-platform AC-E2 through this tool: the mode reaches the control plane
+// as given, and a write without one carries none.
+func TestSessionWritePassesPermissionModeThrough(t *testing.T) {
+	fake := &fakeSessionPlatform{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	for i, args := range []map[string]any{
+		{"id": "s-3", "payload": "edit it", "permissionMode": "acceptEdits"},
+		{"id": "s-3", "payload": "plain"},
+		{"id": "s-3", "payload": "null mode", "permissionMode": nil},
+	} {
+		body := callTool(t, app, 200+i, "session_write", args)
+		if at(t, body, "result", "isError") != false {
+			t.Fatalf("call %d isError = %v", i, at(t, body, "result", "isError"))
+		}
+	}
+	want := []string{"acceptEdits", "", ""}
+	if len(fake.writeCalls) != len(want) {
+		t.Fatalf("writeCalls = %+v, want %d", fake.writeCalls, len(want))
+	}
+	for i, call := range fake.writeCalls {
+		if call.permissionMode != want[i] {
+			t.Fatalf("writeCalls[%d].permissionMode = %q, want %q", i, call.permissionMode, want[i])
+		}
+	}
+}
+
 // Each refusal is a JSON-RPC invalid-params error rather than a tool error, and
 // — the part that matters for a destructive tool — none of them reaches the
 // control plane, so a malformed call cannot restore a snapshot as a side effect.
@@ -1670,6 +1701,9 @@ func TestSessionWriteRejectsBadArguments(t *testing.T) {
 		{name: "null payload", args: map[string]any{"id": "s-1", "payload": nil}, want: "payload is required"},
 		{name: "numeric payload", args: map[string]any{"id": "s-1", "payload": 12}, want: "payload must be a string"},
 		{name: "object payload", args: map[string]any{"id": "s-1", "payload": map[string]any{}}, want: "payload must be a string"},
+		// An empty mode would vanish under omitempty and silently mean "auto".
+		{name: "empty permission mode", args: map[string]any{"id": "s-1", "payload": "x", "permissionMode": ""}, want: "permissionMode must be a non-empty string"},
+		{name: "numeric permission mode", args: map[string]any{"id": "s-1", "payload": "x", "permissionMode": 1}, want: "permissionMode must be a non-empty string"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeSessionPlatform{}

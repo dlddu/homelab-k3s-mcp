@@ -910,8 +910,18 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 	if !ok {
 		return nil, errf(-32602, "payload must be a string")
 	}
+	var opts sessionplatform.WriteOptions
+	if v, present := obj["permissionMode"]; present && v != nil {
+		// An empty mode would be dropped from the request body and silently
+		// mean the default, so it is refused here like a non-string.
+		mode, ok := v.(string)
+		if !ok || mode == "" {
+			return nil, errf(-32602, "permissionMode must be a non-empty string")
+		}
+		opts.PermissionMode = mode
+	}
 
-	result, err := h.sessionPlatform.WriteSession(ctx, *id, payload)
+	result, err := h.sessionPlatform.WriteSession(ctx, *id, payload, opts)
 	if err != nil {
 		return toolError(ctx, err), nil
 	}

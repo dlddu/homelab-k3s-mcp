@@ -345,8 +345,9 @@ type readCall struct {
 }
 
 type writeCall struct {
-	id      string
-	payload string
+	id             string
+	payload        string
+	permissionMode string
 }
 
 type fakeSessionPlatform struct {
@@ -420,10 +421,10 @@ func (f *fakeSessionPlatform) ReadSession(_ context.Context, id string, offset i
 	}, nil
 }
 
-func (f *fakeSessionPlatform) WriteSession(_ context.Context, id, payload string) (*sessionplatform.WriteResult, error) {
+func (f *fakeSessionPlatform) WriteSession(_ context.Context, id, payload string, opts sessionplatform.WriteOptions) (*sessionplatform.WriteResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.writeCalls = append(f.writeCalls, writeCall{id: id, payload: payload})
+	f.writeCalls = append(f.writeCalls, writeCall{id: id, payload: payload, permissionMode: opts.PermissionMode})
 	if f.writeResponse != nil {
 		return f.writeResponse(id, payload)
 	}
