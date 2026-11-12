@@ -71,13 +71,16 @@ type Handler struct {
 	// records as values instead of scraping the log.
 	events eventlog.Sink
 
-	sessionCreateWait time.Duration
-	creates           *createTracker
+	sessionCreateWait  time.Duration
+	sessionArchiveWait time.Duration
+	creates            *createTracker
 }
 
 const (
 	// Must stay under the public edge's 30s idle timeout (AC7).
 	defaultSessionCreateWait = 20 * time.Second
+	// Same edge bound as defaultSessionCreateWait (prd-session-archive AC2).
+	defaultSessionArchiveWait = 20 * time.Second
 	// The control plane's 5-minute pod-ready bound plus a node scale-up's head start.
 	sessionCreatePendingHorizon = 6 * time.Minute
 )
@@ -85,6 +88,11 @@ const (
 // WithSessionCreateWait sets how long session_create waits before answering pending (AC7).
 func WithSessionCreateWait(d time.Duration) Option {
 	return func(h *Handler) { h.sessionCreateWait = d }
+}
+
+// WithSessionArchiveWait sets how long session_archive waits before answering pending.
+func WithSessionArchiveWait(d time.Duration) Option {
+	return func(h *Handler) { h.sessionArchiveWait = d }
 }
 
 // Option customises a Handler at construction.
@@ -1060,6 +1068,69 @@ func (h *Handler) sessionRecover(ctx context.Context, raw json.RawMessage) (any,
 		return toolError(ctx, err), nil
 	}
 	return successResult(map[string]any{"session": recovered}), nil
+}
+
+func (h *Handler) sessionArchive(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	// Detached for the same reason as session_create: a claude-code archive
+	// can outlast the edge's idle timeout, and a cancelled request would make
+	// the control plane abandon the freeze half way.
+	type outcome struct {
+		session *sessionplatform.Session
+		err     error
+	}
+	done := make(chan outcome, 1)
+	started := time.Now()
+	go func() {
+		archived, err := h.sessionPlatform.ArchiveSession(context.WithoutCancel(ctx), *id)
+		done <- outcome{archived, err}
+	}()
+
+	wait := h.sessionArchiveWait
+	if wait <= 0 {
+		wait = defaultSessionArchiveWait
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		if got.err != nil {
+			return toolError(ctx, got.err), nil
+		}
+		return successResult(map[string]any{"session": sessionFields(*got.session)}), nil
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+
+	go func() {
+		got := <-done
+		elapsed := time.Since(started).Round(time.Millisecond)
+		if got.err != nil {
+			slog.Warn("session_archive finished after the tool answered", "id", *id,
+				"elapsed", elapsed, "result", "error", "error", got.err.Error())
+			return
+		}
+		slog.Info("session_archive finished after the tool answered", "id", *id,
+			"elapsed", elapsed, "result", "success", "state", got.session.State)
+	}()
+	return successResult(map[string]any{
+		"pending": true,
+		"session": map[string]any{"id": *id, "state": "archiving"},
+		"message": fmt.Sprintf("The archive is still running after %s (a claude-code session first waits for "+
+			"its running turn to finish); the control plane keeps going. Do not call session_read or "+
+			"session_write on it meanwhile, since either would bring it back. Poll session_list: the session's "+
+			"state turns 'snapshot' and its pod disappears once the archive is committed. If it is still "+
+			"'active' after about 10 minutes, the archive failed and the session was left running.",
+			wait),
+	}), nil
 }
 
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {

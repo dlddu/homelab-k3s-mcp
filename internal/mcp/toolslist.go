@@ -1040,6 +1040,28 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "session_archive",
+      "description": "Archive a session-platform session now instead of waiting for the 60-minute idle freeze. The control plane writes the session's archive (files, conversation history and accumulated output, by workload type) and reclaims its pods, leaving the session 'snapshot': it keeps its id and its output, costs no pod, and comes back on the next session_read or session_write. Processes running inside a shell session do not survive the freeze; its files and output do. A claude-code session first lets its running turn finish (up to about 5 minutes). Archiving an already-archived session returns it unchanged. The archive is also what session_recover restores from, so archiving before session_delete keeps the session recoverable up to this point. This call waits at most about 20 seconds: when the archive is committed by then it returns the session 'snapshot'; when it is not, it returns isError=false with 'pending': true and a 'message', and the control plane keeps archiving — poll session_list until the session's state turns 'snapshot' rather than calling session_archive again, and do not call session_read or session_write on it meanwhile, since either would bring it back. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation holds the session and is worth retrying once it finishes; unavailable means this workload type cannot be archived right now. When this server calls as a tenant, only that tenant's sessions can be archived. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list or session_create."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Archive Session",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "pocket_aide_notification_send",
       "description": "Send a plain push notification to the phone of the person who registered this server as a caller in PocketAide (dlddu/pocket-aide). The title and body arrive exactly as given on every device that person has registered, and PocketAide keeps the notification in that person's history together with the requester you write. requester is required: name who is asking for this notification in your own words — the person or agent and what it is working on (e.g. \"Claude Code 세션 — dear-baby 구버전 정리\" or \"reconciler 정합성 루프\"). It is shown as written and is not verified. No approval is created, so use it for status updates that need no decision (a long task finished, a job failed). The recipient is fixed by that registration and is not a parameter. Returns how many devices are registered (devices) and how many APNs accepted (sent); devices = 0 is not an error but means nobody was reached. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
       "inputSchema": {

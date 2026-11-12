@@ -356,6 +356,7 @@ type fakeSessionPlatform struct {
 	createCalls  []sessionplatform.CreateRequest
 	deleteCalls  []string
 	recoverCalls []string
+	archiveCalls []string
 	listCalls    int
 	readCalls    []readCall
 	writeCalls   []writeCall
@@ -363,6 +364,7 @@ type fakeSessionPlatform struct {
 	createResponse  func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
 	deleteResponse  func(id string) error
 	recoverResponse func(id string) (*sessionplatform.Session, error)
+	archiveResponse func(id string) (*sessionplatform.Session, error)
 	listResponse    func() ([]sessionplatform.Session, error)
 	readResponse    func(id string, offset int64) (*sessionplatform.ReadResult, error)
 	writeResponse   func(id, payload string) (*sessionplatform.WriteResult, error)
@@ -396,6 +398,17 @@ func (f *fakeSessionPlatform) RecoverSession(_ context.Context, id string) (*ses
 		return f.recoverResponse(id)
 	}
 	return &sessionplatform.Session{ID: id, Name: "recovered", State: "active", Pod: "session-" + id}, nil
+}
+
+func (f *fakeSessionPlatform) ArchiveSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	f.archiveCalls = append(f.archiveCalls, id)
+	respond := f.archiveResponse
+	f.mu.Unlock()
+	if respond != nil {
+		return respond(id)
+	}
+	return &sessionplatform.Session{ID: id, Name: "archived", State: "snapshot"}, nil
 }
 
 func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {
