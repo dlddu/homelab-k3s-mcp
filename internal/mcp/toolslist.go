@@ -947,7 +947,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_read",
-      "description": "Read a session-platform session's accumulated workload output from a byte-offset cursor. Pass 'offset' 0 (or omit it) for everything since the session started, then pass the returned 'nextOffset' to get only what has accumulated since; the same cursor always returns the same span, so reading never consumes output. What the output is depends on the session's workloadType: for 'shell' it is merged PTY stdout/stderr, for 'claude-code' it is the assistant text deltas plus diagnostic stderr. Reading is NOT passive: the control plane activates the target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) before the read. The branch that served the call is reported as 'path' ('active', 'idle->active->read' or 'snapshot->restore->read') and the session is returned as it stands after the read, so that side effect is never silent. An unknown id is a not-found error and a negative offset is an argument error; neither touches the session. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Read a session-platform session's accumulated workload output from a byte-offset cursor. Pass 'offset' 0 (or omit it) for everything since the session started, then pass the returned 'nextOffset' to get only what has accumulated since; the same cursor always returns the same span, so reading never consumes output. What the output is depends on the session's workloadType: for 'shell' it is merged PTY stdout/stderr, for 'claude-code' it is the assistant text deltas plus diagnostic stderr. Reading is NOT passive for an idle session: the control plane promotes it to active before the read. An archived (snapshot) session is refused, not restored: call session_restore first and read once session_list reports it active. The branch that served the call is reported as 'path' ('active' or 'idle->active->read') and the session is returned as it stands after the read, so the promotion is never silent. An unknown id is a not-found error, a negative offset is an argument error and an archived session is refused; none of them touches the session. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -974,7 +974,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_write",
-      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive: like session_read it activates its target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) rather than refused. The branch that served the call is reported as 'path' ('active', 'idle->active->write' or 'snapshot->restore->write') and the session is returned as it stands after the write, so a write that revived a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. For a 'claude-code' session, 'permissionMode' picks the permission mode of the one turn this write queues ('auto' or 'acceptEdits'); omitted, the turn runs in auto, and the next write without it runs in auto again. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive for an idle session: like session_read it promotes it to active first. An archived (snapshot) session is refused, not restored: call session_restore first and write once session_list reports it active. The branch that served the call is reported as 'path' ('active' or 'idle->active->write') and the session is returned as it stands after the write, so a write that woke a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, an archived session is refused without anything being sent, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. For a 'claude-code' session, 'permissionMode' picks the permission mode of the one turn this write queues ('auto' or 'acceptEdits'); omitted, the turn runs in auto, and the next write without it runs in auto again. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1049,7 +1049,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_archive",
-      "description": "Archive a session-platform session now instead of waiting for the 60-minute idle freeze. The control plane writes the session's archive (files, conversation history and accumulated output, by workload type) and reclaims its pods, leaving the session 'snapshot': it keeps its id and its output, costs no pod, and comes back on the next session_read or session_write. Processes running inside a shell session do not survive the freeze; its files and output do. A claude-code session first lets its running turn finish (up to about 5 minutes). Archiving an already-archived session returns it unchanged. The archive is also what session_recover restores from, so archiving before session_delete keeps the session recoverable up to this point. This call waits at most about 20 seconds: when the archive is committed by then it returns the session 'snapshot'; when it is not, it returns isError=false with 'pending': true and a 'message', and the control plane keeps archiving — poll session_list until the session's state turns 'snapshot' rather than calling session_archive again, and do not call session_read or session_write on it meanwhile, since either would bring it back. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation holds the session and is worth retrying once it finishes; unavailable means this workload type cannot be archived right now. When this server calls as a tenant, only that tenant's sessions can be archived. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Archive a session-platform session now instead of waiting for the 60-minute idle freeze. The control plane writes the session's archive (files, conversation history and accumulated output, by workload type) and reclaims its pods, leaving the session 'snapshot': it keeps its id and its output, costs no pod, and comes back with session_restore. Processes running inside a shell session do not survive the freeze; its files and output do. A claude-code session first lets its running turn finish (up to about 5 minutes). Archiving an already-archived session returns it unchanged. The archive is also what session_recover restores from, so archiving before session_delete keeps the session recoverable up to this point. This call waits at most about 20 seconds: when the archive is committed by then it returns the session 'snapshot'; when it is not, it returns isError=false with 'pending': true and a 'message', and the control plane keeps archiving — poll session_list until the session's state turns 'snapshot' rather than calling session_archive again, and do not call session_restore on it meanwhile, since that would bring it back. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation holds the session and is worth retrying once it finishes; unavailable means this workload type cannot be archived right now. When this server calls as a tenant, only that tenant's sessions can be archived. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -1063,6 +1063,28 @@ const toolsListJSON = `{
       },
       "annotations": {
         "title": "Archive Session",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "session_restore",
+      "description": "Bring an archived (snapshot) session-platform session back into a fresh pod, so session_read and session_write can use it again; they refuse an archived session rather than restoring it. The control plane recreates the session's pods and applies its archive (files, conversation history and accumulated output), and the session returns 'active' under the same id, with its output cursors still valid. An idle session is simply promoted, and an active one comes back unchanged. This call waits at most about 20 seconds: when the restore finishes by then it returns the session 'active' with its 'pod'; when it does not (a fresh pod pulling its image or waiting for a node, then the archive), it returns isError=false with 'pending': true and a 'message', and the control plane keeps restoring — poll session_list until the session's state turns 'active' rather than calling session_restore again. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation, possibly a restore already under way, holds the session and is worth retrying once it finishes; unavailable means the platform cannot restore that workload type, or has no free login slot for it, right now. When this server calls as a tenant, only that tenant's sessions can be restored. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Restore Session",
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": true,

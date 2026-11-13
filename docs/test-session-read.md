@@ -30,13 +30,16 @@
 ### 시나리오 2: 상태 분기와 그 노출
 - **사전 조건**: `active`·`idle`·`snapshot` 세션 각 1개
 - **실행 단계**: 세 세션에 각각 read 호출
-- **기대 결과**: 세 호출 모두 출력을 반환하고, 결과의 `path`가 각각 직접 읽기 / 유휴 승격 /
-  스냅샷 복원으로 실제 분기와 일치하며, 호출 후 상태는 모두 `active`로 보고된다.
-  스냅샷 케이스에서는 파드가 실제로 다시 기동된다.
+- **기대 결과**: `active`·`idle` 호출은 출력을 반환하고, 결과의 `path`가 각각 직접 읽기 / 유휴 승격으로
+  실제 분기와 일치하며 호출 후 상태는 `active`로 보고된다. `snapshot` 호출은 `session_restore`를 먼저
+  부르라는 도구 에러이고, 제어면 read가 나가지 않으며 세션은 `snapshot` 그대로다(*2026-11-13 개정*).
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
-  (`TestReadDisclosesStateBranch` — 세 분기의 `path`와 처리 후 상태) + `internal/server/mcp_test.go`
-  (`TestSessionReadReturnsPayloadCursorAndBranch` — 도구 결과에 `path`·처리 후 세션이 실린다)
+  (`TestReadDisclosesStateBranch` — 제어면이 알려 준 분기의 `path`와 처리 후 상태) +
+  `internal/server/mcp_test.go` (`TestSessionReadReturnsPayloadCursorAndBranch` — 도구 결과에 `path`·처리
+  후 세션이 실린다) + `internal/server/session_restore_test.go`
+  (`TestSessionReadAndWriteRefuseAnArchivedSession` — 동결된 세션은 read 없이 거부,
+  `TestSessionReadPassesTheGuardForLiveSessionsAndReportsMissingOnes`)
   + (미작성) 통합 `tests/integration/session.py::test_session_read_ac2_state_branch_disclosure`.
   통합 쪽이 남는 이유: 스냅샷 세션의 파드가 **실제로 다시 기동되는지**는 제어면 스텁이나 kind에
   띄운 제어면이 있어야 관측된다. Go 단위는 "제어면이 알려 준 분기를 도구가 감추지 않는다"까지만

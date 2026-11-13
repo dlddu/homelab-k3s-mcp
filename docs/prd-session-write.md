@@ -41,13 +41,18 @@ session-platform 세션의 워크로드에 입력을 주입하는 도구.
   응답 텍스트가 누적된다.
 
 ### AC2: 상태 분기 처리와 노출
-- **설명**: write도 read와 같은 "접근=active화" 규칙을 따른다 — `active`는 직접,
-  `idle`은 승격 후, `snapshot`은 **거부하지 않고 복원 후** 적용한다. 도구는 어느 분기로
-  처리됐는지(`path`)와 처리 후 상태를 결과에 포함해, 쓰기 한 번이 스냅샷 세션을 되살렸다는
-  사실이 호출자에게 드러나게 한다.
+- **설명**: `active`는 직접, `idle`은 승격 후 적용한다. **`snapshot`은 되살리지 않고 거부한다**
+  (*2026-11-13 개정 — 전에는 복원 후 적용했다*): 도구가 먼저 세션 기록을 수동적으로 조회해
+  `snapshot`이면 제어면 write를 보내지 않고, `session_restore`를 먼저 부르라는 도구 에러로 답한다.
+  복원은 새 파드·아카이브를 기다려 엣지 유휴 타임아웃을 넘길 수 있고, write 안에 숨은 복원이 시간
+  초과로 끊기면 쓰기도 복원도 끝나지 않았기 때문이다 — 복원은 pending으로 답하는 `session_restore`
+  하나의 몫이다(`prd-session-restore`). 도구는 어느 분기로 처리됐는지(`path`)와 처리 후 상태를 결과에
+  포함해 유휴 승격이 호출자에게 드러나게 한다. 조회와 write 사이에 세션이 동결되는 경합에서는 제어면이
+  예전처럼 복원 후 적용한다.
 - **달성 가치**: V3
-- **검증 방법**: `active`·`idle`·`snapshot` 세션에 각각 write하여 모두 반영되고, 결과의
-  `path`가 실제 분기와 일치하며 호출 후 상태가 `active`로 보고된다.
+- **검증 방법**: `active`·`idle` 세션에 각각 write하여 반영되고 `path`가 실제 분기와 일치하며 호출 후
+  상태가 `active`로 보고된다. `snapshot` 세션에 write하면 `session_restore`를 가리키는 도구 에러가
+  나고 제어면 write가 나가지 않으며 세션은 `snapshot` 그대로다.
 
 ### AC3: 파괴적 작업 표기
 - **설명**: `tools/list`에서 이 도구가 `destructiveHint=true`(및 `readOnlyHint=false`)로

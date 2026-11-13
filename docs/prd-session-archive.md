@@ -16,14 +16,15 @@ session-platform 세션을 60분 유휴 동결을 기다리지 않고 지금 동
 - 동작: 제어면에 동결을 요청한다. 제어면은 워크로드 타입별 아카이브(파일·대화 기록·누적 출력)를 쓰고
   파드를 회수해 세션을 `snapshot`으로 둔다. `claude-code`는 진행 중인 턴이 끝나기를 최대 5분 기다린
   뒤 동결한다. `shell` 안에서 돌던 프로세스는 동결을 건너지 못한다(파일과 출력은 건넌다). 이미
-  `snapshot`인 세션은 그대로 돌려준다. 동결된 세션은 다음 `session_read`·`session_write`가 되살린다.
+  `snapshot`인 세션은 그대로 돌려준다. 동결된 세션은 `session_restore`가 되살린다(*2026-11-13 — 전에는
+  다음 `session_read`·`session_write`가 되살렸고, 이제 그 둘은 동결된 세션을 거부한다*).
 - 반환: 동결된 세션(`session` — `session_list`와 같은 필드, `pod` 없음). 대기 상한(약 20초) 안에
   끝나지 않으면 `pending: true`·`session`(`id`·`state: "archiving"`)·`message`를 `isError=false`로
   돌려주고, 동결은 요청과 떼어 낸 맥락에서 끝까지 진행된다.
 - 서버 요구 설정: `SESSION_PLATFORM_ENDPOINT` (세션 도구 공유)
 - 어노테이션: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`,
   `openWorldHint=true`
-  (destructive=false: 세션과 출력은 남고 다음 읽기·쓰기로 되돌아온다.
+  (destructive=false: 세션과 출력은 남고 `session_restore`로 되돌아온다.
   idempotent=true: 이미 동결된 세션에 다시 부르면 같은 세션을 그대로 돌려준다)
 - 승인 게이트: 대상 밖이다. 제어면 API 호출이지 쿠버네티스 권한을 행사하지 않으므로
   `prd-approval-gate`의 정의 범위 밖이다(`session_delete`·`session_recover`와 같은 자리).
@@ -40,12 +41,12 @@ session-platform 세션을 60분 유휴 동결을 기다리지 않고 지금 동
 ### AC1: 세션의 즉시 동결
 - **설명**: 살아 있는 세션의 id로 호출하면 같은 id의 세션이 `snapshot`으로 돌아오고 `pod`가 없다.
   동결 요청은 제어면에 한 번만 나가며, 목록·읽기·쓰기·생성·삭제는 부르지 않는다. 이미 `snapshot`인
-  세션에 부르면 오류 없이 같은 세션을 돌려준다. 동결된 세션은 다음 `session_read`가 되살려 동결 전
-  출력을 돌려준다.
+  세션에 부르면 오류 없이 같은 세션을 돌려준다. 동결된 세션은 `session_restore`가 되살리고, 그
+  뒤 `session_read`가 동결 전 출력을 돌려준다.
 - **달성 가치**: V5
 - **검증 방법**: 출력에 마커 줄이 있는 세션을 동결하면 결과가 같은 id의 `snapshot` 세션이고 파드가
-  사라지며, `session_list`에서 `snapshot`으로 보이고, 다시 동결해도 같은 결과이며, offset 0
-  `session_read`가 마커 줄을 돌려준다.
+  사라지며, `session_list`에서 `snapshot`으로 보이고, 다시 동결해도 같은 결과이며, `session_restore` 뒤
+  offset 0 `session_read`가 마커 줄을 돌려준다.
 
 ### AC2: 긴 동결의 pending 응답
 - **설명**: 동결이 대기 상한(엣지의 30초 유휴 타임아웃 아래인 약 20초) 안에 끝나지 않으면 도구는

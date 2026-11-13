@@ -67,6 +67,7 @@ EXPECTED_TOOLS = {
     "session_delete",
     "session_recover",
     "session_archive",
+    "session_restore",
     "pocket_aide_notification_send",
     "drop_token_issue",
 }

@@ -112,7 +112,7 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 		"session_create", "session_list", "session_read", "session_write", "session_delete",
-		"session_recover", "session_archive", "pocket_aide_notification_send", "drop_token_issue",
+		"session_recover", "session_archive", "session_restore", "pocket_aide_notification_send", "drop_token_issue",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("len(tools) = %d, want %d", len(tools), len(want))
@@ -1366,9 +1366,9 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 				Pod: "session-" + id, CreatedAt: "2026-08-30T09:30:00Z",
 				LastAccess: "2026-09-04T00:00:00Z",
 			},
-			Path: "snapshot->restore->read",
+			Path: "idle->active->read",
 			// An absolute cursor, not len(payload): the two differ here on purpose.
-			Payload:    "restored output\n",
+			Payload:    "parked output\n",
 			NextOffset: 1024,
 		}, nil
 	}}
@@ -1378,14 +1378,14 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
 	}
-	if at(t, body, "result", "structuredContent", "payload") != "restored output\n" {
+	if at(t, body, "result", "structuredContent", "payload") != "parked output\n" {
 		t.Fatalf("payload = %v", at(t, body, "result", "structuredContent", "payload"))
 	}
 	if fmt.Sprint(at(t, body, "result", "structuredContent", "nextOffset")) != "1024" {
 		t.Fatalf("nextOffset = %v, want the server-issued cursor passed through verbatim",
 			at(t, body, "result", "structuredContent", "nextOffset"))
 	}
-	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->read" {
+	if at(t, body, "result", "structuredContent", "path") != "idle->active->read" {
 		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
 	}
 	if at(t, body, "result", "structuredContent", "session", "state") != "active" {
@@ -1559,7 +1559,7 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 				Pod: "pod-91ab", CreatedAt: "2026-08-30T09:30:00Z",
 				LastAccess: "2026-09-04T00:00:00Z",
 			},
-			Path: "snapshot->restore->write",
+			Path: "idle->active->write",
 		}, nil
 	}}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
@@ -1568,7 +1568,7 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
 	}
-	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->write" {
+	if at(t, body, "result", "structuredContent", "path") != "idle->active->write" {
 		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
 	}
 	if at(t, body, "result", "structuredContent", "session", "state") != "active" {
@@ -1653,7 +1653,13 @@ func TestSessionWriteSurfacesRefusalsDistinctly(t *testing.T) {
 	const sameReason = "refused"
 
 	var status int
-	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The tool's passive look at the session before writing finds it
+		// active; the refusal under test is the write's own.
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"id":"s-1","state":"active","pod":"session-s-1"}`))
+			return
+		}
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"error":"` + sameReason + `"}`))
 	}))

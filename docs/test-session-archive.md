@@ -16,9 +16,9 @@
 ### 시나리오 1: 살아 있는 세션이 지금 동결된다
 - **사전 조건**: 아카이브가 켜진 제어면의 실 shell 세션 1개, 누적 출력에 마커 줄이 있음
 - **실행 단계**: `session_archive` 호출 → `session_list` → 같은 id로 `session_archive` 재호출 →
-  offset 0 `session_read`
+  `session_restore` → offset 0 `session_read`
 - **기대 결과**: 결과가 같은 id의 `snapshot` 세션이고 `pod`가 없으며 그 파드가 사라진다. 목록에서
-  `snapshot`으로 보이고, 재호출도 오류 없이 같은 세션을 돌려준다. 읽기가 세션을 되살려 마커 줄을
+  `snapshot`으로 보이고, 재호출도 오류 없이 같은 세션을 돌려준다. 복원 뒤 읽기가 마커 줄을
   돌려준다.
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`

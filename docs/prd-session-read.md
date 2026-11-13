@@ -5,8 +5,9 @@ session-platform 세션의 누적 워크로드 출력을 오프셋 커서로 읽
 ## 달성 가치
 - **V5: 클러스터 내부 앱 기능의 도구화** — 제어면의 `POST /api/v1/sessions/{id}/read`를
   도구로 열어, 세션에 맡겨 둔 작업의 결과를 대화에서 바로 회수한다.
-- **V3: 안전한 운영(Safe-by-default)** — 읽기가 유발하는 상태 전이(유휴 승격·스냅샷 복원)를
-  결과에 명시적으로 드러내고, 미설정 시 graceful 거부가 기본값이다.
+- **V3: 안전한 운영(Safe-by-default)** — 읽기가 유발하는 상태 전이(유휴 승격)를 결과에 명시적으로
+  드러내고, 오래 걸리는 스냅샷 복원은 읽기에 숨기지 않고 `session_restore`로 넘기며, 미설정 시
+  graceful 거부가 기본값이다.
 
 ## 도구 개요
 - 입력: `id`(필수 — 세션 id), `offset`(선택, 기본 0 — 이전 호출이 발급한 `nextOffset`)
@@ -18,9 +19,8 @@ session-platform 세션의 누적 워크로드 출력을 오프셋 커서로 읽
 - 서버 요구 설정: `SESSION_PLATFORM_ENDPOINT` (session_list와 공유)
 - 어노테이션: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=true`,
   `openWorldHint=true`
-  (readOnly=false: 제어면 read는 대상 세션을 먼저 `active`로 만든 뒤 읽으므로 유휴 승격·
-  스냅샷 복원이라는 부수 효과가 있다. 다만 기존 출력을 소비·삭제하지 않으므로 파괴적이지는
-  않다)
+  (readOnly=false: 제어면 read는 대상 세션을 먼저 `active`로 만든 뒤 읽으므로 유휴 승격이라는
+  부수 효과가 있다. 다만 기존 출력을 소비·삭제하지 않으므로 파괴적이지는 않다)
 
 > **구현 상태(2026-09-04)**: 구현됨. `internal/sessionplatform`의 `ReadSession`(제어면
 > `POST /api/v1/sessions/{id}/read` 클라이언트)과 `internal/mcp`의 도구 등록·디스패치가
@@ -43,13 +43,18 @@ session-platform 세션의 누적 워크로드 출력을 오프셋 커서로 읽
   호출이 같은 구간을 반환한다.
 
 ### AC2: 상태 분기 노출
-- **설명**: 제어면 read는 대상 세션을 먼저 `active`로 만든 뒤 읽는다(`active`는 직접,
-  `idle`은 승격 후, `snapshot`은 복원 후). 도구는 어느 분기로 처리됐는지(`path`)와 처리
-  후 세션 상태를 결과에 포함해, **읽기 한 번이 스냅샷 세션의 파드를 되살렸다는 사실**이
-  호출자에게 드러나게 한다.
+- **설명**: 제어면 read는 대상 세션을 먼저 `active`로 만든 뒤 읽는다(`active`는 직접, `idle`은 승격
+  후). **`snapshot` 세션은 되살리지 않고 거부한다**(*2026-11-13 개정 — 전에는 복원 후 읽었다*): 도구가
+  먼저 세션 기록을 수동적으로 조회해 `snapshot`이면 제어면 read를 보내지 않고, `session_restore`를
+  먼저 부르라는 도구 에러로 답한다. 복원은 새 파드·아카이브를 기다려 엣지 유휴 타임아웃을 넘길 수
+  있고, 읽기 안에 숨은 복원이 시간 초과로 끊기면 읽기도 복원도 끝나지 않았기 때문이다 — 복원은
+  pending으로 답하는 `session_restore` 하나의 몫이다(`prd-session-restore`). 도구는 어느 분기로
+  처리됐는지(`path`)와 처리 후 세션 상태를 결과에 포함해, 유휴 승격이 호출자에게 드러나게 한다.
+  조회와 read 사이에 세션이 동결되는 경합에서는 제어면이 예전처럼 복원 후 읽는다.
 - **달성 가치**: V3
-- **검증 방법**: `active`·`idle`·`snapshot` 세션에 각각 호출해 결과의 `path`가 실제 분기와
-  일치하고, 호출 후 상태가 `active`로 보고된다.
+- **검증 방법**: `active`·`idle` 세션에 각각 호출해 결과의 `path`가 실제 분기와 일치하고 호출 후
+  상태가 `active`로 보고된다. `snapshot` 세션에 호출하면 `session_restore`를 가리키는 도구 에러가 나고
+  제어면 read가 나가지 않으며 세션은 `snapshot` 그대로다.
 
 ### AC3: 대상 부재·잘못된 커서의 명확한 처리
 - **설명**: 존재하지 않는 세션 id는 not found로, 음수·비정수 `offset`은 잘못된 인자로

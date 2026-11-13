@@ -36,15 +36,16 @@
 ### 시나리오 2: 상태 분기와 그 노출
 - **사전 조건**: `active`·`idle`·`snapshot` 세션 각 1개
 - **실행 단계**: 세 세션에 각각 write 호출 후 read로 반영 확인
-- **기대 결과**: 스냅샷 세션도 거부되지 않고 복원 후 적용된다. 결과의 `path`가 실제 분기와
-  일치하고 호출 후 상태는 모두 `active`로 보고된다.
+- **기대 결과**: `active`·`idle` 세션은 적용되고 결과의 `path`가 실제 분기와 일치하며 호출 후 상태는
+  `active`로 보고된다. `snapshot` 세션은 `session_restore`를 먼저 부르라는 도구 에러이고, 제어면 write가
+  나가지 않으며 세션은 `snapshot` 그대로다(*2026-11-13 개정 — 전에는 복원 후 적용했다*).
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
-  (`TestWriteDisclosesStateBranch` — `active`/`idle->active->write`/`snapshot->restore->write`
-  3분기가 그대로 전달되고 처리 후 상태가 `active`) + `internal/server/mcp_test.go`
-  (`TestSessionWriteReturnsBranchAndSession`) + 통합 (미작성)
-  `tests/integration/session_write_sc2.py` — 복원이 **실제 파드를 만드는지**는 여기서만
-  관측된다
+  (`TestWriteDisclosesStateBranch` — 제어면이 알려 준 분기가 그대로 전달되고 처리 후 상태가 `active`) +
+  `internal/server/mcp_test.go` (`TestSessionWriteReturnsBranchAndSession`) +
+  `internal/server/session_restore_test.go` (`TestSessionReadAndWriteRefuseAnArchivedSession` — 동결된
+  세션은 write 없이 거부) + 통합 (미작성) `tests/integration/session_write_sc2.py` — 실 `idle`·`snapshot`
+  세션의 분기는 여기서만 관측된다
 
 ### 시나리오 3: destructiveHint 광고
 - **사전 조건**: 서버 기동
