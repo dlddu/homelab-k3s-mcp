@@ -234,7 +234,7 @@ func buildSessionPlatformService() sessionplatform.Service {
 		return sessionplatform.NewUnavailable(err.Error())
 	}
 	if client == nil {
-		slog.Warn("SESSION_PLATFORM_ENDPOINT not set: session_create, session_list, session_read, session_write, session_delete, session_recover and session_archive tools will return errors")
+		slog.Warn("SESSION_PLATFORM_ENDPOINT not set: session_create, session_list, session_read, session_write, session_delete, session_recover, session_archive and session_restore tools will return errors")
 		return sessionplatform.NewUnavailable("")
 	}
 	slog.Info("session platform integration loaded")

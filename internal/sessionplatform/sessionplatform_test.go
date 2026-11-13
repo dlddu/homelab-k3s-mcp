@@ -844,6 +844,7 @@ func lifecycleStub(t *testing.T, status int, body string, delay time.Duration) (
 		http:      srv.Client(),
 		create:    srv.Client(),
 		archive:   srv.Client(),
+		restore:   srv.Client(),
 	}, &seen
 }
 
@@ -1062,6 +1063,12 @@ func TestUnavailableRefusesCreateAndDelete(t *testing.T) {
 	if got, err := svc.ArchiveSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("ArchiveSession = (%+v, %v), want a kindUnavailable *Error", got, err)
 	}
+	if got, err := svc.RestoreSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("RestoreSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
+	if got, err := svc.GetSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("GetSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
 }
 
 func TestRecoverSessionIssuesOnePostAndReturnsTheSession(t *testing.T) {
@@ -1177,5 +1184,69 @@ func TestArchiveSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
 	var e *Error
 	if !errors.As(err, &e) || e.kind != kindInvalidArgument || len(*seen) != 0 {
 		t.Fatalf("err = %v, requests = %+v; want a local invalid argument and no request", err, *seen)
+	}
+}
+
+const restoredShell = `{"id":"s-9","name":"scratch","workloadType":"shell","state":"active","pod":"session-s-9-r1",
+  "auxiliaryPods":[],"createdAt":"2026-10-16T00:00:00Z","lastAccess":"2026-11-13T00:00:00Z"}`
+
+func TestRestoreSessionIssuesOneSwitchAndReturnsTheActiveSession(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, restoredShell, 0)
+
+	got, err := c.RestoreSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("RestoreSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "active" || got.Pod != "session-s-9-r1" {
+		t.Fatalf("restored = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/switch"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+}
+
+func TestRestoreSessionRefusalsAreDistinct(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		kind   errKind
+	}{
+		{status: http.StatusNotFound, kind: kindNotFound},
+		{status: http.StatusConflict, kind: kindConflict},
+		{status: http.StatusServiceUnavailable, kind: kindUnavailable},
+		{status: http.StatusInternalServerError, kind: kindAPI},
+	} {
+		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
+
+		_, err := c.RestoreSession(context.Background(), "s-1")
+		var e *Error
+		if !errors.As(err, &e) || e.kind != tc.kind {
+			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
+		}
+	}
+}
+
+// GetSession is the passive look session_read and session_write take before
+// they act: one GET of the session's record and nothing else.
+func TestGetSessionIssuesOneGet(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	got, err := c.GetSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "snapshot" {
+		t.Fatalf("session = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodGet, path: sessionsPath + "/s-9"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+
+	c, _ = lifecycleStub(t, http.StatusNotFound, `{"error":"session not found"}`, 0)
+	_, err = c.GetSession(context.Background(), "s-gone")
+	var e *Error
+	if !errors.As(err, &e) || e.kind != kindNotFound {
+		t.Fatalf("missing session: error = %v, want kindNotFound", err)
 	}
 }

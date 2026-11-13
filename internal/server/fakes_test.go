@@ -344,6 +344,8 @@ type fakeSessionPlatform struct {
 	deleteCalls  []string
 	recoverCalls []string
 	archiveCalls []string
+	restoreCalls []string
+	getCalls     []string
 	listCalls    int
 	readCalls    []readCall
 	writeCalls   []writeCall
@@ -352,6 +354,8 @@ type fakeSessionPlatform struct {
 	deleteResponse  func(id string) error
 	recoverResponse func(id string) (*sessionplatform.Session, error)
 	archiveResponse func(id string) (*sessionplatform.Session, error)
+	restoreResponse func(id string) (*sessionplatform.Session, error)
+	getResponse     func(id string) (*sessionplatform.Session, error)
 	listResponse    func() ([]sessionplatform.Session, error)
 	readResponse    func(id string, offset int64) (*sessionplatform.ReadResult, error)
 	writeResponse   func(id, payload string) (*sessionplatform.WriteResult, error)
@@ -396,6 +400,30 @@ func (f *fakeSessionPlatform) ArchiveSession(_ context.Context, id string) (*ses
 		return respond(id)
 	}
 	return &sessionplatform.Session{ID: id, Name: "archived", State: "snapshot"}, nil
+}
+
+func (f *fakeSessionPlatform) RestoreSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	f.restoreCalls = append(f.restoreCalls, id)
+	respond := f.restoreResponse
+	f.mu.Unlock()
+	if respond != nil {
+		return respond(id)
+	}
+	return &sessionplatform.Session{ID: id, Name: "restored", State: "active", Pod: "session-" + id + "-r1"}, nil
+}
+
+// GetSession answers active unless a test says otherwise, so session_read and
+// session_write tests that are not about archived sessions pass its guard.
+func (f *fakeSessionPlatform) GetSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	f.getCalls = append(f.getCalls, id)
+	respond := f.getResponse
+	f.mu.Unlock()
+	if respond != nil {
+		return respond(id)
+	}
+	return &sessionplatform.Session{ID: id, State: "active", Pod: "session-" + id}, nil
 }
 
 func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {
