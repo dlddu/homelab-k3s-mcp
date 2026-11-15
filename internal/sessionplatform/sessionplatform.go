@@ -29,6 +29,13 @@ const (
 
 	httpClientTimeout = 10 * time.Second
 	createTimeout     = 5 * time.Minute
+	// A claude-code archive first waits up to 5 minutes for the running turn
+	// to finish, then builds and uploads the archive.
+	archiveTimeout = 10 * time.Minute
+	// A restore waits for a fresh pod (an image pull or a node scale-up),
+	// then downloads and applies the archive. The control plane runs it on to
+	// its own 15-minute backstop even after this client gives up.
+	restoreTimeout = 10 * time.Minute
 )
 
 func sessionPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) }
@@ -36,6 +43,12 @@ func sessionPath(id string) string { return sessionsPath + "/" + url.PathEscape(
 func readPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/read" }
 
 func writePath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/write" }
+
+func recoverPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/recover" }
+
+func snapshotPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/snapshot" }
+
+func switchPath(id string) string { return sessionsPath + "/" + url.PathEscape(id) + "/switch" }
 
 type errKind int
 
@@ -60,6 +73,9 @@ const (
 	// the output already accumulated stays readable.
 	kindQuotaExhausted
 	kindConflict
+	// kindAlreadyExists is a recover's 409: the id is still a live session, so
+	// there is nothing to bring back.
+	kindAlreadyExists
 )
 
 // Error is the error type returned by Service.
@@ -84,6 +100,8 @@ func (e *Error) Error() string {
 		return "session platform output quota exhausted, retrying will not help (existing output is still readable): " + e.msg
 	case kindConflict:
 		return "session platform conflict, retry after the in-progress lifecycle operation finishes: " + e.msg
+	case kindAlreadyExists:
+		return "session platform session still exists, nothing to recover: " + e.msg
 	default:
 		return "session platform api error: " + e.msg
 	}
@@ -97,6 +115,7 @@ func busy(msg string) *Error            { return &Error{kind: kindBusy, msg: msg
 func tooLarge(msg string) *Error        { return &Error{kind: kindTooLarge, msg: msg} }
 func quotaExhausted(msg string) *Error  { return &Error{kind: kindQuotaExhausted, msg: msg} }
 func conflict(msg string) *Error        { return &Error{kind: kindConflict, msg: msg} }
+func alreadyExists(msg string) *Error   { return &Error{kind: kindAlreadyExists, msg: msg} }
 
 // Unavailable reports whether this is the "not configured" kind.
 func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
@@ -146,6 +165,15 @@ type WriteResult struct {
 	Path    string  `json:"path"`
 }
 
+// WriteOptions are a write's optional choices beside its payload.
+type WriteOptions struct {
+	// PermissionMode is the permission mode of the one claude-code turn the
+	// write queues (session-platform AC-E2): "auto" or "acceptEdits". Empty
+	// sends nothing and the turn runs in auto. The control plane judges the
+	// value and the session's type.
+	PermissionMode string
+}
+
 type CreateRequest struct {
 	Name         string `json:"name"`
 	WorkloadType string `json:"workloadType,omitempty"`
@@ -170,9 +198,13 @@ type CreateRequest struct {
 type Service interface {
 	CreateSession(ctx context.Context, req CreateRequest) (*Session, error)
 	DeleteSession(ctx context.Context, id string) error
+	RecoverSession(ctx context.Context, id string) (*Session, error)
+	ArchiveSession(ctx context.Context, id string) (*Session, error)
+	RestoreSession(ctx context.Context, id string) (*Session, error)
+	GetSession(ctx context.Context, id string) (*Session, error)
 	ListSessions(ctx context.Context) ([]Session, error)
 	ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error)
-	WriteSession(ctx context.Context, id, payload string) (*WriteResult, error)
+	WriteSession(ctx context.Context, id, payload string, opts WriteOptions) (*WriteResult, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -198,6 +230,26 @@ func (u *Unavailable) DeleteSession(context.Context, string) error {
 	return unavailable(u.reason)
 }
 
+// RecoverSession always fails with the configured reason.
+func (u *Unavailable) RecoverSession(context.Context, string) (*Session, error) {
+	return nil, unavailable(u.reason)
+}
+
+// ArchiveSession always fails with the configured reason.
+func (u *Unavailable) ArchiveSession(context.Context, string) (*Session, error) {
+	return nil, unavailable(u.reason)
+}
+
+// RestoreSession always fails with the configured reason.
+func (u *Unavailable) RestoreSession(context.Context, string) (*Session, error) {
+	return nil, unavailable(u.reason)
+}
+
+// GetSession always fails with the configured reason.
+func (u *Unavailable) GetSession(context.Context, string) (*Session, error) {
+	return nil, unavailable(u.reason)
+}
+
 // ListSessions always fails with the configured reason.
 func (u *Unavailable) ListSessions(context.Context) ([]Session, error) {
 	return nil, unavailable(u.reason)
@@ -209,7 +261,7 @@ func (u *Unavailable) ReadSession(context.Context, string, int64) (*ReadResult, 
 }
 
 // WriteSession always fails with the configured reason.
-func (u *Unavailable) WriteSession(context.Context, string, string) (*WriteResult, error) {
+func (u *Unavailable) WriteSession(context.Context, string, string, WriteOptions) (*WriteResult, error) {
 	return nil, unavailable(u.reason)
 }
 
@@ -220,6 +272,8 @@ type Client struct {
 	tokenFile string
 	http      *http.Client
 	create    *http.Client
+	archive   *http.Client
+	restore   *http.Client
 }
 
 // FromEnv builds a Client from SESSION_PLATFORM_ENDPOINT, the control plane's
@@ -249,6 +303,8 @@ func FromEnv() (*Client, error) {
 		tokenFile: tokenFile,
 		http:      &http.Client{Timeout: httpClientTimeout},
 		create:    &http.Client{Timeout: createTimeout},
+		archive:   &http.Client{Timeout: archiveTimeout},
+		restore:   &http.Client{Timeout: restoreTimeout},
 	}, nil
 }
 
@@ -323,6 +379,160 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 		return apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
 	}
 	return nil
+}
+
+// RecoverSession brings a deleted session back from its last snapshot
+// (session-platform AC-B4). It provisions a pod like a create, so it gets the
+// create client's timeout.
+func (c *Client) RecoverSession(ctx context.Context, id string) (*Session, error) {
+	if id == "" {
+		return nil, invalidArgument("session id is required")
+	}
+
+	endpoint := c.endpoint + recoverPath(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+
+	resp, err := c.send(c.create, req)
+	if err != nil {
+		return nil, sendError("post", endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	message := controlPlaneMessage(respBody, resp.Status)
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, notFound(fmt.Sprintf("no recoverable snapshot for session %q: %s", id, message))
+	case resp.StatusCode == http.StatusConflict:
+		return nil, alreadyExists(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		return nil, unavailable(message)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+
+	var recovered Session
+	if err := json.Unmarshal(respBody, &recovered); err != nil {
+		return nil, apiError(fmt.Sprintf("parse recovered session: %v", err))
+	}
+	return &recovered, nil
+}
+
+// ArchiveSession freezes a session now instead of waiting for the 60-minute
+// idle freeze (session-platform AC-B1 · AC-A3): the control plane archives it
+// and reclaims its pods. An already-frozen session comes back unchanged.
+func (c *Client) ArchiveSession(ctx context.Context, id string) (*Session, error) {
+	if id == "" {
+		return nil, invalidArgument("session id is required")
+	}
+
+	endpoint := c.endpoint + snapshotPath(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+
+	resp, err := c.send(c.archive, req)
+	if err != nil {
+		return nil, sendError("post", endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	message := controlPlaneMessage(respBody, resp.Status)
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, notFound(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusConflict:
+		return nil, conflict(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		return nil, unavailable(message)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+
+	var archived Session
+	if err := json.Unmarshal(respBody, &archived); err != nil {
+		return nil, apiError(fmt.Sprintf("parse archived session: %v", err))
+	}
+	return &archived, nil
+}
+
+// RestoreSession brings a snapshotted session back into a fresh pod and
+// returns it active; an idle session is promoted and an active one comes back
+// unchanged (session-platform AC-C4's switch).
+func (c *Client) RestoreSession(ctx context.Context, id string) (*Session, error) {
+	if id == "" {
+		return nil, invalidArgument("session id is required")
+	}
+
+	endpoint := c.endpoint + switchPath(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+
+	resp, err := c.send(c.restore, req)
+	if err != nil {
+		return nil, sendError("post", endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	message := controlPlaneMessage(respBody, resp.Status)
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, notFound(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusConflict:
+		return nil, conflict(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusServiceUnavailable:
+		return nil, unavailable(message)
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+
+	var restored Session
+	if err := json.Unmarshal(respBody, &restored); err != nil {
+		return nil, apiError(fmt.Sprintf("parse restored session: %v", err))
+	}
+	return &restored, nil
+}
+
+// GetSession reads one session's record. It is passive: the control plane
+// neither promotes nor restores the session to answer it.
+func (c *Client) GetSession(ctx context.Context, id string) (*Session, error) {
+	if id == "" {
+		return nil, invalidArgument("session id is required")
+	}
+
+	endpoint := c.endpoint + sessionPath(id)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, apiError(fmt.Sprintf("build request: %v", err))
+	}
+
+	resp, err := c.send(c.http, req)
+	if err != nil {
+		return nil, sendError("get", endpoint, err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return nil, notFound(fmt.Sprintf("session %q: %s", id, controlPlaneMessage(respBody, resp.Status)))
+	case resp.StatusCode < 200 || resp.StatusCode >= 300:
+		return nil, apiError(fmt.Sprintf("%s returned %s: %s", endpoint, resp.Status, string(respBody)))
+	}
+
+	var got Session
+	if err := json.Unmarshal(respBody, &got); err != nil {
+		return nil, apiError(fmt.Sprintf("parse session: %v", err))
+	}
+	return &got, nil
 }
 
 // ListSessions returns every session the control plane holds. It issues exactly
@@ -407,15 +617,16 @@ func (c *Client) ReadSession(ctx context.Context, id string, offset int64) (*Rea
 
 // WriteSession injects payload into the session's workload and reports the
 // branch that served it.
-func (c *Client) WriteSession(ctx context.Context, id, payload string) (*WriteResult, error) {
+func (c *Client) WriteSession(ctx context.Context, id, payload string, opts WriteOptions) (*WriteResult, error) {
 	if id == "" {
 		return nil, invalidArgument("session id is required")
 	}
 
 	endpoint := c.endpoint + writePath(id)
 	body, err := json.Marshal(struct {
-		Payload string `json:"payload"`
-	}{Payload: payload})
+		Payload        string `json:"payload"`
+		PermissionMode string `json:"permissionMode,omitempty"`
+	}{Payload: payload, PermissionMode: opts.PermissionMode})
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}

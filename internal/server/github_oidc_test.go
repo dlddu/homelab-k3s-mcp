@@ -55,7 +55,7 @@ func githubOIDCApp(t *testing.T) (http.Handler, func(repo string) string) {
 	t.Setenv("MCP_OAUTH_RESOURCE", "")
 	t.Setenv("MCP_GITHUB_OIDC_ISSUER", issuer.URL)
 	t.Setenv("MCP_GITHUB_OIDC_AUDIENCE", ghTestAudience)
-	t.Setenv("MCP_GITHUB_OIDC_RULES", `[{"repository": "dlddu/reconciler", "workflow": ".github/workflows/reconcile.yml", "tools": ["github_commit_status_create", "ping"]}]`)
+	t.Setenv("MCP_GITHUB_OIDC_RULES", `[{"repository": "dlddu/reconciler", "workflow": ".github/workflows/reconcile.yml", "tools": ["github_commit_status_request", "ping"]}]`)
 	cfg, err := auth.FromEnv(context.Background())
 	if err != nil {
 		t.Fatalf("FromEnv() = %v", err)
@@ -105,7 +105,7 @@ func TestGitHubOIDCCallerSeesOnlyItsTools(t *testing.T) {
 	for _, x := range tools {
 		names = append(names, x.(map[string]any)["name"].(string))
 	}
-	wantStrSlice(t, names, "ping", "github_commit_status_create")
+	wantStrSlice(t, names, "ping", "github_commit_status_request")
 	if findTool(t, tools, "ping")["inputSchema"] == nil {
 		t.Error("a scoped entry lost its inputSchema")
 	}

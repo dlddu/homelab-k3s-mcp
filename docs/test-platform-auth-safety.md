@@ -138,13 +138,13 @@
   `workflow_ref` 클레임을 낼 수 없다).
 
 ### 시나리오 10: GitHub Actions 호출자는 자기 레포의 도구만 본다
-- **사전 조건**: 시나리오 9의 구성. R/W 규칙의 범위는 `["github_commit_status_create", "ping"]`,
+- **사전 조건**: 시나리오 9의 구성. R/W 규칙의 범위는 `["github_commit_status_request", "ping"]`,
   R 레포 규칙의 범위는 `["opensearch_search", "ping"]`
 - **실행 단계**: (a) R/W 토큰과 R/다른 워크플로 토큰으로 허용 집합 확인, (b) W 범위만 둔 배포에서
   `tools/list`, (c) `ping` 호출, (d) 범위 밖이지만 존재하는 `resource_delete` 호출과 존재하지 않는
   도구 호출, (e) 서버에 없는 도구 이름을 규칙에 넣은 구성으로 기동
-- **기대 결과**: (a) R/W 는 합집합(`ping`·`github_commit_status_create`·`opensearch_search`), R/다른
-  워크플로는 레포 규칙만, (b) 정확히 `ping`·`github_commit_status_create`가 광고 순서대로, 각
+- **기대 결과**: (a) R/W 는 합집합(`ping`·`github_commit_status_request`·`opensearch_search`), R/다른
+  워크플로는 레포 규칙만, (b) 정확히 `ping`·`github_commit_status_request`가 광고 순서대로, 각
   항목의 스키마는 원래 그대로, (c) `pong`, (d) 두 호출 모두 `-32602` · `unknown tool: <name>` —
   형태가 같고, `resource_delete` 거부 기록이 `principal=github_oidc:R/<W 경로>` · `result=refused` ·
   `reason=invalid_input`, (e) 기동 실패(`invalid auth config`)

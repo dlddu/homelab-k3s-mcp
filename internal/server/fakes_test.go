@@ -201,7 +201,6 @@ type installationTokenCall struct {
 type fakeGitHub struct {
 	mu       sync.Mutex
 	calls    []installationTokenCall
-	statuses []github.CommitStatusInput
 	response func() (*github.InstallationToken, error)
 }
 
@@ -217,18 +216,6 @@ func (f *fakeGitHub) CreateInstallationToken(_ context.Context, repositories []s
 		ExpiresAt:           "2026-05-07T01:00:00Z",
 		Permissions:         map[string]any{"contents": "read"},
 		RepositorySelection: "all",
-	}, nil
-}
-
-func (f *fakeGitHub) CreateCommitStatus(_ context.Context, in github.CommitStatusInput) (*github.CommitStatus, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.statuses = append(f.statuses, in)
-	return &github.CommitStatus{
-		ID:      1,
-		State:   in.State,
-		Context: in.Context,
-		SHA:     in.SHA,
 	}, nil
 }
 
@@ -345,24 +332,33 @@ type readCall struct {
 }
 
 type writeCall struct {
-	id      string
-	payload string
+	id             string
+	payload        string
+	permissionMode string
 }
 
 type fakeSessionPlatform struct {
 	mu sync.Mutex
 
-	createCalls []sessionplatform.CreateRequest
-	deleteCalls []string
-	listCalls   int
-	readCalls   []readCall
-	writeCalls  []writeCall
+	createCalls  []sessionplatform.CreateRequest
+	deleteCalls  []string
+	recoverCalls []string
+	archiveCalls []string
+	restoreCalls []string
+	getCalls     []string
+	listCalls    int
+	readCalls    []readCall
+	writeCalls   []writeCall
 
-	createResponse func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
-	deleteResponse func(id string) error
-	listResponse   func() ([]sessionplatform.Session, error)
-	readResponse   func(id string, offset int64) (*sessionplatform.ReadResult, error)
-	writeResponse  func(id, payload string) (*sessionplatform.WriteResult, error)
+	createResponse  func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
+	deleteResponse  func(id string) error
+	recoverResponse func(id string) (*sessionplatform.Session, error)
+	archiveResponse func(id string) (*sessionplatform.Session, error)
+	restoreResponse func(id string) (*sessionplatform.Session, error)
+	getResponse     func(id string) (*sessionplatform.Session, error)
+	listResponse    func() ([]sessionplatform.Session, error)
+	readResponse    func(id string, offset int64) (*sessionplatform.ReadResult, error)
+	writeResponse   func(id, payload string) (*sessionplatform.WriteResult, error)
 }
 
 func (f *fakeSessionPlatform) CreateSession(_ context.Context, req sessionplatform.CreateRequest) (*sessionplatform.Session, error) {
@@ -383,6 +379,51 @@ func (f *fakeSessionPlatform) DeleteSession(_ context.Context, id string) error 
 		return f.deleteResponse(id)
 	}
 	return nil
+}
+
+func (f *fakeSessionPlatform) RecoverSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.recoverCalls = append(f.recoverCalls, id)
+	if f.recoverResponse != nil {
+		return f.recoverResponse(id)
+	}
+	return &sessionplatform.Session{ID: id, Name: "recovered", State: "active", Pod: "session-" + id}, nil
+}
+
+func (f *fakeSessionPlatform) ArchiveSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	f.archiveCalls = append(f.archiveCalls, id)
+	respond := f.archiveResponse
+	f.mu.Unlock()
+	if respond != nil {
+		return respond(id)
+	}
+	return &sessionplatform.Session{ID: id, Name: "archived", State: "snapshot"}, nil
+}
+
+func (f *fakeSessionPlatform) RestoreSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	f.restoreCalls = append(f.restoreCalls, id)
+	respond := f.restoreResponse
+	f.mu.Unlock()
+	if respond != nil {
+		return respond(id)
+	}
+	return &sessionplatform.Session{ID: id, Name: "restored", State: "active", Pod: "session-" + id + "-r1"}, nil
+}
+
+// GetSession answers active unless a test says otherwise, so session_read and
+// session_write tests that are not about archived sessions pass its guard.
+func (f *fakeSessionPlatform) GetSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+	f.mu.Lock()
+	f.getCalls = append(f.getCalls, id)
+	respond := f.getResponse
+	f.mu.Unlock()
+	if respond != nil {
+		return respond(id)
+	}
+	return &sessionplatform.Session{ID: id, State: "active", Pod: "session-" + id}, nil
 }
 
 func (f *fakeSessionPlatform) ListSessions(context.Context) ([]sessionplatform.Session, error) {
@@ -408,10 +449,10 @@ func (f *fakeSessionPlatform) ReadSession(_ context.Context, id string, offset i
 	}, nil
 }
 
-func (f *fakeSessionPlatform) WriteSession(_ context.Context, id, payload string) (*sessionplatform.WriteResult, error) {
+func (f *fakeSessionPlatform) WriteSession(_ context.Context, id, payload string, opts sessionplatform.WriteOptions) (*sessionplatform.WriteResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.writeCalls = append(f.writeCalls, writeCall{id: id, payload: payload})
+	f.writeCalls = append(f.writeCalls, writeCall{id: id, payload: payload, permissionMode: opts.PermissionMode})
 	if f.writeResponse != nil {
 		return f.writeResponse(id, payload)
 	}

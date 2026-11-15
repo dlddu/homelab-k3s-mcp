@@ -1,4 +1,4 @@
-// Package pocketaide sends plain push notifications to the phone through PocketAide (dlddu/pocket-aide).
+// Package pocketaide sends plain push notifications to the phone, and files commit status requests for the owner to approve, through PocketAide (dlddu/pocket-aide).
 package pocketaide
 
 import (
@@ -29,6 +29,7 @@ type errKind int
 const (
 	kindUnavailable errKind = iota
 	kindInvalid
+	kindInvalidStatus
 	kindAPI
 )
 
@@ -44,6 +45,8 @@ func (e *Error) Error() string {
 		return "pocket-aide unavailable: " + e.msg
 	case kindInvalid:
 		return "invalid notification: " + e.msg
+	case kindInvalidStatus:
+		return "invalid commit status request: " + e.msg
 	default:
 		return "pocket-aide error: " + e.msg
 	}
@@ -63,10 +66,11 @@ type Result struct {
 	Sent    int `json:"sent"`
 }
 
-// Service sends a notification to the user who registered this server as a PocketAide caller.
-// requester is who asked for the notification, as the tool's caller wrote it; PocketAide records it beside that caller.
+// Service sends a notification to the user who registered this server as a PocketAide caller, or files a commit status request for that user to approve.
+// requester is who asked, as the tool's caller wrote it; PocketAide records it beside that caller.
 type Service interface {
 	Notify(ctx context.Context, title, body, requester string) (*Result, error)
+	RequestCommitStatus(ctx context.Context, in CommitStatusRequest) (*CommitStatusTicket, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.

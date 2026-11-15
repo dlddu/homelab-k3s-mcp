@@ -4,16 +4,16 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/dlddu/homelab-k3s-mcp/internal/github"
+	"github.com/dlddu/homelab-k3s-mcp/internal/pocketaide"
 )
 
-func (h *Handler) githubCommitStatusCreate(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+func (h *Handler) githubCommitStatusRequest(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, isObject := decodeObject(raw)
 	if !isObject {
 		return nil, errf(-32602, "arguments must be an object")
 	}
 
-	in := github.CommitStatusInput{}
+	in := pocketaide.CommitStatusRequest{SessionID: sessionIDFrom(ctx)}
 	for _, field := range []struct {
 		name string
 		dest *string
@@ -24,6 +24,8 @@ func (h *Handler) githubCommitStatusCreate(ctx context.Context, raw json.RawMess
 		{"context", &in.Context},
 		{"description", &in.Description},
 		{"target_url", &in.TargetURL},
+		{"requester", &in.Requester},
+		{"explanation", &in.Explanation},
 	} {
 		value, present := obj[field.name]
 		if !present || value == nil {
@@ -36,23 +38,17 @@ func (h *Handler) githubCommitStatusCreate(ctx context.Context, raw json.RawMess
 		*field.dest = s
 	}
 
-	status, err := h.github.CreateCommitStatus(ctx, in)
+	if err := pocketaide.ValidateCommitStatusRequest(in); err != nil {
+		return toolError(ctx, err), nil
+	}
+	ticket, err := h.pocketAide.RequestCommitStatus(ctx, in)
 	if err != nil {
 		return toolError(ctx, err), nil
 	}
-
-	payload := map[string]any{
-		"id":          status.ID,
-		"state":       status.State,
-		"context":     status.Context,
-		"sha":         status.SHA,
-		"description": status.Description,
-		"target_url":  status.TargetURL,
-		"created_at":  status.CreatedAt,
-	}
-	return map[string]any{
-		"content":           []any{map[string]any{"type": "text", "text": prettyJSON(payload)}},
-		"structuredContent": payload,
-		"isError":           false,
-	}, nil
+	return successResult(map[string]any{
+		"id":         ticket.ID,
+		"status":     ticket.Status,
+		"created_at": ticket.CreatedAt,
+		"message":    "Approval requested in PocketAide. Nothing is written to GitHub until the owner approves; watch the commit's statuses to see the result.",
+	}), nil
 }

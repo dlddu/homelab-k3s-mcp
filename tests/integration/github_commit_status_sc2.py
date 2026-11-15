@@ -1,105 +1,68 @@
-"""Deployed-server e2e for github-commit-status/AC2 (내부 토큰 스코프와 비노출).
+"""Deployed-server e2e for github-commit-status/AC2 (서버는 GitHub 에 닿지 않고 자격증명을 다루지 않는다).
 
 검증 시나리오: test-github-commit-status.md#시나리오 2
 실행 대상: primary
 병렬 레인: github-app
 
-Both claims are about a token the caller never sees, so neither can be read off
-the tool result alone.
+github-mock 의 요청 로그가 비어 있는 것만으로는 헛통과할 수 있다(스텁이 기록을 멈췄거나 로그가
+늘 비어 있거나). 같은 세션에서 토큰 도구를 한 번 불러 로그가 **차는 것**을 양성 대조로 둔다.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-from typing import Any
 
 import httpx
 from mcp import ClientSession
 
-from _helpers import GITHUB_APP_INSTALLATION_ID, base_url, open_session, wait_for_healthz
+from _approval_gate import approval_url, reject_commit_status_request
+from _helpers import base_url, open_session, wait_for_healthz
 
+TOOL = "github_commit_status_request"
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
+LEAK_MARKERS = ("ghs_", "-----BEGIN", "eyJ")
 
-MINT_PATH = f"/app/installations/{GITHUB_APP_INSTALLATION_ID}/access_tokens"
-REVOKE_PATH = "/installation/token"
-MINTED_TOKEN = f"ghs_mock_{GITHUB_APP_INSTALLATION_ID}"
-
-REPOSITORY = "test"
-EXPECTED_MINT_BODY = {
-    "repositories": [REPOSITORY],
-    "permissions": {"statuses": "write"},
-}
-
-SUCCESS_ARGUMENTS = {
-    "repository": REPOSITORY,
-    "sha": "0123456789abcdef0123456789abcdef01234567",
+ARGUMENTS = {
+    "repository": "dlddu/test",
+    "sha": "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
     "state": "success",
     "context": "homelab-k3s-mcp/e2e",
-    "description": "e2e scope check",
-    "target_url": "https://example.invalid/run/2",
+    "requester": "e2e 하네스 — AC2",
 }
-FAILURE_ARGUMENTS = {**SUCCESS_ARGUMENTS, "sha": "f" * 40}
-
-LEAK_MARKERS = (MINTED_TOKEN, "-----BEGIN", "eyJ")
 
 
 def reset_recorded() -> None:
     httpx.delete(f"{MOCK_URL}/_admin/requests", timeout=10.0).raise_for_status()
 
 
-def recorded(method: str, path: str) -> list[dict[str, Any]]:
+def recorded() -> list[dict]:
     response = httpx.get(f"{MOCK_URL}/_admin/requests", timeout=10.0)
     response.raise_for_status()
-    return [
-        record
-        for record in response.json()["requests"]
-        if record["method"] == method and record["path"] == path
-    ]
+    return response.json()["requests"]
 
 
-async def call_and_read_mint(session: ClientSession, arguments: dict[str, Any]):
-    """One tool call; returns (result, the single mint body it caused)."""
+async def test_github_commit_status_ac2_never_reaches_github(session: ClientSession) -> None:
     reset_recorded()
-    result = await session.call_tool("github_commit_status_create", arguments)
-    mints = recorded("POST", MINT_PATH)
-    assert len(mints) == 1, f"expected exactly one mint for {arguments['sha']}, got {mints}"
-    return result, json.loads(mints[0]["body"])
-
-
-async def test_github_commit_status_ac2_mints_a_narrow_token(
-    session: ClientSession,
-) -> None:
-    """Checked on the success call and on the 422 call alike: the scope is
-    decided before the upstream answers, so an error path that widened it
-    would be just as much a violation.
-    """
-    success, success_mint = await call_and_read_mint(session, SUCCESS_ARGUMENTS)
-    assert success.isError is False, success
-    assert success_mint == EXPECTED_MINT_BODY, success_mint
-
-    failure, failure_mint = await call_and_read_mint(session, FAILURE_ARGUMENTS)
-    assert failure.isError is True, failure
-    assert failure_mint == EXPECTED_MINT_BODY, failure_mint
-
-
-async def test_github_commit_status_ac2_never_exposes_the_token(
-    session: ClientSession,
-) -> None:
-    for arguments in (SUCCESS_ARGUMENTS, FAILURE_ARGUMENTS):
-        result, _ = await call_and_read_mint(session, arguments)
-
-        revocations = recorded("DELETE", REVOKE_PATH)
-        assert len(revocations) == 1, revocations
-        assert revocations[0]["authorization"] == f"Bearer {MINTED_TOKEN}", revocations
-
+    result = await session.call_tool(TOOL, ARGUMENTS)
+    assert result.isError is False, result
+    try:
+        assert recorded() == [], f"the request tool reached GitHub: {recorded()}"
         serialized = result.model_dump_json()
         for marker in LEAK_MARKERS:
-            assert marker not in serialized, (
-                f"{marker!r} leaked into the result for sha {arguments['sha']}: "
-                f"{serialized}"
-            )
+            assert marker not in serialized, f"{marker!r} in the result: {serialized}"
+    finally:
+        with approval_url() as url:
+            reject_commit_status_request(url, result.structuredContent["id"])
+
+    await session.call_tool(
+        "github_app_installation_token", {"permissions": {"contents": "read"}}
+    )
+    assert recorded(), (
+        "the token tool recorded nothing upstream either — the zero-request assertion above "
+        "would hold vacuously"
+    )
+    reset_recorded()
 
 
 async def run() -> None:
@@ -108,11 +71,7 @@ async def run() -> None:
 
     async with open_session(url) as session:
         print("--- github-commit-status/AC2 ---")
-        try:
-            await test_github_commit_status_ac2_mints_a_narrow_token(session)
-            await test_github_commit_status_ac2_never_exposes_the_token(session)
-        finally:
-            reset_recorded()
+        await test_github_commit_status_ac2_never_reaches_github(session)
         print("ok: github-commit-status/AC2")
 
 

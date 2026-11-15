@@ -6,6 +6,7 @@
 - AC3: 파괴적 작업 표기 (PRD: session_write)
 - AC4: 거부 응답의 구분 전달 (PRD: session_write)
 - AC5: 미설정 시 graceful 거부 (PRD: session_write)
+- AC6: claude-code 턴의 권한 모드를 그대로 전달한다 (PRD: session_write)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 통합 e2e의 시나리오별 현황은 **아래 각 "자동화" 필드가 그 자리에서 말한다**
@@ -35,15 +36,16 @@
 ### 시나리오 2: 상태 분기와 그 노출
 - **사전 조건**: `active`·`idle`·`snapshot` 세션 각 1개
 - **실행 단계**: 세 세션에 각각 write 호출 후 read로 반영 확인
-- **기대 결과**: 스냅샷 세션도 거부되지 않고 복원 후 적용된다. 결과의 `path`가 실제 분기와
-  일치하고 호출 후 상태는 모두 `active`로 보고된다.
+- **기대 결과**: `active`·`idle` 세션은 적용되고 결과의 `path`가 실제 분기와 일치하며 호출 후 상태는
+  `active`로 보고된다. `snapshot` 세션은 `session_restore`를 먼저 부르라는 도구 에러이고, 제어면 write가
+  나가지 않으며 세션은 `snapshot` 그대로다(*2026-11-13 개정 — 전에는 복원 후 적용했다*).
 - **검증 AC**: AC2
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
-  (`TestWriteDisclosesStateBranch` — `active`/`idle->active->write`/`snapshot->restore->write`
-  3분기가 그대로 전달되고 처리 후 상태가 `active`) + `internal/server/mcp_test.go`
-  (`TestSessionWriteReturnsBranchAndSession`) + 통합 (미작성)
-  `tests/integration/session_write_sc2.py` — 복원이 **실제 파드를 만드는지**는 여기서만
-  관측된다
+  (`TestWriteDisclosesStateBranch` — 제어면이 알려 준 분기가 그대로 전달되고 처리 후 상태가 `active`) +
+  `internal/server/mcp_test.go` (`TestSessionWriteReturnsBranchAndSession`) +
+  `internal/server/session_restore_test.go` (`TestSessionReadAndWriteRefuseAnArchivedSession` — 동결된
+  세션은 write 없이 거부) + 통합 (미작성) `tests/integration/session_write_sc2.py` — 실 `idle`·`snapshot`
+  세션의 분기는 여기서만 관측된다
 
 ### 시나리오 3: destructiveHint 광고
 - **사전 조건**: 서버 기동
@@ -83,3 +85,16 @@
   여전히 `pong`) + `internal/sessionplatform/sessionplatform_test.go`
   (`TestUnavailableRefusesWrite`) + 통합
   `tests/integration/session_write_sc5.py`(`실행 대상: auth-variant`)
+
+### 시나리오 6: 권한 모드가 제어면에 그대로 실린다
+- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, write 의 `permissionMode`(session-platform AC-E2)를
+  받는 제어면과 `claude-code` 세션 1개
+- **실행 단계**: (a) `session_write`에 `permissionMode="acceptEdits"` → (b) 같은 세션에 `permissionMode` 생략 →
+  (c) `permissionMode`에 `""`·`1`을 각각 준 호출 → (d) `tools/list`
+- **기대 결과**: (a) 제어면이 받은 본문이 `{"payload": …, "permissionMode": "acceptEdits"}`다. (b) 본문에
+  `permissionMode`가 없다. (c) 제어면에 요청이 가지 않고 `-32602`. (d) `permissionMode` 스키마가
+  `enum: [auto, acceptEdits]`
+- **검증 AC**: AC6
+- **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`(`TestWriteSendsPermissionMode`) +
+  `internal/server/mcp_test.go`(`TestSessionWritePassesPermissionModeThrough`, `TestSessionWriteRejectsBadArguments`,
+  `TestToolsListAdvertisesSessionWrite`) + 통합 (미작성)

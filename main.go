@@ -234,7 +234,7 @@ func buildSessionPlatformService() sessionplatform.Service {
 		return sessionplatform.NewUnavailable(err.Error())
 	}
 	if client == nil {
-		slog.Warn("SESSION_PLATFORM_ENDPOINT not set: session_create, session_list, session_read, session_write and session_delete tools will return errors")
+		slog.Warn("SESSION_PLATFORM_ENDPOINT not set: session_create, session_list, session_read, session_write, session_delete, session_recover, session_archive and session_restore tools will return errors")
 		return sessionplatform.NewUnavailable("")
 	}
 	slog.Info("session platform integration loaded")
@@ -244,11 +244,11 @@ func buildSessionPlatformService() sessionplatform.Service {
 func buildPocketAideService() pocketaide.Service {
 	client, err := pocketaide.FromEnv()
 	if err != nil {
-		slog.Error("failed to initialize pocket-aide client; pocket_aide_notification_send will return errors", "error", err)
+		slog.Error("failed to initialize pocket-aide client; pocket_aide_notification_send and github_commit_status_request will return errors", "error", err)
 		return pocketaide.NewUnavailable(err.Error())
 	}
 	if client == nil {
-		slog.Warn("APPROVAL_GATE_URL not set: pocket_aide_notification_send tool will return errors")
+		slog.Warn("APPROVAL_GATE_URL not set: pocket_aide_notification_send and github_commit_status_request tools will return errors")
 		return pocketaide.NewUnavailable("")
 	}
 	slog.Info("pocket-aide notifications enabled")

@@ -71,19 +71,36 @@ type Handler struct {
 	// records as values instead of scraping the log.
 	events eventlog.Sink
 
-	sessionCreateWait time.Duration
+	sessionCreateWait  time.Duration
+	sessionArchiveWait time.Duration
+	sessionRestoreWait time.Duration
+	creates            *createTracker
 }
 
 const (
 	// Must stay under the public edge's 30s idle timeout (AC7).
 	defaultSessionCreateWait = 20 * time.Second
-	// The control plane's 2-minute pod-ready bound plus a node scale-up's head start.
-	sessionCreatePendingHorizon = 3 * time.Minute
+	// Same edge bound as defaultSessionCreateWait (prd-session-archive AC2).
+	defaultSessionArchiveWait = 20 * time.Second
+	// Same edge bound again (prd-session-restore AC2).
+	defaultSessionRestoreWait = 20 * time.Second
+	// The control plane's 5-minute pod-ready bound plus a node scale-up's head start.
+	sessionCreatePendingHorizon = 6 * time.Minute
 )
 
 // WithSessionCreateWait sets how long session_create waits before answering pending (AC7).
 func WithSessionCreateWait(d time.Duration) Option {
 	return func(h *Handler) { h.sessionCreateWait = d }
+}
+
+// WithSessionArchiveWait sets how long session_archive waits before answering pending.
+func WithSessionArchiveWait(d time.Duration) Option {
+	return func(h *Handler) { h.sessionArchiveWait = d }
+}
+
+// WithSessionRestoreWait sets how long session_restore waits before answering pending.
+func WithSessionRestoreWait(d time.Duration) Option {
+	return func(h *Handler) { h.sessionRestoreWait = d }
 }
 
 // Option customises a Handler at construction.
@@ -170,6 +187,7 @@ func NewHandler(k8sSvc k8s.Service, ghSvc github.Service, awsSvc awsconfig.Servi
 		gateReader:      k8s.NewUnavailableTargetReader("the approval gate has no kubernetes client to read a target with"),
 		sensitiveKinds:  []string{defaultSensitiveKind},
 		registry:        toolRegistry,
+		creates:         newCreateTracker(),
 	}
 	h.gateCollectionReader = k8s.NewUnavailableTargetReader(
 		"the approval gate has no kubernetes client to read a selection with")
@@ -825,7 +843,11 @@ func (h *Handler) sessionList(ctx context.Context) (any, *rpcErr) {
 	for _, s := range sessions {
 		items = append(items, sessionFields(s))
 	}
-	return successResult(map[string]any{"sessions": items}), nil
+	result := map[string]any{"sessions": items}
+	if pending := h.creates.report(); len(pending) > 0 {
+		result["pendingCreates"] = pending
+	}
+	return successResult(result), nil
 }
 
 // A snapshotted session has had its pods reclaimed, so the control plane omits
@@ -874,6 +896,10 @@ func (h *Handler) sessionRead(ctx context.Context, raw json.RawMessage) (any, *r
 		offset = oi
 	}
 
+	if refusal := h.refuseSnapshot(ctx, *id, "read"); refusal != nil {
+		return refusal, nil
+	}
+
 	result, err := h.sessionPlatform.ReadSession(ctx, *id, offset)
 	if err != nil {
 		return toolError(ctx, err), nil
@@ -907,8 +933,22 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 	if !ok {
 		return nil, errf(-32602, "payload must be a string")
 	}
+	var opts sessionplatform.WriteOptions
+	if v, present := obj["permissionMode"]; present && v != nil {
+		// An empty mode would be dropped from the request body and silently
+		// mean the default, so it is refused here like a non-string.
+		mode, ok := v.(string)
+		if !ok || mode == "" {
+			return nil, errf(-32602, "permissionMode must be a non-empty string")
+		}
+		opts.PermissionMode = mode
+	}
 
-	result, err := h.sessionPlatform.WriteSession(ctx, *id, payload)
+	if refusal := h.refuseSnapshot(ctx, *id, "write"); refusal != nil {
+		return refusal, nil
+	}
+
+	result, err := h.sessionPlatform.WriteSession(ctx, *id, payload, opts)
 	if err != nil {
 		return toolError(ctx, err), nil
 	}
@@ -917,6 +957,26 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 		"path":    result.Path,
 		"session": sessionFields(result.Session),
 	}), nil
+}
+
+// refuseSnapshot keeps session_read and session_write from restoring a frozen
+// session as a side effect (prd-session-read AC2, prd-session-write AC2). The
+// control plane would restore it inside the call, and a restore can outlast
+// the edge's idle timeout, so the restore has one tool of its own that answers
+// pending instead. It returns nil when the call may go ahead. The check is a
+// passive read; a freeze that lands between it and the call still restores, as
+// the control plane always has.
+func (h *Handler) refuseSnapshot(ctx context.Context, id, verb string) any {
+	sess, err := h.sessionPlatform.GetSession(ctx, id)
+	if err != nil {
+		return toolError(ctx, err)
+	}
+	if sess.State != "snapshot" {
+		return nil
+	}
+	return toolText(fmt.Sprintf("session %q is archived (state 'snapshot'): session_%s does not restore it. "+
+		"Call session_restore with this id first, then wait until session_list reports the session 'active' "+
+		"and %s it again. Nothing was sent to the session.", id, verb, verb), true)
 }
 
 func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
@@ -993,8 +1053,10 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 	case <-ctx.Done():
 	}
 
+	tracked := h.creates.add(strings.TrimSpace(req.Name), req.WorkloadType, started)
 	go func() {
 		got := <-done
+		h.creates.finish(tracked, got.session, got.err)
 		elapsed := time.Since(started).Round(time.Millisecond)
 		if got.err != nil {
 			slog.Warn("session_create finished after the tool answered", "name", req.Name,
@@ -1013,8 +1075,10 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 		},
 		"message": fmt.Sprintf("The session is still starting after %s; the control plane keeps provisioning it "+
 			"(a pod may be waiting for a node to scale up). Do not call session_create again for it — poll "+
-			"session_list for a session named %q, which appears there once it is active. If it has not "+
-			"appeared within about %s, provisioning failed.",
+			"session_list for a session named %q, which appears there once it is active. Until then "+
+			"session_list also reports this create under 'pendingCreates' with its state: 'starting', "+
+			"'created' with the id, or 'failed' with the control plane's error, after which it is safe to "+
+			"create again. If neither has changed within about %s, provisioning failed.",
 			wait, strings.TrimSpace(req.Name), sessionCreatePendingHorizon),
 	}), nil
 }
@@ -1033,6 +1097,150 @@ func (h *Handler) sessionDelete(ctx context.Context, raw json.RawMessage) (any, 
 		return toolError(ctx, err), nil
 	}
 	return successResult(map[string]any{"id": *id, "deleted": true}), nil
+}
+
+func (h *Handler) sessionRecover(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	recovered, err := h.sessionPlatform.RecoverSession(ctx, *id)
+	if err != nil {
+		return toolError(ctx, err), nil
+	}
+	return successResult(map[string]any{"session": recovered}), nil
+}
+
+func (h *Handler) sessionArchive(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	// Detached for the same reason as session_create: a claude-code archive
+	// can outlast the edge's idle timeout, and a cancelled request would make
+	// the control plane abandon the freeze half way.
+	type outcome struct {
+		session *sessionplatform.Session
+		err     error
+	}
+	done := make(chan outcome, 1)
+	started := time.Now()
+	go func() {
+		archived, err := h.sessionPlatform.ArchiveSession(context.WithoutCancel(ctx), *id)
+		done <- outcome{archived, err}
+	}()
+
+	wait := h.sessionArchiveWait
+	if wait <= 0 {
+		wait = defaultSessionArchiveWait
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		if got.err != nil {
+			return toolError(ctx, got.err), nil
+		}
+		return successResult(map[string]any{"session": sessionFields(*got.session)}), nil
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+
+	go func() {
+		got := <-done
+		elapsed := time.Since(started).Round(time.Millisecond)
+		if got.err != nil {
+			slog.Warn("session_archive finished after the tool answered", "id", *id,
+				"elapsed", elapsed, "result", "error", "error", got.err.Error())
+			return
+		}
+		slog.Info("session_archive finished after the tool answered", "id", *id,
+			"elapsed", elapsed, "result", "success", "state", got.session.State)
+	}()
+	return successResult(map[string]any{
+		"pending": true,
+		"session": map[string]any{"id": *id, "state": "archiving"},
+		"message": fmt.Sprintf("The archive is still running after %s (a claude-code session first waits for "+
+			"its running turn to finish); the control plane keeps going. Do not call session_restore on it "+
+			"meanwhile, since that would bring it back. Poll session_list: the session's "+
+			"state turns 'snapshot' and its pod disappears once the archive is committed. If it is still "+
+			"'active' after about 10 minutes, the archive failed and the session was left running.",
+			wait),
+	}), nil
+}
+
+func (h *Handler) sessionRestore(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
+	obj, ok := decodeObject(raw)
+	if !ok {
+		return nil, errf(-32602, "arguments must be an object")
+	}
+	id := optionalString(obj, "id")
+	if id == nil {
+		return nil, errf(-32602, "id is required")
+	}
+
+	// Detached for the same reason as session_create and session_archive: a
+	// restore waits for a fresh pod and the archive, which can outlast the
+	// edge's idle timeout. The control plane keeps restoring after a caller
+	// leaves (session-platform AC-A4); this keeps the call itself from failing.
+	type outcome struct {
+		session *sessionplatform.Session
+		err     error
+	}
+	done := make(chan outcome, 1)
+	started := time.Now()
+	go func() {
+		restored, err := h.sessionPlatform.RestoreSession(context.WithoutCancel(ctx), *id)
+		done <- outcome{restored, err}
+	}()
+
+	wait := h.sessionRestoreWait
+	if wait <= 0 {
+		wait = defaultSessionRestoreWait
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case got := <-done:
+		if got.err != nil {
+			return toolError(ctx, got.err), nil
+		}
+		return successResult(map[string]any{"session": sessionFields(*got.session)}), nil
+	case <-timer.C:
+	case <-ctx.Done():
+	}
+
+	go func() {
+		got := <-done
+		elapsed := time.Since(started).Round(time.Millisecond)
+		if got.err != nil {
+			slog.Warn("session_restore finished after the tool answered", "id", *id,
+				"elapsed", elapsed, "result", "error", "error", got.err.Error())
+			return
+		}
+		slog.Info("session_restore finished after the tool answered", "id", *id,
+			"elapsed", elapsed, "result", "success", "state", got.session.State)
+	}()
+	return successResult(map[string]any{
+		"pending": true,
+		"session": map[string]any{"id": *id, "state": "restoring"},
+		"message": fmt.Sprintf("The restore is still running after %s (a fresh pod may be pulling its image or "+
+			"waiting for a node, then the archive is applied); the control plane keeps going. Do not call "+
+			"session_restore again for it — poll session_list until the session's state turns 'active' and it "+
+			"has a pod, then use session_read and session_write. If it is still 'snapshot' after about 15 "+
+			"minutes, the restore failed and session_restore can be called again.",
+			wait),
+	}), nil
 }
 
 func (h *Handler) grafanaToken(ctx context.Context) (any, *rpcErr) {

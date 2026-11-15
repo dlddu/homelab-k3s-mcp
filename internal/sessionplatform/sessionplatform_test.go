@@ -582,7 +582,7 @@ func TestWriteThenReadRecoversOutput(t *testing.T) {
 	// Deliberately multi-byte: byte length (10) and rune count (8) differ, so a
 	// stub or client that measured the wrong one would show up here.
 	const payload = "echo 안녕\n"
-	written, err := c.WriteSession(context.Background(), "s-1", payload)
+	written, err := c.WriteSession(context.Background(), "s-1", payload, WriteOptions{})
 	if err != nil {
 		t.Fatalf("WriteSession: %v", err)
 	}
@@ -623,7 +623,7 @@ func TestWriteDisclosesStateBranch(t *testing.T) {
 			sess.State = tc.start
 			st.sessions["s-1"] = sess
 
-			got, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+			got, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 			if err != nil {
 				t.Fatalf("WriteSession: %v", err)
 			}
@@ -664,7 +664,7 @@ func TestWriteMapsControlPlaneRefusals(t *testing.T) {
 			st.refuseWriteStatus = tc.status
 			st.refuseWriteBody = `{"error":"` + tc.reason + `"}`
 
-			_, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+			_, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 			if err == nil {
 				t.Fatalf("WriteSession succeeded, want a %d refusal", tc.status)
 			}
@@ -711,7 +711,7 @@ func TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse(t *testing.T) {
 		st.refuseWriteStatus = tc.status
 		st.refuseWriteBody = `{"error":"` + sameReason + `"}`
 
-		_, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+		_, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 		if err == nil {
 			t.Fatalf("%s: WriteSession succeeded, want a %d refusal", tc.name, tc.status)
 		}
@@ -735,7 +735,7 @@ func TestWriteRefusalsAreDistinctWithoutTheControlPlanesProse(t *testing.T) {
 func TestWriteRejectsEmptyIDBeforeTheWire(t *testing.T) {
 	c, st := newWriteStub(t, "banner\n")
 
-	_, err := c.WriteSession(context.Background(), "", "ls\n")
+	_, err := c.WriteSession(context.Background(), "", "ls\n", WriteOptions{})
 	if err == nil {
 		t.Fatalf("WriteSession with an empty id succeeded, want an invalid argument error")
 	}
@@ -754,7 +754,7 @@ func TestWriteRejectsEmptyIDBeforeTheWire(t *testing.T) {
 func TestWriteUsesThePerSessionEndpoint(t *testing.T) {
 	c, st := newWriteStub(t, "banner\n")
 
-	if _, err := c.WriteSession(context.Background(), "s-1", "ls\n"); err != nil {
+	if _, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{}); err != nil {
 		t.Fatalf("WriteSession: %v", err)
 	}
 	if len(st.seen) != 1 {
@@ -762,6 +762,30 @@ func TestWriteUsesThePerSessionEndpoint(t *testing.T) {
 	}
 	if st.seen[0].method != http.MethodPost || st.seen[0].path != "/api/v1/sessions/s-1/write" {
 		t.Fatalf("request = %+v, want POST /api/v1/sessions/s-1/write", st.seen[0])
+	}
+}
+
+// session-platform AC-E2: a permission mode rides in the write body beside the
+// payload; a write without one sends exactly the old body.
+func TestWriteSendsPermissionMode(t *testing.T) {
+	var bodies []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(b))
+		_, _ = w.Write([]byte(`{"session":{"id":"s-1","state":"active"},"path":"active"}`))
+	}))
+	defer srv.Close()
+	c := &Client{endpoint: srv.URL, userAgent: "homelab-k3s-mcp/test", http: srv.Client()}
+
+	if _, err := c.WriteSession(context.Background(), "s-1", "edit it", WriteOptions{PermissionMode: "acceptEdits"}); err != nil {
+		t.Fatalf("WriteSession with mode: %v", err)
+	}
+	if _, err := c.WriteSession(context.Background(), "s-1", "plain", WriteOptions{}); err != nil {
+		t.Fatalf("WriteSession without mode: %v", err)
+	}
+	want := []string{`{"payload":"edit it","permissionMode":"acceptEdits"}`, `{"payload":"plain"}`}
+	if !reflect.DeepEqual(bodies, want) {
+		t.Fatalf("bodies = %q, want %q", bodies, want)
 	}
 }
 
@@ -773,7 +797,7 @@ func TestWriteSurfacesControlPlaneError(t *testing.T) {
 	defer srv.Close()
 
 	c := &Client{endpoint: srv.URL, userAgent: "homelab-k3s-mcp/test", http: srv.Client()}
-	_, err := c.WriteSession(context.Background(), "s-1", "ls\n")
+	_, err := c.WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 	var e *Error
 	if !errors.As(err, &e) || e.kind != kindAPI {
 		t.Fatalf("error = %v, want a kindAPI *Error", err)
@@ -781,7 +805,7 @@ func TestWriteSurfacesControlPlaneError(t *testing.T) {
 }
 
 func TestUnavailableRefusesWrite(t *testing.T) {
-	result, err := NewUnavailable("").WriteSession(context.Background(), "s-1", "ls\n")
+	result, err := NewUnavailable("").WriteSession(context.Background(), "s-1", "ls\n", WriteOptions{})
 	if result != nil {
 		t.Fatalf("result = %+v, want nil", result)
 	}
@@ -819,6 +843,8 @@ func lifecycleStub(t *testing.T, status int, body string, delay time.Duration) (
 		userAgent: "homelab-k3s-mcp/test",
 		http:      srv.Client(),
 		create:    srv.Client(),
+		archive:   srv.Client(),
+		restore:   srv.Client(),
 	}, &seen
 }
 
@@ -1056,5 +1082,221 @@ func TestUnavailableRefusesCreateAndDelete(t *testing.T) {
 	}
 	if err := svc.DeleteSession(context.Background(), "s-1"); !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("DeleteSession = %v, want a kindUnavailable *Error", err)
+	}
+	if got, err := svc.RecoverSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("RecoverSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
+	if got, err := svc.ArchiveSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("ArchiveSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
+	if got, err := svc.RestoreSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("RestoreSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
+	if got, err := svc.GetSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+		t.Fatalf("GetSession = (%+v, %v), want a kindUnavailable *Error", got, err)
+	}
+}
+
+func TestRecoverSessionIssuesOnePostAndReturnsTheSession(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, createdShell, 0)
+
+	got, err := c.RecoverSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("RecoverSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "active" || got.Pod != "session-s-9" {
+		t.Fatalf("recovered = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/recover"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+}
+
+func TestRecoverSessionRefusalsAreDistinct(t *testing.T) {
+	seen := map[errKind]string{}
+	for _, tc := range []struct {
+		status int
+		kind   errKind
+	}{
+		{status: http.StatusNotFound, kind: kindNotFound},
+		{status: http.StatusConflict, kind: kindAlreadyExists},
+		{status: http.StatusServiceUnavailable, kind: kindUnavailable},
+		{status: http.StatusForbidden, kind: kindAPI},
+	} {
+		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
+
+		_, err := c.RecoverSession(context.Background(), "s-1")
+		var e *Error
+		if !errors.As(err, &e) || e.kind != tc.kind {
+			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
+		}
+		if strings.Contains(err.Error(), "retry") {
+			t.Fatalf("status %d: %q invites a retry that cannot help", tc.status, err.Error())
+		}
+		for kind, text := range seen {
+			if text == err.Error() {
+				t.Fatalf("kinds %d and %d read the same: %q", kind, tc.kind, text)
+			}
+		}
+		seen[tc.kind] = err.Error()
+	}
+}
+
+func TestRecoverSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, createdShell, 0)
+
+	_, err := c.RecoverSession(context.Background(), "")
+	var e *Error
+	if !errors.As(err, &e) || e.kind != kindInvalidArgument || len(*seen) != 0 {
+		t.Fatalf("err = %v, requests = %+v; want a local invalid argument and no request", err, *seen)
+	}
+}
+
+const frozenShell = `{"id":"s-9","name":"scratch","workloadType":"shell","state":"snapshot",
+  "auxiliaryPods":[],"createdAt":"2026-10-16T00:00:00Z","lastAccess":"2026-10-16T00:00:00Z"}`
+
+func TestArchiveSessionIssuesOnePostAndReturnsTheFrozenSession(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	got, err := c.ArchiveSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("ArchiveSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "snapshot" || got.Pod != "" {
+		t.Fatalf("archived = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/snapshot"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+}
+
+func TestArchiveSessionOnAnAlreadyFrozenSessionIsIdempotent(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	first, err := c.ArchiveSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("first ArchiveSession: %v", err)
+	}
+	second, err := c.ArchiveSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("second ArchiveSession on an already-frozen session: %v", err)
+	}
+	if !reflect.DeepEqual(second, first) {
+		t.Fatalf("second = %+v, first = %+v; want the frozen session unchanged", second, first)
+	}
+
+	// The control plane's snapshot endpoint is idempotent, so the repeat is one
+	// more POST down the same path — never a restore, read or write that would
+	// bring the session back.
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/snapshot"}
+	if len(*seen) != 2 || (*seen)[0] != want || (*seen)[1] != want {
+		t.Fatalf("requests = %+v, want two %+v", *seen, want)
+	}
+}
+
+func TestArchiveSessionRefusalsAreDistinct(t *testing.T) {
+	seen := map[errKind]string{}
+	for _, tc := range []struct {
+		status    int
+		kind      errKind
+		retryable bool
+	}{
+		{status: http.StatusNotFound, kind: kindNotFound},
+		{status: http.StatusConflict, kind: kindConflict, retryable: true},
+		{status: http.StatusServiceUnavailable, kind: kindUnavailable},
+		{status: http.StatusInternalServerError, kind: kindAPI},
+	} {
+		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
+
+		_, err := c.ArchiveSession(context.Background(), "s-1")
+		var e *Error
+		if !errors.As(err, &e) || e.kind != tc.kind {
+			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
+		}
+		if strings.Contains(err.Error(), "retry") != tc.retryable {
+			t.Fatalf("status %d: %q, want retry advice = %v", tc.status, err.Error(), tc.retryable)
+		}
+		for kind, text := range seen {
+			if text == err.Error() {
+				t.Fatalf("kinds %d and %d read the same: %q", kind, tc.kind, text)
+			}
+		}
+		seen[tc.kind] = err.Error()
+	}
+}
+
+func TestArchiveSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	_, err := c.ArchiveSession(context.Background(), "")
+	var e *Error
+	if !errors.As(err, &e) || e.kind != kindInvalidArgument || len(*seen) != 0 {
+		t.Fatalf("err = %v, requests = %+v; want a local invalid argument and no request", err, *seen)
+	}
+}
+
+const restoredShell = `{"id":"s-9","name":"scratch","workloadType":"shell","state":"active","pod":"session-s-9-r1",
+  "auxiliaryPods":[],"createdAt":"2026-10-16T00:00:00Z","lastAccess":"2026-11-13T00:00:00Z"}`
+
+func TestRestoreSessionIssuesOneSwitchAndReturnsTheActiveSession(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, restoredShell, 0)
+
+	got, err := c.RestoreSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("RestoreSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "active" || got.Pod != "session-s-9-r1" {
+		t.Fatalf("restored = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/switch"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+}
+
+func TestRestoreSessionRefusalsAreDistinct(t *testing.T) {
+	for _, tc := range []struct {
+		status int
+		kind   errKind
+	}{
+		{status: http.StatusNotFound, kind: kindNotFound},
+		{status: http.StatusConflict, kind: kindConflict},
+		{status: http.StatusServiceUnavailable, kind: kindUnavailable},
+		{status: http.StatusInternalServerError, kind: kindAPI},
+	} {
+		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
+
+		_, err := c.RestoreSession(context.Background(), "s-1")
+		var e *Error
+		if !errors.As(err, &e) || e.kind != tc.kind {
+			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
+		}
+	}
+}
+
+// GetSession is the passive look session_read and session_write take before
+// they act: one GET of the session's record and nothing else.
+func TestGetSessionIssuesOneGet(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	got, err := c.GetSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("GetSession: %v", err)
+	}
+	if got.ID != "s-9" || got.State != "snapshot" {
+		t.Fatalf("session = %+v", got)
+	}
+	want := lifecycleRequest{method: http.MethodGet, path: sessionsPath + "/s-9"}
+	if len(*seen) != 1 || (*seen)[0] != want {
+		t.Fatalf("requests = %+v, want [%+v]", *seen, want)
+	}
+
+	c, _ = lifecycleStub(t, http.StatusNotFound, `{"error":"session not found"}`, 0)
+	_, err = c.GetSession(context.Background(), "s-gone")
+	var e *Error
+	if !errors.As(err, &e) || e.kind != kindNotFound {
+		t.Fatalf("missing session: error = %v, want kindNotFound", err)
 	}
 }

@@ -100,11 +100,10 @@
 `GET /app/installations/<id>`(설치 권한과 설치 계정 `account.login` 조회) ·
 `DELETE /installation/token`(발급 토큰 폐기) ·
 `POST /repos/<owner>/<repo>/statuses/<sha>`(커밋 status 기록).
-앞의 셋은 `github_app_installation_token` 의 AC5 경로가 거치는 상류 호출 전부이고, **넷 전부가**
-`github_commit_status_create` 가 거치는 전부다 — 그 도구는 owner 를 호출자에게서 받지 않고
-`GET /app/installations/<id>` 응답의 `account.login` 에서 읽은 뒤(`internal/github` 의
-`installationOwner`) 좁은 토큰을 발급해 status 를 쓰고 그 토큰을 폐기한다. 그래서 설치 조회는
-권한뿐 아니라 **계정 login 까지** 돌려주어야 한다.
+앞의 셋은 `github_app_installation_token` 의 AC5 경로가 거치는 상류 호출 전부다. 넷째(status 기록)와 설치 조회의
+`account.login` 은 옛 `github_commit_status_create` 가 쓰던 표면이다 — 2026-11-12 그 도구를
+`github_commit_status_request`(PocketAide 에 요청만 남긴다)로 바꾼 뒤로 이 서버는 status 를 쓰지 않고, 그 e2e 는
+「이 표면에 요청이 하나도 오지 않는다」를 재는 데에만 이 스텁을 쓴다(`test-github-commit-status.md` 시나리오 2).
 
 status 기록은 `sha` 가 `f` 40자일 때만 GitHub 모양의 `422 Validation Failed` 를 돌려주고 그 밖의
 `sha` 에는 `201` 과 생성된 status 를 돌려준다. 실패 갈래를 `/_admin/config` 노브가 아니라 **sha

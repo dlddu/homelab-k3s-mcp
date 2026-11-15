@@ -35,7 +35,7 @@ var excludedWritePermissions = []struct {
 }{
 	{
 		name:    statusesPermission,
-		refusal: "this tool does not issue statuses: write — use github_commit_status_create, which exercises commit status writes as a narrow action. statuses: read is issued normally",
+		refusal: "this tool does not issue statuses: write — use github_commit_status_request, which asks the owner to approve one commit status in PocketAide. statuses: read is issued normally",
 	},
 	{
 		name:    checksPermission,
@@ -86,11 +86,9 @@ type InstallationToken struct {
 	RepositorySelection string         `json:"repository_selection,omitempty"`
 }
 
-// Service mints installation tokens for the configured GitHub App and spends
-// the one permission it will not hand out as a token.
+// Service mints installation tokens for the configured GitHub App.
 type Service interface {
 	CreateInstallationToken(ctx context.Context, repositories []string, permissions map[string]any) (*InstallationToken, error)
-	CreateCommitStatus(ctx context.Context, in CommitStatusInput) (*CommitStatus, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -118,8 +116,6 @@ type Client struct {
 	apiBase        string
 	userAgent      string
 	http           *http.Client
-
-	statusContextPrefixes []string
 }
 
 // FromEnv builds a Client from the GITHUB_APP_* environment variables.
@@ -153,13 +149,12 @@ func FromEnv() (*Client, error) {
 	}
 
 	return &Client{
-		clientID:              clientID,
-		installationID:        installationID,
-		privateKey:            privateKey,
-		apiBase:               strings.TrimRight(apiBase, "/"),
-		userAgent:             version.Name + "/" + version.Version,
-		http:                  &http.Client{Timeout: httpClientTimeout},
-		statusContextPrefixes: contextPrefixesFromEnv(),
+		clientID:       clientID,
+		installationID: installationID,
+		privateKey:     privateKey,
+		apiBase:        strings.TrimRight(apiBase, "/"),
+		userAgent:      version.Name + "/" + version.Version,
+		http:           &http.Client{Timeout: httpClientTimeout},
 	}, nil
 }
 
@@ -231,20 +226,6 @@ func (c *Client) installationPermissions(ctx context.Context, jwtToken string) (
 	return parsed.Permissions, nil
 }
 
-// installationOwner is the owner half of every repository path this server
-// builds — CreateCommitStatus says why a caller never supplies that half.
-func (c *Client) installationOwner(ctx context.Context, jwtToken string) (string, error) {
-	parsed, err := c.fetchInstallation(ctx, jwtToken)
-	if err != nil {
-		return "", err
-	}
-	if parsed.Account.Login == "" {
-		return "", apiError(fmt.Sprintf("%s/app/installations/%d returned no account login",
-			c.apiBase, c.installationID))
-	}
-	return parsed.Account.Login, nil
-}
-
 func (c *Client) effectivePermissions(ctx context.Context, jwtToken string, requested map[string]any) (map[string]any, error) {
 	if requested != nil {
 		for _, excluded := range excludedWritePermissions {
@@ -299,10 +280,8 @@ func (c *Client) revokeToken(ctx context.Context, token string) error {
 	return nil
 }
 
-// mintInstallationToken is the raw exchange, shared by the token tool and by
-// CreateCommitStatus. AC5's guard is deliberately *not* here: it belongs to the
-// path that hands the token to a caller, and this one is also reached by the
-// narrow action that spends statuses: write without returning it.
+// mintInstallationToken is the raw exchange behind the token tool; AC5's guard
+// runs before it, in effectivePermissions.
 func (c *Client) mintInstallationToken(ctx context.Context, jwtToken string, body map[string]any) (*InstallationToken, error) {
 	url := fmt.Sprintf("%s/app/installations/%d/access_tokens", c.apiBase, c.installationID)
 

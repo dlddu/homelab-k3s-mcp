@@ -62,7 +62,7 @@
 - **실행 단계**: ① `permissions={statuses: write}`, `{contents: read, statuses: write}`로 각각
   호출. ② `permissions={statuses: read}`로 호출. ③ 인자 없이 호출. ④ 설치 권한 조회가 500을
   돌려주게 한 뒤 인자 없이 호출. ⑤ (c) 모드에서 `permissions={contents: read}`로 호출
-- **기대 결과**: ① 둘 다 `github_commit_status_create`를 안내하는 도구 에러, 발급 요청 0.
+- **기대 결과**: ① 둘 다 `github_commit_status_request`를 안내하는 도구 에러, 발급 요청 0.
   ② 발급되고 응답 `# Permissions:` 주석이 `statuses=read`. ③ 발급 요청 본문에 `permissions`가
   명시돼 있고 `statuses`가 `read`이며, 응답 주석도 `statuses=read`. ④ 도구 에러, 발급 요청 0.
   ⑤ `DELETE /installation/token` 요청 1회, 도구 에러, 직렬화한 결과에 발급된 토큰 문자열 없음

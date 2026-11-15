@@ -124,7 +124,7 @@ several rules match one token, their tools are combined:
 ```json
 [
   {"repository": "dlddu/reconciler", "workflow": ".github/workflows/reconcile.yml",
-   "tools": ["github_commit_status_create"]},
+   "tools": ["github_commit_status_request"]},
   {"repository": "dlddu/reconciler", "tools": ["opensearch_search"]}
 ]
 ```
@@ -287,6 +287,16 @@ is refused before sending). PocketAide stores it with the notification next to
 the registered caller; it is not verified, and the authenticated principal stays
 in this server's event log. See `docs/prd-pocket-aide-notification-send.md`
 (AC5).
+
+`github_commit_status_request` uses the same address and token too. It never
+writes to GitHub: it files the commit status (repository, sha, state, context,
+description, target_url) as a request in PocketAide and returns at once with the
+request id. The person who registered this server approves or rejects it in the
+PocketAide app, and only an approval makes PocketAide write the status, with its
+own GitHub App. Agents watch the commit's statuses for the outcome. Contexts are
+limited to `GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES`. Deploy a PocketAide that has the
+commit status request endpoint (dlddu/pocket-aide PRD-12 AC18) first. See
+`docs/prd-github-commit-status.md`.
 
 ## File share (drop)
 

@@ -1,114 +1,92 @@
-"""Deployed-server e2e for github-commit-status/AC1 (status 기록과 GitHub 오류 전달).
+"""Deployed-server e2e for github-commit-status/AC1 (요청은 PocketAide 에 쌓이고 도구는 바로 돌아온다).
 
 검증 시나리오: test-github-commit-status.md#시나리오 1
 실행 대상: primary
 병렬 레인: github-app
 
-(a) is measured at both ends because either end alone is satisfiable by a server
-that fabricates the other. (b) is measured on the refusal text alone: it has to
-carry the stub's own 422 wording, not a paraphrase, or a bad sha becomes
-indistinguishable from an outage.
+두 끝에서 잰다 — 도구 결과만 보면 요청을 지어내는 서버를 못 가르고, PocketAide 만 보면 결과를
+돌려주지 않는 서버를 못 가른다. 요청은 실물 PocketAide 의 primary 사용자(`e2e-primary`) 몫으로
+쌓이고, 다음 실행의 대기 목록에 남지 않게 끝에서 거절한다(거절은 GitHub 에 아무것도 쓰지 않는다).
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import os
-from typing import Any
+import time
+import uuid
 
 import httpx
 from mcp import ClientSession
 
+from _approval_gate import approval_url, commit_status_request, reject_commit_status_request
 from _helpers import base_url, open_session, wait_for_healthz
 
-# tests/k8s/kind/github-mock.yaml 의 admin 표면. 포트 8093 은 ci.yml 의
-# "Run integration tests (primary deployment)" 스텝이 여는 포트포워드와 짝이다.
+TOOL = "github_commit_status_request"
 MOCK_URL = os.environ.get("GITHUB_MOCK_URL", "http://127.0.0.1:8093").rstrip("/")
-
-INSTALLATION_OWNER = "dlddu"
-STUB_ID = 1
-STUB_CREATED_AT = "2026-01-01T00:00:00Z"
-UNPROCESSABLE_SHA = "f" * 40
-
-REPOSITORY = "test"
-SHA = "0123456789abcdef0123456789abcdef01234567"
-ARGUMENTS = {
-    "repository": REPOSITORY,
-    "sha": SHA,
-    "state": "success",
-    "context": "homelab-k3s-mcp/e2e",
-    "description": "e2e status write",
-    "target_url": "https://example.invalid/run/1",
-}
+OWNER = "e2e-primary"
 
 
-def status_path(sha: str) -> str:
-    return f"/repos/{INSTALLATION_OWNER}/{REPOSITORY}/statuses/{sha}"
+def arguments(marker: str) -> dict:
+    return {
+        "repository": "dlddu/test",
+        "sha": "0123456789abcdef0123456789abcdef01234567",
+        "state": "success",
+        "context": "homelab-k3s-mcp/e2e",
+        "description": f"e2e {marker}",
+        "target_url": "https://example.invalid/pr/1",
+        "requester": f"e2e 하네스 {marker}",
+        "explanation": "e2e 가 요청을 쌓고 거절한다.",
+    }
 
 
-def reset_recorded() -> None:
-    httpx.delete(f"{MOCK_URL}/_admin/requests", timeout=10.0).raise_for_status()
-
-
-def recorded(method: str, path: str) -> list[dict[str, Any]]:
+def github_requests() -> list[dict]:
     response = httpx.get(f"{MOCK_URL}/_admin/requests", timeout=10.0)
     response.raise_for_status()
-    return [
-        record
-        for record in response.json()["requests"]
-        if record["method"] == method and record["path"] == path
-    ]
+    return response.json()["requests"]
 
 
-def refusal_text(result) -> str:
-    assert result.isError is True, f"call did not refuse: {result}"
-    assert result.content, result
-    block = result.content[0]
-    assert block.type == "text", block
-    return block.text
-
-
-async def test_github_commit_status_ac1_writes_the_status(session: ClientSession) -> None:
-    reset_recorded()
-    result = await session.call_tool("github_commit_status_create", dict(ARGUMENTS))
-    assert result.isError is False, result
-
-    posts = recorded("POST", status_path(SHA))
-    assert len(posts) == 1, f"expected exactly one status write, got {posts}"
-    sent = json.loads(posts[0]["body"])
-    assert sent == {
-        "state": ARGUMENTS["state"],
-        "context": ARGUMENTS["context"],
-        "description": ARGUMENTS["description"],
-        "target_url": ARGUMENTS["target_url"],
-    }, sent
-
-    payload = result.structuredContent
-    assert isinstance(payload, dict), result
-    assert payload["id"] == STUB_ID, payload
-    assert payload["state"] == ARGUMENTS["state"], payload
-    assert payload["context"] == ARGUMENTS["context"], payload
-    assert payload["created_at"] == STUB_CREATED_AT, payload
-    assert payload["sha"] == SHA, payload
-
-
-async def test_github_commit_status_ac1_surfaces_github_error(
+async def test_github_commit_status_ac1_request_is_filed_and_returns_at_once(
     session: ClientSession,
 ) -> None:
-    """The recorded write is the control: without it a locally produced error
-    that happened to contain "422" would pass.
-    """
-    reset_recorded()
-    result = await session.call_tool(
-        "github_commit_status_create", {**ARGUMENTS, "sha": UNPROCESSABLE_SHA}
-    )
-    text = refusal_text(result)
-    assert "422" in text, text
-    assert f"No commit found for SHA: {UNPROCESSABLE_SHA}" in text, text
-    assert len(recorded("POST", status_path(UNPROCESSABLE_SHA))) == 1, (
-        "the 422 did not come from the upstream — no status write was recorded"
-    )
+    marker = uuid.uuid4().hex[:12]
+    httpx.delete(f"{MOCK_URL}/_admin/requests", timeout=10.0).raise_for_status()
+
+    started = time.monotonic()
+    result = await session.call_tool(TOOL, arguments(marker))
+    elapsed = time.monotonic() - started
+    assert result.isError is False, result
+    ticket = result.structuredContent
+    assert ticket["status"] == "PENDING" and ticket["id"], ticket
+    assert isinstance(ticket["created_at"], int) and ticket["created_at"] > 0, ticket
+    assert elapsed < 15, f"the call took {elapsed:.1f}s — it must not wait for a decision"
+
+    with approval_url() as url:
+        stored = commit_status_request(url, ticket["id"], OWNER)
+        assert stored is not None, f"PocketAide has no request {ticket['id']} for {OWNER}"
+        try:
+            expected = {
+                "status": "PENDING",
+                "owner": "dlddu",
+                "repo": "test",
+                "sha": "0123456789abcdef0123456789abcdef01234567",
+                "state": "success",
+                "context": "homelab-k3s-mcp/e2e",
+                "description": f"e2e {marker}",
+                "target_url": "https://example.invalid/pr/1",
+                "requester": f"e2e 하네스 {marker}",
+                "reason": "e2e 가 요청을 쌓고 거절한다.",
+                "key_name": stored["key_name"],
+                "github_status_id": None,
+            }
+            got = {key: stored.get(key) for key in expected}
+            assert got == expected, f"stored request {got} != {expected}"
+            assert stored["key_name"], stored
+        finally:
+            reject_commit_status_request(url, ticket["id"], OWNER)
+
+    writes = [r for r in github_requests() if "/statuses/" in r["path"]]
+    assert writes == [], f"the tool wrote a status itself: {writes}"
 
 
 async def run() -> None:
@@ -117,13 +95,7 @@ async def run() -> None:
 
     async with open_session(url) as session:
         print("--- github-commit-status/AC1 ---")
-        try:
-            await test_github_commit_status_ac1_writes_the_status(session)
-            await test_github_commit_status_ac1_surfaces_github_error(session)
-        finally:
-            # The request log is shared mock state; the lane runs one file at a
-            # time, so leaving records behind would leak into the next file.
-            reset_recorded()
+        await test_github_commit_status_ac1_request_is_filed_and_returns_at_once(session)
         print("ok: github-commit-status/AC1")
 
 

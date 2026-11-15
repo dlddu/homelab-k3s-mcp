@@ -718,42 +718,50 @@ const toolsListJSON = `{
       }
     },
     {
-      "name": "github_commit_status_create",
-      "description": "Write one commit status on a commit in a repository the server's GitHub App is installed on. The caller never receives a credential: the server mints an installation token scoped to that one repository and to statuses: write, spends it on this single call, and discards it. The owner is the installation account and is not a parameter. Only contexts starting with one of the prefixes in GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES may be written, and a deployment without that setting refuses every call. Requires GITHUB_APP_CLIENT_ID, GITHUB_APP_INSTALLATION_ID, and GITHUB_APP_PRIVATE_KEY (inline PEM) on the server.",
+      "name": "github_commit_status_request",
+      "description": "Ask the owner to approve one GitHub commit status, and return at once. The request — repository, sha, state, context, description, target_url — is stored in PocketAide (dlddu/pocket-aide) for the person who registered this server as a caller there; they get a push notification and approve or reject it in the PocketAide app. Only when they approve does PocketAide write the status to GitHub, with its own GitHub App. This tool never writes to GitHub and returns no credential: a successful result means the approval was requested, not that the status exists. Watch the commit's statuses (or the pull request's checks) to learn the outcome, and carry on once the status appears; a rejected request writes nothing. Only contexts starting with one of the prefixes in GITHUB_COMMIT_STATUS_CONTEXT_PREFIXES may be requested, and a deployment without that setting refuses every call. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
       "inputSchema": {
         "type": "object",
         "properties": {
           "repository": {
             "type": "string",
-            "description": "Repository name without its owner, e.g. \"homelab-k3s-mcp\". Must be installed for the App."
+            "description": "Repository as owner/name, e.g. \"dlddu/homelab-k3s-mcp\". PocketAide's GitHub App must be installed on it for the approval to be written."
           },
           "sha": {
             "type": "string",
-            "description": "Full 40-character hex commit SHA. Short SHAs, branches and tags are rejected."
+            "description": "Full 40-character hex commit SHA, usually a pull request's head. Short SHAs, branches and tags are rejected."
           },
           "state": {
             "type": "string",
             "enum": ["error", "failure", "pending", "success"],
-            "description": "Status state."
+            "description": "Status state to write once approved."
           },
           "context": {
             "type": "string",
-            "description": "Status label, e.g. \"homelab-k3s-mcp/e2e\". Must start with one of the server's allowed prefixes."
+            "description": "Status label, e.g. \"review/manual-approval\". Must start with one of the server's allowed prefixes; 255 characters or fewer."
           },
           "description": {
             "type": "string",
-            "description": "Short human-readable description, 140 characters or fewer."
+            "description": "Short human-readable status description, 140 characters or fewer."
           },
           "target_url": {
             "type": "string",
-            "description": "Absolute http(s) URL the status links to."
+            "description": "Absolute http(s) URL the status links to, e.g. the pull request."
+          },
+          "requester": {
+            "type": "string",
+            "description": "Who is asking, written by you: the person or agent and what it is working on (e.g. \"Claude Code 세션 — pocket-aide PR #405 검토\"). 1 to 200 characters after trimming. Shown on the approval screen as written; not verified."
+          },
+          "explanation": {
+            "type": "string",
+            "description": "Optional: why this status should be written, in one or two Korean sentences. Shown to the approver as the agent's unverified explanation; 2000 characters or fewer."
           }
         },
-        "required": ["repository", "sha", "state", "context"],
+        "required": ["repository", "sha", "state", "context", "requester"],
         "additionalProperties": false
       },
       "annotations": {
-        "title": "Create GitHub Commit Status",
+        "title": "Request GitHub Commit Status Approval",
         "readOnlyHint": false,
         "destructiveHint": false,
         "idempotentHint": false,
@@ -880,7 +888,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_create",
-      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers. This call waits at most about 20 seconds: when the pod is Ready by then it returns the session already 'active' with its 'pod', ready for session_write and session_read; when it is not (a cold image pull, or a pod waiting for a node to scale up), it returns isError=false with 'pending': true, a session whose state is 'starting', and a 'message'. Provisioning continues on the control plane after a pending answer, so do not call session_create again for it — poll session_list for the session's name, which appears there once it is active; if it has not appeared within about 3 minutes, provisioning failed. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, and the agent types (for example 'claude-code', 'codex-chat', 'codex-task', 'minimax-code') run one prompt per write. The types available are the ones this deployment offers, read from the control plane on each call rather than fixed here; a type it does not offer is refused before anything is created, and the refusal lists the offered ones. 'model' applies to agent types only and defaults to the platform default. 'plugins' names the marketplace plugins the session gets, for the types that load them ('claude-code', 'codex-chat', 'codex-task', 'minimax-code'); given, it replaces that type's default plugins, so list the default too to keep it; omitted, the type default applies. 'doubleMemory' doubles the workload container's memory request/limit over the platform default (currently 512Mi/1Gi -> 1Gi/2Gi); omitted or false keeps the default, applies to every workload type, and is immutable after creation and kept across snapshot/restore. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Create a new session-platform session. The control plane provisions a dedicated workload pod for it and waits until that pod's agent answers. This call waits at most about 20 seconds: when the pod is Ready by then it returns the session already 'active' with its 'pod', ready for session_write and session_read; when it is not (a cold image pull, or a pod waiting for a node to scale up), it returns isError=false with 'pending': true, a session whose state is 'starting', and a 'message'. Provisioning continues on the control plane after a pending answer, so do not call session_create again for it — poll session_list for the session's name, which appears there once it is active; until then session_list also reports the create under 'pendingCreates' with its state — 'starting', 'created' with the id, or 'failed' with the control plane's error (only then create it again); if nothing has changed within about 6 minutes, provisioning failed. 'workloadType' picks the workload and is fixed for the session's lifetime: 'shell' (the default) is an interactive PTY shell, and the agent types (for example 'claude-code', 'codex-chat', 'codex-task', 'minimax-code') run one prompt per write. The types available are the ones this deployment offers, read from the control plane on each call rather than fixed here; a type it does not offer is refused before anything is created, and the refusal lists the offered ones. 'model' applies to agent types only and defaults to the platform default. 'plugins' names the marketplace plugins the session gets, for the types that load them ('claude-code', 'codex-chat', 'codex-task', 'minimax-code'); omitted, a codex-chat session gets the deployment's default plugins and every other type gets none; given, the list is exactly what the session gets and replaces codex-chat's default, so list that default too to keep it. 'doubleMemory' doubles the workload container's memory request/limit over the platform default (currently 512Mi/1Gi -> 1Gi/2Gi); omitted or false keeps the default, applies to every workload type, and is immutable after creation and kept across snapshot/restore. Names are not unique: calling again with the same arguments creates a second session and a second pod. A blank name, an unknown workloadType or a model on a shell session is refused without creating anything. Delete sessions you no longer need with session_delete. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -907,7 +915,7 @@ const toolsListJSON = `{
               "type": "string",
               "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
             },
-            "description": "Marketplace plugins for this session, by name in the platform marketplace without an '@marketplace' suffix (for example ['session-platform', 'development']). Replaces the workload type's default plugins (claude-code: session-platform; codex-chat and codex-task: the deployment's default; minimax-code: mcp-servers) rather than adding to them. Omit for the default. Immutable after creation and kept across snapshot/restore. Refused by the control plane for 'shell' and 'approval-gated', and for an empty, duplicate or malformed list. A name the marketplace does not list makes a claude-code create fail and leaves a codex-chat, codex-task or minimax-code session without plugins; minimax-code gets its K3s MCP tools only from a selected plugin that declares them (the default mcp-servers does), so leave that plugin in the list to keep them. Null is the same as omitting it, as for the other arguments."
+            "description": "Marketplace plugins for this session, by name in the platform marketplace without an '@marketplace' suffix (for example ['session-platform', 'development']). Omitted, only codex-chat gets default plugins (the deployment's); claude-code, codex-task and minimax-code get none. Given, it is exactly the session's plugins, replacing codex-chat's default rather than adding to it. Immutable after creation and kept across snapshot/restore. Refused by the control plane for 'shell' and 'approval-gated', and for an empty, duplicate or malformed list. A name the marketplace does not list makes a claude-code create fail and leaves a codex-chat, codex-task or minimax-code session without plugins; minimax-code gets its K3s MCP tools only from a selected plugin that declares them (mcp-servers does), so name that plugin to get them. Null is the same as omitting it, as for the other arguments."
           },
           "doubleMemory": {
             "type": "boolean",
@@ -927,7 +935,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_list",
-      "description": "List the sessions the session-platform control plane holds. The control plane is reachable only from inside the cluster, so this tool is the way to see the inventory without an ingress or a port-forward. Takes no arguments. Returns each session's id, name, workloadType (shell or an agent type), state (active | idle | snapshot), pod (absent while a session is snapshotted and its pods are reclaimed), createdAt and lastAccess. Listing is passive: it does not promote an idle session, restore a snapshot, or refresh lastAccess. An empty control plane returns an empty list, not an error. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "List the sessions the session-platform control plane holds. The control plane is reachable only from inside the cluster, so this tool is the way to see the inventory without an ingress or a port-forward. Takes no arguments. Returns each session's id, name, workloadType (shell or an agent type), state (active | idle | snapshot), pod (absent while a session is snapshotted and its pods are reclaimed), createdAt and lastAccess. When session_create recently answered 'pending', the result also carries 'pendingCreates': each such create's name, workloadType, startedAt and state — 'starting' while the control plane is still provisioning it, 'created' with the session id, or 'failed' with the control plane's error — kept for about 15 minutes after it ends and forgotten if this server restarts. Listing is passive: it does not promote an idle session, restore a snapshot, or refresh lastAccess. An empty control plane returns an empty list, not an error. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {},
@@ -943,7 +951,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_read",
-      "description": "Read a session-platform session's accumulated workload output from a byte-offset cursor. Pass 'offset' 0 (or omit it) for everything since the session started, then pass the returned 'nextOffset' to get only what has accumulated since; the same cursor always returns the same span, so reading never consumes output. What the output is depends on the session's workloadType: for 'shell' it is merged PTY stdout/stderr, for 'claude-code' it is the assistant text deltas plus diagnostic stderr. Reading is NOT passive: the control plane activates the target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) before the read. The branch that served the call is reported as 'path' ('active', 'idle->active->read' or 'snapshot->restore->read') and the session is returned as it stands after the read, so that side effect is never silent. An unknown id is a not-found error and a negative offset is an argument error; neither touches the session. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Read a session-platform session's accumulated workload output from a byte-offset cursor. Pass 'offset' 0 (or omit it) for everything since the session started, then pass the returned 'nextOffset' to get only what has accumulated since; the same cursor always returns the same span, so reading never consumes output. What the output is depends on the session's workloadType: for 'shell' it is merged PTY stdout/stderr, for 'claude-code' it is the assistant text deltas plus diagnostic stderr. Reading is NOT passive for an idle session: the control plane promotes it to active before the read. An archived (snapshot) session is refused, not restored: call session_restore first and read once session_list reports it active. The branch that served the call is reported as 'path' ('active' or 'idle->active->read') and the session is returned as it stands after the read, so the promotion is never silent. An unknown id is a not-found error, a negative offset is an argument error and an archived session is refused; none of them touches the session. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -970,7 +978,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_write",
-      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive: like session_read it activates its target first, so an idle session is promoted and a snapshotted session is restored (its pod is recreated) rather than refused. The branch that served the call is reported as 'path' ('active', 'idle->active->write' or 'snapshot->restore->write') and the session is returned as it stands after the write, so a write that revived a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive for an idle session: like session_read it promotes it to active first. An archived (snapshot) session is refused, not restored: call session_restore first and write once session_list reports it active. The branch that served the call is reported as 'path' ('active' or 'idle->active->write') and the session is returned as it stands after the write, so a write that woke a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, an archived session is refused without anything being sent, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. For a 'claude-code' session, 'permissionMode' picks the permission mode of the one turn this write queues ('auto' or 'acceptEdits'); omitted, the turn runs in auto, and the next write without it runs in auto again. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -981,6 +989,11 @@ const toolsListJSON = `{
           "payload": {
             "type": "string",
             "description": "Raw workload input. For a 'shell' session this goes to the PTY stdin, so include a trailing newline to submit a command. For a 'claude-code' session this is one prompt, limited to 1 MiB of UTF-8 bytes."
+          },
+          "permissionMode": {
+            "type": "string",
+            "enum": ["auto", "acceptEdits"],
+            "description": "Permission mode of the one 'claude-code' turn this write queues. 'auto' (the default when omitted) lets Claude Code's model classifier approve or deny the tool requests the platform's settings leave open; 'acceptEdits' accepts file edits without asking. It applies to this turn only. The control plane refuses any other value, a mode on a session of another workload type, and an empty string, without activating the session. Null is the same as omitting it, as for the other arguments."
           }
         },
         "required": ["id", "payload"],
@@ -1012,6 +1025,72 @@ const toolsListJSON = `{
         "title": "Delete Session",
         "readOnlyHint": false,
         "destructiveHint": true,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "session_recover",
+      "description": "Bring a deleted session-platform session back under its old id. Every committed snapshot (the 60-minute idle freeze or an explicit archive) leaves a record beside its archive, so a session that was deleted or lost its pod comes back as it was when it was last frozen: same id, name, workload type, model and plugins, restored into a new pod and returned 'active', ready for session_read and session_write. Work done after that last freeze is not recovered, and a session that was never frozen, or that disappeared before the platform began keeping these records, cannot be recovered (not found). When this server calls as a tenant, only that tenant's sessions can be recovered; any other id reads as not found. Refusals arrive distinguished: not found, 'still exists' when the id is a live session (nothing to recover), and unavailable when the platform cannot recover that workload type right now or no login slot is free. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id of the deleted session, as session_list or session_create reported it while it existed."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Recover Session",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "session_archive",
+      "description": "Archive a session-platform session now instead of waiting for the 60-minute idle freeze. The control plane writes the session's archive (files, conversation history and accumulated output, by workload type) and reclaims its pods, leaving the session 'snapshot': it keeps its id and its output, costs no pod, and comes back with session_restore. Processes running inside a shell session do not survive the freeze; its files and output do. A claude-code session first lets its running turn finish (up to about 5 minutes). Archiving an already-archived session returns it unchanged. The archive is also what session_recover restores from, so archiving before session_delete keeps the session recoverable up to this point. This call waits at most about 20 seconds: when the archive is committed by then it returns the session 'snapshot'; when it is not, it returns isError=false with 'pending': true and a 'message', and the control plane keeps archiving — poll session_list until the session's state turns 'snapshot' rather than calling session_archive again, and do not call session_restore on it meanwhile, since that would bring it back. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation holds the session and is worth retrying once it finishes; unavailable means this workload type cannot be archived right now. When this server calls as a tenant, only that tenant's sessions can be archived. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list or session_create."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Archive Session",
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "session_restore",
+      "description": "Bring an archived (snapshot) session-platform session back into a fresh pod, so session_read and session_write can use it again; they refuse an archived session rather than restoring it. The control plane recreates the session's pods and applies its archive (files, conversation history and accumulated output), and the session returns 'active' under the same id, with its output cursors still valid. An idle session is simply promoted, and an active one comes back unchanged. This call waits at most about 20 seconds: when the restore finishes by then it returns the session 'active' with its 'pod'; when it does not (a fresh pod pulling its image or waiting for a node, then the archive), it returns isError=false with 'pending': true and a 'message', and the control plane keeps restoring — poll session_list until the session's state turns 'active' rather than calling session_restore again. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation, possibly a restore already under way, holds the session and is worth retrying once it finishes; unavailable means the platform cannot restore that workload type, or has no free login slot for it, right now. When this server calls as a tenant, only that tenant's sessions can be restored. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Restore Session",
+        "readOnlyHint": false,
+        "destructiveHint": false,
         "idempotentHint": true,
         "openWorldHint": true
       }

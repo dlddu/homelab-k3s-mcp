@@ -63,7 +63,7 @@ async def test_ac5_explicit_statuses_write_is_refused(session: ClientSession) ->
     """AC5 ① — an explicit ``statuses: write`` never reaches the mint call.
 
     The refusal has to
-    name ``github_commit_status_create`` because that is where the capability
+    name ``github_commit_status_request`` because that is where the capability
     moved; a bare "not allowed" would leave the caller with no next step. Zero
     recorded mint requests is the load-bearing half — a server that asked for
     the write scope and then discarded the answer would still be wrong.
@@ -75,7 +75,7 @@ async def test_ac5_explicit_statuses_write_is_refused(session: ClientSession) ->
         reset_mock()
         result = await session.call_tool("github_app_installation_token", arguments)
         text = refusal_text(result)
-        assert "github_commit_status_create" in text, text
+        assert "github_commit_status_request" in text, text
         assert "statuses" in text, text
         assert recorded("POST", MINT_PATH) == [], f"{arguments} reached the mint call"
 

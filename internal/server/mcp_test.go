@@ -108,11 +108,11 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"resource_delete_collection",
 		"resource_exec", "resource_attach", "resource_port_forward", "resource_proxy",
 		"dear_baby_reset_user", "github_app_installation_token",
-		"github_commit_status_create",
+		"github_commit_status_request",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 		"session_create", "session_list", "session_read", "session_write", "session_delete",
-		"pocket_aide_notification_send", "drop_token_issue",
+		"session_recover", "session_archive", "session_restore", "pocket_aide_notification_send", "drop_token_issue",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("len(tools) = %d, want %d", len(tools), len(want))
@@ -732,78 +732,6 @@ func TestToolsListAdvertisesGitHubToken(t *testing.T) {
 	if at(t, token, "annotations", "title") != "GitHub App Installation Token" ||
 		at(t, token, "annotations", "openWorldHint") != true {
 		t.Fatalf("annotations = %v", token["annotations"])
-	}
-}
-
-func TestToolsListAdvertisesCommitStatus(t *testing.T) {
-	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-	tools := toolsList(t, app)
-	tool := findTool(t, tools, "github_commit_status_create")
-
-	props := at(t, tool, "inputSchema", "properties").(map[string]any)
-	for _, name := range []string{"repository", "sha", "state", "context", "description", "target_url"} {
-		if _, ok := props[name]; !ok {
-			t.Errorf("missing input property %q", name)
-		}
-	}
-	if _, ok := props["owner"]; ok {
-		t.Errorf("owner is the installation account and must not be an input")
-	}
-	for hint, want := range map[string]any{
-		"readOnlyHint":    false,
-		"destructiveHint": false,
-		"openWorldHint":   true,
-	} {
-		if got := at(t, tool, "annotations", hint); got != want {
-			t.Errorf("annotation %s = %v, want %v", hint, got, want)
-		}
-	}
-}
-
-func TestCommitStatusDispatches(t *testing.T) {
-	fake := &fakeGitHub{}
-	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	sha := "0123456789abcdef0123456789abcdef01234567"
-	body := callTool(t, app, 73, "github_commit_status_create", map[string]any{
-		"repository": "homelab-k3s-mcp",
-		"sha":        sha,
-		"state":      "success",
-		"context":    "homelab-k3s-mcp/e2e",
-	})
-	if at(t, body, "result", "isError") != false {
-		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
-	}
-	if got := at(t, body, "result", "structuredContent", "sha"); got != sha {
-		t.Errorf("structuredContent sha = %v, want %v", got, sha)
-	}
-	if len(fake.statuses) != 1 {
-		t.Fatalf("service saw %d calls, want 1", len(fake.statuses))
-	}
-	if in := fake.statuses[0]; in.Repository != "homelab-k3s-mcp" || in.State != "success" ||
-		in.Context != "homelab-k3s-mcp/e2e" || in.SHA != sha {
-		t.Errorf("service input = %+v, want the arguments as sent", in)
-	}
-}
-
-// TestCommitStatusRefusesNonStringArgument keeps a typo from being forwarded as
-// an empty field and refused deep in the client, where the message would blame
-// the value rather than its type.
-func TestCommitStatusRefusesNonStringArgument(t *testing.T) {
-	fake := &fakeGitHub{}
-	app := server.App(nil, unavailableK8s(), fake, unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
-
-	body := callTool(t, app, 74, "github_commit_status_create", map[string]any{
-		"repository": "homelab-k3s-mcp",
-		"sha":        123,
-		"state":      "success",
-		"context":    "homelab-k3s-mcp/e2e",
-	})
-	if _, ok := body["error"]; !ok {
-		t.Fatalf("body = %v, want a JSON-RPC error", body)
-	}
-	if len(fake.statuses) != 0 {
-		t.Errorf("service saw %d calls, want 0", len(fake.statuses))
 	}
 }
 
@@ -1438,9 +1366,9 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 				Pod: "session-" + id, CreatedAt: "2026-08-30T09:30:00Z",
 				LastAccess: "2026-09-04T00:00:00Z",
 			},
-			Path: "snapshot->restore->read",
+			Path: "idle->active->read",
 			// An absolute cursor, not len(payload): the two differ here on purpose.
-			Payload:    "restored output\n",
+			Payload:    "parked output\n",
 			NextOffset: 1024,
 		}, nil
 	}}
@@ -1450,14 +1378,14 @@ func TestSessionReadReturnsPayloadCursorAndBranch(t *testing.T) {
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
 	}
-	if at(t, body, "result", "structuredContent", "payload") != "restored output\n" {
+	if at(t, body, "result", "structuredContent", "payload") != "parked output\n" {
 		t.Fatalf("payload = %v", at(t, body, "result", "structuredContent", "payload"))
 	}
 	if fmt.Sprint(at(t, body, "result", "structuredContent", "nextOffset")) != "1024" {
 		t.Fatalf("nextOffset = %v, want the server-issued cursor passed through verbatim",
 			at(t, body, "result", "structuredContent", "nextOffset"))
 	}
-	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->read" {
+	if at(t, body, "result", "structuredContent", "path") != "idle->active->read" {
 		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
 	}
 	if at(t, body, "result", "structuredContent", "session", "state") != "active" {
@@ -1604,6 +1532,10 @@ func TestToolsListAdvertisesSessionWrite(t *testing.T) {
 	if _, ok := props["payload"]; !ok {
 		t.Fatalf("inputSchema is missing payload: %v", props)
 	}
+	modes, _ := at(t, write, "inputSchema", "properties", "permissionMode", "enum").([]any)
+	if len(modes) != 2 || modes[0] != "auto" || modes[1] != "acceptEdits" {
+		t.Fatalf("permissionMode enum = %v, want [auto acceptEdits]", modes)
+	}
 	required, _ := at(t, write, "inputSchema", "required").([]any)
 	if len(required) != 2 || !contains([]string{fmt.Sprint(required[0]), fmt.Sprint(required[1])}, "id") ||
 		!contains([]string{fmt.Sprint(required[0]), fmt.Sprint(required[1])}, "payload") {
@@ -1627,7 +1559,7 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 				Pod: "pod-91ab", CreatedAt: "2026-08-30T09:30:00Z",
 				LastAccess: "2026-09-04T00:00:00Z",
 			},
-			Path: "snapshot->restore->write",
+			Path: "idle->active->write",
 		}, nil
 	}}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
@@ -1636,7 +1568,7 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
 	}
-	if at(t, body, "result", "structuredContent", "path") != "snapshot->restore->write" {
+	if at(t, body, "result", "structuredContent", "path") != "idle->active->write" {
 		t.Fatalf("path = %v", at(t, body, "result", "structuredContent", "path"))
 	}
 	if at(t, body, "result", "structuredContent", "session", "state") != "active" {
@@ -1656,6 +1588,33 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	}
 }
 
+// session-platform AC-E2 through this tool: the mode reaches the control plane
+// as given, and a write without one carries none.
+func TestSessionWritePassesPermissionModeThrough(t *testing.T) {
+	fake := &fakeSessionPlatform{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	for i, args := range []map[string]any{
+		{"id": "s-3", "payload": "edit it", "permissionMode": "acceptEdits"},
+		{"id": "s-3", "payload": "plain"},
+		{"id": "s-3", "payload": "null mode", "permissionMode": nil},
+	} {
+		body := callTool(t, app, 200+i, "session_write", args)
+		if at(t, body, "result", "isError") != false {
+			t.Fatalf("call %d isError = %v", i, at(t, body, "result", "isError"))
+		}
+	}
+	want := []string{"acceptEdits", "", ""}
+	if len(fake.writeCalls) != len(want) {
+		t.Fatalf("writeCalls = %+v, want %d", fake.writeCalls, len(want))
+	}
+	for i, call := range fake.writeCalls {
+		if call.permissionMode != want[i] {
+			t.Fatalf("writeCalls[%d].permissionMode = %q, want %q", i, call.permissionMode, want[i])
+		}
+	}
+}
+
 // Each refusal is a JSON-RPC invalid-params error rather than a tool error, and
 // — the part that matters for a destructive tool — none of them reaches the
 // control plane, so a malformed call cannot restore a snapshot as a side effect.
@@ -1670,6 +1629,9 @@ func TestSessionWriteRejectsBadArguments(t *testing.T) {
 		{name: "null payload", args: map[string]any{"id": "s-1", "payload": nil}, want: "payload is required"},
 		{name: "numeric payload", args: map[string]any{"id": "s-1", "payload": 12}, want: "payload must be a string"},
 		{name: "object payload", args: map[string]any{"id": "s-1", "payload": map[string]any{}}, want: "payload must be a string"},
+		// An empty mode would vanish under omitempty and silently mean "auto".
+		{name: "empty permission mode", args: map[string]any{"id": "s-1", "payload": "x", "permissionMode": ""}, want: "permissionMode must be a non-empty string"},
+		{name: "numeric permission mode", args: map[string]any{"id": "s-1", "payload": "x", "permissionMode": 1}, want: "permissionMode must be a non-empty string"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeSessionPlatform{}
@@ -1691,7 +1653,13 @@ func TestSessionWriteSurfacesRefusalsDistinctly(t *testing.T) {
 	const sameReason = "refused"
 
 	var status int
-	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// The tool's passive look at the session before writing finds it
+		// active; the refusal under test is the write's own.
+		if r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(`{"id":"s-1","state":"active","pod":"session-s-1"}`))
+			return
+		}
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"error":"` + sameReason + `"}`))
 	}))
@@ -2048,6 +2016,110 @@ func TestSessionDeleteUnavailableReturnsToolError(t *testing.T) {
 	}
 
 	survivor := callTool(t, app, 199, "ping", map[string]any{})
+	if at(t, survivor, "result", "content", 0, "text") != "pong" {
+		t.Fatalf("ping did not survive the refusal: %v", survivor)
+	}
+}
+
+func TestToolsListAdvertisesSessionRecover(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	rec := findTool(t, toolsList(t, app), "session_recover")
+
+	required, _ := at(t, rec, "inputSchema", "required").([]any)
+	if len(required) != 1 || required[0] != "id" {
+		t.Fatalf("required = %v, want [id]", required)
+	}
+	if at(t, rec, "annotations", "title") != "Recover Session" ||
+		at(t, rec, "annotations", "readOnlyHint") != false ||
+		at(t, rec, "annotations", "destructiveHint") != false ||
+		at(t, rec, "annotations", "idempotentHint") != false ||
+		at(t, rec, "annotations", "openWorldHint") != true {
+		t.Fatalf("annotations = %v", rec["annotations"])
+	}
+}
+
+func TestSessionRecoverReturnsTheRecoveredSession(t *testing.T) {
+	fake := &fakeSessionPlatform{}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	body := callTool(t, app, 300, "session_recover", map[string]any{"id": "s-gone"})
+	if at(t, body, "result", "isError") != false ||
+		at(t, body, "result", "structuredContent", "session", "id") != "s-gone" ||
+		at(t, body, "result", "structuredContent", "session", "state") != "active" {
+		t.Fatalf("result = %v", at(t, body, "result"))
+	}
+	if len(fake.recoverCalls) != 1 || fake.recoverCalls[0] != "s-gone" {
+		t.Fatalf("recoverCalls = %v, want [s-gone]", fake.recoverCalls)
+	}
+	if len(fake.createCalls) != 0 || fake.listCalls != 0 || len(fake.readCalls) != 0 || len(fake.writeCalls) != 0 {
+		t.Fatalf("recover touched other endpoints: create=%v list=%d read=%v write=%v",
+			fake.createCalls, fake.listCalls, fake.readCalls, fake.writeCalls)
+	}
+}
+
+func TestSessionRecoverRejectsBadArguments(t *testing.T) {
+	for _, args := range []map[string]any{{}, {"id": ""}, {"id": 9}} {
+		fake := &fakeSessionPlatform{}
+		app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+		body := callTool(t, app, 301, "session_recover", args)
+		message, _ := at(t, body, "error", "message").(string)
+		if !strings.Contains(message, "id is required") {
+			t.Fatalf("args %v: error message = %q", args, message)
+		}
+		if len(fake.recoverCalls) != 0 {
+			t.Fatalf("args %v: recoverCalls = %v, want none", args, fake.recoverCalls)
+		}
+	}
+}
+
+func TestSessionRecoverSurfacesRefusalsDistinctly(t *testing.T) {
+	var status int
+	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(`{"error":"refused"}`))
+	}))
+	defer control.Close()
+
+	t.Setenv("SESSION_PLATFORM_ENDPOINT", control.URL)
+	client, err := sessionplatform.FromEnv()
+	if err != nil || client == nil {
+		t.Fatalf("FromEnv() = (%v, %v), want a client", client, err)
+	}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), client)
+
+	texts := map[int]string{}
+	for _, code := range []int{http.StatusNotFound, http.StatusConflict, http.StatusServiceUnavailable} {
+		status = code
+		body := callTool(t, app, 302, "session_recover", map[string]any{"id": "s-1"})
+		if at(t, body, "result", "isError") != true {
+			t.Fatalf("status %d: isError = %v", code, at(t, body, "result", "isError"))
+		}
+		texts[code], _ = at(t, body, "result", "content", 0, "text").(string)
+	}
+	if !strings.Contains(texts[http.StatusNotFound], "not found") ||
+		strings.Contains(texts[http.StatusNotFound], "retry") {
+		t.Fatalf("not found text = %q", texts[http.StatusNotFound])
+	}
+	if !strings.Contains(texts[http.StatusConflict], "still exists") ||
+		strings.Contains(texts[http.StatusConflict], "retry") {
+		t.Fatalf("still-exists text = %q", texts[http.StatusConflict])
+	}
+	if !strings.Contains(texts[http.StatusServiceUnavailable], "unavailable") {
+		t.Fatalf("unavailable text = %q", texts[http.StatusServiceUnavailable])
+	}
+}
+
+func TestSessionRecoverUnavailableReturnsToolError(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+
+	body := callTool(t, app, 303, "session_recover", map[string]any{"id": "s-1"})
+	text, _ := at(t, body, "result", "content", 0, "text").(string)
+	if at(t, body, "result", "isError") != true || !strings.Contains(text, "session platform unavailable") {
+		t.Fatalf("result = %v", at(t, body, "result"))
+	}
+
+	survivor := callTool(t, app, 304, "ping", map[string]any{})
 	if at(t, survivor, "result", "content", 0, "text") != "pong" {
 		t.Fatalf("ping did not survive the refusal: %v", survivor)
 	}

@@ -14,7 +14,7 @@
 - 어노테이션: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`, `openWorldHint=true`
 - **발급하지 않는 권한 레벨**: `statuses: write`(commit status 쓰기)와 `checks: write`(check run
   쓰기) — 둘 다 필수 검사를 위조할 수 있는 쓰기다(AC5). commit status 쓰기는 토큰으로 내주지 않고
-  [`github_commit_status_create`](prd-github-commit-status.md)가 좁은 동작으로만 행사한다. check run
+  [`github_commit_status_request`](prd-github-commit-status.md)가 좁은 동작으로만 행사한다. check run
   쓰기는 이 서버가 어떤 도구로도 행사하지 않는다. 두 권한의 `read`(조회)는 이 도구에서 그대로 발급한다.
 
 ## Acceptance Criteria
@@ -51,7 +51,7 @@
   두 권한의 `read`는 다른 권한과 똑같이 발급한다 — 조회는 필수 검사를 위조할 수 없기 때문이다.
   아래 세 조항은 배제 대상 권한 **각각**에 똑같이 적용된다.
   1. `permissions`에 배제 대상의 `write`가 있으면 GitHub에 요청하기 전에 거부한다. 문면은
-     `statuses`면 `github_commit_status_create`를 쓰라고 안내하고, `checks`면 이 서버가 check run
+     `statuses`면 `github_commit_status_request`를 쓰라고 안내하고, `checks`면 이 서버가 check run
      쓰기를 행사하지 않는다고 알린다. `read`는 그대로 요청한다.
   2. `permissions`를 생략하면 GitHub의 「생략 = 설치 권한 전부」에 기대지 않는다. 서버가 설치의
      권한 목록(`GET /app/installations/{id}`)을 읽어, 설치에 배제 대상의 `write`가 있으면 그 항목만
@@ -67,7 +67,7 @@
   응답 주석도 `statuses=read`다. 설치 권한 조회가 실패하면 발급 요청 없이 에러다. (3) 상류가
   `statuses: write`가 실린 토큰을 돌려주면 폐기 요청이 한 번 가고, 도구 결과는 에러이며 그 토큰
   문자열을 포함하지 않는다. (4) (1)~(3)의 `statuses`를 `checks`로 바꿔 같은 결과가 나온다 — 단 (1)의
-  거부 문면은 `github_commit_status_create`가 아니라 check run 쓰기를 행사하지 않는다는 안내다.
+  거부 문면은 `github_commit_status_request`가 아니라 check run 쓰기를 행사하지 않는다는 안내다.
   (5) 설치 권한에 `statuses: write`와 `checks: write`가 **함께** 있는 상류에서 인자 없이 호출하면 발급
   요청 본문의 두 항목이 모두 `read`다 — 한 권한을 낮추는 경로가 다른 권한을 건너뛰지 않는다.
 - **호환성**: 인자 없는 기존 호출의 결과는 배제 대상이 `read`로 낮아지는 것 외에는 같다.
