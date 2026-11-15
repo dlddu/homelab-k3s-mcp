@@ -23,9 +23,13 @@
 - **검증 AC**: AC1
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
   (`TestArchiveSessionIssuesOnePostAndReturnsTheFrozenSession` — 요청은 동결 경로로 가는 POST 한
-  건뿐이다) + `internal/server/session_archive_test.go` (`TestSessionArchiveReturnsTheFrozenSession` —
-  생성·삭제·목록·읽기·쓰기를 하나도 부르지 않는다) + 통합 `tests/integration/session_archive_sc1.py`
-  (미작성)
+  건뿐이다, `TestArchiveSessionOnAnAlreadyFrozenSessionIsIdempotent` — 이미 동결된 세션에 다시
+  불러도 같은 세션이 오류 없이 돌아오고 요청은 같은 경로의 POST 한 건 더다) +
+  `internal/server/session_archive_test.go` (`TestSessionArchiveReturnsTheFrozenSession` —
+  생성·삭제·목록·읽기·쓰기를 하나도 부르지 않는다,
+  `TestSessionArchiveRepeatedOnAnArchivedSessionReturnsItUnchanged` — 재호출이 pending 없이 같은
+  `snapshot` 세션을 돌려주고 복원·읽기·쓰기를 부르지 않는다) + 통합
+  `tests/integration/session_archive_sc1.py` (미작성)
 
 ### 시나리오 2: 오래 걸리는 동결은 pending으로 답한다
 - **사전 조건**: 대기 상한보다 오래 걸리는 동결(진행 중인 턴이 있는 claude-code 세션)

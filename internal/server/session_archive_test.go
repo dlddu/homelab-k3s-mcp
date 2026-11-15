@@ -3,6 +3,7 @@ package server_test
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,50 @@ func TestSessionArchiveReturnsTheFrozenSession(t *testing.T) {
 		len(fake.readCalls) != 0 || len(fake.writeCalls) != 0 {
 		t.Fatalf("archive touched other endpoints: create=%v delete=%v list=%d read=%v write=%v",
 			fake.createCalls, fake.deleteCalls, fake.listCalls, fake.readCalls, fake.writeCalls)
+	}
+}
+
+func TestSessionArchiveRepeatedOnAnArchivedSessionReturnsItUnchanged(t *testing.T) {
+	frozen := sessionplatform.Session{
+		ID: "s-1", Name: "scratch", WorkloadType: "shell", State: "snapshot",
+		CreatedAt: "2026-11-13T00:00:00Z", LastAccess: "2026-11-13T00:00:00Z",
+	}
+	fake := &fakeSessionPlatform{archiveResponse: func(string) (*sessionplatform.Session, error) {
+		copied := frozen
+		return &copied, nil
+	}}
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
+
+	first := callTool(t, app, 316, "session_archive", map[string]any{"id": "s-1"})
+	second := callTool(t, app, 317, "session_archive", map[string]any{"id": "s-1"})
+
+	for i, body := range []map[string]any{first, second} {
+		session, _ := at(t, body, "result", "structuredContent", "session").(map[string]any)
+		if at(t, body, "result", "isError") != false || session["id"] != "s-1" || session["state"] != "snapshot" {
+			t.Fatalf("call %d: result = %v", i+1, at(t, body, "result"))
+		}
+		if _, hasPod := session["pod"]; hasPod {
+			t.Fatalf("call %d: session = %v, want no pod while archived", i+1, session)
+		}
+		if _, pending := at(t, body, "result", "structuredContent").(map[string]any)["pending"]; pending {
+			t.Fatalf("call %d: an already-archived session answered pending: %v", i+1, at(t, body, "result"))
+		}
+	}
+	firstSession := at(t, first, "result", "structuredContent", "session")
+	if !reflect.DeepEqual(at(t, second, "result", "structuredContent", "session"), firstSession) {
+		t.Fatalf("second session = %v, first = %v; want it unchanged",
+			at(t, second, "result", "structuredContent", "session"), firstSession)
+	}
+
+	// Archiving again is the archive path twice over: nothing restores, reads or
+	// writes the session, so the repeat cannot be what brings it back.
+	if len(fake.archiveCalls) != 2 || fake.archiveCalls[0] != "s-1" || fake.archiveCalls[1] != "s-1" {
+		t.Fatalf("archiveCalls = %v, want [s-1 s-1]", fake.archiveCalls)
+	}
+	if len(fake.restoreCalls) != 0 || len(fake.readCalls) != 0 || len(fake.writeCalls) != 0 ||
+		len(fake.createCalls) != 0 || len(fake.deleteCalls) != 0 || fake.listCalls != 0 {
+		t.Fatalf("the repeat touched other endpoints: restore=%v read=%v write=%v create=%v delete=%v list=%d",
+			fake.restoreCalls, fake.readCalls, fake.writeCalls, fake.createCalls, fake.deleteCalls, fake.listCalls)
 	}
 }
 

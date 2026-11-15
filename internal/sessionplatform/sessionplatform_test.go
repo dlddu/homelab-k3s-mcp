@@ -1146,6 +1146,30 @@ func TestArchiveSessionIssuesOnePostAndReturnsTheFrozenSession(t *testing.T) {
 	}
 }
 
+func TestArchiveSessionOnAnAlreadyFrozenSessionIsIdempotent(t *testing.T) {
+	c, seen := lifecycleStub(t, http.StatusOK, frozenShell, 0)
+
+	first, err := c.ArchiveSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("first ArchiveSession: %v", err)
+	}
+	second, err := c.ArchiveSession(context.Background(), "s-9")
+	if err != nil {
+		t.Fatalf("second ArchiveSession on an already-frozen session: %v", err)
+	}
+	if !reflect.DeepEqual(second, first) {
+		t.Fatalf("second = %+v, first = %+v; want the frozen session unchanged", second, first)
+	}
+
+	// The control plane's snapshot endpoint is idempotent, so the repeat is one
+	// more POST down the same path — never a restore, read or write that would
+	// bring the session back.
+	want := lifecycleRequest{method: http.MethodPost, path: sessionsPath + "/s-9/snapshot"}
+	if len(*seen) != 2 || (*seen)[0] != want || (*seen)[1] != want {
+		t.Fatalf("requests = %+v, want two %+v", *seen, want)
+	}
+}
+
 func TestArchiveSessionRefusalsAreDistinct(t *testing.T) {
 	seen := map[errKind]string{}
 	for _, tc := range []struct {

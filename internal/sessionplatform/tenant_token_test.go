@@ -71,10 +71,15 @@ func TestTenantTokenIsSentOnEveryControlPlaneCall(t *testing.T) {
 	_ = c.DeleteSession(ctx, "id")
 	_, _ = c.ReadSession(ctx, "id", 0)
 	_, _ = c.WriteSession(ctx, "id", "x", WriteOptions{})
+	// The lifecycle calls go out on their own http.Client (archive and restore
+	// carry longer budgets), so "every call" has to name them too.
+	_, _ = c.ArchiveSession(ctx, "id")
+	_, _ = c.RestoreSession(ctx, "id")
+	_, _ = c.RecoverSession(ctx, "id")
 
 	headers, _ := rec.seen()
-	if len(headers) != 6 {
-		t.Fatalf("requests = %d, want 6", len(headers))
+	if len(headers) != 9 {
+		t.Fatalf("requests = %d, want 9", len(headers))
 	}
 	for i, h := range headers {
 		if h != "Bearer tok-1" {
