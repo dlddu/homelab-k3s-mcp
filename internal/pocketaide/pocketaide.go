@@ -71,6 +71,7 @@ type Result struct {
 type Service interface {
 	Notify(ctx context.Context, title, body, requester string) (*Result, error)
 	RequestCommitStatus(ctx context.Context, in CommitStatusRequest) (*CommitStatusTicket, error)
+	ChatPresence(ctx context.Context) (*ChatPresence, error)
 }
 
 // Unavailable is a Service that fails every call with the same reason.
