@@ -1031,13 +1031,17 @@ const toolsListJSON = `{
     },
     {
       "name": "session_recover",
-      "description": "Bring a deleted session-platform session back under its old id. Every committed snapshot (the 60-minute idle freeze or an explicit archive) leaves a record beside its archive, so a session that was deleted or lost its pod comes back as it was when it was last frozen: same id, name, workload type, model and plugins, restored into a new pod and returned 'active', ready for session_read and session_write. Work done after that last freeze is not recovered, and a session that was never frozen, or that disappeared before the platform began keeping these records, cannot be recovered (not found). When this server calls as a tenant, only that tenant's sessions can be recovered; any other id reads as not found. Refusals arrive distinguished: not found, 'still exists' when the id is a live session (nothing to recover), and unavailable when the platform cannot recover that workload type right now or no login slot is free. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Bring a deleted session-platform session back under its old id. Every committed snapshot (the 60-minute idle freeze or an explicit archive) leaves a record beside its archive, so a session that was deleted or lost its pod comes back as it was when it was last frozen: same id, name, workload type, model and plugins, restored into a new pod and returned 'active', ready for session_read and session_write. Work done after that last freeze is not recovered, and a session that was never frozen, or that disappeared before the platform began keeping these records, cannot be recovered (not found). When this server calls as a tenant, only that tenant's sessions can be recovered; any other id reads as not found. Refusals arrive distinguished: not found, 'still exists' when the id is a live session (nothing to recover), and unavailable when the platform cannot recover that workload type right now or no login slot is free. Requires SESSION_PLATFORM_ENDPOINT on the server. 'doubleMemory' sets the memory tier of the recovered pod: true doubles the workload container's memory request/limit over the platform default (currently 512Mi/1Gi -> 1Gi/2Gi), false returns it to the default; omitted, the session comes back at the tier its record holds. The session keeps the tier for later restores.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "description": "Id of the deleted session, as session_list or session_create reported it while it existed."
+          },
+          "doubleMemory": {
+            "type": "boolean",
+            "description": "Optional. Memory tier of the recovered pod: true doubles the workload container's memory request/limit over the platform default, false is the default. Omitted keeps the tier the session had. Kept for later restores."
           }
         },
         "required": ["id"],
@@ -1075,13 +1079,17 @@ const toolsListJSON = `{
     },
     {
       "name": "session_restore",
-      "description": "Bring an archived (snapshot) session-platform session back into a fresh pod, so session_read and session_write can use it again; they refuse an archived session rather than restoring it. The control plane recreates the session's pods and applies its archive (files, conversation history and accumulated output), and the session returns 'active' under the same id, with its output cursors still valid. An idle session is simply promoted, and an active one comes back unchanged. This call waits at most about 20 seconds: when the restore finishes by then it returns the session 'active' with its 'pod'; when it does not (a fresh pod pulling its image or waiting for a node, then the archive), it returns isError=false with 'pending': true and a 'message', and the control plane keeps restoring — poll session_list until the session's state turns 'active' rather than calling session_restore again. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation, possibly a restore already under way, holds the session and is worth retrying once it finishes; unavailable means the platform cannot restore that workload type, or has no free login slot for it, right now. When this server calls as a tenant, only that tenant's sessions can be restored. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Bring an archived (snapshot) session-platform session back into a fresh pod, so session_read and session_write can use it again; they refuse an archived session rather than restoring it. The control plane recreates the session's pods and applies its archive (files, conversation history and accumulated output), and the session returns 'active' under the same id, with its output cursors still valid. An idle session is simply promoted, and an active one comes back unchanged. This call waits at most about 20 seconds: when the restore finishes by then it returns the session 'active' with its 'pod'; when it does not (a fresh pod pulling its image or waiting for a node, then the archive), it returns isError=false with 'pending': true and a 'message', and the control plane keeps restoring — poll session_list until the session's state turns 'active' rather than calling session_restore again. Refusals arrive distinguished: an unknown id is a not-found error (nothing to retry); a conflict means another lifecycle operation, possibly a restore already under way, holds the session and is worth retrying once it finishes; unavailable means the platform cannot restore that workload type, or has no free login slot for it, right now. When this server calls as a tenant, only that tenant's sessions can be restored. Requires SESSION_PLATFORM_ENDPOINT on the server. 'doubleMemory' sets the memory tier of the restored pod: true doubles the workload container's memory request/limit over the platform default (currently 512Mi/1Gi -> 1Gi/2Gi), false returns it to the default; omitted keeps the session's tier. This is the only way to change the tier of an existing session, since only a restore starts a new pod: on a session that is not archived, asking for the other tier is refused and nothing changes. The session keeps the tier for later restores.",
       "inputSchema": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "description": "Session id, as reported by session_list."
+          },
+          "doubleMemory": {
+            "type": "boolean",
+            "description": "Optional. Memory tier of the restored pod: true doubles the workload container's memory request/limit over the platform default, false is the default. Omitted keeps the session's tier. Applies only when an archived session is restored; on a live session the other tier is refused."
           }
         },
         "required": ["id"],

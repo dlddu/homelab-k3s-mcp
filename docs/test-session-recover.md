@@ -5,6 +5,7 @@
 - AC2: 거부 응답의 구분 전달 (PRD: session_recover)
 - AC3: 도구 표기 (PRD: session_recover)
 - AC4: 미설정 시 graceful 거부 (PRD: session_recover)
+- AC5: 메모리 2배 옵션으로 복원 등급을 바꾼다 (PRD: session_recover)
 
 > **자동화 상태**: 도구 계층은 구현·검증됐다 — 아래 "자동화" 필드의 Go 단위는 실재하는 테스트
 > 이름이다. 시나리오 1·2의 통합 e2e는 kind 하네스의 제어면 이미지에 복원 엔드포인트
@@ -55,3 +56,15 @@
   (`TestSessionRecoverUnavailableReturnsToolError`) +
   `internal/sessionplatform/sessionplatform_test.go` (`TestUnavailableRefusesCreateAndDelete`) + 통합
   `tests/integration/session_recover_sc4.py`(`실행 대상: auth-variant`)
+
+### 시나리오 5: 메모리 2배 옵션이 복구 요청에 그대로 실린다
+- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, 복원 시 메모리 등급 변경(session-platform
+  `control-plane/api/openapi.yaml`의 `RestoreRequest`)을 받는 제어면
+- **실행 단계**: (a) `session_recover`에 `doubleMemory=true` → (b) `doubleMemory` 생략 → (c)
+  `doubleMemory`에 `"yes"`를 준 호출
+- **기대 결과**: (a) 제어면이 받은 `recover` 본문의 `doubleMemory`가 `true`다. (b) 본문이 없다. (c)
+  제어면에 요청이 가지 않고 `-32602`
+- **검증 AC**: AC5
+- **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
+  (`TestRestoreAndRecoverSendDoubleMemory`) +
+  `internal/server/session_restore_test.go`(`TestSessionRecoverPassesDoubleMemoryThrough`) + 통합 (미작성)
