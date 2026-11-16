@@ -67,14 +67,14 @@
   `internal/sessionplatform/sessionplatform_test.go` (`TestUnavailableRefusesCreateAndDelete`) + 통합
   `tests/integration/session_restore_sc5.py`(`실행 대상: auth-variant`)
 
-### 시나리오 6: 메모리 2배 옵션이 복원 요청에 그대로 실린다
+### 시나리오 6: 메모리 등급 옵션이 복원 요청에 그대로 실린다
 - **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, 복원 시 메모리 등급 변경(session-platform
-  `control-plane/api/openapi.yaml`의 `RestoreRequest`)을 받는 제어면
-- **실행 단계**: (a) `session_restore`에 `doubleMemory=true` → (b) `doubleMemory=false` → (c)
-  `doubleMemory` 생략 → (d) `doubleMemory`에 `"yes"`·`1`을 각각 준 호출 → (e) 제어면이 422로 답하는 호출
-- **기대 결과**: (a)·(b) 제어면이 받은 `switch` 본문의 `doubleMemory`가 준 값과 같다. (c) 본문이 없다.
+  `control-plane/api/openapi.yaml`의 `RestoreRequest.memoryMultiplier`)을 받는 제어면
+- **실행 단계**: (a) `session_restore`에 `memoryMultiplier=8` → (b) `memoryMultiplier=1` → (c)
+  `memoryMultiplier` 생략 → (d) `memoryMultiplier`에 `"yes"`·`3`·`0`을 각각 준 호출 → (e) 제어면이 422로 답하는 호출
+- **기대 결과**: (a)·(b) 제어면이 받은 `switch` 본문의 `memoryMultiplier`가 준 값과 같다. (c) 본문이 없다.
   (d) 제어면에 요청이 가지 않고 `-32602`. (e) 인자 오류 류의 도구 에러
 - **검증 AC**: AC6
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
-  (`TestRestoreAndRecoverSendDoubleMemory`, `TestRestoreSessionRefusalsAreDistinct`) +
-  `internal/server/session_restore_test.go`(`TestSessionRestorePassesDoubleMemoryThrough`) + 통합 (미작성)
+  (`TestRestoreAndRecoverSendMemoryMultiplier`, `TestRestoreSessionRefusalsAreDistinct`) +
+  `internal/server/session_restore_test.go`(`TestSessionRestorePassesMemoryMultiplierThrough`) + 통합 (미작성)

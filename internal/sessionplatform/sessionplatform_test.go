@@ -925,18 +925,18 @@ func TestCreateSessionSendsPlugins(t *testing.T) {
 	}
 }
 
-// session-platform `doubleMemory`: sent as a JSON boolean when true; omitted
-// (not sent as `false`) when unset, matching the control plane's own
-// omitted-means-default contract.
-func TestCreateSessionSendsDoubleMemory(t *testing.T) {
+// session-platform `memoryMultiplier`: sent as a JSON number when set;
+// omitted when unset, matching the control plane's own omitted-means-default
+// contract.
+func TestCreateSessionSendsMemoryMultiplier(t *testing.T) {
 	c, seen := lifecycleStub(t, http.StatusCreated, createdShell, 0)
 
 	if _, err := c.CreateSession(context.Background(), CreateRequest{
-		Name: "agent", WorkloadType: "claude-code", DoubleMemory: true,
+		Name: "agent", WorkloadType: "claude-code", MemoryMultiplier: 8,
 	}); err != nil {
 		t.Fatalf("CreateSession: %v", err)
 	}
-	want := `{"name":"agent","workloadType":"claude-code","doubleMemory":true}`
+	want := `{"name":"agent","workloadType":"claude-code","memoryMultiplier":8}`
 	if body := (*seen)[len(*seen)-1].body; body != want {
 		t.Fatalf("body = %s, want %s", body, want)
 	}
@@ -947,7 +947,7 @@ func TestCreateSessionSendsDoubleMemory(t *testing.T) {
 		t.Fatalf("CreateSession: %v", err)
 	}
 	if body := (*seen)[len(*seen)-1].body; body != `{"name":"agent2","workloadType":"claude-code"}` {
-		t.Fatalf("body = %s, want doubleMemory omitted", body)
+		t.Fatalf("body = %s, want memoryMultiplier omitted", body)
 	}
 }
 
@@ -1310,16 +1310,16 @@ func TestGetSessionIssuesOneGet(t *testing.T) {
 	}
 }
 
-// Restore and recover send doubleMemory only when it is given, and send false
-// too, since false lowers a doubled session's tier.
-func TestRestoreAndRecoverSendDoubleMemory(t *testing.T) {
-	on, off := true, false
+// Restore and recover send memoryMultiplier only when it is given, and send 1
+// too, since 1 lowers a session's tier.
+func TestRestoreAndRecoverSendMemoryMultiplier(t *testing.T) {
+	four, one := 4, 1
 	for _, tc := range []struct {
 		opts RestoreOptions
 		want string
 	}{
-		{opts: RestoreOptions{DoubleMemory: &on}, want: `{"doubleMemory":true}`},
-		{opts: RestoreOptions{DoubleMemory: &off}, want: `{"doubleMemory":false}`},
+		{opts: RestoreOptions{MemoryMultiplier: &four}, want: `{"memoryMultiplier":4}`},
+		{opts: RestoreOptions{MemoryMultiplier: &one}, want: `{"memoryMultiplier":1}`},
 		{opts: RestoreOptions{}, want: ""},
 	} {
 		c, seen := lifecycleStub(t, http.StatusOK, restoredShell, 0)

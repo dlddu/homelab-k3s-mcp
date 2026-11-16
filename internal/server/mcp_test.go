@@ -1741,7 +1741,7 @@ func TestToolsListAdvertisesSessionCreate(t *testing.T) {
 	create := findTool(t, toolsList(t, app), "session_create")
 
 	props := at(t, create, "inputSchema", "properties").(map[string]any)
-	for _, key := range []string{"name", "workloadType", "model", "plugins", "doubleMemory"} {
+	for _, key := range []string{"name", "workloadType", "model", "plugins", "memoryMultiplier"} {
 		if _, ok := props[key]; !ok {
 			t.Fatalf("inputSchema is missing %s: %v", key, props)
 		}
@@ -1752,8 +1752,11 @@ func TestToolsListAdvertisesSessionCreate(t *testing.T) {
 	if typ := at(t, create, "inputSchema", "properties", "plugins", "items", "type"); typ != "string" {
 		t.Fatalf("plugins items type = %v, want string", typ)
 	}
-	if typ := at(t, create, "inputSchema", "properties", "doubleMemory", "type"); typ != "boolean" {
-		t.Fatalf("doubleMemory type = %v, want boolean", typ)
+	if typ := at(t, create, "inputSchema", "properties", "memoryMultiplier", "type"); typ != "integer" {
+		t.Fatalf("memoryMultiplier type = %v, want integer", typ)
+	}
+	if enum := at(t, create, "inputSchema", "properties", "memoryMultiplier", "enum"); !reflect.DeepEqual(enum, []any{float64(1), float64(2), float64(4), float64(8)}) {
+		t.Fatalf("memoryMultiplier enum = %v, want [1 2 4 8]", enum)
 	}
 	required, _ := at(t, create, "inputSchema", "required").([]any)
 	if len(required) != 1 || required[0] != "name" {
@@ -1826,27 +1829,27 @@ func TestSessionCreatePassesPluginsThrough(t *testing.T) {
 	}
 }
 
-// session-platform `doubleMemory` through this tool: the flag reaches the
+// session-platform `memoryMultiplier` through this tool: the tier reaches the
 // control plane as given and the created session reports it back.
-func TestSessionCreatePassesDoubleMemoryThrough(t *testing.T) {
+func TestSessionCreatePassesMemoryMultiplierThrough(t *testing.T) {
 	fake := &fakeSessionPlatform{createResponse: func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error) {
 		return &sessionplatform.Session{
 			ID: "s-11", Name: req.Name, WorkloadType: "claude-code", State: "active", Pod: "session-s-11",
-			DoubleMemory: req.DoubleMemory, CreatedAt: "2026-11-09T00:00:00Z", LastAccess: "2026-11-09T00:00:00Z",
+			MemoryMultiplier: req.MemoryMultiplier, CreatedAt: "2026-11-09T00:00:00Z", LastAccess: "2026-11-09T00:00:00Z",
 		}, nil
 	}}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
 
 	body := callTool(t, app, 195, "session_create", map[string]any{
-		"name": "agent", "workloadType": "claude-code", "doubleMemory": true,
+		"name": "agent", "workloadType": "claude-code", "memoryMultiplier": 4,
 	})
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("isError = %v", at(t, body, "result", "isError"))
 	}
-	if got := at(t, body, "result", "structuredContent", "session", "doubleMemory"); got != true {
-		t.Fatalf("session.doubleMemory = %v, want true", got)
+	if got := at(t, body, "result", "structuredContent", "session", "memoryMultiplier"); got != float64(4) {
+		t.Fatalf("session.memoryMultiplier = %v, want 4", got)
 	}
-	want := sessionplatform.CreateRequest{Name: "agent", WorkloadType: "claude-code", DoubleMemory: true}
+	want := sessionplatform.CreateRequest{Name: "agent", WorkloadType: "claude-code", MemoryMultiplier: 4}
 	if len(fake.createCalls) != 1 || !reflect.DeepEqual(fake.createCalls[0], want) {
 		t.Fatalf("createCalls = %+v, want one %+v", fake.createCalls, want)
 	}
@@ -1867,8 +1870,9 @@ func TestSessionCreateRejectsBadArguments(t *testing.T) {
 		{name: "empty plugins", args: map[string]any{"name": "x", "workloadType": "claude-code", "plugins": []any{}}, want: "plugins must be a non-empty array"},
 		{name: "string plugins", args: map[string]any{"name": "x", "workloadType": "claude-code", "plugins": "development"}, want: "plugins must be a non-empty array"},
 		{name: "numeric plugin", args: map[string]any{"name": "x", "workloadType": "claude-code", "plugins": []any{"development", 7}}, want: "plugins must be a non-empty array"},
-		{name: "string doubleMemory", args: map[string]any{"name": "x", "doubleMemory": "yes"}, want: "doubleMemory must be a boolean"},
-		{name: "numeric doubleMemory", args: map[string]any{"name": "x", "doubleMemory": 1}, want: "doubleMemory must be a boolean"},
+		{name: "string memoryMultiplier", args: map[string]any{"name": "x", "memoryMultiplier": "4"}, want: "memoryMultiplier must be one of 1, 2, 4, 8"},
+		{name: "unknown memoryMultiplier", args: map[string]any{"name": "x", "memoryMultiplier": 3}, want: "memoryMultiplier must be one of 1, 2, 4, 8"},
+		{name: "fractional memoryMultiplier", args: map[string]any{"name": "x", "memoryMultiplier": 2.5}, want: "memoryMultiplier must be one of 1, 2, 4, 8"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeSessionPlatform{}

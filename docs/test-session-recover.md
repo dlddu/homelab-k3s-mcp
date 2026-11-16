@@ -57,14 +57,14 @@
   `internal/sessionplatform/sessionplatform_test.go` (`TestUnavailableRefusesCreateAndDelete`) + 통합
   `tests/integration/session_recover_sc4.py`(`실행 대상: auth-variant`)
 
-### 시나리오 5: 메모리 2배 옵션이 복구 요청에 그대로 실린다
+### 시나리오 5: 메모리 등급 옵션이 복구 요청에 그대로 실린다
 - **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, 복원 시 메모리 등급 변경(session-platform
-  `control-plane/api/openapi.yaml`의 `RestoreRequest`)을 받는 제어면
-- **실행 단계**: (a) `session_recover`에 `doubleMemory=true` → (b) `doubleMemory` 생략 → (c)
-  `doubleMemory`에 `"yes"`를 준 호출
-- **기대 결과**: (a) 제어면이 받은 `recover` 본문의 `doubleMemory`가 `true`다. (b) 본문이 없다. (c)
+  `control-plane/api/openapi.yaml`의 `RestoreRequest.memoryMultiplier`)을 받는 제어면
+- **실행 단계**: (a) `session_recover`에 `memoryMultiplier=4` → (b) `memoryMultiplier` 생략 → (c)
+  `memoryMultiplier`에 `"4"`를 준 호출
+- **기대 결과**: (a) 제어면이 받은 `recover` 본문의 `memoryMultiplier`가 `4`다. (b) 본문이 없다. (c)
   제어면에 요청이 가지 않고 `-32602`
 - **검증 AC**: AC5
 - **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`
-  (`TestRestoreAndRecoverSendDoubleMemory`) +
-  `internal/server/session_restore_test.go`(`TestSessionRecoverPassesDoubleMemoryThrough`) + 통합 (미작성)
+  (`TestRestoreAndRecoverSendMemoryMultiplier`) +
+  `internal/server/session_restore_test.go`(`TestSessionRecoverPassesMemoryMultiplierThrough`) + 통합 (미작성)

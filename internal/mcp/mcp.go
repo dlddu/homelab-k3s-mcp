@@ -868,8 +868,8 @@ func sessionFields(s sessionplatform.Session) map[string]any {
 	if len(s.Plugins) != 0 {
 		fields["plugins"] = s.Plugins
 	}
-	if s.DoubleMemory {
-		fields["doubleMemory"] = true
+	if s.MemoryMultiplier > 1 {
+		fields["memoryMultiplier"] = s.MemoryMultiplier
 	}
 	return fields
 }
@@ -1001,12 +1001,12 @@ func (h *Handler) sessionCreate(ctx context.Context, raw json.RawMessage) (any, 
 	if strings.TrimSpace(req.Name) == "" {
 		return nil, errf(-32602, "name is required and must contain a non-whitespace character")
 	}
-	if v, present := obj["doubleMemory"]; present && v != nil {
-		b, ok := v.(bool)
-		if !ok {
-			return nil, errf(-32602, "doubleMemory must be a boolean")
-		}
-		req.DoubleMemory = b
+	memory, rerr := memoryMultiplierArg(obj)
+	if rerr != nil {
+		return nil, rerr
+	}
+	if memory != nil {
+		req.MemoryMultiplier = *memory
 	}
 	if v, present := obj["plugins"]; present && v != nil {
 		list, ok := v.([]any)
@@ -1099,18 +1099,26 @@ func (h *Handler) sessionDelete(ctx context.Context, raw json.RawMessage) (any, 
 	return successResult(map[string]any{"id": *id, "deleted": true}), nil
 }
 
-// restoreOptions reads session_restore's and session_recover's optional
-// doubleMemory. Unlike session_create, false is kept: it lowers the tier.
-func restoreOptions(obj map[string]any) (sessionplatform.RestoreOptions, *rpcErr) {
-	var opts sessionplatform.RestoreOptions
-	if v, present := obj["doubleMemory"]; present && v != nil {
-		b, ok := v.(bool)
-		if !ok {
-			return opts, errf(-32602, "doubleMemory must be a boolean")
-		}
-		opts.DoubleMemory = &b
+// memoryMultiplierArg reads the optional memoryMultiplier of session_create,
+// session_restore and session_recover: one of the control plane's tiers.
+func memoryMultiplierArg(obj map[string]any) (*int, *rpcErr) {
+	v, present := obj["memoryMultiplier"]
+	if !present || v == nil {
+		return nil, nil
 	}
-	return opts, nil
+	n, ok := intValue(v)
+	if !ok || (n != 1 && n != 2 && n != 4 && n != 8) {
+		return nil, errf(-32602, "memoryMultiplier must be one of 1, 2, 4, 8")
+	}
+	m := int(n)
+	return &m, nil
+}
+
+// restoreOptions reads session_restore's and session_recover's optional
+// memoryMultiplier. Unlike session_create, 1 is kept: it lowers the tier.
+func restoreOptions(obj map[string]any) (sessionplatform.RestoreOptions, *rpcErr) {
+	m, rerr := memoryMultiplierArg(obj)
+	return sessionplatform.RestoreOptions{MemoryMultiplier: m}, rerr
 }
 
 func (h *Handler) sessionRecover(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
