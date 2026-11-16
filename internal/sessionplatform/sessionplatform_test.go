@@ -1083,13 +1083,13 @@ func TestUnavailableRefusesCreateAndDelete(t *testing.T) {
 	if err := svc.DeleteSession(context.Background(), "s-1"); !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("DeleteSession = %v, want a kindUnavailable *Error", err)
 	}
-	if got, err := svc.RecoverSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+	if got, err := svc.RecoverSession(context.Background(), "s-1", RestoreOptions{}); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("RecoverSession = (%+v, %v), want a kindUnavailable *Error", got, err)
 	}
 	if got, err := svc.ArchiveSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("ArchiveSession = (%+v, %v), want a kindUnavailable *Error", got, err)
 	}
-	if got, err := svc.RestoreSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
+	if got, err := svc.RestoreSession(context.Background(), "s-1", RestoreOptions{}); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
 		t.Fatalf("RestoreSession = (%+v, %v), want a kindUnavailable *Error", got, err)
 	}
 	if got, err := svc.GetSession(context.Background(), "s-1"); got != nil || !errors.As(err, &e) || e.kind != kindUnavailable {
@@ -1100,7 +1100,7 @@ func TestUnavailableRefusesCreateAndDelete(t *testing.T) {
 func TestRecoverSessionIssuesOnePostAndReturnsTheSession(t *testing.T) {
 	c, seen := lifecycleStub(t, http.StatusOK, createdShell, 0)
 
-	got, err := c.RecoverSession(context.Background(), "s-9")
+	got, err := c.RecoverSession(context.Background(), "s-9", RestoreOptions{})
 	if err != nil {
 		t.Fatalf("RecoverSession: %v", err)
 	}
@@ -1126,7 +1126,7 @@ func TestRecoverSessionRefusalsAreDistinct(t *testing.T) {
 	} {
 		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
 
-		_, err := c.RecoverSession(context.Background(), "s-1")
+		_, err := c.RecoverSession(context.Background(), "s-1", RestoreOptions{})
 		var e *Error
 		if !errors.As(err, &e) || e.kind != tc.kind {
 			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
@@ -1146,7 +1146,7 @@ func TestRecoverSessionRefusalsAreDistinct(t *testing.T) {
 func TestRecoverSessionRejectsEmptyIDBeforeTheWire(t *testing.T) {
 	c, seen := lifecycleStub(t, http.StatusOK, createdShell, 0)
 
-	_, err := c.RecoverSession(context.Background(), "")
+	_, err := c.RecoverSession(context.Background(), "", RestoreOptions{})
 	var e *Error
 	if !errors.As(err, &e) || e.kind != kindInvalidArgument || len(*seen) != 0 {
 		t.Fatalf("err = %v, requests = %+v; want a local invalid argument and no request", err, *seen)
@@ -1243,7 +1243,7 @@ const restoredShell = `{"id":"s-9","name":"scratch","workloadType":"shell","stat
 func TestRestoreSessionIssuesOneSwitchAndReturnsTheActiveSession(t *testing.T) {
 	c, seen := lifecycleStub(t, http.StatusOK, restoredShell, 0)
 
-	got, err := c.RestoreSession(context.Background(), "s-9")
+	got, err := c.RestoreSession(context.Background(), "s-9", RestoreOptions{})
 	if err != nil {
 		t.Fatalf("RestoreSession: %v", err)
 	}
@@ -1263,12 +1263,13 @@ func TestRestoreSessionRefusalsAreDistinct(t *testing.T) {
 	}{
 		{status: http.StatusNotFound, kind: kindNotFound},
 		{status: http.StatusConflict, kind: kindConflict},
+		{status: http.StatusUnprocessableEntity, kind: kindInvalidArgument},
 		{status: http.StatusServiceUnavailable, kind: kindUnavailable},
 		{status: http.StatusInternalServerError, kind: kindAPI},
 	} {
 		c, _ := lifecycleStub(t, tc.status, `{"error":"refused"}`, 0)
 
-		_, err := c.RestoreSession(context.Background(), "s-1")
+		_, err := c.RestoreSession(context.Background(), "s-1", RestoreOptions{})
 		var e *Error
 		if !errors.As(err, &e) || e.kind != tc.kind {
 			t.Fatalf("status %d: error = %v, want kind %d", tc.status, err, tc.kind)
@@ -1298,5 +1299,35 @@ func TestGetSessionIssuesOneGet(t *testing.T) {
 	var e *Error
 	if !errors.As(err, &e) || e.kind != kindNotFound {
 		t.Fatalf("missing session: error = %v, want kindNotFound", err)
+	}
+}
+
+// Restore and recover send doubleMemory only when it is given, and send false
+// too, since false lowers a doubled session's tier.
+func TestRestoreAndRecoverSendDoubleMemory(t *testing.T) {
+	on, off := true, false
+	for _, tc := range []struct {
+		opts RestoreOptions
+		want string
+	}{
+		{opts: RestoreOptions{DoubleMemory: &on}, want: `{"doubleMemory":true}`},
+		{opts: RestoreOptions{DoubleMemory: &off}, want: `{"doubleMemory":false}`},
+		{opts: RestoreOptions{}, want: ""},
+	} {
+		c, seen := lifecycleStub(t, http.StatusOK, restoredShell, 0)
+		if _, err := c.RestoreSession(context.Background(), "s-9", tc.opts); err != nil {
+			t.Fatalf("RestoreSession: %v", err)
+		}
+		if _, err := c.RecoverSession(context.Background(), "s-9", tc.opts); err != nil {
+			t.Fatalf("RecoverSession: %v", err)
+		}
+		if len(*seen) != 2 || (*seen)[0].path != sessionsPath+"/s-9/switch" || (*seen)[1].path != sessionsPath+"/s-9/recover" {
+			t.Fatalf("requests = %+v", *seen)
+		}
+		for _, r := range *seen {
+			if r.body != tc.want {
+				t.Fatalf("%s body = %q, want %q", r.path, r.body, tc.want)
+			}
+		}
 	}
 }

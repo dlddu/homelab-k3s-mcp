@@ -198,9 +198,9 @@ type CreateRequest struct {
 type Service interface {
 	CreateSession(ctx context.Context, req CreateRequest) (*Session, error)
 	DeleteSession(ctx context.Context, id string) error
-	RecoverSession(ctx context.Context, id string) (*Session, error)
+	RecoverSession(ctx context.Context, id string, opts RestoreOptions) (*Session, error)
 	ArchiveSession(ctx context.Context, id string) (*Session, error)
-	RestoreSession(ctx context.Context, id string) (*Session, error)
+	RestoreSession(ctx context.Context, id string, opts RestoreOptions) (*Session, error)
 	GetSession(ctx context.Context, id string) (*Session, error)
 	ListSessions(ctx context.Context) ([]Session, error)
 	ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error)
@@ -231,7 +231,7 @@ func (u *Unavailable) DeleteSession(context.Context, string) error {
 }
 
 // RecoverSession always fails with the configured reason.
-func (u *Unavailable) RecoverSession(context.Context, string) (*Session, error) {
+func (u *Unavailable) RecoverSession(context.Context, string, RestoreOptions) (*Session, error) {
 	return nil, unavailable(u.reason)
 }
 
@@ -241,7 +241,7 @@ func (u *Unavailable) ArchiveSession(context.Context, string) (*Session, error) 
 }
 
 // RestoreSession always fails with the configured reason.
-func (u *Unavailable) RestoreSession(context.Context, string) (*Session, error) {
+func (u *Unavailable) RestoreSession(context.Context, string, RestoreOptions) (*Session, error) {
 	return nil, unavailable(u.reason)
 }
 
@@ -381,16 +381,43 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 	return nil
 }
 
+// RestoreOptions is what a restore from snapshot may change (session-platform
+// `control-plane/api/openapi.yaml` `RestoreRequest`). A nil field is left out
+// of the request, so the session keeps what it has.
+type RestoreOptions struct {
+	// DoubleMemory sets the memory tier of the restored pod. Unlike create,
+	// false is sent too: it lowers a doubled session back to the default.
+	DoubleMemory *bool
+}
+
+// restoreRequest builds a restore or recover POST: no body when opts asks
+// for nothing, exactly as before RestoreOptions existed.
+func restoreRequest(ctx context.Context, endpoint string, opts RestoreOptions) (*http.Request, error) {
+	if opts.DoubleMemory == nil {
+		return http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	}
+	body, err := json.Marshal(map[string]bool{"doubleMemory": *opts.DoubleMemory})
+	if err != nil {
+		return nil, err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	return req, nil
+}
+
 // RecoverSession brings a deleted session back from its last snapshot
 // (session-platform AC-B4). It provisions a pod like a create, so it gets the
 // create client's timeout.
-func (c *Client) RecoverSession(ctx context.Context, id string) (*Session, error) {
+func (c *Client) RecoverSession(ctx context.Context, id string, opts RestoreOptions) (*Session, error) {
 	if id == "" {
 		return nil, invalidArgument("session id is required")
 	}
 
 	endpoint := c.endpoint + recoverPath(id)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	req, err := restoreRequest(ctx, endpoint, opts)
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
@@ -464,13 +491,13 @@ func (c *Client) ArchiveSession(ctx context.Context, id string) (*Session, error
 // RestoreSession brings a snapshotted session back into a fresh pod and
 // returns it active; an idle session is promoted and an active one comes back
 // unchanged (session-platform AC-C4's switch).
-func (c *Client) RestoreSession(ctx context.Context, id string) (*Session, error) {
+func (c *Client) RestoreSession(ctx context.Context, id string, opts RestoreOptions) (*Session, error) {
 	if id == "" {
 		return nil, invalidArgument("session id is required")
 	}
 
 	endpoint := c.endpoint + switchPath(id)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
+	req, err := restoreRequest(ctx, endpoint, opts)
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}
@@ -488,6 +515,9 @@ func (c *Client) RestoreSession(ctx context.Context, id string) (*Session, error
 		return nil, notFound(fmt.Sprintf("session %q: %s", id, message))
 	case resp.StatusCode == http.StatusConflict:
 		return nil, conflict(fmt.Sprintf("session %q: %s", id, message))
+	case resp.StatusCode == http.StatusUnprocessableEntity:
+		// A live session asked for the other memory tier: nothing changed.
+		return nil, invalidArgument(fmt.Sprintf("session %q: %s", id, message))
 	case resp.StatusCode == http.StatusServiceUnavailable:
 		return nil, unavailable(message)
 	case resp.StatusCode < 200 || resp.StatusCode >= 300:

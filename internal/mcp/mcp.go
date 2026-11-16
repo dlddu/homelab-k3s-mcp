@@ -1099,6 +1099,20 @@ func (h *Handler) sessionDelete(ctx context.Context, raw json.RawMessage) (any, 
 	return successResult(map[string]any{"id": *id, "deleted": true}), nil
 }
 
+// restoreOptions reads session_restore's and session_recover's optional
+// doubleMemory. Unlike session_create, false is kept: it lowers the tier.
+func restoreOptions(obj map[string]any) (sessionplatform.RestoreOptions, *rpcErr) {
+	var opts sessionplatform.RestoreOptions
+	if v, present := obj["doubleMemory"]; present && v != nil {
+		b, ok := v.(bool)
+		if !ok {
+			return opts, errf(-32602, "doubleMemory must be a boolean")
+		}
+		opts.DoubleMemory = &b
+	}
+	return opts, nil
+}
+
 func (h *Handler) sessionRecover(ctx context.Context, raw json.RawMessage) (any, *rpcErr) {
 	obj, ok := decodeObject(raw)
 	if !ok {
@@ -1109,7 +1123,12 @@ func (h *Handler) sessionRecover(ctx context.Context, raw json.RawMessage) (any,
 		return nil, errf(-32602, "id is required")
 	}
 
-	recovered, err := h.sessionPlatform.RecoverSession(ctx, *id)
+	opts, bad := restoreOptions(obj)
+	if bad != nil {
+		return nil, bad
+	}
+
+	recovered, err := h.sessionPlatform.RecoverSession(ctx, *id, opts)
 	if err != nil {
 		return toolError(ctx, err), nil
 	}
@@ -1188,6 +1207,10 @@ func (h *Handler) sessionRestore(ctx context.Context, raw json.RawMessage) (any,
 	if id == nil {
 		return nil, errf(-32602, "id is required")
 	}
+	opts, bad := restoreOptions(obj)
+	if bad != nil {
+		return nil, bad
+	}
 
 	// Detached for the same reason as session_create and session_archive: a
 	// restore waits for a fresh pod and the archive, which can outlast the
@@ -1200,7 +1223,7 @@ func (h *Handler) sessionRestore(ctx context.Context, raw json.RawMessage) (any,
 	done := make(chan outcome, 1)
 	started := time.Now()
 	go func() {
-		restored, err := h.sessionPlatform.RestoreSession(context.WithoutCancel(ctx), *id)
+		restored, err := h.sessionPlatform.RestoreSession(context.WithoutCancel(ctx), *id, opts)
 		done <- outcome{restored, err}
 	}()
 

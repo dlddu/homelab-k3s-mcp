@@ -343,8 +343,10 @@ type fakeSessionPlatform struct {
 	createCalls  []sessionplatform.CreateRequest
 	deleteCalls  []string
 	recoverCalls []string
+	recoverOpts  []sessionplatform.RestoreOptions
 	archiveCalls []string
 	restoreCalls []string
+	restoreOpts  []sessionplatform.RestoreOptions
 	getCalls     []string
 	listCalls    int
 	readCalls    []readCall
@@ -381,10 +383,11 @@ func (f *fakeSessionPlatform) DeleteSession(_ context.Context, id string) error 
 	return nil
 }
 
-func (f *fakeSessionPlatform) RecoverSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+func (f *fakeSessionPlatform) RecoverSession(_ context.Context, id string, opts sessionplatform.RestoreOptions) (*sessionplatform.Session, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.recoverCalls = append(f.recoverCalls, id)
+	f.recoverOpts = append(f.recoverOpts, opts)
 	if f.recoverResponse != nil {
 		return f.recoverResponse(id)
 	}
@@ -402,9 +405,10 @@ func (f *fakeSessionPlatform) ArchiveSession(_ context.Context, id string) (*ses
 	return &sessionplatform.Session{ID: id, Name: "archived", State: "snapshot"}, nil
 }
 
-func (f *fakeSessionPlatform) RestoreSession(_ context.Context, id string) (*sessionplatform.Session, error) {
+func (f *fakeSessionPlatform) RestoreSession(_ context.Context, id string, opts sessionplatform.RestoreOptions) (*sessionplatform.Session, error) {
 	f.mu.Lock()
 	f.restoreCalls = append(f.restoreCalls, id)
+	f.restoreOpts = append(f.restoreOpts, opts)
 	respond := f.restoreResponse
 	f.mu.Unlock()
 	if respond != nil {

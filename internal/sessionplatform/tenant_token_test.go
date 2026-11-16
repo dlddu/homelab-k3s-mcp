@@ -74,8 +74,8 @@ func TestTenantTokenIsSentOnEveryControlPlaneCall(t *testing.T) {
 	// The lifecycle calls go out on their own http.Client (archive and restore
 	// carry longer budgets), so "every call" has to name them too.
 	_, _ = c.ArchiveSession(ctx, "id")
-	_, _ = c.RestoreSession(ctx, "id")
-	_, _ = c.RecoverSession(ctx, "id")
+	_, _ = c.RestoreSession(ctx, "id", RestoreOptions{})
+	_, _ = c.RecoverSession(ctx, "id", RestoreOptions{})
 
 	headers, _ := rec.seen()
 	if len(headers) != 9 {
