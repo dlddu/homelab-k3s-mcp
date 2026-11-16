@@ -140,3 +140,17 @@ session-platform 제어면에 새 세션을 만드는 도구. 세션마다 전�
   답하는 생성은 `pending` 없이 활성 세션을 돌려줌을 확인한다. `pending`으로 답한 생성이 진행 중이면
   `session_list`의 `pendingCreates`에 `starting`으로, 제어면이 실패로 답하면 `failed`와 오류로, 성공하면
   `created`와 `id`로 나타나고, 상한 안에 끝난 생성만 있었으면 `pendingCreates`가 없음을 확인한다.
+
+### AC8: 메모리 2배 옵션을 그대로 전달한다
+- **설명**: `doubleMemory`(선택, boolean)는 그 세션의 워크로드 컨테이너 메모리 request/limit을
+  플랫폼 기본값의 두 배로 올리는 제어면 옵션이고(session-platform `control-plane/api/openapi.yaml`의
+  `CreateSessionRequest.doubleMemory`, PR dlddu/session-platform#226), `POST /api/v1/sessions`에 **받은
+  값 그대로** 실린다. 생략하거나 `false`를 주면 요청 본문에 필드가 없고(AC6의 `plugins`와 같은
+  omitempty 계약) 제어면의 기본 메모리가 적용된다 — 기존 호출자의 동작은 바뀌지 않는다. boolean이
+  아닌 값(문자열·숫자 등)은 제어면에 보내기 **전에** 인자 오류(`-32602`)로 거부한다 — AC2와 같은 자리.
+  반환된 세션은 그 값이 `true`일 때만 `doubleMemory`를 담는다(제어면이 `true`일 때만 싣는 것과 같다).
+  CPU는 이 옵션의 범위가 아니다 — 제어면도 CPU는 건드리지 않는다.
+- **달성 가치**: V5
+- **검증 방법**: `doubleMemory: true`를 준 호출의 제어면 요청 본문에 `doubleMemory: true`가 있고
+  반환 세션에도 같은 값이 있으며, 생략한 호출의 본문에는 필드가 없고, 문자열·숫자 값은 요청 0건으로
+  `-32602`임을 확인한다.
