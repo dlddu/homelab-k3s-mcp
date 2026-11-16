@@ -10,8 +10,8 @@ session-platform 세션의 워크로드에 입력을 주입하는 도구.
   기본값이다.
 
 ## 도구 개요
-- 입력: `id`(필수 — 세션 id), `payload`(필수 — 주입할 입력), `permissionMode`(선택 —
-  `claude-code` 턴의 권한 모드 `auto`·`acceptEdits`, 생략 시 `auto`, AC6)
+- 입력: `id`(필수 — 세션 id), `payload`(필수 — 주입할 입력), `toolApprovals`(선택 —
+  `claude-code` 턴의 도구 호출을 세션 소유자의 결정에 건다, 생략 시 걸지 않는다, AC6)
 - 동작: 제어면에 write를 요청한다. 워크로드 타입에 따라 의미가 다르다 — `shell`은 PTY
   stdin 주입(명령·키 입력), `claude-code`는 프롬프트 1회 실행을 큐에 넣는다. 두 타입 모두
   **비블로킹**으로 반환하므로, 실행 결과는 이후 `session_read`로 회수한다.
@@ -76,17 +76,24 @@ session-platform 세션의 워크로드에 입력을 주입하는 도구.
 - **달성 가치**: V3
 - **검증 방법**: 관련 env가 비어 있을 때 unavailable 에러가 반환되고 서버는 계속 동작한다.
 
-### AC6: claude-code 턴의 권한 모드를 그대로 전달한다
-- **설명**: `permissionMode`(선택)는 그 write가 큐에 넣는 **`claude-code` 한 턴**의 권한 모드이고, 제어면의
-  `POST /api/v1/sessions/{id}/write` 본문에 `payload` 옆에 **받은 값 그대로** 실린다(session-platform
-  `docs/prd/claude-code-workload.md` AC-E2). 값은 `auto`(생략 시의 디폴트 — 설정 규칙이 정하지 않은 도구
-  요청을 Claude Code 의 모델 분류기가 판정)와 `acceptEdits`(파일 편집을 묻지 않고 수락)이고, 그 턴에만 적용된다 —
-  모드 없는 다음 write 는 다시 `auto`다. 생략하면 요청 본문에 필드가 없다. 허용값과 타입별 허용(`claude-code`
-  밖 타입의 모드 거부)은 이 서버가 갖지 않고 제어면이 판정한다 — 그 400은 AC4의 다른 거부처럼 `invalid argument`
-  로 전달되며, 제어면은 활성화 **전에** 거부하므로 거부된 write 가 스냅샷을 복원하지 않는다. `null`은 다른 인자와
-  같이 생략으로 읽는다. 다만 빈 문자열은 요청 본문에서 사라져 조용히 「디폴트」가 되므로, 문자열이 아닌 값과 함께
-  제어면에 보내기 **전에** 인자 오류(`-32602`)로 거부한다. `tools/list`의 입력 스키마는 두 값을 `enum`으로 광고한다.
+### AC6: claude-code 턴의 도구 승인 선택을 그대로 전달한다
+- **설명**: `toolApprovals`(선택)는 그 write 가 큐에 넣는 **`claude-code` 한 턴**의 도구 호출을 **세션
+  소유자의 결정**에 거는 선택이고, 제어면의 `POST /api/v1/sessions/{id}/write` 본문에 `payload` 옆에
+  실린다(session-platform `docs/prd/claude-code-workload.md` AC-E2 「턴 중 도구 승인」). `true`면 그 턴은
+  정책이 허용하는 호출마다 멈춰 소유자의 승인·거절을 기다리고, 기다리는 호출은 `session_tool_approvals`로
+  읽고 `session_tool_approval_decide`로 결정한다(`prd-session-tool-approvals`). 그 턴에만 적용된다 —
+  선택 없는 다음 write 는 다시 플랫폼의 방식으로 돈다. **정책을 넓히지 않는다**: 정책이 거부하는 호출은
+  사람에게 가지 않고 그대로 거부된다. 생략·`false`·`null`은 모두 요청 본문에 필드가 없는 같은 요청이다.
+  타입별 허용(`claude-code` 밖 타입의 거부)은 이 서버가 갖지 않고 제어면이 판정하며, 그 400은 AC4 의 다른
+  거부처럼 `invalid argument`로 전달되고 제어면은 활성화 **전에** 거부하므로 거부된 write 가 스냅샷을
+  복원하지 않는다. 불리언이 아닌 값은 제어면에 보내기 **전에** 인자 오류(`-32602`)로 거부한다 — 턴이
+  조용히 선택 없이 도는 일이 없어야 한다. `tools/list` 의 입력 스키마는 이 인자를 `boolean`으로 광고하고,
+  철회된 `permissionMode`는 더 이상 광고하지 않는다.
 - **달성 가치**: V5
-- **검증 방법**: `permissionMode`를 준 호출의 제어면 요청 본문에 `payload`와 같은 값의 `permissionMode`가 있고,
-  생략·`null` 호출의 본문에는 `permissionMode`가 없으며, 빈 문자열·숫자는 요청 0건으로 `-32602`이고,
-  `tools/list`의 `permissionMode` 스키마가 `enum: [auto, acceptEdits]`임을 확인한다.
+- **검증 방법**: `toolApprovals: true` 를 준 호출의 제어면 요청 본문에 `"toolApprovals":true` 가 있고,
+  생략·`null`·`false` 호출의 본문에는 그 필드가 없으며, 문자열·숫자는 요청 0건으로 `-32602` 이고,
+  `tools/list` 의 `toolApprovals` 스키마가 `boolean` 이고 `permissionMode` 가 없음을 확인한다.
+
+> *2026-11-16 개정*: 이 AC 는 본래 `permissionMode`(`auto`·`acceptEdits`)를 전달했다. session-platform 이
+> 2026-11-15 턴 단위 권한 모드 선택을 철회해(모든 턴이 `auto` 고정) 그 인자는 제어면에 존재하지 않게 됐고,
+> 같은 자리에 들어온 턴의 유일한 선택이 `toolApprovals` 다.

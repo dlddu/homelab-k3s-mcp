@@ -111,7 +111,8 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"github_commit_status_request",
 		"aws_config_get", "grafana_token",
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
-		"session_create", "session_list", "session_read", "session_write", "session_delete",
+		"session_create", "session_list", "session_read", "session_write",
+		"session_tool_approvals", "session_tool_approval_decide", "session_delete",
 		"session_recover", "session_archive", "session_restore", "pocket_aide_notification_send", "drop_token_issue",
 	}
 	if len(tools) != len(want) {
@@ -1532,9 +1533,11 @@ func TestToolsListAdvertisesSessionWrite(t *testing.T) {
 	if _, ok := props["payload"]; !ok {
 		t.Fatalf("inputSchema is missing payload: %v", props)
 	}
-	modes, _ := at(t, write, "inputSchema", "properties", "permissionMode", "enum").([]any)
-	if len(modes) != 2 || modes[0] != "auto" || modes[1] != "acceptEdits" {
-		t.Fatalf("permissionMode enum = %v, want [auto acceptEdits]", modes)
+	if at(t, write, "inputSchema", "properties", "toolApprovals", "type") != "boolean" {
+		t.Fatalf("toolApprovals must be a boolean: %v", props)
+	}
+	if _, ok := props["permissionMode"]; ok {
+		t.Fatalf("permissionMode was withdrawn upstream and must not be offered: %v", props)
 	}
 	required, _ := at(t, write, "inputSchema", "required").([]any)
 	if len(required) != 2 || !contains([]string{fmt.Sprint(required[0]), fmt.Sprint(required[1])}, "id") ||
@@ -1588,29 +1591,30 @@ func TestSessionWriteReturnsBranchAndSession(t *testing.T) {
 	}
 }
 
-// session-platform AC-E2 through this tool: the mode reaches the control plane
-// as given, and a write without one carries none.
-func TestSessionWritePassesPermissionModeThrough(t *testing.T) {
+// session-platform AC-E2 through this tool: the turn's choice reaches the
+// control plane as given, and a write that does not ask for it carries none.
+func TestSessionWritePassesToolApprovalsThrough(t *testing.T) {
 	fake := &fakeSessionPlatform{}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
 
 	for i, args := range []map[string]any{
-		{"id": "s-3", "payload": "edit it", "permissionMode": "acceptEdits"},
+		{"id": "s-3", "payload": "edit it", "toolApprovals": true},
 		{"id": "s-3", "payload": "plain"},
-		{"id": "s-3", "payload": "null mode", "permissionMode": nil},
+		{"id": "s-3", "payload": "null ask", "toolApprovals": nil},
+		{"id": "s-3", "payload": "explicit false", "toolApprovals": false},
 	} {
 		body := callTool(t, app, 200+i, "session_write", args)
 		if at(t, body, "result", "isError") != false {
 			t.Fatalf("call %d isError = %v", i, at(t, body, "result", "isError"))
 		}
 	}
-	want := []string{"acceptEdits", "", ""}
+	want := []bool{true, false, false, false}
 	if len(fake.writeCalls) != len(want) {
 		t.Fatalf("writeCalls = %+v, want %d", fake.writeCalls, len(want))
 	}
 	for i, call := range fake.writeCalls {
-		if call.permissionMode != want[i] {
-			t.Fatalf("writeCalls[%d].permissionMode = %q, want %q", i, call.permissionMode, want[i])
+		if call.toolApprovals != want[i] {
+			t.Fatalf("writeCalls[%d].toolApprovals = %v, want %v", i, call.toolApprovals, want[i])
 		}
 	}
 }
@@ -1629,9 +1633,9 @@ func TestSessionWriteRejectsBadArguments(t *testing.T) {
 		{name: "null payload", args: map[string]any{"id": "s-1", "payload": nil}, want: "payload is required"},
 		{name: "numeric payload", args: map[string]any{"id": "s-1", "payload": 12}, want: "payload must be a string"},
 		{name: "object payload", args: map[string]any{"id": "s-1", "payload": map[string]any{}}, want: "payload must be a string"},
-		// An empty mode would vanish under omitempty and silently mean "auto".
-		{name: "empty permission mode", args: map[string]any{"id": "s-1", "payload": "x", "permissionMode": ""}, want: "permissionMode must be a non-empty string"},
-		{name: "numeric permission mode", args: map[string]any{"id": "s-1", "payload": "x", "permissionMode": 1}, want: "permissionMode must be a non-empty string"},
+		// Anything but a bool is a mistake, not an ask the turn runs without.
+		{name: "string tool approvals", args: map[string]any{"id": "s-1", "payload": "x", "toolApprovals": "true"}, want: "toolApprovals must be a boolean"},
+		{name: "numeric tool approvals", args: map[string]any{"id": "s-1", "payload": "x", "toolApprovals": 1}, want: "toolApprovals must be a boolean"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			fake := &fakeSessionPlatform{}

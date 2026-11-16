@@ -979,7 +979,7 @@ const toolsListJSON = `{
     },
     {
       "name": "session_write",
-      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive for an idle session: like session_read it promotes it to active first. An archived (snapshot) session is refused, not restored: call session_restore first and write once session_list reports it active. The branch that served the call is reported as 'path' ('active' or 'idle->active->write') and the session is returned as it stands after the write, so a write that woke a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, an archived session is refused without anything being sent, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. For a 'claude-code' session, 'permissionMode' picks the permission mode of the one turn this write queues ('auto' or 'acceptEdits'); omitted, the turn runs in auto, and the next write without it runs in auto again. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "description": "Inject input into a session-platform session's workload. What the payload means depends on the session's workloadType: for 'shell' it is written to the PTY's stdin (a command, or keystrokes), for 'claude-code' it is queued as one prompt run. Either way the call is NON-BLOCKING — it returns once the control plane accepts the payload, not once the workload finishes — so the response carries no output and anything produced in response is recovered afterwards with session_read. Writing is NOT passive for an idle session: like session_read it promotes it to active first. An archived (snapshot) session is refused, not restored: call session_restore first and write once session_list reports it active. The branch that served the call is reported as 'path' ('active' or 'idle->active->write') and the session is returned as it stands after the write, so a write that woke a parked session is never silent. Refusals arrive distinguished: an unknown id is a not-found error, an archived session is refused without anything being sent, a payload over the per-write limit (1 MiB per claude-code prompt) and an exhausted output quota are both permanent (retrying will not help, and existing output stays readable), while a full prompt queue is the one refusal worth retrying once a queued prompt finishes. For a 'claude-code' session, 'toolApprovals': true asks for every tool call of the one turn this write queues that the platform policy allows to wait for YOUR decision — the turn stops at each such call until you approve or deny it with session_tool_approval_decide, and session_tool_approvals is where you read what is waiting. It does not widen the policy: calls the policy denies stay denied and never reach you. Omitted or false runs the turn the platform's own way, and the next write without it does too. Asking it of any other workload type is refused with an invalid-argument error and nothing is written. Requires SESSION_PLATFORM_ENDPOINT on the server.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -991,10 +991,9 @@ const toolsListJSON = `{
             "type": "string",
             "description": "Raw workload input. For a 'shell' session this goes to the PTY stdin, so include a trailing newline to submit a command. For a 'claude-code' session this is one prompt, limited to 1 MiB of UTF-8 bytes."
           },
-          "permissionMode": {
-            "type": "string",
-            "enum": ["auto", "acceptEdits"],
-            "description": "Permission mode of the one 'claude-code' turn this write queues. 'auto' (the default when omitted) lets Claude Code's model classifier approve or deny the tool requests the platform's settings leave open; 'acceptEdits' accepts file edits without asking. It applies to this turn only. The control plane refuses any other value, a mode on a session of another workload type, and an empty string, without activating the session. Null is the same as omitting it, as for the other arguments."
+          "toolApprovals": {
+            "type": "boolean",
+            "description": "Ask for the tool calls of the one 'claude-code' turn this write queues to wait for the session owner's decision. true stops the turn at every call the platform policy allows until it is decided (read them with session_tool_approvals, decide with session_tool_approval_decide); the policy's own denials are unaffected and never put to a person. It applies to this turn only — the next write without it runs the platform's own way. The control plane refuses it on a session of another workload type without activating the session. Null is the same as omitting it, as for the other arguments."
           }
         },
         "required": ["id", "payload"],
@@ -1002,6 +1001,71 @@ const toolsListJSON = `{
       },
       "annotations": {
         "title": "Write to Session",
+        "readOnlyHint": false,
+        "destructiveHint": true,
+        "idempotentHint": false,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "session_tool_approvals",
+      "description": "List the tool calls a 'claude-code' session's running turn has put to you for a decision. Only a turn queued by a session_write with 'toolApprovals': true stops this way, and only the calls the platform policy already allows reach you — a call the policy denies is denied without asking anyone, so nothing here is a way around it. Each entry carries the tool, the arguments THE MODEL asked for (an approval runs them unchanged — there is no way to edit them), 'argsHash' (a sha256 over the tool and those arguments), 'toolUseId' and 'expiresAt'; the response also carries 'epoch', which names the run of the session these calls were put up in. Pass the entry's 'id', its 'argsHash' and that 'epoch' to session_tool_approval_decide: that is how a decision is bound to the exact call you read. This call is PASSIVE — like session_list it never promotes an idle session, never restores a snapshot and does not count as an access; a session with no live pod has no running turn, so it lists nothing. The list is a point in time: a call disappears from it once decided, once its turn ends, once a snapshot closes it, or once its window passes, so read it again rather than caching ids. Refusals arrive distinguished: an unknown id is a not-found error, and a session of another workload type is an invalid-argument error. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list."
+          }
+        },
+        "required": ["id"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "List Waiting Tool Calls",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "session_tool_approval_decide",
+      "description": "Approve or deny one tool call a 'claude-code' session's running turn is waiting on. An approval lets that one call run with the arguments the model made, unchanged; a denial refuses it with your 'reason', which the model receives as the tool's result. Either way the turn goes on with the decision inside the same turn, and the session's output records what was asked, who decided and the 'note'. The decision is BOUND to the call you read: pass the 'id', the 'argsHash' and the 'epoch' exactly as session_tool_approvals reported them. A mismatch is refused rather than applied — a conflict error means the model has changed that call's arguments since you read them, or the session has restarted/been restored into a new run, and the fix is to list again and decide on what is waiting now. A call that is no longer waiting (already decided, closed with its turn, or past its window) is a not-found error, so a repeated decision changes nothing. One decision per call; there is no bulk form and no standing approval. Deciding counts as an access, like a write. Who decided is recorded as the identity this server authenticates as, not anything passed here. Requires SESSION_PLATFORM_ENDPOINT on the server.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Session id, as reported by session_list."
+          },
+          "approvalId": {
+            "type": "string",
+            "description": "The waiting call's 'id' from session_tool_approvals ('ap_' and 16 hex digits)."
+          },
+          "decision": {
+            "type": "string",
+            "enum": ["approve", "deny"],
+            "description": "'approve' runs the call as the model made it; 'deny' refuses it and the model gets the reason as the tool's result."
+          },
+          "argsHash": {
+            "type": "string",
+            "description": "The 'argsHash' session_tool_approvals reported for this call. It binds the decision to the arguments you actually read."
+          },
+          "epoch": {
+            "type": "string",
+            "description": "The 'epoch' session_tool_approvals reported with the list. It binds the decision to the run of the session that put the call up."
+          },
+          "note": {
+            "type": "string",
+            "description": "Why, for the session's record; on a denial the model receives it as the tool's result. Optional. (Named 'note' rather than 'reason' because this server reserves 'reason' for the approval gate's own argument.)"
+          }
+        },
+        "required": ["id", "approvalId", "decision", "argsHash", "epoch"],
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Decide a Waiting Tool Call",
         "readOnlyHint": false,
         "destructiveHint": true,
         "idempotentHint": false,

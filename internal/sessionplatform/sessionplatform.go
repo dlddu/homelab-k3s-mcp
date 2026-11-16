@@ -166,11 +166,13 @@ type WriteResult struct {
 
 // WriteOptions are a write's optional choices beside its payload.
 type WriteOptions struct {
-	// PermissionMode is the permission mode of the one claude-code turn the
-	// write queues (session-platform AC-E2): "auto" or "acceptEdits". Empty
-	// sends nothing and the turn runs in auto. The control plane judges the
-	// value and the session's type.
-	PermissionMode string
+	// ToolApprovals asks for every tool call of the one claude-code turn the
+	// write queues that the platform policy allows to wait for the session
+	// owner's decision (session-platform AC-E2, 「턴 중 도구 승인」). false
+	// sends nothing and the turn's calls are decided by the policy alone. The
+	// control plane judges the session's type and refuses the ask on any other
+	// workload without writing anything.
+	ToolApprovals bool
 }
 
 type CreateRequest struct {
@@ -204,6 +206,10 @@ type Service interface {
 	ListSessions(ctx context.Context) ([]Session, error)
 	ReadSession(ctx context.Context, id string, offset int64) (*ReadResult, error)
 	WriteSession(ctx context.Context, id, payload string, opts WriteOptions) (*WriteResult, error)
+	// ToolApprovals is a passive read like ListSessions; DecideToolApproval is
+	// an access like WriteSession (tool_approvals.go).
+	ToolApprovals(ctx context.Context, id string) (*ToolApprovalPage, error)
+	DecideToolApproval(ctx context.Context, id, approvalID string, decision ToolApprovalDecision) error
 }
 
 // Unavailable is a Service that fails every call with the same reason.
@@ -260,6 +266,14 @@ func (u *Unavailable) ReadSession(context.Context, string, int64) (*ReadResult, 
 }
 
 // WriteSession always fails with the configured reason.
+func (u *Unavailable) ToolApprovals(context.Context, string) (*ToolApprovalPage, error) {
+	return nil, unavailable(u.reason)
+}
+
+func (u *Unavailable) DecideToolApproval(context.Context, string, string, ToolApprovalDecision) error {
+	return unavailable(u.reason)
+}
+
 func (u *Unavailable) WriteSession(context.Context, string, string, WriteOptions) (*WriteResult, error) {
 	return nil, unavailable(u.reason)
 }
@@ -653,9 +667,9 @@ func (c *Client) WriteSession(ctx context.Context, id, payload string, opts Writ
 
 	endpoint := c.endpoint + writePath(id)
 	body, err := json.Marshal(struct {
-		Payload        string `json:"payload"`
-		PermissionMode string `json:"permissionMode,omitempty"`
-	}{Payload: payload, PermissionMode: opts.PermissionMode})
+		Payload       string `json:"payload"`
+		ToolApprovals bool   `json:"toolApprovals,omitempty"`
+	}{Payload: payload, ToolApprovals: opts.ToolApprovals})
 	if err != nil {
 		return nil, apiError(fmt.Sprintf("build request: %v", err))
 	}

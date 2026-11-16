@@ -332,9 +332,9 @@ type readCall struct {
 }
 
 type writeCall struct {
-	id             string
-	payload        string
-	permissionMode string
+	id            string
+	payload       string
+	toolApprovals bool
 }
 
 type fakeSessionPlatform struct {
@@ -351,16 +351,28 @@ type fakeSessionPlatform struct {
 	listCalls    int
 	readCalls    []readCall
 	writeCalls   []writeCall
+	approvalList []string
+	decideCalls  []decideCall
 
-	createResponse  func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
-	deleteResponse  func(id string) error
-	recoverResponse func(id string) (*sessionplatform.Session, error)
-	archiveResponse func(id string) (*sessionplatform.Session, error)
-	restoreResponse func(id string) (*sessionplatform.Session, error)
-	getResponse     func(id string) (*sessionplatform.Session, error)
-	listResponse    func() ([]sessionplatform.Session, error)
-	readResponse    func(id string, offset int64) (*sessionplatform.ReadResult, error)
-	writeResponse   func(id, payload string) (*sessionplatform.WriteResult, error)
+	createResponse    func(req sessionplatform.CreateRequest) (*sessionplatform.Session, error)
+	deleteResponse    func(id string) error
+	recoverResponse   func(id string) (*sessionplatform.Session, error)
+	archiveResponse   func(id string) (*sessionplatform.Session, error)
+	restoreResponse   func(id string) (*sessionplatform.Session, error)
+	getResponse       func(id string) (*sessionplatform.Session, error)
+	listResponse      func() ([]sessionplatform.Session, error)
+	readResponse      func(id string, offset int64) (*sessionplatform.ReadResult, error)
+	writeResponse     func(id, payload string) (*sessionplatform.WriteResult, error)
+	approvalsResponse func(id string) (*sessionplatform.ToolApprovalPage, error)
+	decideResponse    func(id, approvalID string, decision sessionplatform.ToolApprovalDecision) error
+}
+
+// decideCall is one relayed decision, kept whole: the test asserts that the
+// three things that bind a decision to its call travel unchanged.
+type decideCall struct {
+	id         string
+	approvalID string
+	decision   sessionplatform.ToolApprovalDecision
 }
 
 func (f *fakeSessionPlatform) CreateSession(_ context.Context, req sessionplatform.CreateRequest) (*sessionplatform.Session, error) {
@@ -453,10 +465,30 @@ func (f *fakeSessionPlatform) ReadSession(_ context.Context, id string, offset i
 	}, nil
 }
 
+func (f *fakeSessionPlatform) ToolApprovals(_ context.Context, id string) (*sessionplatform.ToolApprovalPage, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.approvalList = append(f.approvalList, id)
+	if f.approvalsResponse != nil {
+		return f.approvalsResponse(id)
+	}
+	return &sessionplatform.ToolApprovalPage{Epoch: "ep_1111111111111111", Approvals: []sessionplatform.PendingToolApproval{}}, nil
+}
+
+func (f *fakeSessionPlatform) DecideToolApproval(_ context.Context, id, approvalID string, decision sessionplatform.ToolApprovalDecision) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.decideCalls = append(f.decideCalls, decideCall{id: id, approvalID: approvalID, decision: decision})
+	if f.decideResponse != nil {
+		return f.decideResponse(id, approvalID, decision)
+	}
+	return nil
+}
+
 func (f *fakeSessionPlatform) WriteSession(_ context.Context, id, payload string, opts sessionplatform.WriteOptions) (*sessionplatform.WriteResult, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.writeCalls = append(f.writeCalls, writeCall{id: id, payload: payload, permissionMode: opts.PermissionMode})
+	f.writeCalls = append(f.writeCalls, writeCall{id: id, payload: payload, toolApprovals: opts.ToolApprovals})
 	if f.writeResponse != nil {
 		return f.writeResponse(id, payload)
 	}

@@ -282,6 +282,20 @@ var toolRegistry = map[string]toolEntry{
 		}},
 		handle: (*Handler).sessionWrite,
 	},
+	"session_tool_approvals": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "lists a turn's waiting tool calls through the session platform API; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).sessionToolApprovals,
+	},
+	"session_tool_approval_decide": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "relays one decision through the session platform API; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).sessionToolApprovalDecide,
+	},
 
 	"aws_config_get": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
