@@ -228,30 +228,30 @@ func TestSessionReadPassesTheGuardForLiveSessionsAndReportsMissingOnes(t *testin
 	}
 }
 
-// session_restore forwards doubleMemory as given, false included, and refuses
-// a non-boolean before calling the control plane.
-func TestSessionRestorePassesDoubleMemoryThrough(t *testing.T) {
+// session_restore forwards memoryMultiplier as given, 1 included, and refuses
+// anything but a tier before calling the control plane.
+func TestSessionRestorePassesMemoryMultiplierThrough(t *testing.T) {
 	fake := &fakeSessionPlatform{}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
 
-	for i, v := range []any{true, false} {
-		body := callTool(t, app, 330+i, "session_restore", map[string]any{"id": "s-1", "doubleMemory": v})
+	for i, v := range []any{8, 1} {
+		body := callTool(t, app, 330+i, "session_restore", map[string]any{"id": "s-1", "memoryMultiplier": v})
 		if at(t, body, "result", "isError") != false {
-			t.Fatalf("doubleMemory %v: result = %v", v, at(t, body, "result"))
+			t.Fatalf("memoryMultiplier %v: result = %v", v, at(t, body, "result"))
 		}
 	}
 	_ = callTool(t, app, 332, "session_restore", map[string]any{"id": "s-1"})
 	if len(fake.restoreOpts) != 3 ||
-		fake.restoreOpts[0].DoubleMemory == nil || !*fake.restoreOpts[0].DoubleMemory ||
-		fake.restoreOpts[1].DoubleMemory == nil || *fake.restoreOpts[1].DoubleMemory ||
-		fake.restoreOpts[2].DoubleMemory != nil {
-		t.Fatalf("restoreOpts = %+v, want [true false omitted]", fake.restoreOpts)
+		fake.restoreOpts[0].MemoryMultiplier == nil || *fake.restoreOpts[0].MemoryMultiplier != 8 ||
+		fake.restoreOpts[1].MemoryMultiplier == nil || *fake.restoreOpts[1].MemoryMultiplier != 1 ||
+		fake.restoreOpts[2].MemoryMultiplier != nil {
+		t.Fatalf("restoreOpts = %+v, want [8 1 omitted]", fake.restoreOpts)
 	}
 
-	for _, bad := range []any{"yes", 1} {
-		body := callTool(t, app, 333, "session_restore", map[string]any{"id": "s-1", "doubleMemory": bad})
-		if message, _ := at(t, body, "error", "message").(string); !strings.Contains(message, "doubleMemory must be a boolean") {
-			t.Fatalf("doubleMemory %v: error message = %q", bad, message)
+	for _, bad := range []any{"yes", 3, 0, true} {
+		body := callTool(t, app, 333, "session_restore", map[string]any{"id": "s-1", "memoryMultiplier": bad})
+		if message, _ := at(t, body, "error", "message").(string); !strings.Contains(message, "memoryMultiplier must be one of 1, 2, 4, 8") {
+			t.Fatalf("memoryMultiplier %v: error message = %q", bad, message)
 		}
 	}
 	if len(fake.restoreCalls) != 3 {
@@ -259,20 +259,20 @@ func TestSessionRestorePassesDoubleMemoryThrough(t *testing.T) {
 	}
 }
 
-// session_recover takes the same doubleMemory.
-func TestSessionRecoverPassesDoubleMemoryThrough(t *testing.T) {
+// session_recover takes the same memoryMultiplier.
+func TestSessionRecoverPassesMemoryMultiplierThrough(t *testing.T) {
 	fake := &fakeSessionPlatform{}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), fake)
 
-	body := callTool(t, app, 334, "session_recover", map[string]any{"id": "s-1", "doubleMemory": true})
+	body := callTool(t, app, 334, "session_recover", map[string]any{"id": "s-1", "memoryMultiplier": 4})
 	if at(t, body, "result", "isError") != false {
 		t.Fatalf("result = %v", at(t, body, "result"))
 	}
-	if len(fake.recoverOpts) != 1 || fake.recoverOpts[0].DoubleMemory == nil || !*fake.recoverOpts[0].DoubleMemory {
-		t.Fatalf("recoverOpts = %+v, want [true]", fake.recoverOpts)
+	if len(fake.recoverOpts) != 1 || fake.recoverOpts[0].MemoryMultiplier == nil || *fake.recoverOpts[0].MemoryMultiplier != 4 {
+		t.Fatalf("recoverOpts = %+v, want [4]", fake.recoverOpts)
 	}
-	body = callTool(t, app, 335, "session_recover", map[string]any{"id": "s-1", "doubleMemory": "yes"})
-	if message, _ := at(t, body, "error", "message").(string); !strings.Contains(message, "doubleMemory must be a boolean") {
+	body = callTool(t, app, 335, "session_recover", map[string]any{"id": "s-1", "memoryMultiplier": "4"})
+	if message, _ := at(t, body, "error", "message").(string); !strings.Contains(message, "memoryMultiplier must be one of 1, 2, 4, 8") {
 		t.Fatalf("error message = %q", message)
 	}
 	if len(fake.recoverCalls) != 1 {

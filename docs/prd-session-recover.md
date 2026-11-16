@@ -63,12 +63,11 @@
 - **달성 가치**: V3
 - **검증 방법**: 관련 env가 비어 있을 때 unavailable 에러가 반환되고 서버는 계속 동작한다.
 
-### AC5: 메모리 2배 옵션으로 복원 등급을 바꾼다
-- **설명**: session_restore AC6과 같은 `doubleMemory`(선택, boolean)를
+### AC5: 메모리 등급 옵션으로 복원 등급을 바꾼다
+- **설명**: session_restore AC6과 같은 `memoryMultiplier`(선택, 1·2·4·8 중 하나인 정수)를
   `POST /api/v1/sessions/{id}/recover` 본문에 **받은 값 그대로** 싣는다(session-platform
-  `control-plane/api/openapi.yaml`의 `RestoreRequest`). `true`·`false` 모두 싣고, 생략하면 본문 없이
-  보내 기록이 지닌 등급으로 돌아온다. boolean이 아닌 값은 제어면에 보내기 **전에** `-32602`로
-  거부한다.
+  `control-plane/api/openapi.yaml`의 `RestoreRequest`). 1도 싣고, 생략하면 본문 없이 보내 기록이 지닌
+  등급으로 돌아온다. 1·2·4·8이 아닌 값은 제어면에 보내기 **전에** `-32602`로 거부한다.
 - **달성 가치**: V5
-- **검증 방법**: `doubleMemory: true`를 준 호출의 제어면 요청 본문에 같은 값이 있고, 생략한 호출은
+- **검증 방법**: `memoryMultiplier: 4`를 준 호출의 제어면 요청 본문에 같은 값이 있고, 생략한 호출은
   본문이 없으며, 문자열 값은 요청 0건으로 `-32602`임을 확인한다.

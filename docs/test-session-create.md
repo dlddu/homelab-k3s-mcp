@@ -121,14 +121,14 @@
   `TestSessionCreateWithinTheWaitReturnsTheSession`), `internal/server/session_create_outcome_test.go`
   (`TestSessionListReportsHowAPendingCreateEnded`, `TestSessionListOmitsPendingCreatesWhenNoneWerePending`) + 통합 (미작성)
 
-### 시나리오 8: 메모리 2배 옵션이 제어면에 그대로 실린다
-- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, 메모리 2배 옵션(session-platform
-  `control-plane/api/openapi.yaml`의 `doubleMemory`)을 받는 제어면
-- **실행 단계**: (a) `session_create`에 `workloadType=claude-code`, `doubleMemory=true` → (b) 같은
-  호출에서 `doubleMemory` 생략 → (c) `doubleMemory`에 `"yes"`·`1`을 각각 준 호출
-- **기대 결과**: (a) 제어면이 받은 본문의 `doubleMemory`가 `true`이고 반환 세션의 `doubleMemory`도
-  `true`다. (b) 본문에 `doubleMemory`가 없고 반환 세션에도 없다. (c) 제어면에 요청이 가지 않고 `-32602`
+### 시나리오 8: 메모리 등급 옵션이 제어면에 그대로 실린다
+- **사전 조건**: 서버에 `SESSION_PLATFORM_ENDPOINT` 배선, 메모리 등급 옵션(session-platform
+  `control-plane/api/openapi.yaml`의 `memoryMultiplier`)을 받는 제어면
+- **실행 단계**: (a) `session_create`에 `workloadType=claude-code`, `memoryMultiplier=4` → (b) 같은
+  호출에서 `memoryMultiplier` 생략 → (c) `memoryMultiplier`에 `"4"`·`3`·`2.5`를 각각 준 호출
+- **기대 결과**: (a) 제어면이 받은 본문의 `memoryMultiplier`가 `4`이고 반환 세션의 `memoryMultiplier`도
+  `4`다. (b) 본문에 `memoryMultiplier`가 없고 반환 세션에도 없다. (c) 제어면에 요청이 가지 않고 `-32602`
 - **검증 AC**: AC8
-- **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`(`TestCreateSessionSendsDoubleMemory`)
-  + `internal/server/mcp_test.go`(`TestSessionCreatePassesDoubleMemoryThrough`,
+- **자동화**: Go 단위 `internal/sessionplatform/sessionplatform_test.go`(`TestCreateSessionSendsMemoryMultiplier`)
+  + `internal/server/mcp_test.go`(`TestSessionCreatePassesMemoryMultiplierThrough`,
   `TestSessionCreateRejectsBadArguments`) + 통합 (미작성)

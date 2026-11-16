@@ -133,12 +133,11 @@ type Session struct {
 	Pod          string `json:"pod,omitempty"`
 	// Plugins is present only on a session created with its own selection.
 	Plugins []string `json:"plugins,omitempty"`
-	// DoubleMemory is present only when the session was created with the
-	// doubled workload-container memory tier (session-platform
-	// `control-plane/api/openapi.yaml` `doubleMemory`).
-	DoubleMemory bool   `json:"doubleMemory,omitempty"`
-	CreatedAt    string `json:"createdAt"`
-	LastAccess   string `json:"lastAccess"`
+	// MemoryMultiplier is the session's memory tier (session-platform
+	// `control-plane/api/openapi.yaml` `memoryMultiplier`), absent at tier 1.
+	MemoryMultiplier int    `json:"memoryMultiplier,omitempty"`
+	CreatedAt        string `json:"createdAt"`
+	LastAccess       string `json:"lastAccess"`
 }
 
 // ReadResult is one read of a session's accumulated output. Path names the
@@ -182,11 +181,11 @@ type CreateRequest struct {
 	// (session-platform AC-L1). nil leaves the default; an empty list would be
 	// dropped by omitempty and silently mean the same, so callers refuse it.
 	Plugins []string `json:"plugins,omitempty"`
-	// DoubleMemory doubles the workload container's memory request/limit
-	// (session-platform `control-plane/api/openapi.yaml` `doubleMemory`).
-	// false (the default) is dropped by omitempty, same as the control plane's
-	// own "omitted" behavior.
-	DoubleMemory bool `json:"doubleMemory,omitempty"`
+	// MemoryMultiplier multiplies the workload container's memory
+	// request/limit (session-platform `control-plane/api/openapi.yaml`
+	// `memoryMultiplier`: 1, 2, 4 or 8). 0 is dropped by omitempty and the
+	// control plane uses tier 1.
+	MemoryMultiplier int `json:"memoryMultiplier,omitempty"`
 }
 
 // Service talks to the control plane on behalf of the session tools.
@@ -385,18 +384,18 @@ func (c *Client) DeleteSession(ctx context.Context, id string) error {
 // `control-plane/api/openapi.yaml` `RestoreRequest`). A nil field is left out
 // of the request, so the session keeps what it has.
 type RestoreOptions struct {
-	// DoubleMemory sets the memory tier of the restored pod. Unlike create,
-	// false is sent too: it lowers a doubled session back to the default.
-	DoubleMemory *bool
+	// MemoryMultiplier sets the memory tier of the restored pod. Unlike
+	// create, 1 is sent too: it lowers a session back to the default.
+	MemoryMultiplier *int
 }
 
 // restoreRequest builds a restore or recover POST: no body when opts asks
 // for nothing, exactly as before RestoreOptions existed.
 func restoreRequest(ctx context.Context, endpoint string, opts RestoreOptions) (*http.Request, error) {
-	if opts.DoubleMemory == nil {
+	if opts.MemoryMultiplier == nil {
 		return http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)
 	}
-	body, err := json.Marshal(map[string]bool{"doubleMemory": *opts.DoubleMemory})
+	body, err := json.Marshal(map[string]int{"memoryMultiplier": *opts.MemoryMultiplier})
 	if err != nil {
 		return nil, err
 	}
