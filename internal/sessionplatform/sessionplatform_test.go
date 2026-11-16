@@ -765,9 +765,10 @@ func TestWriteUsesThePerSessionEndpoint(t *testing.T) {
 	}
 }
 
-// session-platform AC-E2: a permission mode rides in the write body beside the
-// payload; a write without one sends exactly the old body.
-func TestWriteSendsPermissionMode(t *testing.T) {
+// session-platform AC-E2: the turn's one choice rides in the write body beside
+// the payload; a write that does not ask for it sends exactly the old body, so
+// false and omitted are the same request.
+func TestWriteSendsToolApprovals(t *testing.T) {
 	var bodies []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
@@ -777,13 +778,20 @@ func TestWriteSendsPermissionMode(t *testing.T) {
 	defer srv.Close()
 	c := &Client{endpoint: srv.URL, userAgent: "homelab-k3s-mcp/test", http: srv.Client()}
 
-	if _, err := c.WriteSession(context.Background(), "s-1", "edit it", WriteOptions{PermissionMode: "acceptEdits"}); err != nil {
-		t.Fatalf("WriteSession with mode: %v", err)
+	if _, err := c.WriteSession(context.Background(), "s-1", "edit it", WriteOptions{ToolApprovals: true}); err != nil {
+		t.Fatalf("WriteSession asking for the owner's decision: %v", err)
 	}
 	if _, err := c.WriteSession(context.Background(), "s-1", "plain", WriteOptions{}); err != nil {
-		t.Fatalf("WriteSession without mode: %v", err)
+		t.Fatalf("WriteSession without it: %v", err)
 	}
-	want := []string{`{"payload":"edit it","permissionMode":"acceptEdits"}`, `{"payload":"plain"}`}
+	if _, err := c.WriteSession(context.Background(), "s-1", "explicit false", WriteOptions{ToolApprovals: false}); err != nil {
+		t.Fatalf("WriteSession with an explicit false: %v", err)
+	}
+	want := []string{
+		`{"payload":"edit it","toolApprovals":true}`,
+		`{"payload":"plain"}`,
+		`{"payload":"explicit false"}`,
+	}
 	if !reflect.DeepEqual(bodies, want) {
 		t.Fatalf("bodies = %q, want %q", bodies, want)
 	}

@@ -934,14 +934,14 @@ func (h *Handler) sessionWrite(ctx context.Context, raw json.RawMessage) (any, *
 		return nil, errf(-32602, "payload must be a string")
 	}
 	var opts sessionplatform.WriteOptions
-	if v, present := obj["permissionMode"]; present && v != nil {
-		// An empty mode would be dropped from the request body and silently
-		// mean the default, so it is refused here like a non-string.
-		mode, ok := v.(string)
-		if !ok || mode == "" {
-			return nil, errf(-32602, "permissionMode must be a non-empty string")
+	if v, present := obj["toolApprovals"]; present && v != nil {
+		// false would be dropped from the request body and mean the same as
+		// omitting it, so only a bool is taken and only true asks for it.
+		ask, ok := v.(bool)
+		if !ok {
+			return nil, errf(-32602, "toolApprovals must be a boolean")
 		}
-		opts.PermissionMode = mode
+		opts.ToolApprovals = ask
 	}
 
 	if refusal := h.refuseSnapshot(ctx, *id, "write"); refusal != nil {
