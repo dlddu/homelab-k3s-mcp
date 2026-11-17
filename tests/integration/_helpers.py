@@ -71,6 +71,7 @@ EXPECTED_TOOLS = {
     "session_tool_approvals",
     "session_tool_approval_decide",
     "pocket_aide_notification_send",
+    "pocket_aide_chat_presence_get",
     "drop_token_issue",
 }
 
