@@ -113,7 +113,8 @@ func TestToolsListIncludesAllTools(t *testing.T) {
 		"opensearch_search", "opensearch_document_put", "opensearch_document_delete",
 		"session_create", "session_list", "session_read", "session_write",
 		"session_tool_approvals", "session_tool_approval_decide", "session_delete",
-		"session_recover", "session_archive", "session_restore", "pocket_aide_notification_send", "drop_token_issue",
+		"session_recover", "session_archive", "session_restore",
+		"pocket_aide_notification_send", "pocket_aide_chat_presence_get", "drop_token_issue",
 	}
 	if len(tools) != len(want) {
 		t.Fatalf("len(tools) = %d, want %d", len(tools), len(want))

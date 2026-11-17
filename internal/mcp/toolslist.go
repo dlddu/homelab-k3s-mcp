@@ -1201,6 +1201,22 @@ const toolsListJSON = `{
       }
     },
     {
+      "name": "pocket_aide_chat_presence_get",
+      "description": "Ask whether the person who registered this server as a caller in PocketAide (dlddu/pocket-aide) is looking at its chat screen right now. Use it to choose how to reach them: while they are present, an answer in the chat is read at once and a push would be redundant; while they are away, pocket_aide_notification_send is what actually reaches them. Presence comes from that screen's own polling — PocketAide counts the chat screen as present for 45 seconds after its last read — so it means 'the chat screen was open within the last 45 seconds', not 'the phone is unlocked'. Returns present (true while inside that window), last_seen_at (unix seconds of the last read, or null when PocketAide has not seen that screen at all — null means unknown, whereas present=false with a time means they were there and left) and ttl_seconds (the window, 45). Takes no arguments: the subject is fixed by that caller registration, and no other person's presence can be asked for. This tool only reads — it creates no approval request, sends no notification and does not disturb the owner. Uses the same PocketAide address and service account token as the approval gate (APPROVAL_GATE_URL).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {},
+        "additionalProperties": false
+      },
+      "annotations": {
+        "title": "Get PocketAide Chat Presence",
+        "readOnlyHint": true,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
       "name": "drop_token_issue",
       "description": "Issue a short-lived API token for drop (dlddu/drop), the homelab file share that keeps files up to 30 days and hands them out by id + password. This tool ONLY issues the token: it never sends or receives file contents, and it has no file or content parameter. Do the actual upload and download yourself with curl in a shell, using the command templates returned in usage (export DROP_TOKEN once from usage.setup, then run the commands), and always save downloads to disk with -o — file bytes passing through tool arguments or results would be dumped into the conversation context and burn it, so they must move only through curl. Returns token, expires_at (call again once it passes), max_days (the longest retention a drop made with this token may ask for), base_url (where to send the curl requests), created_by and usage. Each call creates a new token on drop. Requires DROP_URL on the server.",
       "inputSchema": {

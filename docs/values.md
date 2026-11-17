@@ -112,7 +112,7 @@
   도메인 기능을 다룬다. 같은 `kubectl exec`을 쓰더라도 목적이 앱 상태 조작이면 V5다.
 - **관련 도구**: `dear_baby_reset_user`, `session_create`, `session_list`, `session_read`,
   `session_write`, `session_delete`, `session_recover`, `session_archive`, `session_restore`,
-  `pocket_aide_notification_send`,
+  `pocket_aide_notification_send`, `pocket_aide_chat_presence_get`,
   `drop_token_issue`
 
 ### V6: 서버 운영 통계
@@ -186,4 +186,5 @@
 | 2026-10-15 | V3 근거 (1) 「사람의 사전 승인」의 상대를 gatekeeper 에서 PocketAide(`dlddu/pocket-aide`)로 고쳤다 — 승인 게이트(`prd-approval-gate`)의 백엔드 교체를 따라간 것이고, 가치의 내용(변경 동사는 사람 승인을 거쳐야 클러스터에 닿는다)과 새 가치 수는 바뀌지 않는다. |
 | 2026-10-23 | V3 게이트 범위를 클러스터 밖 쓰기 하나로 넓혔다 — `github_commit_status_create` 를 승인 게이트에 넣었다(`prd-github-commit-status` AC7). commit status 는 필수 검사뿐 아니라 reconciler 수동 승인 같은 **사람 판정의 신호**로도 쓰여, 허용 접두사 안에서도 에이전트가 승인 없이 적으면 그 판정을 위조할 수 있다. 보증 문장 「승인 없이는 클러스터 상태가 바뀌지 않는다」는 그대로 두고, 클러스터 밖은 문서가 이름으로 지정한 도구만 게이트를 탄다. 새 가치 추가 없음. |
 | 2026-10-24 | 2026-10-23 의 V3 게이트 범위 확장을 되돌렸다 — `github_commit_status_create` 를 승인 게이트에서 다시 뺐다(`prd-github-commit-status` AC7·`prd-approval-gate` 「클러스터 밖 쓰기 게이트」 절 철회, 소유자 결정). 위조 방지는 다시 허용 접두사(`prd-github-commit-status` AC4)가 맡는다. 보증 문장 「승인 없이는 클러스터 상태가 바뀌지 않는다」는 그대로다. 새 가치 추가 없음. |
+| 2026-11-16 | V5 관련 도구에 `pocket_aide_chat_presence_get` 추가 — PocketAide 의 채팅 화면 접속 상태 조회를 도구로 연다(`prd-pocket-aide-chat-presence`). 새 가치 추가 없음 — 앱 기능의 도구화(V5)와 기본값 안전(V3, 읽기 전용·인자 없음·미설정 거부)의 구현체다. 이 도구가 닫는 공백은 **알림 수단의 선택**이다: `pocket_aide_notification_send` 는 사용자를 찾아가고 채팅 답은 보고 있을 때만 즉시 읽히는데, 둘 중 무엇을 쓸지 가를 사실이 지금까지 없어 에이전트가 둘 다 하거나(보고 있는 사람의 폰을 괜히 울린다) 아무것도 하지 않았다. 접속 상태는 PocketAide 가 정의·보관하고(pocket-aide PRD-1 AC8) 이 서버는 캐시 없이 조회만 한다 — 45초 창의 값을 캐시하면 「이미 떠난 사람이 아직 있다」고 답해 도구의 존재 이유를 깨뜨린다. |
 | 2026-11-12 | V2 commit status 쓰기의 주체를 이 서버에서 PocketAide 로 옮겼다 — `github_commit_status_create`(서버가 바로 기록)를 `github_commit_status_request`(PocketAide 에 요청만 남기고 바로 반환, 사람이 앱에서 승인하면 PocketAide 의 GitHub App 이 기록)로 바꿨다(`prd-github-commit-status`). `review/manual-approval` 같은 status 는 사람의 판정 그 자체라 무인 기록은 판정 위조이고, 동기 승인 게이트는 MCP 커넥터 30초 제한에 걸려 10-24 에 되돌렸다 — 비동기 요청이 둘을 함께 푼다. V3 게이트 범위는 바뀌지 않는다(이 도구는 기다리지 않는다). |

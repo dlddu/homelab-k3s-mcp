@@ -205,6 +205,13 @@ var toolRegistry = map[string]toolEntry{
 		}},
 		handle: (*Handler).pocketAideNotificationSend,
 	},
+	"pocket_aide_chat_presence_get": {
+		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
+			kind:   touchesNothing,
+			reason: "reads whether the owner is on PocketAide's chat screen; reaches no kubernetes resource",
+		}},
+		handle: (*Handler).pocketAideChatPresenceGet,
+	},
 	"drop_token_issue": {
 		decl: toolDeclaration{noResourcePermission: &noResourcePermission{
 			kind:   touchesNothing,

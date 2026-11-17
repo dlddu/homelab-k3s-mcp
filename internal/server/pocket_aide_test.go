@@ -20,11 +20,18 @@ import (
 type notifyCall struct{ title, body, requester string }
 
 type fakePocketAide struct {
-	calls    []notifyCall
-	result   *pocketaide.Result
-	err      error
-	requests []pocketaide.CommitStatusRequest
-	ticket   *pocketaide.CommitStatusTicket
+	calls         []notifyCall
+	result        *pocketaide.Result
+	err           error
+	requests      []pocketaide.CommitStatusRequest
+	ticket        *pocketaide.CommitStatusTicket
+	presence      *pocketaide.ChatPresence
+	presenceCalls int
+}
+
+func (f *fakePocketAide) ChatPresence(context.Context) (*pocketaide.ChatPresence, error) {
+	f.presenceCalls++
+	return f.presence, f.err
 }
 
 func (f *fakePocketAide) RequestCommitStatus(_ context.Context, in pocketaide.CommitStatusRequest) (*pocketaide.CommitStatusTicket, error) {
