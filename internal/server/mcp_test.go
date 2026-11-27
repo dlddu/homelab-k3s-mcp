@@ -1894,6 +1894,37 @@ func TestSessionCreateRejectsBadArguments(t *testing.T) {
 	}
 }
 
+func TestToolsListAdvertisesSessionCreatePluginsSchema(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), unavailableGrafana(), unavailableOpenSearch(), unavailableSessionPlatform())
+	tool := findTool(t, toolsList(t, app), "session_create")
+
+	plugins, ok := at(t, tool, "inputSchema", "properties", "plugins").(map[string]any)
+	if !ok {
+		t.Fatalf("plugins schema is not an object")
+	}
+	if plugins["type"] != "array" {
+		t.Fatalf("plugins.type = %v, want array", plugins["type"])
+	}
+	if plugins["minItems"] != float64(1) {
+		t.Fatalf("plugins.minItems = %v, want 1", plugins["minItems"])
+	}
+	items, ok := plugins["items"].(map[string]any)
+	if !ok {
+		t.Fatalf("plugins.items is not an object")
+	}
+	if items["type"] != "string" {
+		t.Fatalf("plugins.items.type = %v, want string", items["type"])
+	}
+	for _, banned := range []string{"maxItems", "uniqueItems", "pattern"} {
+		if _, ok := plugins[banned]; ok {
+			t.Fatalf("plugins.%s is advertised but the control plane owns it", banned)
+		}
+	}
+	if _, ok := items["pattern"]; ok {
+		t.Fatalf("plugins.items.pattern is advertised but the control plane owns it")
+	}
+}
+
 func TestSessionCreateSurfacesControlPlaneRefusalAsInvalidArgument(t *testing.T) {
 	control := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
