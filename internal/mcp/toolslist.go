@@ -909,13 +909,10 @@ const toolsListJSON = `{
           "plugins": {
             "type": "array",
             "minItems": 1,
-            "maxItems": 16,
-            "uniqueItems": true,
             "items": {
-              "type": "string",
-              "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+              "type": "string"
             },
-            "description": "Marketplace plugins for this session, by name in the platform marketplace without an '@marketplace' suffix (for example ['session-platform', 'development']). Omitted, only codex-chat gets default plugins (the deployment's); claude-code, codex-task and minimax-code get none. Given, it is exactly the session's plugins, replacing codex-chat's default rather than adding to it. Immutable after creation and kept across snapshot/restore. Refused by the control plane for 'shell' and 'approval-gated', and for an empty, duplicate or malformed list. A name the marketplace does not list makes a claude-code create fail and leaves a codex-chat, codex-task or minimax-code session without plugins; minimax-code gets its K3s MCP tools only from a selected plugin that declares them (mcp-servers does), so name that plugin to get them. Null is the same as omitting it, as for the other arguments."
+            "description": "Marketplace plugins for this session, by name in the platform marketplace without an '@marketplace' suffix (for example ['session-platform', 'development']). Omitted, only codex-chat gets default plugins (the deployment's); claude-code, codex-task and minimax-code get none. Given, it is exactly the session's plugins, replacing codex-chat's default rather than adding to it. Immutable after creation and kept across snapshot/restore. Refused by the control plane for 'shell' and 'approval-gated', and for a duplicate or malformed name; an empty list or a non-string entry is refused here, as an argument error, before anything is sent. A name the marketplace does not list makes a claude-code create fail and leaves a codex-chat, codex-task or minimax-code session without plugins; minimax-code gets its K3s MCP tools only from a selected plugin that declares them (mcp-servers does), so name that plugin to get them. Null is the same as omitting it, as for the other arguments."
           },
           "memoryMultiplier": {
             "type": "integer",
