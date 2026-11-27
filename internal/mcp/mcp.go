@@ -1307,7 +1307,11 @@ func grafanaTokenEnv(creds *grafana.Credentials) string {
 	fmt.Fprintf(&b, "GRAFANA_METRICS_USER=%s\n", creds.MetricsUser)
 	fmt.Fprintf(&b, "GRAFANA_LOGS_URL=%s\n", creds.LogsURL)
 	fmt.Fprintf(&b, "GRAFANA_LOGS_USER=%s\n", creds.LogsUser)
-	fmt.Fprintf(&b, "# GRAFANA_TOKEN is the shared Basic-auth password for both *_USER values above\n")
+	if creds.TracesURL != "" {
+		fmt.Fprintf(&b, "GRAFANA_TRACES_URL=%s\n", creds.TracesURL)
+		fmt.Fprintf(&b, "GRAFANA_TRACES_USER=%s\n", creds.TracesUser)
+	}
+	fmt.Fprintf(&b, "# GRAFANA_TOKEN is the shared Basic-auth password for every *_USER value above\n")
 	fmt.Fprintf(&b, "GRAFANA_TOKEN=%s\n", creds.Token)
 	return b.String()
 }

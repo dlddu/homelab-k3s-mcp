@@ -23,12 +23,15 @@
 - **사전 조건**: 동일
 - **실행 단계**: 발급 결과의 키 검사
 - **기대 결과**: `GRAFANA_METRICS_URL`, `GRAFANA_METRICS_USER`, `GRAFANA_LOGS_URL`,
-  `GRAFANA_LOGS_USER`가 토큰과 함께 반환되어, 추가 정보 없이 Basic 인증(user=인스턴스 ID,
+  `GRAFANA_LOGS_USER`(서버에 트레이스 쌍이 설정돼 있으면 `GRAFANA_TRACES_URL`, `GRAFANA_TRACES_USER`도)가
+  토큰과 함께 반환되어, 추가 정보 없이 Basic 인증(user=인스턴스 ID,
   password=토큰)으로 쿼리 가능
 - **검증 AC**: AC2
 - **자동화**: 통합 `grafana_token_sc2.py::test_grafana_token_ac2_ready_to_use_env` — 메트릭·로그
   URL/USER 4종이 구성값 그대로 실려 오고 공유 Basic 비밀번호인 `GRAFANA_TOKEN`이 함께
-  반환됨을 값 단위로 단언. Go 단위 `TestGrafanaTokenDispatchesEnvResource`.
+  반환됨을 값 단위로 단언. Go 단위 `TestGrafanaTokenDispatchesEnvResource`(트레이스 쌍 포함),
+  `TestGrafanaTokenOmitsTracesWhenNotConfigured`(미설정이면 트레이스 줄 없음),
+  `grafana_test.go::TestFromEnvCarriesTheTracesPairIntoCredentials`·`TestFromEnvTracesAreOptionalButComeAsAPair`.
 
 ### 시나리오 3: 미설정 시 도구 에러
 - **사전 조건**: Grafana env 미설정
