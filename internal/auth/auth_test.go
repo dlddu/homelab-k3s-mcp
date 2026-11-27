@@ -64,7 +64,7 @@ func TestRequireBearerRejectsMissingTokenAndAdvertisesDiscovery(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil) // no Authorization header
+	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
 	cfg.RequireBearer(next).ServeHTTP(rec, req)
 
 	if nextCalled {

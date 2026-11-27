@@ -118,7 +118,7 @@ func TestRestartPatchIsGatedLikeAnyPatch(t *testing.T) {
 // them rather than by trusting the shape of what came back.
 const (
 	secretTokenPlain   = "s3cr3t-rotation-value"
-	secretTokenEncoded = "c3VwZXItc2VjcmV0LWJ5dGVz" // "super-secret-bytes"
+	secretTokenEncoded = "c3VwZXItc2VjcmV0LWJ5dGVz"
 )
 
 func TestSecretWriteContextRedactsValues(t *testing.T) {

@@ -31,7 +31,6 @@ UNRESOLVABLE_SESSION_ID = "e2e-read-ac4-unconfigured"
 
 
 async def test_session_read_ac4_unconfigured_refusal(session) -> None:
-    """AC: session-read/AC4"""
     await assert_unavailable_refusal(
         session,
         "session_read",

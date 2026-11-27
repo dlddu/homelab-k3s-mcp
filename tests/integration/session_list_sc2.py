@@ -40,9 +40,7 @@ LIST_CALLS = 3
 
 
 async def test_session_list_ac2_listing_is_passive(session) -> None:
-    """AC: session-list/AC2 — repeated listings change nothing.
-
-    The pod set is captured before the first call, so a pod appearing at any
+    """The pod set is captured before the first call, so a pod appearing at any
     point during the calls is caught.
     """
     seed_sessions([IDLE_SESSION, SNAPSHOT_SESSION])

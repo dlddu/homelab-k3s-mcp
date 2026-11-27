@@ -40,7 +40,6 @@ INERT_PAYLOAD = "e2e probe: this never reaches a workload\n"
 
 
 async def test_session_write_ac5_unconfigured_refusal(session) -> None:
-    """AC: session-write/AC5"""
     await assert_unavailable_refusal(
         session,
         "session_write",

@@ -29,7 +29,6 @@ MISSING_SESSION_ID = "e2e-read-ac3-missing"
 
 
 def _target_from(sessions: list[dict]) -> dict:
-    """Pull the seeded target out of a listing, failing loudly if it vanished."""
     by_id = {item["id"]: item for item in sessions}
     assert TARGET_SESSION["id"] in by_id, (
         f"seeded target {TARGET_SESSION['id']} is not in the inventory: {sessions}"
@@ -38,9 +37,7 @@ def _target_from(sessions: list[dict]) -> dict:
 
 
 async def test_session_read_ac3_missing_session_is_not_found(session) -> None:
-    """AC: session-read/AC3 — an unknown id comes back as a not-found tool error.
-
-    Asserted to be *distinguishable*: the text must not read like the
+    """Asserted to be *distinguishable*: the text must not read like the
     unconfigured refusal (session-read/AC4) nor like the bad-cursor rejection
     below, or a caller cannot tell "no such session" from "the integration is
     off".
@@ -59,11 +56,8 @@ async def test_session_read_ac3_missing_session_is_not_found(session) -> None:
 
 
 async def test_session_read_ac3_bad_cursor_is_an_argument_error(session) -> None:
-    """AC: session-read/AC3 — a negative or non-integer cursor is an argument error.
-
-    ``pod_describe_ac2.py`` asserts the same ``McpError`` shape for its mutually
-    exclusive targeting arguments. The id is a *real* session here, so the
-    rejection is provably about the cursor and not about the target.
+    """The id is a *real* session here, so the rejection is provably about the
+    cursor and not about the target.
     """
     bad_cursors = (
         (-1, "offset must be >= 0"),
@@ -82,10 +76,6 @@ async def test_session_read_ac3_bad_cursor_is_an_argument_error(session) -> None
 
 
 async def test_session_read_ac3_target_is_untouched(session, before: dict) -> None:
-    """AC: session-read/AC3 — neither failure moved the session.
-
-    ``before`` is the target as it stood ahead of the two rejected calls.
-    """
     result = await session.call_tool("session_list", {})
     after = _target_from(sessions_from(result))
 

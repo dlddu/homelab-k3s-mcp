@@ -43,7 +43,6 @@ SETTLE_STABLE_POLLS = 3
 
 
 async def _read(session, session_id: str, offset: int | None = None) -> dict:
-    """One ``session_read`` call, asserted successful, as its structured result."""
     args: dict = {"id": session_id}
     if offset is not None:
         args["offset"] = offset
@@ -53,9 +52,7 @@ async def _read(session, session_id: str, offset: int | None = None) -> dict:
 
 
 async def _quiet_end(session, session_id: str, offset: int) -> int:
-    """Poll from ``offset`` until the record stops growing; return its end.
-
-    Two cases here need a *quiet* shell, and for the same underlying reason:
+    """Two cases here need a *quiet* shell, and for the same underlying reason:
     the shell writes on its own schedule (the prompt when it starts, another
     prompt after each command finishes), so a read taken mid-write would make
     "no new output" or "the same span" fail for a reason the AC is not about.
@@ -85,9 +82,7 @@ async def _quiet_end(session, session_id: str, offset: int) -> int:
 async def test_session_read_ac1_offset_zero_returns_everything(
     session, session_id: str
 ) -> dict:
-    """AC: session-read/AC1 — omitted offset reads from session start.
-
-    Returns the first read so the later cases can continue from the cursor the
+    """Returns the first read so the later cases can continue from the cursor the
     server issued rather than one this file computed.
     """
     first = await _read(session, session_id)
@@ -110,7 +105,6 @@ async def test_session_read_ac1_offset_zero_returns_everything(
 async def test_session_read_ac1_cursor_is_empty_without_new_output(
     session, session_id: str, cursor: int
 ) -> None:
-    """AC: session-read/AC1 — no new output is an empty payload at the same cursor."""
     idle = await _read(session, session_id, cursor)
 
     assert idle["payload"] == "", f"expected no new output at {cursor}: {idle}"
@@ -124,7 +118,6 @@ async def test_session_read_ac1_cursor_is_empty_without_new_output(
 async def test_session_read_ac1_cursor_returns_only_the_increment(
     session, control_plane_url: str, session_id: str, cursor: int
 ) -> dict:
-    """AC: session-read/AC1 — after new output, the cursor returns only the delta."""
     inject_through_control_plane(control_plane_url, session_id, COMMAND)
 
     deadline = time.monotonic() + INCREMENT_TIMEOUT
@@ -148,9 +141,7 @@ async def test_session_read_ac1_cursor_returns_only_the_increment(
 async def test_session_read_ac1_repeating_a_cursor_replays_the_span(
     session, session_id: str, cursor: int, observed: str
 ) -> None:
-    """AC: session-read/AC1 — the same cursor always returns the same span.
-
-    Two assertions, because "the same span" has two halves. *Repeatable*: two
+    """Two assertions, because "the same span" has two halves. *Repeatable*: two
     reads at one cursor return byte-identical spans -- settled first, since the
     shell prints a fresh prompt after the command finishes and comparing across
     that append would fail for a reason the AC is not about. *Non-consuming*:
