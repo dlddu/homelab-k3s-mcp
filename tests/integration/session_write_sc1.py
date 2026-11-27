@@ -39,7 +39,6 @@ OUTPUT_POLL = 0.5
 
 
 async def _read_all(session, session_id: str) -> str:
-    """The session's whole accumulated output, read from offset 0."""
     result = await session.call_tool("session_read", {"id": session_id})
     assert result.isError is False, result
     return result.structuredContent["payload"]
@@ -48,9 +47,7 @@ async def _read_all(session, session_id: str) -> str:
 async def test_session_write_ac1_returns_without_waiting_for_the_workload(
     session, session_id: str
 ) -> None:
-    """AC: session-write/AC1 — the call is accepted and carries no output.
-
-    Asserting the *shape* pins the non-blocking contract: a result that carried
+    """Asserting the *shape* pins the non-blocking contract: a result that carried
     the command's output would mean the call had waited, and a caller could then
     stop using session_read.
     """
@@ -72,9 +69,7 @@ async def test_session_write_ac1_returns_without_waiting_for_the_workload(
 async def test_session_write_ac1_payload_reaches_the_workload(
     session, session_id: str
 ) -> None:
-    """AC: session-write/AC1 — the injected command runs and its output accumulates.
-
-    The marker exists only in the *result* of running the command, never in the
+    """The marker exists only in the *result* of running the command, never in the
     command text the PTY echoes back, so finding it is evidence that the shell
     executed the payload rather than merely received it.
     """

@@ -22,8 +22,6 @@ from _helpers import assert_destructive_annotation, base_url, open_session, wait
 
 
 async def test_session_write_ac3_destructive_hint(session) -> None:
-    """AC: session-write/AC3 — session_write advertises destructiveHint=true.
-    """
     await assert_destructive_annotation(session, "session_write")
 
 

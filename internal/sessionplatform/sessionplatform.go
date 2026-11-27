@@ -403,8 +403,6 @@ type RestoreOptions struct {
 	MemoryMultiplier *int
 }
 
-// restoreRequest builds a restore or recover POST: no body when opts asks
-// for nothing, exactly as before RestoreOptions existed.
 func restoreRequest(ctx context.Context, endpoint string, opts RestoreOptions) (*http.Request, error) {
 	if opts.MemoryMultiplier == nil {
 		return http.NewRequestWithContext(ctx, http.MethodPost, endpoint, nil)

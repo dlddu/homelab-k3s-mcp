@@ -22,7 +22,6 @@ from _helpers import base_url, open_session, wait_for_healthz
 
 
 async def test_session_list_ac3_unconfigured_refusal(session) -> None:
-    """AC: session-list/AC3"""
     await assert_unavailable_refusal(
         session, "session_list", {}, SESSION_PLATFORM_REFUSAL
     )
