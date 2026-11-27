@@ -54,6 +54,8 @@ func TestCreateTokenNeverEchoesIssuerToken(t *testing.T) {
 		"MetricsUser": creds.MetricsUser,
 		"LogsURL":     creds.LogsURL,
 		"LogsUser":    creds.LogsUser,
+		"TracesURL":   creds.TracesURL,
+		"TracesUser":  creds.TracesUser,
 	}
 	for name, val := range fields {
 		if strings.Contains(val, issuerToken) {

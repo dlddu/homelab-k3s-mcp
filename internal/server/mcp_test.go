@@ -936,6 +936,8 @@ func TestGrafanaTokenDispatchesEnvResource(t *testing.T) {
 			MetricsUser: "123456",
 			LogsURL:     "https://logs-prod-99.grafana.net",
 			LogsUser:    "654321",
+			TracesURL:   "https://tempo-prod-99.grafana.net",
+			TracesUser:  "777777",
 		}, nil
 	}}
 	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), fake, unavailableOpenSearch(), unavailableSessionPlatform())
@@ -965,6 +967,8 @@ func TestGrafanaTokenDispatchesEnvResource(t *testing.T) {
 		"GRAFANA_METRICS_USER=123456",
 		"GRAFANA_LOGS_URL=https://logs-prod-99.grafana.net",
 		"GRAFANA_LOGS_USER=654321",
+		"GRAFANA_TRACES_URL=https://tempo-prod-99.grafana.net",
+		"GRAFANA_TRACES_USER=777777",
 		"GRAFANA_TOKEN=glc_short_lived",
 	} {
 		if !strings.Contains(text, want) {
@@ -2130,5 +2134,14 @@ func TestSessionRecoverUnavailableReturnsToolError(t *testing.T) {
 	survivor := callTool(t, app, 304, "ping", map[string]any{})
 	if at(t, survivor, "result", "content", 0, "text") != "pong" {
 		t.Fatalf("ping did not survive the refusal: %v", survivor)
+	}
+}
+
+func TestGrafanaTokenOmitsTracesWhenNotConfigured(t *testing.T) {
+	app := server.App(nil, unavailableK8s(), unavailableGitHub(), unavailableAWS(), &fakeGrafana{}, unavailableOpenSearch(), unavailableSessionPlatform())
+	body := callTool(t, app, 112, "grafana_token", map[string]any{})
+	text := at(t, body, "result", "content", 0).(map[string]any)["resource"].(map[string]any)["text"].(string)
+	if strings.Contains(text, "GRAFANA_TRACES_") || !strings.Contains(text, "GRAFANA_LOGS_USER=222222") {
+		t.Fatalf("text = %s", text)
 	}
 }

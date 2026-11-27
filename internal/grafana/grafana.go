@@ -58,7 +58,8 @@ func (e *Error) Unavailable() bool { return e.kind == kindUnavailable }
 
 // Credentials bundles a freshly minted short-lived token with the static
 // Grafana Cloud query endpoints and their numeric instance IDs. Token is the
-// shared HTTP Basic password for both the metrics and logs users.
+// shared HTTP Basic password for every *User. The traces pair is empty when
+// the server has no traces endpoint configured.
 type Credentials struct {
 	Token       string
 	ExpiresAt   string
@@ -66,6 +67,8 @@ type Credentials struct {
 	MetricsUser string
 	LogsURL     string
 	LogsUser    string
+	TracesURL   string
+	TracesUser  string
 }
 
 // Service mints short-lived read-only Grafana Cloud credentials. The access
@@ -103,6 +106,8 @@ type Client struct {
 	metricsUser  string
 	logsURL      string
 	logsUser     string
+	tracesURL    string
+	tracesUser   string
 	userAgent    string
 	http         *http.Client
 }
@@ -138,6 +143,12 @@ func FromEnv() (*Client, error) {
 		return nil, fmt.Errorf("%s required when GRAFANA_ISSUER_TOKEN is set", strings.Join(missing, ", "))
 	}
 
+	tracesURL := os.Getenv("GRAFANA_TRACES_URL")
+	tracesUser := os.Getenv("GRAFANA_TRACES_USER")
+	if (tracesURL == "") != (tracesUser == "") {
+		return nil, fmt.Errorf("GRAFANA_TRACES_URL and GRAFANA_TRACES_USER must be set together")
+	}
+
 	apiBase := os.Getenv("GRAFANA_API_URL")
 	if apiBase == "" {
 		apiBase = defaultAPIBase
@@ -152,6 +163,8 @@ func FromEnv() (*Client, error) {
 		metricsUser:  metricsUser,
 		logsURL:      logsURL,
 		logsUser:     logsUser,
+		tracesURL:    tracesURL,
+		tracesUser:   tracesUser,
 		userAgent:    version.Name + "/" + version.Version,
 		http:         &http.Client{Timeout: httpClientTimeout},
 	}, nil
@@ -214,6 +227,8 @@ func (c *Client) CreateToken(ctx context.Context) (*Credentials, error) {
 		MetricsUser: c.metricsUser,
 		LogsURL:     c.logsURL,
 		LogsUser:    c.logsUser,
+		TracesURL:   c.tracesURL,
+		TracesUser:  c.tracesUser,
 	}, nil
 }
 

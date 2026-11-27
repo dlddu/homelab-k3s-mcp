@@ -195,3 +195,48 @@ func TestFromEnvTrimsAPIBaseTrailingSlash(t *testing.T) {
 		t.Fatalf("apiBase = %q", client.apiBase)
 	}
 }
+
+func TestFromEnvCarriesTheTracesPairIntoCredentials(t *testing.T) {
+	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
+	t.Setenv("GRAFANA_READ_POLICY_ID", "policy-123")
+	setQueryEnv(t)
+	t.Setenv("GRAFANA_TRACES_URL", "https://tempo-prod-99.grafana.net")
+	t.Setenv("GRAFANA_TRACES_USER", "777777")
+	client, err := FromEnv()
+	if err != nil {
+		t.Fatalf("err = %v", err)
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"token":"glc_secret"}`))
+	}))
+	defer srv.Close()
+	client.apiBase, client.http = srv.URL, srv.Client()
+	creds, err := client.CreateToken(context.Background())
+	if err != nil {
+		t.Fatalf("CreateToken: %v", err)
+	}
+	if creds.TracesURL != "https://tempo-prod-99.grafana.net" || creds.TracesUser != "777777" {
+		t.Fatalf("traces = %q %q", creds.TracesURL, creds.TracesUser)
+	}
+}
+
+func TestFromEnvTracesAreOptionalButComeAsAPair(t *testing.T) {
+	t.Setenv("GRAFANA_ISSUER_TOKEN", "glsa_issuer")
+	t.Setenv("GRAFANA_READ_POLICY_ID", "policy-123")
+	setQueryEnv(t)
+	t.Setenv("GRAFANA_TRACES_URL", "")
+	t.Setenv("GRAFANA_TRACES_USER", "")
+	client, err := FromEnv()
+	if err != nil || client.tracesURL != "" {
+		t.Fatalf("no traces: client = %+v, err = %v", client, err)
+	}
+	t.Setenv("GRAFANA_TRACES_URL", "https://tempo-prod-99.grafana.net")
+	if _, err := FromEnv(); err == nil || !strings.Contains(err.Error(), "GRAFANA_TRACES_USER") {
+		t.Fatalf("url without user err = %v", err)
+	}
+	t.Setenv("GRAFANA_TRACES_URL", "")
+	t.Setenv("GRAFANA_TRACES_USER", "777777")
+	if _, err := FromEnv(); err == nil || !strings.Contains(err.Error(), "GRAFANA_TRACES_URL") {
+		t.Fatalf("user without url err = %v", err)
+	}
+}

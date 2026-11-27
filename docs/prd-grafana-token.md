@@ -10,20 +10,24 @@ Grafana Cloud의 read-only 단명 토큰을 발급하는 도구.
 ## 도구 개요
 - 입력: 없음 (access policy와 1시간 TTL이 서버에 고정)
 - 출력: `text/plain` .env (`GRAFANA_METRICS_URL`, `GRAFANA_METRICS_USER`, `GRAFANA_LOGS_URL`,
-  `GRAFANA_LOGS_USER`, `GRAFANA_TOKEN`)
-- 서버 요구 설정: `GRAFANA_ISSUER_TOKEN`, `GRAFANA_READ_POLICY_ID`, `GRAFANA_REGION`, 엔드포인트/USER 변수
+  `GRAFANA_LOGS_USER`, 서버에 설정돼 있으면 `GRAFANA_TRACES_URL`·`GRAFANA_TRACES_USER`, `GRAFANA_TOKEN`)
+- 서버 요구 설정: `GRAFANA_ISSUER_TOKEN`, `GRAFANA_READ_POLICY_ID`, `GRAFANA_REGION`, 엔드포인트/USER 변수.
+  트레이스 쌍(`GRAFANA_TRACES_URL`·`GRAFANA_TRACES_USER`)은 선택이지만 둘 중 하나만 있으면 설정 오류
 - 어노테이션: `readOnlyHint=false`, `destructiveHint=false`, `idempotentHint=false`, `openWorldHint=true`
 
 ## Acceptance Criteria
 
 ### AC1: read-only 토큰 발급
-- **설명**: 서버 고정 access policy로 메트릭·로그 읽기 범위의 토큰(TTL 1시간)을 발급한다.
+- **설명**: 서버 고정 access policy로 메트릭·로그·트레이스 읽기 범위의 토큰(TTL 1시간)을 발급한다
+  (2026-11-27 개정 — 정책 `homelab-k3s-mcp-read` 는 처음부터 `traces:read` 를 가졌지만 도구가 트레이스
+  엔드포인트를 돌려주지 않아 쓸 수 없었다).
 - **달성 가치**: V2
 - **검증 방법**: 반환 토큰의 만료가 약 1시간이고 read-only 범위이다.
 
 ### AC2: 즉시 사용 가능한 형태
-- **설명**: 메트릭(Mimir/Prometheus)·로그(Loki) 엔드포인트와 Basic 인증 사용자(데이터 소스
-  인스턴스 ID)를 토큰과 함께 반환한다. Basic 인증의 password가 토큰, username이 인스턴스 ID이다.
+- **설명**: 메트릭(Mimir/Prometheus)·로그(Loki)·트레이스(Tempo, 서버에 설정된 경우) 엔드포인트와
+  Basic 인증 사용자(데이터 소스 인스턴스 ID)를 토큰과 함께 반환한다. Basic 인증의 password가 토큰,
+  username이 인스턴스 ID이다.
 - **달성 가치**: V2
 - **검증 방법**: 반환된 URL·USER·TOKEN 조합으로 추가 정보 없이 메트릭/로그 쿼리를 인증할 수 있다.
 
