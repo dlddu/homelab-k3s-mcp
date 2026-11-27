@@ -336,6 +336,15 @@ def create_records(url: str) -> list[dict]:
     return [r for r in trace_records(url) if r.get("type") == "create"]
 
 
+def notification_records(url: str) -> list[dict]:
+    """알림 본문 기록 — PocketAide 가 **받은** notification 본문(``type`` = ``notification``).
+
+    PocketAide 는 보낸 알림 본문을 앱 API 로 돌려주지 않는다. 그래서 이 기록이 그 본문을
+    보는 유일한 면이다(pocket_aide_notification_send 시나리오 5).
+    """
+    return [r for r in trace_records(url) if r.get("type") == "notification"]
+
+
 def poll_count(url: str, request_id: str) -> int:
     """클라이언트가 실제로 몇 번이고 조회했는지는 PocketAide 기록에 남지 않고 이 기록에만 남는다."""
     return sum(

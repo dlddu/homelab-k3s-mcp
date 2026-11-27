@@ -9,6 +9,9 @@
 # pocket-aide-trace 는 http-trace 와 같은 계열의 기록 프록시다 — 대체재가 아니라 관측면이다.
 # 시나리오 2 의 검증 대상(create 요청 본문)은 PocketAide 의 기록에 남지 않는다. 프록시는 요청
 # 본문과 식별자만 기록하고 Authorization 값(SUT 의 서비스 어카운트 토큰)은 로그에 두지 않는다.
+# 알림 본문도 같은 면에 기록한다 — PocketAide 는 보낸 알림 본문을 앱 API 로 돌려주지
+# 않기 때문에, PocketAide 가 **받은** `requester` 를 재려면 그 경계에 기록이 있어야 한다
+# (pocket_aide_notification_send 시나리오 5).
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -181,7 +184,11 @@ data:
     시나리오 2, docs/prd-approval-gate.md AC2) makes observable and the upstream
     alone does not: the create body (externalId, context, requesterName,
     timeoutSeconds), the scheme of the Authorization header, and how many times
-    each request id was polled. The credential itself never lands in the log.
+    each request id was polled. The notification body is recorded for the same
+    reason -- PocketAide never returns the notification body it was given, so
+    the requester it received is only observable here
+    (docs/test-pocket-aide-notification-send.md 시나리오 5). The credential
+    itself never lands in the log.
     """
 
     import json
@@ -192,6 +199,7 @@ data:
 
     UPSTREAM = "http://pocket-aide.pocket-aide.svc.cluster.local:8080"
     CREATE_PATH = "/api/external/approvals"
+    NOTIFY_PATH = "/api/external/notifications"
     MAX_RECORDS = 2000
 
     records = []
@@ -240,6 +248,18 @@ data:
                     parsed = {"unparseable": True}
                 record({
                     "type": "create",
+                    "path": self.path,
+                    "status": status,
+                    "authorization_scheme": scheme,
+                    "body": parsed,
+                })
+            elif self.command == "POST" and self.path == NOTIFY_PATH:
+                try:
+                    parsed = json.loads(body or b"{}")
+                except ValueError:
+                    parsed = {"unparseable": True}
+                record({
+                    "type": "notification",
                     "path": self.path,
                     "status": status,
                     "authorization_scheme": scheme,

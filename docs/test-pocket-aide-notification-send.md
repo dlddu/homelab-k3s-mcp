@@ -12,9 +12,9 @@
 > (`(미작성)` 이면 아직 파일이 없다는 뜻이고, 그 표기는 `tests/integration/check_ac_mapping.py`
 > 규칙 8 이 실측 파일 집합과 대조한다). 시나리오 1 의 실제 도달은 실기기·Apple 자격 증명이 필요한
 > 외부 경계라 e2e 예외이고, 시나리오 3 은 핀(`POCKET_AIDE_SHA`)이 알림 엔드포인트와
-> `requester` 를 받는 판(dlddu/pocket-aide#321)을 담게 돼 e2e 로 닫혔다. 시나리오 5 는 `requester` 를 받는
-> PocketAide 가 픽스처 핀(`POCKET_AIDE_SHA`)에 들어와야 e2e 를 쓸 수 있다 — 지금 핀은 모르는 필드를
-> 400 으로 거부한다.
+> `requester` 를 받는 판(dlddu/pocket-aide#321)을 담게 돼 e2e 로 닫혔다. 시나리오 5 는 같은 핀이
+> `requester` 를 받으므로 상대 기능은 이미 서 있고, 남은 것은 **관측**이었다 — PocketAide 는 보낸
+> 알림 본문을 앱 API 로 돌려주지 않으므로 기록 프록시가 그 본문을 남긴다.
 
 ## 테스트 시나리오
 
@@ -85,4 +85,7 @@
   (`TestPocketAideNotificationSendSendsTheRequesterTheCallerWrote` — 실제 `pocketaide.Client` 를 거쳐 상대가
   받은 본문을 잰다 · `TestToolsListAdvertisesPocketAideNotificationSend`) +
   `internal/pocketaide/pocketaide_test.go` (`TestNotifyPostsTitleAndBodyWithTheServiceAccountToken`,
-  `TestNotifyOmitsAnEmptyBody`, `TestNotifyRefusesAMissingOrOverlongRequesterBeforeSending`) + 통합 (미작성)
+  `TestNotifyOmitsAnEmptyBody`, `TestNotifyRefusesAMissingOrOverlongRequesterBeforeSending`) + 통합
+  `tests/integration/pocket_aide_notification_send_sc5.py`(`실행 대상: approval-variant` — 기록
+  프록시 `pocket-aide-trace` 가 남긴 알림 본문의 `requester` 가 공백을 걷은 값인 것과
+  `tools/list` 입력 스키마의 `title`·`body`·`requester` / `required` = `title`·`requester`)
